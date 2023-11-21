@@ -37,6 +37,7 @@ async-trait = { workspace = true }
 catalog = { workspace = true }
 ceresdbproto = { workspace = true }
 cluster = { workspace = true }
+chrono = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
 datafusion = { workspace = true }
@@ -47,6 +48,7 @@ hash_ext = { workspace = true }
 influxql-logical-planner = { workspace = true }
 influxql-parser = { workspace = true }
 influxql-schema = { workspace = true }
+influxql-query = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
 logger = { workspace = true }

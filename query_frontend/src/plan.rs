@@ -18,12 +18,16 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt,
     fmt::{Debug, Formatter},
+    ops::Bound,
     sync::Arc,
 };
 
-use common_types::{column_schema::ColumnSchema, row::RowGroup, schema::Schema};
-use datafusion::logical_expr::{
-    expr::Expr as DfLogicalExpr, logical_plan::LogicalPlan as DataFusionLogicalPlan,
+use common_types::{column_schema::ColumnSchema, row::RowGroup, schema::Schema, time::TimeRange};
+use datafusion::{
+    logical_expr::{
+        expr::Expr as DfLogicalExpr, logical_plan::LogicalPlan as DataFusionLogicalPlan,
+    },
+    scalar::ScalarValue,
 };
 use macros::define_result;
 use snafu::Snafu;
@@ -76,6 +80,46 @@ pub struct QueryPlan {
     // Use TableProviderAdapter here so we can get the underlying TableRef and also be
     // able to cast to Arc<dyn TableProvider + Send + Sync>
     pub tables: Arc<TableContainer>,
+}
+
+impl QueryPlan {
+    pub fn extract_time_range(&self, ts_column: &datafusion::prelude::Column) -> Option<TimeRange> {
+        let time_range = influxql_query::logical_optimizer::range_predicate::find_time_range(
+            &self.df_plan,
+            ts_column,
+        )
+        .unwrap();
+        let mut start = i64::MIN;
+        match time_range.start {
+            Bound::Included(inclusive_start) => {
+                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = inclusive_start {
+                    start = start.max(x);
+                }
+            }
+            Bound::Excluded(exclusive_start) => {
+                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = exclusive_start {
+                    start = start.max(x - 1);
+                }
+            }
+            Bound::Unbounded => {}
+        }
+        let mut end = i64::MAX;
+        match time_range.end {
+            Bound::Included(inclusive_end) => {
+                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = inclusive_end {
+                    end = end.min(x + 1);
+                }
+            }
+            Bound::Excluded(exclusive_start) => {
+                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = exclusive_start {
+                    start = start.min(x);
+                }
+            }
+            Bound::Unbounded => {}
+        }
+
+        TimeRange::new(start.into(), end.into())
+    }
 }
 
 impl Debug for QueryPlan {

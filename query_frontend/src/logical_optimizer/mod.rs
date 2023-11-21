@@ -12,23 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#![feature(once_cell_try)]
+//! Logical optimizer
 
-//! SQL frontend
-//!
-//! Parse sql into logical plan that can be handled by interpreters
-
-pub mod ast;
-pub mod config;
-pub mod container;
-pub mod frontend;
-pub mod influxql;
-mod logical_optimizer;
-pub mod parser;
-mod partition;
-pub mod plan;
-pub mod planner;
-pub mod promql;
-pub mod provider;
-#[cfg(any(test, feature = "test"))]
+#[cfg(test)]
 pub mod tests;
+mod type_conversion;
+pub use type_conversion::TypeConversion;
