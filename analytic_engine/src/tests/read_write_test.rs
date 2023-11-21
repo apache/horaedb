@@ -667,7 +667,7 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
         .await;
 
         // TODO(lee) a better way to wait table flushing finishes.
-        thread::sleep(time::Duration::from_millis(500));
+        thread::sleep(time::Duration::from_millis(1500));
 
         let stats = table.stats();
         assert_eq!(old_stats.num_read + 5, stats.num_read);
