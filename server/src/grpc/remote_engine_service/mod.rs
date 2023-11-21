@@ -200,9 +200,11 @@ impl Stream for StreamRecordBatchWithMetrics {
                 Poll::Ready(Some(res.map(RecordBatchWithMetrics::RecordBatch)))
             }
             Poll::Ready(None) => match &this.physical_plan {
-                Some(physical_plan) => Poll::Ready(Some(Ok(RecordBatchWithMetrics::Metrics(
-                    physical_plan.metrics_to_string(),
-                )))),
+                Some(physical_plan) => {
+                    let metrics = physical_plan.metrics_to_string();
+                    this.physical_plan = None;
+                    Poll::Ready(Some(Ok(RecordBatchWithMetrics::Metrics(metrics))))
+                }
                 None => Poll::Ready(None),
             },
             Poll::Pending => Poll::Pending,
