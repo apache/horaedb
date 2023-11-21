@@ -66,6 +66,7 @@ impl Closer {
             space_id: self.space.id,
             table_id: table_data.id,
             shard_id: table_data.shard_info.shard_id,
+            table_catalog_info: table_data.table_catalog_info.clone(),
         };
         self.manifest
             .do_snapshot(snapshot_request)

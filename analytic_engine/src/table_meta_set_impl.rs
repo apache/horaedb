@@ -38,8 +38,8 @@ use crate::{
     sst::file::FilePurgerRef,
     table::{
         data::{
-            MemSizeOptions, TableConfig, TableData, TableDataRef, TableDesc, TableShardInfo,
-            DEFAULT_ALLOC_STEP,
+            MemSizeOptions, TableCatalogInfo, TableConfig, TableData, TableDataRef, TableDesc,
+            TableShardInfo, DEFAULT_ALLOC_STEP,
         },
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
@@ -112,6 +112,7 @@ impl TableMetaSetImpl {
         &self,
         meta_update: MetaUpdate,
         shard_info: TableShardInfo,
+        table_catalog_info: TableCatalogInfo,
     ) -> crate::manifest::details::Result<TableDataRef> {
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
@@ -137,6 +138,9 @@ impl TableMetaSetImpl {
                     TableData::new(
                         TableDesc {
                             space_id: space.id,
+                            schema_id: table_catalog_info.schema_id,
+                            schema_name: table_catalog_info.schema_name,
+                            catalog_name: table_catalog_info.catalog_name,
                             id: table_id,
                             name: table_name,
                             schema,
@@ -244,6 +248,7 @@ impl TableMetaSetImpl {
         &self,
         meta_snapshot: MetaSnapshot,
         shard_info: TableShardInfo,
+        table_catalog_info: TableCatalogInfo,
     ) -> crate::manifest::details::Result<TableDataRef> {
         debug!("TableMetaSet apply snapshot, snapshot :{:?}", meta_snapshot);
 
@@ -287,6 +292,7 @@ impl TableMetaSetImpl {
                 },
                 mem_size_options,
                 allocator,
+                table_catalog_info,
             )
             .box_err()
             .with_context(|| ApplySnapshotToTableWithCause {
@@ -377,12 +383,15 @@ impl TableMetaSet for TableMetaSetImpl {
         let MetaEditRequest {
             shard_info,
             meta_edit,
+            table_catalog_info,
         } = request;
 
         match meta_edit {
-            meta_edit::MetaEdit::Update(update) => self.apply_update(update, shard_info),
+            meta_edit::MetaEdit::Update(update) => {
+                self.apply_update(update, shard_info, table_catalog_info)
+            }
             meta_edit::MetaEdit::Snapshot(manifest_data) => {
-                self.apply_snapshot(manifest_data, shard_info)
+                self.apply_snapshot(manifest_data, shard_info, table_catalog_info)
             }
         }
     }

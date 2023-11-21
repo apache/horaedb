@@ -44,7 +44,7 @@ use crate::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
-    table::data::TableDataRef,
+    table::data::{TableCatalogInfo, TableDataRef},
     table_meta_set_impl::TableMetaSetImpl,
     RecoverMode,
 };
@@ -448,12 +448,24 @@ impl ShardOpener {
         );
 
         // Load manifest, also create a new snapshot at startup.
-        let table_id = table_def.id;
-        let space_id = engine::build_space_id(table_def.schema_id);
+        let TableDef {
+            catalog_name,
+            schema_name,
+            schema_id,
+            id,
+            name: _,
+        } = table_def.clone();
+
+        let space_id = engine::build_space_id(schema_id);
         let load_req = LoadRequest {
             space_id,
-            table_id,
+            table_id: id,
             shard_id,
+            table_catalog_info: TableCatalogInfo {
+                schema_id,
+                schema_name,
+                catalog_name,
+            },
         };
         manifest.recover(&load_req).await.context(ReadMetaUpdate {
             table_id: table_def.id,
