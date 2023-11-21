@@ -13,7 +13,7 @@
 // limitations under the License.
 
 use async_trait::async_trait;
-use common_types::SequenceNumber;
+use common_types::{SequenceNumber, MIN_SEQUENCE_NUMBER};
 
 use crate::{
     log_batch::LogWriteBatch,
@@ -23,13 +23,17 @@ use crate::{
     },
 };
 
+/// This is a special wal manager which does nothing.
+/// It could be used for testing or when latest data is allowed to lost.
 #[derive(Debug)]
 pub struct DoNothing;
 
 #[async_trait]
 impl WalManager for DoNothing {
     async fn sequence_num(&self, _location: WalLocation) -> Result<SequenceNumber> {
-        Ok(0)
+        // Since this wal will not persist any data, so we will always return
+        // MIN_SEQUENCE_NUMBER to indicate this is a special wal.
+        Ok(MIN_SEQUENCE_NUMBER)
     }
 
     async fn mark_delete_entries_up_to(
@@ -57,7 +61,7 @@ impl WalManager for DoNothing {
     }
 
     async fn write(&self, _ctx: &WriteContext, _batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        Ok(0)
+        Ok(MIN_SEQUENCE_NUMBER)
     }
 
     async fn scan(

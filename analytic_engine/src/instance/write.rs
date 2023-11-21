@@ -25,6 +25,7 @@ use codec::{
 use common_types::{
     row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
+    MIN_SEQUENCE_NUMBER,
 };
 use itertools::Itertools;
 use logger::{debug, error, info, trace, warn};
@@ -519,8 +520,11 @@ impl<'a> Writer<'a> {
                 e
             })?;
 
-        // Failure of writing memtable may cause inconsecutive sequence.
-        if table_data.last_sequence() + 1 != sequence {
+        // When seq is MIN_SEQUENCE_NUMBER, it means the wal used for write is not
+        // normal, ignore check in this case.
+        // NOTE: Currently write wal will only increment seq by one,
+        // this may change in future.
+        if sequence != MIN_SEQUENCE_NUMBER && table_data.last_sequence() + 1 != sequence {
             warn!(
                 "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
                 table_data.name,table_data.id,
