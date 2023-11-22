@@ -36,6 +36,9 @@ pub struct Context {
     default_catalog: String,
     default_schema: String,
     enable_partition_table_access: bool,
+    /// If time range exceeds this threshold, the query will be marked as
+    /// expensive
+    expensive_query_threshold: u64,
 }
 
 impl Context {
@@ -46,6 +49,7 @@ impl Context {
             default_catalog: String::new(),
             default_schema: String::new(),
             enable_partition_table_access: false,
+            expensive_query_threshold: 24 * 3600 * 1000, // default 24 hours
         }
     }
 
@@ -79,6 +83,11 @@ impl Context {
     pub fn enable_partition_table_access(&self) -> bool {
         self.enable_partition_table_access
     }
+
+    #[inline]
+    pub fn expensive_query_threshold(&self) -> u64 {
+        self.expensive_query_threshold
+    }
 }
 
 #[must_use]
@@ -88,6 +97,7 @@ pub struct Builder {
     default_catalog: String,
     default_schema: String,
     enable_partition_table_access: bool,
+    expensive_query_threshold: u64,
 }
 
 impl Builder {
@@ -102,6 +112,11 @@ impl Builder {
         self
     }
 
+    pub fn expensive_query_threshold(mut self, threshold: u64) -> Self {
+        self.expensive_query_threshold = threshold;
+        self
+    }
+
     pub fn build(self) -> Context {
         Context {
             request_id: self.request_id,
@@ -109,6 +124,7 @@ impl Builder {
             default_catalog: self.default_catalog,
             default_schema: self.default_schema,
             enable_partition_table_access: self.enable_partition_table_access,
+            expensive_query_threshold: self.expensive_query_threshold,
         }
     }
 }

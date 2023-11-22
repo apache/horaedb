@@ -372,7 +372,6 @@ mod tests {
     };
 
     use super::*;
-    use crate::datafusion_impl::logical_optimizer::type_conversion;
 
     fn expr_test_schema() -> DFSchemaRef {
         Arc::new(
@@ -591,7 +590,7 @@ mod tests {
             "2021-09-07 16:00:00Z",
         ];
         for string in date_string {
-            let result = type_conversion::string_to_timestamp_ms_workaround(string);
+            let result = string_to_timestamp_ms_workaround(string);
             assert!(result.is_err());
         }
 
@@ -600,7 +599,7 @@ mod tests {
         let t = NaiveTime::from_hms_milli_opt(16, 0, 0, 0).unwrap();
         let dt = NaiveDateTime::new(d, t);
         let expect = naive_datetime_to_timestamp(&date_string, dt).unwrap();
-        let result = type_conversion::string_to_timestamp_ms_workaround(&date_string);
+        let result = string_to_timestamp_ms_workaround(&date_string);
         if let Ok(ScalarValue::TimestampMillisecond(Some(mills), _)) = result {
             assert_eq!(mills, expect)
         }

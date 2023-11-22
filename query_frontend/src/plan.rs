@@ -27,8 +27,10 @@ use datafusion::{
     logical_expr::{
         expr::Expr as DfLogicalExpr, logical_plan::LogicalPlan as DataFusionLogicalPlan,
     },
+    prelude::Column,
     scalar::ScalarValue,
 };
+use logger::warn;
 use macros::define_result;
 use snafu::Snafu;
 use table_engine::{partition::PartitionInfo, table::TableRef};
@@ -76,6 +78,7 @@ pub enum Plan {
 
 pub struct QueryPlan {
     pub df_plan: DataFusionLogicalPlan,
+    pub table_name: Option<String>,
     // Contains the TableProviders so we can register the them to ExecutionContext later.
     // Use TableProviderAdapter here so we can get the underlying TableRef and also be
     // able to cast to Arc<dyn TableProvider + Send + Sync>
@@ -83,16 +86,30 @@ pub struct QueryPlan {
 }
 
 impl QueryPlan {
-    fn extract_table_name(&self) -> Option<String> {
-        self.df_plan.schema()
+    fn find_timestamp_column(&self) -> Option<Column> {
+        let table_name = self.table_name.as_ref()?;
+        let table_ref = self.tables.get(table_name.into())?;
+        let schema = table_ref.table.schema();
+        let timestamp_name = schema.timestamp_name();
+        Some(Column::from_name(timestamp_name))
     }
 
-    pub fn extract_time_range(&self, ts_column: &datafusion::prelude::Column) -> Option<TimeRange> {
-        let time_range = influxql_query::logical_optimizer::range_predicate::find_time_range(
+    pub fn extract_time_range(&self) -> Option<TimeRange> {
+        let ts_column = self.find_timestamp_column()?;
+        let time_range = match influxql_query::logical_optimizer::range_predicate::find_time_range(
             &self.df_plan,
-            ts_column,
-        )
-        .unwrap();
+            &ts_column,
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(
+                    "Couldn't find time range, plan:{:?}, err:{}",
+                    self.df_plan, e
+                );
+                return None;
+            }
+        };
+
         let mut start = i64::MIN;
         match time_range.start {
             Bound::Included(inclusive_start) => {
@@ -122,6 +139,7 @@ impl QueryPlan {
             Bound::Unbounded => {}
         }
 
+        logger::info!("debug start:{start}-{end}");
         TimeRange::new(start.into(), end.into())
     }
 }

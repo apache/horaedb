@@ -90,7 +90,11 @@ pub fn remote_query_to_plan<P: MetaProvider>(
             })?,
     );
     Ok(RemoteQueryPlan {
-        plan: Plan::Query(QueryPlan { df_plan, tables }),
+        plan: Plan::Query(QueryPlan {
+            df_plan,
+            tables,
+            table_name: Some(metric),
+        }),
         field_col_name: field,
         timestamp_col_name: timestamp_col_name.to_string(),
     })

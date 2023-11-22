@@ -13,6 +13,7 @@
 // limitations under the License.
 
 use serde::{Deserialize, Serialize};
+use time_ext::ReadableDuration;
 
 // FIXME: Use cpu number as the default parallelism
 const DEFAULT_READ_PARALLELISM: usize = 8;
@@ -21,12 +22,14 @@ const DEFAULT_READ_PARALLELISM: usize = 8;
 #[serde(default)]
 pub struct Config {
     pub read_parallelism: usize,
+    pub expensive_query_threshold: ReadableDuration,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             read_parallelism: DEFAULT_READ_PARALLELISM,
+            expensive_query_threshold: ReadableDuration::hours(24),
         }
     }
 }

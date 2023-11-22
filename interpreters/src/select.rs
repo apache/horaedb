@@ -74,8 +74,19 @@ impl SelectInterpreter {
         })
     }
 
-    fn is_cost_query(time_range: &TimeRange) -> bool {
-        time_range.exclusive_end().as_i64() - time_range.inclusive_start().as_i64() > 1000 * 3600
+    // Currently, we only consider the time range.
+    // TODO: consider other factors, such as the number of series, or slow log
+    // metrics.
+    fn is_expensive_query(time_range: &TimeRange, threshold: u64) -> bool {
+        if let Some(v) = time_range
+            .exclusive_end()
+            .as_i64()
+            .checked_sub(time_range.inclusive_start().as_i64())
+        {
+            v as u64 >= threshold
+        } else {
+            true
+        }
     }
 }
 
@@ -83,18 +94,23 @@ impl SelectInterpreter {
 impl Interpreter for SelectInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
-        debug!(
-            "Interpreter execute select begin, request_id:{}, plan:{:?}",
-            request_id, self.plan
-        );
-
         let query_ctx = self
             .ctx
             .new_query_context()
             .context(CreateQueryContext)
             .context(Select)?;
 
-        self.plan.extract_time_range();
+        let is_expensive_query = if let Some(time_range) = self.plan.extract_time_range() {
+            Self::is_expensive_query(&time_range, self.ctx.expensive_query_threshold())
+        } else {
+            false
+        };
+
+        debug!(
+            "Interpreter execute select begin, request_id:{}, plan:{:?}, is_expensive:{}",
+            request_id, self.plan, is_expensive_query
+        );
+
         // Create physical plan.
         let physical_plan = self
             .physical_planner
@@ -106,8 +122,7 @@ impl Interpreter for SelectInterpreter {
             })
             .context(Select)?;
 
-        let time_range = physical_plan.time_range();
-        if Self::is_cost_query(&time_range) {
+        if is_expensive_query {
             let executor = self.executor;
             return self
                 .query_runtime

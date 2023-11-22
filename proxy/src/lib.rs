@@ -113,6 +113,7 @@ pub struct Proxy {
     cluster_with_meta: bool,
     sub_table_access_perm: SubTableAccessPerm,
     request_notifiers: Option<ReadRequestNotifiers>,
+    expensive_query_threshold: u64,
 }
 
 impl Proxy {
@@ -130,6 +131,7 @@ impl Proxy {
         cluster_with_meta: bool,
         sub_table_access_perm: SubTableAccessPerm,
         request_notifiers: Option<ReadRequestNotifiers>,
+        expensive_query_threshold: u64,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -149,6 +151,7 @@ impl Proxy {
             cluster_with_meta,
             sub_table_access_perm,
             request_notifiers,
+            expensive_query_threshold,
         }
     }
 
@@ -496,6 +499,7 @@ impl Proxy {
             // Use current ctx's catalog and schema as default catalog and schema
             .default_catalog_and_schema(catalog.to_string(), schema.to_string())
             .enable_partition_table_access(enable_partition_table_access)
+            .expensive_query_threshold(self.expensive_query_threshold)
             .build();
         let interpreter_factory = Factory::new(
             self.instance.query_engine.executor(),

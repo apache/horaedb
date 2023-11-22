@@ -41,13 +41,8 @@ use common_types::{
 use datafusion::{
     common::{DFField, DFSchema},
     error::DataFusionError,
-    execution::{context::SessionState, runtime_env::RuntimeEnv},
-    optimizer::{
-        analyzer::Analyzer,
-        simplify_expressions::{ExprSimplifier, SimplifyContext},
-    },
+    optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
     physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-    prelude::SessionConfig,
     sql::{
         planner::{ParserOptions, PlannerContext, SqlToRel},
         ResolvedTableReference,
@@ -72,6 +67,8 @@ use crate::{
     },
     config::DynamicConfig,
     container::TableReference,
+    frontend::parse_table_name_with_standard,
+    logical_optimizer::optimize_plan,
     parser,
     partition::PartitionParser,
     plan::{
@@ -616,36 +613,22 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         }
     }
 
-    fn register_analyzer_rules(mut state: SessionState) -> SessionState {
-        // Our analyzer has high priority, so first add we custom rules, then add the
-        // default ones.
-        state = state.with_analyzer_rules(vec![Arc::new(crate::logical_optimizer::TypeConversion)]);
-        for rule in Analyzer::new().rules {
-            state = state.add_analyzer_rule(rule);
-        }
-
-        state
-    }
-
     fn sql_statement_to_datafusion_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
         let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
-
-        let state =
-            SessionState::with_config_rt(SessionConfig::new(), Arc::new(RuntimeEnv::default()));
-        let state = Self::register_analyzer_rules(state);
+        let table_name = parse_table_name_with_standard(&sql_stmt);
 
         let df_plan = df_planner
             .sql_statement_to_plan(sql_stmt)
             .context(DatafusionPlan)?;
-        let df_plan = state.optimize(&df_plan).context(DatafusionPlan)?;
+        let df_plan = optimize_plan(&df_plan).context(DatafusionPlan)?;
 
         debug!("Sql statement to datafusion plan, df_plan:\n{:#?}", df_plan);
 
         // Get all tables needed in the plan
         let tables = self.meta_provider.try_into_container().context(FindMeta)?;
-
         Ok(Plan::Query(QueryPlan {
             df_plan,
+            table_name,
             tables: Arc::new(tables),
         }))
     }

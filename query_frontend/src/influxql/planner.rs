@@ -180,7 +180,11 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
                             msg: "get tables from context_provider",
                         })?,
                 );
-                Ok(Plan::Query(QueryPlan { df_plan, tables }))
+                Ok(Plan::Query(QueryPlan {
+                    df_plan,
+                    tables,
+                    table_name: None,
+                }))
             }
         }
     }

@@ -327,7 +327,7 @@ pub enum ArrowSchemaMetaKey {
 }
 
 impl ArrowSchemaMetaKey {
-    fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::PrimaryKeyIndexes => "schema::primary_key_indexes",
             Self::TimestampIndex => "schema::timestamp_index",

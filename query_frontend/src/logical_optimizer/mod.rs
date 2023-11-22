@@ -14,7 +14,33 @@
 
 //! Logical optimizer
 
-#[cfg(test)]
-pub mod tests;
 mod type_conversion;
-pub use type_conversion::TypeConversion;
+use std::sync::Arc;
+
+use datafusion::{
+    error::Result,
+    execution::{context::SessionState, runtime_env::RuntimeEnv},
+    logical_expr::LogicalPlan,
+    optimizer::analyzer::Analyzer,
+    prelude::SessionConfig,
+};
+use type_conversion::TypeConversion;
+
+pub fn optimize_plan(plan: &LogicalPlan) -> Result<LogicalPlan> {
+    let state = SessionState::with_config_rt(SessionConfig::new(), Arc::new(RuntimeEnv::default()));
+    let state = register_analyzer_rules(state);
+    let plan = state.optimize(plan)?;
+
+    Ok(plan)
+}
+
+fn register_analyzer_rules(mut state: SessionState) -> SessionState {
+    // Our analyzer has high priority, so first add we custom rules, then add the
+    // default ones.
+    state = state.with_analyzer_rules(vec![Arc::new(crate::logical_optimizer::TypeConversion)]);
+    for rule in Analyzer::new().rules {
+        state = state.add_analyzer_rule(rule);
+    }
+
+    state
+}

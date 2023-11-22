@@ -378,6 +378,7 @@ impl Builder {
         let config_content = self.config_content.context(MissingConfigContent)?;
         let query_engine_config = self.query_engine_config.context(MissingQueryEngineConfig)?;
         let datafusion_context = self.datatfusion_context.context(MissingDatafusionContext)?;
+        let expensive_query_threshold = query_engine_config.expensive_query_threshold.as_millis();
 
         let hotspot_recorder = Arc::new(HotspotRecorder::new(
             self.server_config.hotspot,
@@ -460,6 +461,7 @@ impl Builder {
             self.cluster.is_some(),
             self.server_config.sub_table_access_perm,
             request_notifiers,
+            expensive_query_threshold,
         ));
 
         let http_service = http::Builder::new(http_config)
