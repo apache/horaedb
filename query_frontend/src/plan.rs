@@ -83,6 +83,10 @@ pub struct QueryPlan {
 }
 
 impl QueryPlan {
+    fn extract_table_name(&self) -> Option<String> {
+        self.df_plan.schema()
+    }
+
     pub fn extract_time_range(&self, ts_column: &datafusion::prelude::Column) -> Option<TimeRange> {
         let time_range = influxql_query::logical_optimizer::range_predicate::find_time_range(
             &self.df_plan,

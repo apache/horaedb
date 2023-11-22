@@ -94,6 +94,7 @@ impl Interpreter for SelectInterpreter {
             .context(CreateQueryContext)
             .context(Select)?;
 
+        self.plan.extract_time_range();
         // Create physical plan.
         let physical_plan = self
             .physical_planner
