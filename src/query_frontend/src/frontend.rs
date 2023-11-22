@@ -202,7 +202,12 @@ impl<P: MetaProvider> Frontend<P> {
         ctx: &Context,
         query: QueryRequest,
     ) -> Result<OpentsdbQueryPlan> {
-        let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
+        let planner = Planner::new(
+            &self.provider,
+            ctx.request_id.clone(),
+            ctx.read_parallelism,
+            self.dyn_config.as_ref(),
+        );
         planner.opentsdb_query_to_plan(query).context(CreatePlan)
     }
 

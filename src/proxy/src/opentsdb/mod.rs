@@ -21,17 +21,12 @@
 
 use std::time::Instant;
 
+use futures::{stream::FuturesOrdered, StreamExt};
+use generic_error::BoxError;
 use horaedbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
-use futures::{stream::FuturesOrdered, StreamExt};
-use generic_error::BoxError;
 use http::StatusCode;
-use logger::debug;
-use query_frontend::opentsdb::types::QueryRequest;
-use interpreters::interpreter::Output;
-use interpreters::{interpreter::Output, RecordBatchVec};
-use interpreters::interpreter::Output;
 use logger::{debug, info};
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
@@ -130,7 +125,7 @@ impl Proxy {
             default_schema: &ctx.schema,
             function_registry: &*self.instance.function_registry,
         };
-        let frontend = Frontend::new(provider);
+        let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
         let sql_ctx = SqlContext::new(request_id, deadline);
 
         let opentsdb_plan = frontend
@@ -156,7 +151,13 @@ impl Proxy {
         for plan in opentsdb_plan.plans {
             let one_resp = async {
                 let output = self
-                    .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan.plan, deadline)
+                    .execute_plan(
+                        request_id.clone(),
+                        &ctx.catalog,
+                        &ctx.schema,
+                        plan.plan,
+                        deadline,
+                    )
                     .await?;
 
                 convert_output_to_response(

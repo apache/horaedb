@@ -24,9 +24,12 @@
 pub mod ast;
 pub mod config;
 pub mod container;
+mod datafusion_util;
 pub mod frontend;
 pub mod influxql;
+
 mod logical_optimizer;
+pub mod opentsdb;
 pub mod parser;
 mod partition;
 pub mod plan;
