@@ -24,7 +24,7 @@ use common_types::{request_id::RequestId, schema::RecordSchema};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::{runtime_env::RuntimeEnv, FunctionRegistry, TaskContext},
-    physical_plan::{ExecutionPlan, SendableRecordBatchStream},
+    physical_plan::{display::DisplayableExecutionPlan, ExecutionPlan, SendableRecordBatchStream},
 };
 use datafusion_proto::{
     bytes::physical_plan_to_bytes_with_extension_codec,
@@ -191,11 +191,14 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         let default_catalog = ceresdb_options.default_catalog.clone();
         let default_schema = ceresdb_options.default_schema.clone();
 
+        let display_plan = DisplayableExecutionPlan::new(plan.as_ref());
+        let sql = display_plan.indent(true).to_string();
         let exec_ctx = ExecContext {
             request_id,
             deadline,
             default_catalog,
             default_schema,
+            sql,
         };
 
         // Encode plan and schema

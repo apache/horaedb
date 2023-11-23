@@ -476,13 +476,14 @@ pub struct SlowTimer<'a> {
 impl<'a> Drop for SlowTimer<'a> {
     fn drop(&mut self) {
         let cost = self.elapsed();
-        maybe_slow_query!(
-            self,
-            "RequestId:{}, elapsed:{:?}, sql:{}",
-            self.request_id,
-            cost,
-            self.sql,
-        );
+        if cost > self.slow_threshold {
+            slow_query!(
+                "RequestId:{}, elapsed:{:?}, sql:{}",
+                self.request_id,
+                cost,
+                self.sql,
+            );
+        }
     }
 }
 
@@ -498,10 +499,6 @@ impl<'a> SlowTimer<'a> {
 
     pub fn elapsed(&self) -> Duration {
         self.start_time.elapsed()
-    }
-
-    pub fn is_slow(&self) -> bool {
-        self.elapsed() >= self.slow_threshold
     }
 
     pub fn start_time(&self) -> Instant {
@@ -565,11 +562,9 @@ macro_rules! trace {
 }
 
 #[macro_export(local_inner_macros)]
-macro_rules! maybe_slow_query {
-    ($t:expr, $($args:tt)*) => {{
-        if $t.is_slow() {
-            info!(target: $crate::SLOW_QUERY_TAG, $($args)*);
-        }
+macro_rules! slow_query {
+    ($($args:tt)*) => {{
+        info!(target: $crate::SLOW_QUERY_TAG, $($args)*);
     }}
 }
 
