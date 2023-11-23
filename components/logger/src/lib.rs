@@ -478,9 +478,9 @@ impl<'a> Drop for SlowTimer<'a> {
         let cost = self.elapsed();
         if cost > self.slow_threshold {
             slow_query!(
-                "RequestId:{}, elapsed:{:?}, sql:{}",
-                self.request_id,
+                "Normal query elapsed:{:?}, id:{}, query:{}",
                 cost,
+                self.request_id,
                 self.sql,
             );
         }

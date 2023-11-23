@@ -192,13 +192,12 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         let default_schema = ceresdb_options.default_schema.clone();
 
         let display_plan = DisplayableExecutionPlan::new(plan.as_ref());
-        let sql = display_plan.indent(true).to_string();
         let exec_ctx = ExecContext {
             request_id,
             deadline,
             default_catalog,
             default_schema,
-            sql,
+            query: display_plan.indent(true).to_string(),
         };
 
         // Encode plan and schema

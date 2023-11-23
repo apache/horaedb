@@ -447,7 +447,7 @@ pub struct ExecContext {
     pub deadline: Option<Instant>,
     pub default_catalog: String,
     pub default_schema: String,
-    pub sql: String,
+    pub query: String,
 }
 
 pub enum PhysicalPlan {
@@ -468,7 +468,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             default_schema: value.context.default_schema,
             timeout_ms: rest_duration_ms,
             priority: 0, // not used now
-            sql: value.context.sql,
+            displayable_query: value.context.query,
         };
 
         let pb_plan = match value.physical_plan {
@@ -508,7 +508,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_catalog,
             default_schema,
             timeout_ms,
-            sql,
+            displayable_query,
             ..
         } = pb_exec_ctx;
 
@@ -524,7 +524,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             deadline,
             default_catalog,
             default_schema,
-            sql,
+            query: displayable_query,
         };
 
         // Plan

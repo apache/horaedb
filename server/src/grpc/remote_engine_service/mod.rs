@@ -127,16 +127,16 @@ impl MetricCollector for StreamReadMetricCollector {
 
 struct ExecutePlanMetricCollector {
     start: Instant,
-    sql: String,
+    query: String,
     request_id: RequestId,
     slow_threshold: Duration,
 }
 
 impl ExecutePlanMetricCollector {
-    fn new(request_id: u64, sql: String, slow_threshold_secs: u64) -> Self {
+    fn new(request_id: u64, query: String, slow_threshold_secs: u64) -> Self {
         Self {
             start: Instant::now(),
-            sql,
+            query,
             request_id: request_id.into(),
             slow_threshold: Duration::from_secs(slow_threshold_secs),
         }
@@ -148,10 +148,10 @@ impl MetricCollector for ExecutePlanMetricCollector {
         let cost = self.start.elapsed();
         if cost > self.slow_threshold {
             slow_query!(
-                "Remote request, id:{}, elapsed:{:?}, sql:{}",
-                self.request_id,
+                "Remote query elapsed:{:?}, id:{}, query:{}",
                 cost,
-                self.sql
+                self.request_id,
+                self.query
             );
         }
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
@@ -615,8 +615,11 @@ impl RemoteEngineServiceImpl {
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
 
-        let metric =
-            ExecutePlanMetricCollector::new(ctx.request_id.into(), ctx.sql, slow_threshold_secs);
+        let metric = ExecutePlanMetricCollector::new(
+            ctx.request_id,
+            ctx.displayable_query,
+            slow_threshold_secs,
+        );
         let query_ctx = create_query_ctx(
             ctx.request_id,
             ctx.default_catalog,
@@ -658,8 +661,8 @@ impl RemoteEngineServiceImpl {
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id.into(),
-            ctx.sql.clone(),
+            ctx.request_id,
+            ctx.displayable_query,
             slow_threshold_secs,
         );
         let query_ctx = create_query_ctx(
