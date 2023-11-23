@@ -21,8 +21,6 @@ use datafusion::{
         runtime_env::{RuntimeConfig, RuntimeEnv},
         FunctionRegistry,
     },
-    optimizer::analyzer::Analyzer,
-    physical_optimizer::PhysicalOptimizerRule,
     prelude::{SessionConfig, SessionContext},
 };
 use df_engine_extensions::codec::PhysicalExtensionCodecImpl;
@@ -31,8 +29,7 @@ use table_engine::{provider::CeresdbOptions, remote::RemoteEngineRef};
 use crate::{
     context::Context,
     datafusion_impl::{
-        executor::DatafusionExecutorImpl, logical_optimizer::type_conversion::TypeConversion,
-        physical_planner::DatafusionPhysicalPlannerImpl,
+        executor::DatafusionExecutorImpl, physical_planner::DatafusionPhysicalPlannerImpl,
         physical_planner_extension::QueryPlannerAdapter, task_context::Preprocessor,
     },
     executor::ExecutorRef,
@@ -41,7 +38,6 @@ use crate::{
 };
 
 pub mod executor;
-pub mod logical_optimizer;
 pub mod physical_optimizer;
 pub mod physical_plan;
 pub mod physical_plan_extension;
@@ -109,7 +105,7 @@ impl QueryEngine for DatafusionQueryEngineImpl {
 pub struct DfContextBuilder {
     config: Config,
     runtime_env: Arc<RuntimeEnv>,
-    physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
+    pub physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
 }
 
 impl fmt::Debug for DfContextBuilder {
@@ -161,38 +157,6 @@ impl DfContextBuilder {
         // `add_optimizer_rule` to add.
         let state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone())
             .with_query_planner(self.physical_planner.clone());
-
-        // Register analyzer rules
-        let state = Self::register_analyzer_rules(state);
-
-        // Register iox optimizers, used by influxql.
-        let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
-
         SessionContext::with_state(state)
-    }
-
-    // TODO: this is not used now, bug of RepartitionAdapter is already fixed in
-    // datafusion itself. Remove this code in future.
-    #[allow(dead_code)]
-    fn apply_adapters_for_physical_optimize_rules(
-        default_rules: &[Arc<dyn PhysicalOptimizerRule + Send + Sync>],
-    ) -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
-        let mut new_rules = Vec::with_capacity(default_rules.len());
-        for rule in default_rules {
-            new_rules.push(physical_optimizer::may_adapt_optimize_rule(rule.clone()))
-        }
-
-        new_rules
-    }
-
-    fn register_analyzer_rules(mut state: SessionState) -> SessionState {
-        // Our analyzer has high priority, so first add we custom rules, then add the
-        // default ones.
-        state = state.with_analyzer_rules(vec![Arc::new(TypeConversion)]);
-        for rule in Analyzer::new().rules {
-            state = state.add_analyzer_rule(rule);
-        }
-
-        state
     }
 }

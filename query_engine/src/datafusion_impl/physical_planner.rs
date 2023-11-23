@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use generic_error::BoxError;
-use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
+use query_frontend::plan::QueryPlan;
 use snafu::ResultExt;
 
 use crate::{
@@ -59,21 +59,17 @@ impl DatafusionPhysicalPlannerImpl {
 impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
     // TODO: we should modify `QueryPlan` to support create remote plan here.
     async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
-        // Register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
         // TODO: maybe we should not build `SessionContext` in each physical plan's
         // building. We need to do so because we place some dynamic
         // information(such as `timeout`) in `SessionConfig`, maybe it is better
         // to remove it to `TaskContext`.
         let df_ctx = self.df_ctx_builder.build(ctx);
-        for (name, catalog) in catalogs {
-            df_ctx.register_catalog(&name, Arc::new(catalog));
-        }
+        let state = df_ctx.state();
 
-        // Generate physical plan.
-        let exec_plan = df_ctx
-            .state()
-            .create_physical_plan(&logical_plan.df_plan)
+        let exec_plan = self
+            .df_ctx_builder
+            .physical_planner
+            .create_physical_plan(&logical_plan.df_plan, &state)
             .await
             .box_err()
             .context(PhysicalPlannerWithCause { msg: None })?;

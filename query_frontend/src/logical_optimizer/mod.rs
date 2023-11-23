@@ -29,6 +29,9 @@ use type_conversion::TypeConversion;
 pub fn optimize_plan(plan: &LogicalPlan) -> Result<LogicalPlan> {
     let state = SessionState::with_config_rt(SessionConfig::new(), Arc::new(RuntimeEnv::default()));
     let state = register_analyzer_rules(state);
+    // Register iox optimizers, used by influxql.
+    let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
+
     let plan = state.optimize(plan)?;
 
     Ok(plan)

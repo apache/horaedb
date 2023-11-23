@@ -27,6 +27,7 @@ use prom_remote_api::types::{label_matcher, LabelMatcher, Query};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
+    logical_optimizer::optimize_plan,
     plan::{Plan, QueryPlan},
     promql::{
         convert::Selector,
@@ -81,6 +82,7 @@ pub fn remote_query_to_plan<P: MetaProvider>(
         .sort(sort_exprs)?
         .build()
         .context(BuildPlanError)?;
+    let df_plan = optimize_plan(&df_plan).context(BuildPlanError)?;
 
     let tables = Arc::new(
         meta_provider
