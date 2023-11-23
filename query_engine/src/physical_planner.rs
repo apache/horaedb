@@ -15,7 +15,6 @@
 use std::{any::Any, fmt, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::time::TimeRange;
 use query_frontend::plan::QueryPlan;
 use table_engine::stream::SendableRecordBatchStream;
 
@@ -44,9 +43,6 @@ pub trait PhysicalPlan: std::fmt::Debug + Sync + Send + 'static {
 
     /// Convert internal metrics to string.
     fn metrics_to_string(&self) -> String;
-
-    /// Time range involved in this plan.
-    fn time_range(&self) -> TimeRange;
 }
 
 pub type PhysicalPlanPtr = Box<dyn PhysicalPlan>;

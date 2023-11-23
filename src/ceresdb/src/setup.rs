@@ -331,6 +331,7 @@ async fn build_with_meta<T: WalsOpener>(
         config: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
+        expensive_query_threshold: config.query_engine.expensive_query_threshold.as_millis(),
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
@@ -368,6 +369,7 @@ async fn build_without_meta<T: WalsOpener>(
         config: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
+        expensive_query_threshold: config.query_engine.expensive_query_threshold.as_millis(),
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 

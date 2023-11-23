@@ -105,12 +105,17 @@ impl Instance {
         let end_time = time_range.exclusive_end().as_i64();
         let now = current_time_millis() as i64;
 
-        let query_time_range = (end_time as f64 - start_time as f64) / 1000.0;
+        let query_time_range = end_time as f64 - start_time as f64;
+        let runtime = if query_time_range > self.expensive_query_threshold as f64 {
+            self.read_runtime().lower().clone()
+        } else {
+            self.read_runtime().higher().clone()
+        };
         table_data
             .metrics
             .maybe_table_level_metrics()
             .query_time_range
-            .observe(query_time_range);
+            .observe(query_time_range / 1000.0);
 
         let since_start = (now as f64 - start_time as f64) / 1000.0;
         table_data
@@ -141,8 +146,7 @@ impl Instance {
             request.projected_schema.clone(),
             request.predicate.clone(),
             self.meta_cache.clone(),
-            // FIXME
-            self.read_runtime().higher().clone(),
+            runtime,
         );
 
         if need_merge_sort {

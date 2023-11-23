@@ -139,7 +139,6 @@ impl QueryPlan {
             Bound::Unbounded => {}
         }
 
-        logger::info!("debug start:{start}-{end}");
         TimeRange::new(start.into(), end.into())
     }
 }

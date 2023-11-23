@@ -21,7 +21,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::time::TimeRange;
 use datafusion::physical_plan::{
     coalesce_partitions::CoalescePartitionsExec, display::DisplayableExecutionPlan, displayable,
     ExecutionPlan,
@@ -147,9 +146,5 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
                 .to_string(),
             None => "plan is not executed yet".to_string(),
         }
-    }
-
-    fn time_range(&self) -> TimeRange {
-        todo!()
     }
 }

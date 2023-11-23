@@ -87,6 +87,7 @@ pub struct EngineBuilder<'a> {
     pub config: &'a Config,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
+    pub expensive_query_threshold: u64,
 }
 
 impl<'a> EngineBuilder<'a> {
@@ -104,6 +105,7 @@ impl<'a> EngineBuilder<'a> {
             self.opened_wals.data_wal,
             manifest_storages,
             Arc::new(opened_storages),
+            self.expensive_query_threshold,
         )
         .await?;
         Ok(Arc::new(TableEngineImpl::new(instance)))
@@ -116,6 +118,7 @@ async fn open_instance(
     wal_manager: WalManagerRef,
     manifest_storages: ManifestStorages,
     store_picker: ObjectStorePickerRef,
+    expensive_query_threshold: u64,
 ) -> Result<InstanceRef> {
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
@@ -125,6 +128,7 @@ async fn open_instance(
         config,
         runtimes: engine_runtimes,
         meta_cache,
+        expensive_query_threshold,
     };
 
     let instance = Instance::open(
