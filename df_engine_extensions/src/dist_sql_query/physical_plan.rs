@@ -152,12 +152,12 @@ pub(crate) struct ResolvedPartitionedScan {
 impl ResolvedPartitionedScan {
     pub fn new(
         remote_executor: Arc<dyn RemotePhysicalPlanExecutor>,
-        sut_table_plan_ctxs: Vec<SubTablePlanContext>,
+        sub_table_plan_ctxs: Vec<SubTablePlanContext>,
         metrics_collector: MetricsCollector,
     ) -> Self {
         let remote_exec_ctx = Arc::new(RemoteExecContext {
             executor: remote_executor,
-            plan_ctxs: sut_table_plan_ctxs,
+            plan_ctxs: sub_table_plan_ctxs,
         });
 
         Self::new_with_details(remote_exec_ctx, true, metrics_collector)
@@ -456,18 +456,18 @@ impl Stream for PartitionedScanStream {
 /// stream first. The process of state changing is like:
 ///
 /// ```plaintext
-///     ┌────────────┐                                        
-///     │Initializing│                                        
-///     └──────┬─────┘                                        
+///     ┌────────────┐
+///     │Initializing│
+///     └──────┬─────┘
 ///   _________▽_________     ┌──────────────────────────────┐
 ///  ╱                   ╲    │Polling(we just return the    │
 /// ╱ Success to init the ╲___│inner stream's polling result)│
 /// ╲ record batch stream ╱yes└──────────────────────────────┘
-///  ╲___________________╱                                    
-///           │no                                            
-///  ┌────────▽───────┐                                      
-///  │InitializeFailed│                                      
-///  └────────────────┘                                      
+///  ╲___________________╱
+///           │no
+///  ┌────────▽───────┐
+///  │InitializeFailed│
+///  └────────────────┘
 /// ```
 pub(crate) enum StreamState {
     Initializing,

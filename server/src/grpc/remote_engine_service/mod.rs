@@ -41,13 +41,14 @@ use futures::{
     Future,
 };
 use generic_error::BoxError;
-use logger::{error, info};
+use logger::{error, info, slow_query};
 use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
     hotspot::{HotspotRecorder, Message},
     instance::InstanceRef,
 };
 use query_engine::{
+    context::Context as QueryContext,
     datafusion_impl::physical_plan::{DataFusionPhysicalPlanAdapter, TypedPlan},
     QueryEngineRef, QueryEngineType,
 };
@@ -124,13 +125,38 @@ impl MetricCollector for StreamReadMetricCollector {
     }
 }
 
-struct ExecutePlanMetricCollector(Instant);
+struct ExecutePlanMetricCollector {
+    start: Instant,
+    query: String,
+    request_id: RequestId,
+    slow_threshold: Duration,
+}
+
+impl ExecutePlanMetricCollector {
+    fn new(request_id: u64, query: String, slow_threshold_secs: u64) -> Self {
+        Self {
+            start: Instant::now(),
+            query,
+            request_id: request_id.into(),
+            slow_threshold: Duration::from_secs(slow_threshold_secs),
+        }
+    }
+}
 
 impl MetricCollector for ExecutePlanMetricCollector {
     fn collect(self) {
+        let cost = self.start.elapsed();
+        if cost > self.slow_threshold {
+            slow_query!(
+                "Remote query elapsed:{:?}, id:{}, query:{}",
+                cost,
+                self.request_id,
+                self.query
+            );
+        }
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .execute_physical_plan
-            .observe(self.0.saturating_elapsed().as_secs_f64());
+            .observe(cost.as_secs_f64());
     }
 }
 
@@ -580,15 +606,31 @@ impl RemoteEngineServiceImpl {
         &self,
         request: Request<ExecutePlanRequest>,
     ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
-        let metric = ExecutePlanMetricCollector(Instant::now());
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
         let (ctx, encoded_plan) = extract_plan_from_req(request)?;
+        let slow_threshold_secs = self
+            .instance
+            .dyn_config
+            .slow_threshold
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        let metric = ExecutePlanMetricCollector::new(
+            ctx.request_id,
+            ctx.displayable_query,
+            slow_threshold_secs,
+        );
+        let query_ctx = create_query_ctx(
+            ctx.request_id,
+            ctx.default_catalog,
+            ctx.default_schema,
+            ctx.timeout_ms,
+        );
 
         let stream = self
             .runtimes
             .read_runtime
-            .spawn(async move { handle_execute_plan(ctx, encoded_plan, query_engine).await })
+            .spawn(async move { handle_execute_plan(query_ctx, encoded_plan, query_engine).await })
             .await
             .box_err()
             .with_context(|| ErrWithCause {
@@ -610,11 +652,26 @@ impl RemoteEngineServiceImpl {
         query_dedup: QueryDedup,
         request: Request<ExecutePlanRequest>,
     ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
-        let metric = ExecutePlanMetricCollector(Instant::now());
         let request = request.into_inner();
-
         let query_engine = self.instance.query_engine.clone();
         let (ctx, encoded_plan) = extract_plan_from_req(request)?;
+        let slow_threshold_secs = self
+            .instance
+            .dyn_config
+            .slow_threshold
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let metric = ExecutePlanMetricCollector::new(
+            ctx.request_id,
+            ctx.displayable_query,
+            slow_threshold_secs,
+        );
+        let query_ctx = create_query_ctx(
+            ctx.request_id,
+            ctx.default_catalog,
+            ctx.default_schema,
+            ctx.timeout_ms,
+        );
+
         let key = PhysicalPlanKey {
             encoded_plan: encoded_plan.clone(),
         };
@@ -630,7 +687,7 @@ impl RemoteEngineServiceImpl {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
                 let query = async move {
-                    handle_execute_plan(ctx, encoded_plan, query_engine)
+                    handle_execute_plan(query_ctx, encoded_plan, query_engine)
                         .await
                         .map(PartitionedStreams::one_stream)
                 };
@@ -1039,18 +1096,12 @@ fn extract_plan_from_req(request: ExecutePlanRequest) -> Result<(ExecContext, Ve
     Ok((ctx_in_req, valid_plan))
 }
 
-async fn handle_execute_plan(
-    ctx: ExecContext,
-    encoded_plan: Vec<u8>,
-    query_engine: QueryEngineRef,
-) -> Result<SendableRecordBatchStream> {
-    let ExecContext {
-        request_id,
-        default_catalog,
-        default_schema,
-        timeout_ms,
-    } = ctx;
-
+fn create_query_ctx(
+    request_id: u64,
+    default_catalog: String,
+    default_schema: String,
+    timeout_ms: i64,
+) -> QueryContext {
     let request_id = RequestId::from(request_id);
     let deadline = if timeout_ms >= 0 {
         Some(Instant::now() + Duration::from_millis(timeout_ms as u64))
@@ -1058,13 +1109,19 @@ async fn handle_execute_plan(
         None
     };
 
-    let exec_ctx = query_engine::context::Context {
+    QueryContext {
         request_id,
         deadline,
         default_catalog,
         default_schema,
-    };
+    }
+}
 
+async fn handle_execute_plan(
+    ctx: QueryContext,
+    encoded_plan: Vec<u8>,
+    query_engine: QueryEngineRef,
+) -> Result<SendableRecordBatchStream> {
     // TODO: Build remote plan in physical planner.
     let physical_plan = Box::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
         encoded_plan,
@@ -1073,7 +1130,7 @@ async fn handle_execute_plan(
     // Execute plan.
     let executor = query_engine.executor();
     executor
-        .execute(&exec_ctx, physical_plan)
+        .execute(&ctx, physical_plan)
         .await
         .box_err()
         .with_context(|| ErrWithCause {
