@@ -15,6 +15,9 @@
 [package]
 name = "object_store"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

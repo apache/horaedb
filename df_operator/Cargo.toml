@@ -15,6 +15,9 @@
 [package]
 name = "df_operator"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

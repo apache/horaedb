@@ -14,10 +14,21 @@
 
 [package]
 name = "message_queue"
-version = "0.1.0"
+
+[package.license]
+workspace = true
 
 [package.edition]
 workspace = true
+
+[package.version]
+workspace = true
+
+[dependencies.rskafka]
+git = "https://github.com/Rachelint/rskafka.git"
+rev = "f0fd8e278d8164cb0cfca5a80476361fc308ecc3"
+default-features = false
+features = ["compression-gzip", "compression-lz4", "compression-snappy"]
 
 [dependencies]
 async-trait = { workspace = true }
@@ -29,12 +40,6 @@ serde = { workspace = true }
 snafu = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
-
-[dependencies.rskafka]
-git = "https://github.com/Rachelint/rskafka.git"
-rev = "f0fd8e278d8164cb0cfca5a80476361fc308ecc3"
-default-features = false
-features = ["compression-gzip", "compression-lz4", "compression-snappy"]
 
 [dev-dependencies]
 uuid = { version = "1.3", features = ["v4"] }

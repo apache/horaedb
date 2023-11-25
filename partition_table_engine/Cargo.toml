@@ -15,6 +15,9 @@
 [package]
 name = "partition_table_engine"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

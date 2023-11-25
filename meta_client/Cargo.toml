@@ -15,6 +15,9 @@
 [package]
 name = "meta_client"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

@@ -15,6 +15,9 @@
 [package]
 name = "catalog_impls"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

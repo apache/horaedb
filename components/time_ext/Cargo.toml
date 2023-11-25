@@ -15,6 +15,9 @@
 [package]
 name = "time_ext"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

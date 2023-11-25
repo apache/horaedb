@@ -15,6 +15,9 @@
 [package]
 name = "query_frontend"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

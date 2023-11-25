@@ -15,6 +15,9 @@
 [package]
 name = "remote_engine_client"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

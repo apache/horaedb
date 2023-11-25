@@ -15,6 +15,9 @@
 [package]
 name = "notifier"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 
