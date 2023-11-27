@@ -31,7 +31,6 @@ use futures::stream::Stream;
 use generic_error::BoxError;
 use logger::debug;
 use macros::define_result;
-use runtime::Priority;
 use snafu::{ResultExt, Snafu};
 use table_engine::{
     stream::{
@@ -106,16 +105,12 @@ impl Instance {
         let end_time = time_range.exclusive_end().as_i64();
         let now = current_time_millis() as i64;
 
-        let query_time_range = end_time as f64 - start_time as f64;
-        let runtime = match request.priority {
-            Priority::Lower => self.read_runtime().lower().clone(),
-            Priority::Higher => self.read_runtime().higher().clone(),
-        };
+        let query_time_range = (end_time as f64 - start_time as f64) / 1000.0;
         table_data
             .metrics
             .maybe_table_level_metrics()
             .query_time_range
-            .observe(query_time_range / 1000.0);
+            .observe(query_time_range);
 
         let since_start = (now as f64 - start_time as f64) / 1000.0;
         table_data
@@ -134,6 +129,10 @@ impl Instance {
             None,
         ));
 
+        let runtime = self
+            .read_runtime()
+            .choose_runtime(&request.priority)
+            .clone();
         let sst_read_options = create_sst_read_option(
             ScanType::Query,
             self.scan_options.clone(),
