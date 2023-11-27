@@ -113,13 +113,17 @@ impl QueryPlan {
         let mut start = i64::MIN;
         match time_range.start {
             Bound::Included(inclusive_start) => {
-                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = inclusive_start {
+                if let DfLogicalExpr::Literal(ScalarValue::TimestampMillisecond(Some(x), _)) =
+                    inclusive_start
+                {
                     start = start.max(x);
                 }
             }
             Bound::Excluded(exclusive_start) => {
-                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = exclusive_start {
-                    start = start.max(x - 1);
+                if let DfLogicalExpr::Literal(ScalarValue::TimestampMillisecond(Some(x), _)) =
+                    exclusive_start
+                {
+                    start = start.max(x + 1);
                 }
             }
             Bound::Unbounded => {}
@@ -127,13 +131,17 @@ impl QueryPlan {
         let mut end = i64::MAX;
         match time_range.end {
             Bound::Included(inclusive_end) => {
-                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = inclusive_end {
+                if let DfLogicalExpr::Literal(ScalarValue::TimestampMillisecond(Some(x), _)) =
+                    inclusive_end
+                {
                     end = end.min(x + 1);
                 }
             }
             Bound::Excluded(exclusive_start) => {
-                if let DfLogicalExpr::Literal(ScalarValue::Int64(Some(x))) = exclusive_start {
-                    start = start.min(x);
+                if let DfLogicalExpr::Literal(ScalarValue::TimestampMillisecond(Some(x), _)) =
+                    exclusive_start
+                {
+                    end = end.min(x);
                 }
             }
             Bound::Unbounded => {}
@@ -264,4 +272,41 @@ pub enum ShowPlan {
 #[derive(Debug)]
 pub struct ExistsTablePlan {
     pub exists: bool,
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::planner::tests::sql_to_logical_plan;
+
+    #[test]
+    fn test_extract_time_range() {
+        // key2 is timestamp column
+        let testcases = [
+            ("key2 > 1 and key2 < 10", Some((2, 10))),
+            ("key2 >= 1 and key2 <= 10", Some((1, 11))),
+            ("key2 < 1 and key2 > 10", None),
+            (
+                r#" key2 >= "2023-11-21 14:12:00" and key2 < "2023-11-21 14:22:00" "#,
+                Some((1700547120000, 1700547720000)),
+            ),
+            // no timestamp filter
+            ("1=1", Some((i64::MIN, i64::MAX))),
+        ];
+
+        for case in testcases {
+            let sql = format!("select * from test_table where {}", case.0);
+            let plan = sql_to_logical_plan(&sql).unwrap();
+            let plan = match plan {
+                Plan::Query(v) => v,
+                _ => unreachable!(),
+            };
+            let expected = case
+                .1
+                .map(|v| TimeRange::new_unchecked(v.0.into(), v.1.into()));
+
+            assert_eq!(plan.extract_time_range(), expected);
+        }
+    }
 }

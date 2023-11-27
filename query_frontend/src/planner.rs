@@ -1393,7 +1393,7 @@ pub fn get_table_ref(table_name: &str) -> TableReference {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use ceresdbproto::storage::{
         value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
@@ -1420,7 +1420,7 @@ mod tests {
         Ok(())
     }
 
-    fn sql_to_logical_plan(sql: &str) -> Result<Plan> {
+    pub fn sql_to_logical_plan(sql: &str) -> Result<Plan> {
         let dyn_config = DynamicConfig::default();
         sql_to_logical_plan_with_config(sql, &dyn_config)
     }
@@ -1652,8 +1652,7 @@ mod tests {
     QueryPlan {
         df_plan: TableScan: test_table projection=[key1, key2, field1, field2, field3, field4],
     },
-)
-",
+)",
         )
         .unwrap();
     }
