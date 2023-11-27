@@ -15,6 +15,9 @@
 [package]
 name = "macros"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

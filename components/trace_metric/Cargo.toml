@@ -15,6 +15,9 @@
 [package]
 name = "trace_metric"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 

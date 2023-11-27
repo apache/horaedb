@@ -14,9 +14,14 @@
 
 [package]
 name = "ceresdb-test"
-version = "0.1.0"
+
+[package.license]
+workspace = true
 
 [package.edition]
+workspace = true
+
+[package.version]
 workspace = true
 
 [dependencies]

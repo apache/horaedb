@@ -15,11 +15,20 @@
 [package]
 name = "wal"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 
 [package.authors]
 workspace = true
+
+[dependencies.rocksdb]
+git = "https://github.com/tikv/rust-rocksdb.git"
+rev = "f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+features = ["portable"]
+optional = true
 
 [package.edition]
 workspace = true
@@ -32,12 +41,6 @@ wal-rocksdb = ["dep:rocksdb"]
 [[test]]
 name = "read_write"
 required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb"]
-
-[dependencies.rocksdb]
-git = "https://github.com/tikv/rust-rocksdb.git"
-rev = "f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
-features = ["portable"]
-optional = true
 
 [dependencies]
 async-trait = { workspace = true }

@@ -1315,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "ceresdb-test"
-version = "0.1.0"
+version = "1.2.6-alpha"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3882,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "message_queue"
-version = "0.1.0"
+version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "chrono",
@@ -5937,7 +5937,7 @@ dependencies = [
 
 [[package]]
 name = "rust-sdk-test"
-version = "0.1.0"
+version = "1.2.6-alpha"
 dependencies = [
  "ceresdb-client",
  "tokio",

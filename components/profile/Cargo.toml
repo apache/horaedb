@@ -15,18 +15,21 @@
 [package]
 name = "profile"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 
 [package.authors]
 workspace = true
 
-[package.edition]
-workspace = true
-
 [dependencies.jemalloc-sys]
 version = "0.3.2"
 features = ["stats", "profiling", "unprefixed_malloc_on_supported_platforms"]
+
+[package.edition]
+workspace = true
 
 [dependencies]
 jemalloc-ctl = "0.3.2"

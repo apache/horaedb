@@ -15,19 +15,22 @@
 [package]
 name = "logger"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 
 [package.authors]
 workspace = true
 
-[package.edition]
-workspace = true
-
 [dependencies.slog-global]
 version = "0.1"
 git = "https://github.com/tikv/slog-global.git"
 rev = "d592f88e4dbba5eb439998463054f1a44fbf17b9"
+
+[package.edition]
+workspace = true
 
 [dependencies]
 chrono = { workspace = true }

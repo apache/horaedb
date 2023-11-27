@@ -15,6 +15,9 @@
 [package]
 name = "cluster"
 
+[package.license]
+workspace = true
+
 [package.version]
 workspace = true
 
