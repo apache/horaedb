@@ -1648,12 +1648,12 @@ mod tests {
         let sql = "select * from test_table;";
         quick_test(
             sql,
-            "Query(
+            r"Query(
     QueryPlan {
-        df_plan: Projection: test_table.key1, test_table.key2, test_table.field1, test_table.field2, test_table.field3, test_table.field4
-          TableScan: test_table,
+        df_plan: TableScan: test_table projection=[key1, key2, field1, field2, field3, field4],
     },
-)",
+)
+",
         )
         .unwrap();
     }
