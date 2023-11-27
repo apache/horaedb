@@ -44,6 +44,7 @@ use datafusion::{
     scalar::ScalarValue,
 };
 use futures::{future::BoxFuture, Stream};
+use runtime::Priority;
 use table_engine::{
     memory::MemoryTable,
     predicate::PredicateBuilder,
@@ -204,6 +205,7 @@ impl TestContext {
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::default(),
+            priority: Default::default(),
         };
 
         // Build the test catalog
@@ -422,6 +424,7 @@ impl ExecutableScanBuilder for MockScanBuilder {
         &self,
         _table: TableRef,
         ctx: TableScanContext,
+        priority: Priority,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let request = ReadRequest {
             request_id: RequestId::from(42),
@@ -433,6 +436,7 @@ impl ExecutableScanBuilder for MockScanBuilder {
             projected_schema: ctx.projected_schema.clone(),
             predicate: ctx.predicate.clone(),
             metrics_collector: MetricsCollector::default(),
+            priority,
         };
 
         Ok(Arc::new(MockScan { request }))

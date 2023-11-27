@@ -46,6 +46,7 @@ logger = { workspace = true }
 macros = { workspace = true }
 prost = { workspace = true }
 query_frontend = { workspace = true }
+runtime = { workspace = true }
 serde = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }

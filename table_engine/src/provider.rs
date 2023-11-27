@@ -39,6 +39,7 @@ use datafusion::{
 };
 use df_operator::visitor;
 use logger::debug;
+use runtime::Priority;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
@@ -55,10 +56,17 @@ pub struct CeresdbOptions {
     pub request_timeout: Option<u64>,
     pub default_schema: String,
     pub default_catalog: String,
+    pub priority: Priority,
 }
 
 impl ConfigExtension for CeresdbOptions {
     const PREFIX: &'static str = "ceresdb";
+}
+
+impl CeresdbOptions {
+    const REQUEST_ID_KEY: &'static str = "request_id";
+    const REQUEST_PRIORITY_KEY: &'static str = "request_priority";
+    const REQUEST_TIMEOUT_KEY: &'static str = "request_timeout";
 }
 
 impl ExtensionOptions for CeresdbOptions {
@@ -76,37 +84,61 @@ impl ExtensionOptions for CeresdbOptions {
 
     fn set(&mut self, key: &str, value: &str) -> Result<()> {
         match key {
-            "request_id" => {
+            Self::REQUEST_ID_KEY => {
                 self.request_id = value.parse::<u64>().map_err(|e| {
                     DataFusionError::External(
                         format!("could not parse request_id, input:{value}, err:{e:?}").into(),
                     )
                 })?
             }
-            "request_timeout" => {
+            Self::REQUEST_TIMEOUT_KEY => {
                 self.request_timeout = Some(value.parse::<u64>().map_err(|e| {
                     DataFusionError::External(
                         format!("could not parse request_timeout, input:{value}, err:{e:?}").into(),
                     )
                 })?)
             }
+            Self::REQUEST_PRIORITY_KEY => {
+                self.priority = value
+                    .parse::<u8>()
+                    .map_err(|e| {
+                        DataFusionError::External(
+                            format!("request_priority should be u8, input:{value}, err:{e:?}")
+                                .into(),
+                        )
+                    })
+                    .and_then(|value| {
+                        Priority::try_from(value).map_err(|e| {
+                            DataFusionError::External(
+                                format!("parse request_priority failed, input:{value}, err:{e:?}")
+                                    .into(),
+                            )
+                        })
+                    })?
+            }
             _ => Err(DataFusionError::External(
                 format!("could not find key, key:{key}").into(),
             ))?,
         }
+
         Ok(())
     }
 
     fn entries(&self) -> Vec<ConfigEntry> {
         vec![
             ConfigEntry {
-                key: "request_id".to_string(),
+                key: Self::REQUEST_ID_KEY.to_string(),
                 value: Some(self.request_id.to_string()),
                 description: "",
             },
             ConfigEntry {
-                key: "request_timeout".to_string(),
+                key: Self::REQUEST_TIMEOUT_KEY.to_string(),
                 value: self.request_timeout.map(|v| v.to_string()),
+                description: "",
+            },
+            ConfigEntry {
+                key: Self::REQUEST_PRIORITY_KEY.to_string(),
+                value: Some(self.priority.as_u8().to_string()),
                 description: "",
             },
         ]
@@ -187,6 +219,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
         let read_parallelism = state.config().target_partitions();
+        let priority = ceresdb_options.priority;
         debug!(
             "TableProvider scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
             self.table.name(),
@@ -219,6 +252,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
+            priority,
         };
 
         self.builder.build(request).await

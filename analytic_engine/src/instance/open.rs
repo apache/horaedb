@@ -147,7 +147,6 @@ impl Instance {
             scan_options,
             recover_mode: ctx.config.recover_mode,
             wal_encode: ctx.config.wal_encode,
-            expensive_query_threshold: ctx.expensive_query_threshold,
         });
 
         Ok(instance)

@@ -187,7 +187,6 @@ pub struct Instance {
     pub(crate) iter_options: Option<IterOptions>,
     pub(crate) recover_mode: RecoverMode,
     pub(crate) wal_encode: WalEncodeConfig,
-    pub(crate) expensive_query_threshold: u64,
 }
 
 impl Instance {

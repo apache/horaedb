@@ -19,6 +19,7 @@ use std::{sync::Arc, time::Instant};
 use common_types::request_id::RequestId;
 use macros::define_result;
 use query_engine::context::{Context as QueryContext, ContextRef as QueryContextRef};
+use runtime::Priority;
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
@@ -54,12 +55,13 @@ impl Context {
     }
 
     /// Create a new context of query executor
-    pub fn new_query_context(&self) -> Result<QueryContextRef> {
+    pub fn new_query_context(&self, priority: Priority) -> Result<QueryContextRef> {
         let ctx = QueryContext {
             request_id: self.request_id,
             deadline: self.deadline,
             default_catalog: self.default_catalog.clone(),
             default_schema: self.default_schema.clone(),
+            priority,
         };
         Ok(Arc::new(ctx))
     }

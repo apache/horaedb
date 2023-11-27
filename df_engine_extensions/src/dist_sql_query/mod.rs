@@ -23,6 +23,7 @@ use datafusion::{
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
+use runtime::Priority;
 use table_engine::{predicate::PredicateRef, remote::model::TableIdentifier, table::TableRef};
 
 pub mod codec;
@@ -53,6 +54,7 @@ pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
         &self,
         table: TableRef,
         ctx: TableScanContext,
+        priority: Priority,
     ) -> DfResult<Arc<dyn ExecutionPlan>>;
 }
 
@@ -72,22 +74,6 @@ pub struct TableScanContext {
 
     /// Predicate of the query.
     pub predicate: PredicateRef,
-}
-
-impl TableScanContext {
-    pub fn new(
-        batch_size: usize,
-        read_parallelism: usize,
-        projected_schema: ProjectedSchema,
-        predicate: PredicateRef,
-    ) -> Self {
-        Self {
-            batch_size,
-            read_parallelism,
-            projected_schema,
-            predicate,
-        }
-    }
 }
 
 impl TryFrom<TableScanContext> for ceresdbproto::remote_engine::TableScanContext {

@@ -140,6 +140,7 @@ impl DfContextBuilder {
             request_timeout: timeout,
             default_catalog: ctx.default_catalog.clone(),
             default_schema: ctx.default_schema.clone(),
+            priority: ctx.priority,
         };
         let mut df_session_config = SessionConfig::new()
             .with_default_catalog_and_schema(

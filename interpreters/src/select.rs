@@ -94,17 +94,21 @@ impl SelectInterpreter {
 impl Interpreter for SelectInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
-        let query_ctx = self
-            .ctx
-            .new_query_context()
-            .context(CreateQueryContext)
-            .context(Select)?;
-
         let is_expensive_query = if let Some(time_range) = self.plan.extract_time_range() {
             Self::is_expensive_query(&time_range, self.ctx.expensive_query_threshold())
         } else {
             false
         };
+        let priority = if is_expensive_query {
+            Priority::Lower
+        } else {
+            Priority::Higher
+        };
+        let query_ctx = self
+            .ctx
+            .new_query_context(priority)
+            .context(CreateQueryContext)
+            .context(Select)?;
 
         debug!(
             "Interpreter execute select begin, request_id:{}, plan:{:?}, is_expensive:{}",

@@ -16,16 +16,36 @@ use std::future::Future;
 
 use crate::{JoinHandle, RuntimeRef};
 
-#[derive(Clone, Debug)]
-pub struct PriorityRuntime {
-    // The runtime that is currently running.
-    lower: RuntimeRef,
-    higher: RuntimeRef,
+#[derive(Copy, Clone, Debug, Default)]
+#[repr(u8)]
+pub enum Priority {
+    #[default]
+    Higher = 0,
+    Lower = 1,
 }
 
-pub enum Priority {
-    Lower,
-    Higher,
+impl Priority {
+    pub fn as_u8(&self) -> u8 {
+        *self as u8
+    }
+}
+
+impl TryFrom<u8> for Priority {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Priority::Higher),
+            1 => Ok(Priority::Lower),
+            _ => Err(format!("Unknown priority, value:{value}")),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PriorityRuntime {
+    lower: RuntimeRef,
+    higher: RuntimeRef,
 }
 
 impl PriorityRuntime {
@@ -39,6 +59,13 @@ impl PriorityRuntime {
 
     pub fn higher(&self) -> &RuntimeRef {
         &self.higher
+    }
+
+    pub fn choose_runtime(&self, priority: &Priority) -> &RuntimeRef {
+        match priority {
+            Priority::Lower => &self.lower,
+            Priority::Higher => &self.higher,
+        }
     }
 
     // By default we spawn the future to the higher priority runtime.

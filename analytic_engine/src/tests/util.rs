@@ -138,7 +138,6 @@ impl<T: WalsOpener> TestContext<T> {
             config: &self.config,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
-            expensive_query_threshold: 24 * 3600 * 1000,
         };
         self.opened_wals = Some(opened_wals);
         self.engine = Some(engine_builder.build().await.unwrap());

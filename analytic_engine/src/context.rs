@@ -30,8 +30,6 @@ pub struct OpenContext {
 
     /// Sst meta data cache.
     pub meta_cache: Option<MetaCacheRef>,
-
-    pub expensive_query_threshold: u64,
 }
 
 impl fmt::Debug for OpenContext {
