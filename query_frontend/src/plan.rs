@@ -30,7 +30,7 @@ use datafusion::{
     prelude::Column,
     scalar::ScalarValue,
 };
-use logger::warn;
+use logger::{debug, warn};
 use macros::define_result;
 use snafu::Snafu;
 use table_engine::{partition::PartitionInfo, table::TableRef};
@@ -94,8 +94,24 @@ impl QueryPlan {
         Some(Column::from_name(timestamp_name))
     }
 
+    /// This function is used to extract time range from the query plan.
+    /// It will return max possible time range. For example, if the query
+    /// contains no timestmap filter, it will return
+    /// `TimeRange::min_to_max()`
+    ///
+    /// Note: When it timestamp filter evals to false(such as ts < 10 and ts >
+    /// 100), it will return None, which means no valid time range for this
+    /// query.
     pub fn extract_time_range(&self) -> Option<TimeRange> {
-        let ts_column = self.find_timestamp_column()?;
+        let ts_column = if let Some(v) = self.find_timestamp_column() {
+            warn!(
+                "Couldn't find time column, plan:{:?}, table_name:{:?}",
+                self.df_plan, self.table_name
+            );
+            v
+        } else {
+            return Some(TimeRange::min_to_max());
+        };
         let time_range = match influxql_query::logical_optimizer::range_predicate::find_time_range(
             &self.df_plan,
             &ts_column,
@@ -106,10 +122,14 @@ impl QueryPlan {
                     "Couldn't find time range, plan:{:?}, err:{}",
                     self.df_plan, e
                 );
-                return None;
+                return Some(TimeRange::min_to_max());
             }
         };
 
+        debug!(
+            "Extract time range, value:{time_range:?}, plan:{:?}",
+            self.df_plan
+        );
         let mut start = i64::MIN;
         match time_range.start {
             Bound::Included(inclusive_start) => {
@@ -284,20 +304,57 @@ mod tests {
     fn test_extract_time_range() {
         // key2 is timestamp column
         let testcases = [
-            ("key2 > 1 and key2 < 10", Some((2, 10))),
-            ("key2 >= 1 and key2 <= 10", Some((1, 11))),
-            ("key2 < 1 and key2 > 10", None),
             (
-                r#" key2 >= "2023-11-21 14:12:00+08:00" and key2 < "2023-11-21 14:22:00+08:00" "#,
-                Some((1700547120000, 1700547720000)),
+                "select * from test_table where key2 > 1 and key2 < 10",
+                Some((2, 10)),
             ),
-            // no timestamp filter
-            ("1=1", Some((i64::MIN, i64::MAX))),
+            (
+                "select * from test_table where key2 >= 1 and key2 <= 10",
+                Some((1, 11)),
+            ),
+            (
+                "select * from test_table where key2 < 1 and key2 > 10",
+                None,
+            ),
+            (
+                "select * from test_table where key2 < 1 ",
+                Some((i64::MIN, 1))
+            ),
+            (
+                "select * from test_table where key2 > 1 ",
+                Some((2, i64::MAX))
+            ),
+            // date literals
+            (
+                r#"select * from test_table where key2 >= "2023-11-21 14:12:00+08:00" and key2 < "2023-11-21 14:22:00+08:00" "#,
+                Some((1700547120000, 1700547720000))
+            ),
+             // no timestamp filter
+            ("select * from test_table", Some((i64::MIN, i64::MAX))),
+            // aggr
+            (
+                "select key2, sum(field1) from test_table where key2 > 1 and key2 < 10 group by key2",
+                Some((2, 10)),
+            ),
+            // aggr & sort
+            (
+                "select key2, sum(field1) from test_table where key2 > 1 and key2 < 10 group by key2 order by key2",     Some((2, 10)),
+            ),
+            // explain
+            (
+                "explain select * from test_table where key2 > 1 and key2 < 10",
+                Some((2, 10)),
+            ),
+            // analyze
+            (
+                "explain analyze select * from test_table where key2 > 1 and key2 < 10",
+                Some((2, 10)),
+            ),
         ];
 
         for case in testcases {
-            let sql = format!("select * from test_table where {}", case.0);
-            let plan = sql_to_logical_plan(&sql).unwrap();
+            let sql = case.0;
+            let plan = sql_to_logical_plan(sql).unwrap();
             let plan = match plan {
                 Plan::Query(v) => v,
                 _ => unreachable!(),
@@ -306,7 +363,7 @@ mod tests {
                 .1
                 .map(|v| TimeRange::new_unchecked(v.0.into(), v.1.into()));
 
-            assert_eq!(plan.extract_time_range(), expected);
+            assert_eq!(plan.extract_time_range(), expected, "sql:{}", sql);
         }
     }
 }

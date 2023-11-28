@@ -41,7 +41,7 @@ use futures::{
     Future,
 };
 use generic_error::BoxError;
-use logger::{error, info, slow_query};
+use logger::{debug, error, info, slow_query};
 use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
     hotspot::{HotspotRecorder, Message},
@@ -620,17 +620,22 @@ impl RemoteEngineServiceImpl {
             .load(std::sync::atomic::Ordering::Relaxed);
 
         let priority = ctx.priority();
-        let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id,
-            ctx.displayable_query,
-            slow_threshold_secs,
-        );
         let query_ctx = create_query_ctx(
             ctx.request_id,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
             priority,
+        );
+
+        debug!(
+            "Execute remote query, ctx:{query_ctx:?}, query:{}",
+            &ctx.displayable_query
+        );
+        let metric = ExecutePlanMetricCollector::new(
+            ctx.request_id,
+            ctx.displayable_query,
+            slow_threshold_secs,
         );
 
         let rt = self

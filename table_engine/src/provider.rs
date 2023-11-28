@@ -221,7 +221,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         let read_parallelism = state.config().target_partitions();
         let priority = ceresdb_options.priority;
         debug!(
-            "TableProvider scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
+            "TableProvider scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}, priority:{:?}",
             self.table.name(),
             request_id,
             projection,
@@ -229,6 +229,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             limit,
             deadline,
             read_parallelism,
+            priority,
         );
 
         let predicate = self.check_and_build_predicate_from_filters(filters);
@@ -472,9 +473,10 @@ impl DisplayAs for ScanTable {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "ScanTable: table={}, parallelism={}",
+            "ScanTable: table={}, parallelism={}, priority={:?}",
             self.table.name(),
             self.request.opts.read_parallelism,
+            self.request.priority
         )
     }
 }

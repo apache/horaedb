@@ -94,7 +94,9 @@ impl SelectInterpreter {
 impl Interpreter for SelectInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
-        let is_expensive_query = if let Some(time_range) = self.plan.extract_time_range() {
+        let time_range = self.plan.extract_time_range();
+        // TODO: if not time range is found, we should return an empty result directly.
+        let is_expensive_query = if let Some(time_range) = time_range {
             Self::is_expensive_query(&time_range, self.ctx.expensive_query_threshold())
         } else {
             false
@@ -111,8 +113,8 @@ impl Interpreter for SelectInterpreter {
             .context(Select)?;
 
         debug!(
-            "Interpreter execute select begin, request_id:{}, plan:{:?}, is_expensive:{}",
-            request_id, self.plan, is_expensive_query
+            "Interpreter execute select begin, request_id:{}, plan:{:?}, time_range:{:?}, is_expensive:{}",
+            request_id, self.plan, time_range, is_expensive_query
         );
 
         // Create physical plan.
