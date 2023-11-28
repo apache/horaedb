@@ -14,7 +14,7 @@
 
 [package]
 name = "tracing_util"
-authors = ["Databend Authors <opensource@datafuselabs.com>", "CeresDB Authors <ceresdbservice@gmail.com>"]
+authors = ["Databend Authors <opensource@datafuselabs.com>", "HoraeDB Authors"]
 publish = false
 
 [package.license]

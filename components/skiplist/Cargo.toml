@@ -14,7 +14,7 @@
 
 [package]
 name = "skiplist"
-authors = ["Jay Lee <busyjaylee@gmail.com>", "CeresDB Authors <ceresdbservice@gmail.com>"]
+authors = ["Jay Lee <busyjaylee@gmail.com>", "HoraeDB Authors"]
 
 [package.license]
 workspace = true
