@@ -14,7 +14,7 @@
 
 name: Feature Request
 labels: ["enhancement"]
-description: Suggest an idea to CeresDB
+description: Suggest an idea to HoraeDB
 body:
   - type: markdown
     attributes:
