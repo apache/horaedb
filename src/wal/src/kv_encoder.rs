@@ -637,7 +637,7 @@ impl CommonLogKey {
 
     #[inline]
     pub fn has_remaining(&self) -> bool {
-        false
+        self.num_remaining_bytes.map(|v| v > 0).unwrap_or(false)
     }
 
     fn compare_num_remaining_bytes(&self, other: &Option<u32>) -> Option<std::cmp::Ordering> {
@@ -873,6 +873,60 @@ mod tests {
 
             let decoded_key = encoding.decode_key(&buf).unwrap();
             assert_eq!(common_log_key, decoded_key);
+        }
+    }
+
+    #[test]
+    fn test_common_log_key_compare() {
+        fn create_log_key(
+            region_id: u64,
+            table_id: TableId,
+            sequence_num: SequenceNumber,
+            num_remaining_bytes: Option<u32>,
+        ) -> CommonLogKey {
+            CommonLogKey {
+                region_id,
+                table_id,
+                sequence_num,
+                num_remaining_bytes,
+            }
+        }
+
+        let cases = [
+            (
+                create_log_key(0, 0, 0, None),
+                create_log_key(0, 0, 0, None),
+                Ordering::Equal,
+            ),
+            (
+                create_log_key(0, 0, 0, None),
+                create_log_key(0, 0, 0, Some(10)),
+                Ordering::Less,
+            ),
+            (
+                create_log_key(0, 0, 1, None),
+                create_log_key(0, 0, 0, Some(10)),
+                Ordering::Greater,
+            ),
+            (
+                create_log_key(0, 0, 1, None),
+                create_log_key(1, 0, 0, Some(10)),
+                Ordering::Less,
+            ),
+            (
+                create_log_key(1, 0, 1, Some(11)),
+                create_log_key(1, 0, 0, Some(10)),
+                Ordering::Greater,
+            ),
+            (
+                create_log_key(1, 0, 1, Some(11)),
+                create_log_key(1, 0, 1, Some(12)),
+                Ordering::Greater,
+            ),
+        ];
+
+        for (l, r, cmp_res) in cases {
+            assert_eq!(l.partial_cmp(&r).unwrap(), cmp_res);
         }
     }
 }

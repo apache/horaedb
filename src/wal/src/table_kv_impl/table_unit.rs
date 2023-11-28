@@ -460,7 +460,7 @@ impl TableUnit {
     }
 
     // TODO(yingwen): We can cache last sequence of several buckets (be sure not to
-    // leak bucekts that has been deleted).
+    // leak buckets that has been deleted).
     fn load_last_sequence<T: TableKv>(
         table_kv: &T,
         scan_ctx: ScanContext,
@@ -850,7 +850,7 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
                 .context(manager::Read)?;
 
             if log_collector.is_integrate() {
-                break (log_collector.log_payload);
+                break log_collector.take_log().1;
             }
             if !has_more {
                 return Ok(None);
@@ -908,6 +908,11 @@ impl IntegrateLogCollector {
             // Ignore the collected log and reset the log state because it's not integrate.
             self.init_log(new_log_key, new_log_payload);
         }
+    }
+
+    #[inline]
+    fn take_log(&mut self) -> (Option<CommonLogKey>, Vec<u8>) {
+        (self.log_key.take(), std::mem::take(&mut self.log_payload))
     }
 
     #[inline]
@@ -1488,5 +1493,45 @@ mod tests {
             b"000000xxxxxxxxxxxxxx".to_vec(),
         ];
         split_encode_and_check(payloads, 5, 40);
+    }
+
+    #[test]
+    fn test_collect_normal_log() {
+        let mut collector = IntegrateLogCollector::default();
+        let key0 = CommonLogKey::part(0, 0, 0, None);
+        collector.collect(key0.clone(), b"x");
+        assert!(collector.is_integrate());
+        assert_eq!((Some(key0), vec![b'x']), collector.take_log());
+    }
+
+    #[test]
+    fn test_collect_multiple_keys_logs() {
+        let mut collector = IntegrateLogCollector::default();
+        let key0 = CommonLogKey::part(0, 0, 0, None);
+        let key1 = CommonLogKey::part(0, 0, 1, None);
+        collector.collect(key0.clone(), b"0");
+        assert!(collector.is_integrate());
+        collector.collect(key1, b"1");
+        assert!(collector.is_integrate());
+        assert_eq!((Some(key0), vec![b'0']), collector.take_log());
+    }
+
+    #[test]
+    fn test_collect_multiple_part_logs() {
+        let mut collector = IntegrateLogCollector::default();
+
+        let key0 = CommonLogKey::part(0, 0, 1, Some(5));
+        let key1 = CommonLogKey::part(0, 0, 1, Some(2));
+        let key2 = CommonLogKey::part(0, 0, 1, Some(0));
+        let key3 = CommonLogKey::part(0, 0, 2, None);
+        collector.collect(key0, b"0x");
+        assert!(!collector.is_integrate());
+        collector.collect(key1, b"999");
+        assert!(!collector.is_integrate());
+        collector.collect(key2.clone(), b"22");
+        assert!(collector.is_integrate());
+        collector.collect(key3, b"33");
+
+        assert_eq!((Some(key2), b"0x99922".to_vec()), collector.take_log())
     }
 }
