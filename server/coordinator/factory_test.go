@@ -62,7 +62,7 @@ func TestCreateTable(t *testing.T) {
 		OnFailed:    nil,
 	})
 	re.NoError(err)
-	re.Equal(procedure.CreateTable, p.Typ())
+	re.Equal(procedure.CreateTable, p.Kind())
 	re.Equal(procedure.StateInit, string(p.State()))
 
 	// Create partition table procedure.
@@ -85,7 +85,7 @@ func TestCreateTable(t *testing.T) {
 		OnFailed:    nil,
 	})
 	re.NoError(err)
-	re.Equal(procedure.CreatePartitionTable, p.Typ())
+	re.Equal(procedure.CreatePartitionTable, p.Kind())
 	re.Equal(procedure.StateInit, string(p.State()))
 }
 
@@ -144,7 +144,7 @@ func TestTransferLeader(t *testing.T) {
 		NewLeaderNodeName: snapshot.RegisteredNodes[0].Node.Name,
 	})
 	re.NoError(err)
-	re.Equal(procedure.TransferLeader, p.Typ())
+	re.Equal(procedure.TransferLeader, p.Kind())
 	re.Equal(procedure.StateInit, string(p.State()))
 }
 
@@ -163,6 +163,6 @@ func TestSplit(t *testing.T) {
 		TargetNodeName:  snapshot.Topology.ClusterView.ShardNodes[0].NodeName,
 	})
 	re.NoError(err)
-	re.Equal(procedure.Split, p.Typ())
+	re.Equal(procedure.Split, p.Kind())
 	re.Equal(procedure.StateInit, string(p.State()))
 }

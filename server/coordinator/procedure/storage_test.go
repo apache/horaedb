@@ -39,7 +39,7 @@ func testWrite(t *testing.T, storage Storage) {
 
 	testMeta1 := Meta{
 		ID:      uint64(1),
-		Typ:     TransferLeader,
+		Kind:    TransferLeader,
 		State:   StateInit,
 		RawData: []byte("test"),
 	}
@@ -50,7 +50,7 @@ func testWrite(t *testing.T, storage Storage) {
 
 	testMeta2 := Meta{
 		ID:      uint64(2),
-		Typ:     TransferLeader,
+		Kind:    TransferLeader,
 		State:   StateInit,
 		RawData: []byte("test"),
 	}
@@ -68,7 +68,7 @@ func testScan(t *testing.T, storage Storage) {
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultTimeout)
 	defer cancel()
 
-	metas, err := storage.List(ctx, DefaultScanBatchSie)
+	metas, err := storage.List(ctx, TransferLeader, DefaultScanBatchSie)
 	re.NoError(err)
 	re.Equal(2, len(metas))
 	re.Equal("test", string(metas[0].RawData))
@@ -82,16 +82,29 @@ func testDelete(t *testing.T, storage Storage) {
 
 	testMeta1 := &Meta{
 		ID:      uint64(1),
-		Typ:     TransferLeader,
+		Kind:    TransferLeader,
 		State:   StateInit,
 		RawData: []byte("test"),
 	}
-	err := storage.MarkDeleted(ctx, testMeta1.ID)
+	err := storage.MarkDeleted(ctx, TransferLeader, testMeta1.ID)
 	re.NoError(err)
 
-	metas, err := storage.List(ctx, DefaultScanBatchSie)
+	metas, err := storage.List(ctx, TransferLeader, DefaultScanBatchSie)
 	re.NoError(err)
 	re.Equal(1, len(metas))
+
+	testMeta2 := Meta{
+		ID:      uint64(2),
+		Kind:    TransferLeader,
+		State:   StateInit,
+		RawData: []byte("test"),
+	}
+	err = storage.Delete(ctx, TransferLeader, testMeta2.ID)
+	re.NoError(err)
+
+	metas, err = storage.List(ctx, TransferLeader, DefaultScanBatchSie)
+	re.NoError(err)
+	re.Equal(0, len(metas))
 }
 
 func NewTestStorage(t *testing.T) Storage {

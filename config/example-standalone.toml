@@ -20,7 +20,7 @@ client-urls = "http://127.0.0.1:2379"
 data-dir = "/tmp/meta0"
 node-name = "meta0"
 initial-cluster = "meta0=http://127.0.0.1:2380"
-default-cluster-node-count = 2
+default-cluster-node-count = 1
 
 [log]
 level = "info"

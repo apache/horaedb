@@ -143,7 +143,7 @@ func (p *Procedure) ID() uint64 {
 	return p.params.ID
 }
 
-func (p *Procedure) Typ() procedure.Typ {
+func (p *Procedure) Kind() procedure.Kind {
 	return procedure.DropPartitionTable
 }
 
@@ -254,7 +254,7 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 
 	meta := procedure.Meta{
 		ID:    p.params.ID,
-		Typ:   procedure.DropPartitionTable,
+		Kind:  procedure.DropPartitionTable,
 		State: p.state,
 
 		RawData: rawDataBytes,

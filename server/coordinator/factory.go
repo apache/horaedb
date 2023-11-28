@@ -95,7 +95,7 @@ type CreatePartitionTableRequest struct {
 
 type BatchRequest struct {
 	Batch     []procedure.Procedure
-	BatchType procedure.Typ
+	BatchType procedure.Kind
 }
 
 func NewFactory(logger *zap.Logger, allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage) *Factory {

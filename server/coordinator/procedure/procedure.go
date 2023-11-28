@@ -32,11 +32,11 @@ const (
 	StateCancelled = "cancelled"
 )
 
-type Typ uint
+type Kind uint
 
 const (
 	// Cluster Operation
-	Create Typ = iota
+	Create Kind = iota
 	Delete
 	TransferLeader
 	Migrate
@@ -65,8 +65,8 @@ type Procedure interface {
 	// ID of the procedure.
 	ID() uint64
 
-	// Typ of the procedure.
-	Typ() Typ
+	// Kind of the procedure.
+	Kind() Kind
 
 	// Start the procedure.
 	Start(ctx context.Context) error
@@ -87,7 +87,7 @@ type Procedure interface {
 // Info is used to provide immutable description procedure information.
 type Info struct {
 	ID    uint64
-	Typ   Typ
+	Kind  Kind
 	State State
 }
 

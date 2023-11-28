@@ -92,6 +92,7 @@ func (a *AllocatorImpl) Collect(_ context.Context, _ uint64) error {
 func (a *AllocatorImpl) slowRebaseLocked(ctx context.Context) error {
 	resp, err := a.kv.Get(ctx, a.key)
 	if err != nil {
+		a.logger.Error("get end id", zap.String("resp", fmt.Sprintf("%v", resp)), zap.String("key", a.key))
 		return errors.WithMessagef(err, "get end id failed, key:%s", a.key)
 	}
 

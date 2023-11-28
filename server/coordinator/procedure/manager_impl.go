@@ -112,7 +112,7 @@ func (m *ManagerImpl) ListRunningProcedure(_ context.Context) ([]*Info, error) {
 		if procedure.State() == StateRunning {
 			procedureInfos = append(procedureInfos, &Info{
 				ID:    procedure.ID(),
-				Typ:   procedure.Typ(),
+				Kind:  procedure.Kind(),
 				State: procedure.State(),
 			})
 		}

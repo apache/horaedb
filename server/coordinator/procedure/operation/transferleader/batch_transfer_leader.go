@@ -99,7 +99,7 @@ func (p *BatchTransferLeaderProcedure) ID() uint64 {
 	return p.id
 }
 
-func (p *BatchTransferLeaderProcedure) Typ() procedure.Typ {
+func (p *BatchTransferLeaderProcedure) Kind() procedure.Kind {
 	return procedure.TransferLeader
 }
 

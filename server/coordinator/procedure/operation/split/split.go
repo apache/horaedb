@@ -170,7 +170,7 @@ func (p *Procedure) ID() uint64 {
 	return p.params.ID
 }
 
-func (p *Procedure) Typ() procedure.Typ {
+func (p *Procedure) Kind() procedure.Kind {
 	return procedure.Split
 }
 
@@ -357,7 +357,7 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 
 	meta := procedure.Meta{
 		ID:    p.params.ID,
-		Typ:   procedure.Split,
+		Kind:  procedure.Split,
 		State: p.state,
 
 		RawData: rawDataBytes,

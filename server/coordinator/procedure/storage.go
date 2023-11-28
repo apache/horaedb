@@ -22,17 +22,19 @@ import (
 
 type Write interface {
 	CreateOrUpdate(ctx context.Context, meta Meta) error
+	CreateOrUpdateWithTTL(ctx context.Context, meta Meta, ttlSec int64) error
 }
 
 type Meta struct {
 	ID      uint64
-	Typ     Typ
+	Kind    Kind
 	State   State
 	RawData []byte
 }
 
 type Storage interface {
 	Write
-	List(ctx context.Context, batchSize int) ([]*Meta, error)
-	MarkDeleted(ctx context.Context, id uint64) error
+	List(ctx context.Context, procedureType Kind, batchSize int) ([]*Meta, error)
+	Delete(ctx context.Context, procedureType Kind, id uint64) error
+	MarkDeleted(ctx context.Context, procedureType Kind, id uint64) error
 }

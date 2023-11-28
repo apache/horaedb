@@ -207,7 +207,7 @@ func (p *Procedure) ID() uint64 {
 	return p.params.ID
 }
 
-func (p *Procedure) Typ() procedure.Typ {
+func (p *Procedure) Kind() procedure.Kind {
 	return procedure.CreateTable
 }
 

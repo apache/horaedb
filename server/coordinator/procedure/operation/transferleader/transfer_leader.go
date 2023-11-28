@@ -171,7 +171,7 @@ func (p *Procedure) ID() uint64 {
 	return p.params.ID
 }
 
-func (p *Procedure) Typ() procedure.Typ {
+func (p *Procedure) Kind() procedure.Kind {
 	return procedure.TransferLeader
 }
 
@@ -348,7 +348,7 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 
 	meta := procedure.Meta{
 		ID:    p.params.ID,
-		Typ:   procedure.TransferLeader,
+		Kind:  procedure.TransferLeader,
 		State: p.state,
 
 		RawData: rawDataBytes,

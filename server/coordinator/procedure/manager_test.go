@@ -39,7 +39,7 @@ func (m *MockProcedure) ID() uint64 {
 	return m.id
 }
 
-func (m *MockProcedure) Typ() procedure.Typ {
+func (m *MockProcedure) Kind() procedure.Kind {
 	return procedure.CreateTable
 }
 

@@ -43,7 +43,7 @@ func (t TestProcedure) ID() uint64 {
 	return t.ProcedureID
 }
 
-func (t TestProcedure) Typ() Typ {
+func (t TestProcedure) Kind() Kind {
 	return CreateTable
 }
 

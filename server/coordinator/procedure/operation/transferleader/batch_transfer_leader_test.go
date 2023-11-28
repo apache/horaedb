@@ -29,7 +29,7 @@ import (
 type mockProcedure struct {
 	ClusterID        storage.ClusterID
 	clusterVersion   uint64
-	typ              procedure.Typ
+	kind             procedure.Kind
 	ShardWithVersion map[storage.ShardID]uint64
 }
 
@@ -37,8 +37,8 @@ func (m mockProcedure) ID() uint64 {
 	return 0
 }
 
-func (m mockProcedure) Typ() procedure.Typ {
-	return m.typ
+func (m mockProcedure) Kind() procedure.Kind {
+	return m.kind
 }
 
 func (m mockProcedure) Start(_ context.Context) error {
@@ -93,7 +93,7 @@ func TestBatchProcedure(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		shardWithVersion := map[storage.ShardID]uint64{}
 		shardWithVersion[storage.ShardID(i)] = 0
-		p := CreateMockProcedure(0, 0, procedure.Typ(i), shardWithVersion)
+		p := CreateMockProcedure(0, 0, procedure.Kind(i), shardWithVersion)
 		procedures = append(procedures, p)
 	}
 	_, err = transferleader.NewBatchTransferLeaderProcedure(0, procedures)
@@ -103,18 +103,18 @@ func TestBatchProcedure(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		shardWithVersion := map[storage.ShardID]uint64{}
 		shardWithVersion[storage.ShardID(0)] = uint64(i)
-		p := CreateMockProcedure(0, 0, procedure.Typ(i), shardWithVersion)
+		p := CreateMockProcedure(0, 0, procedure.Kind(i), shardWithVersion)
 		procedures = append(procedures, p)
 	}
 	_, err = transferleader.NewBatchTransferLeaderProcedure(0, procedures)
 	re.Error(err)
 }
 
-func CreateMockProcedure(clusterID storage.ClusterID, clusterVersion uint64, typ procedure.Typ, shardWithVersion map[storage.ShardID]uint64) procedure.Procedure {
+func CreateMockProcedure(clusterID storage.ClusterID, clusterVersion uint64, typ procedure.Kind, shardWithVersion map[storage.ShardID]uint64) procedure.Procedure {
 	return mockProcedure{
 		ClusterID:        clusterID,
 		clusterVersion:   clusterVersion,
-		typ:              typ,
+		kind:             typ,
 		ShardWithVersion: shardWithVersion,
 	}
 }
