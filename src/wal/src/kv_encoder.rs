@@ -705,7 +705,7 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
 
     fn estimate_encoded_size(&self, _log_key: &CommonLogKey) -> usize {
         // Refer to key format.
-        1 + 8 + 8 + 8 + 1 + 1
+        1 + 8 + 8 + 8 + 1 + 4
     }
 }
 

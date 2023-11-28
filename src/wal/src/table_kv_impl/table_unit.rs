@@ -925,8 +925,15 @@ impl IntegrateLogCollector {
 
     #[inline]
     fn init_log(&mut self, new_log_key: CommonLogKey, new_log_payload: &[u8]) {
+        if let Some(num_remaining_bytes) = new_log_key.num_remaining_bytes {
+            self.log_payload =
+                Vec::with_capacity(num_remaining_bytes as usize + new_log_payload.len());
+            self.log_payload.extend_from_slice(new_log_payload);
+        } else {
+            self.log_payload = new_log_payload.to_vec();
+        }
+
         self.log_key = Some(new_log_key);
-        self.log_payload = new_log_payload.to_vec();
     }
 
     fn is_part_log(&self, new_log_key: &CommonLogKey) -> bool {
@@ -1532,6 +1539,9 @@ mod tests {
         assert!(collector.is_integrate());
         collector.collect(key3, b"33");
 
-        assert_eq!((Some(key2), b"0x99922".to_vec()), collector.take_log())
+        let (collected_key, collected_payload) = collector.take_log();
+        assert_eq!(Some(key2), collected_key);
+        assert_eq!(b"0x99922".to_vec(), collected_payload);
+        assert_eq!(collected_payload.capacity(), collected_payload.len());
     }
 }
