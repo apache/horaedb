@@ -32,6 +32,7 @@ use snafu::{ResultExt, Snafu};
 use crate::{
     context::Context,
     interpreter::{Interpreter, InterpreterPtr, Output, Result as InterpreterResult, Select},
+    metrics::ENGINE_QUERY_COUNTER,
 };
 
 #[derive(Debug, Snafu)]
@@ -106,6 +107,10 @@ impl Interpreter for SelectInterpreter {
         } else {
             Priority::Higher
         };
+        ENGINE_QUERY_COUNTER
+            .with_label_values(&[priority.as_str()])
+            .inc();
+
         let query_ctx = self
             .ctx
             .new_query_context(priority)

@@ -74,11 +74,15 @@ use crate::{
             REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC,
             REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
         },
-        remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+        remote_engine_service::{
+            error::{ErrNoCause, ErrWithCause, Result, StatusCode},
+            metrics::REMOTE_ENGINE_QUERY_COUNTER,
+        },
     },
 };
 
 pub mod error;
+mod metrics;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 200;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
@@ -627,6 +631,9 @@ impl RemoteEngineServiceImpl {
             ctx.timeout_ms,
             priority,
         );
+        REMOTE_ENGINE_QUERY_COUNTER
+            .with_label_values(&[query_ctx.priority.as_str()])
+            .inc();
 
         debug!(
             "Execute remote query, ctx:{query_ctx:?}, query:{}",

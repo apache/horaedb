@@ -28,6 +28,13 @@ impl Priority {
     pub fn as_u8(&self) -> u8 {
         *self as u8
     }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Higher => "higher",
+            Self::Lower => "lower",
+        }
+    }
 }
 
 impl TryFrom<u8> for Priority {

@@ -29,12 +29,12 @@ pub mod exists;
 pub mod factory;
 pub mod insert;
 pub mod interpreter;
+mod metrics;
 pub mod select;
 pub mod show;
+mod show_create;
 pub mod table_manipulator;
 pub mod validator;
-
-mod show_create;
 
 #[cfg(test)]
 mod tests;
