@@ -14,6 +14,8 @@
 
 //! Common Encoding for Wal logs
 
+use std::cmp::Ordering;
+
 use bytes_ext::{self, Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
 use codec::{Decoder, Encoder};
 use common_types::{table::TableId, SequenceNumber};
@@ -585,34 +587,72 @@ impl LogBatchEncoder {
 }
 
 /// Common log key used in multiple wal implementation
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CommonLogKey {
     /// Id of region which the table belongs to,
     /// region may be mapped to table itself, shard, or others...
     pub region_id: u64,
     pub table_id: TableId,
     pub sequence_num: SequenceNumber,
-    pub offset: Option<u32>,
+    pub num_remaining_bytes: Option<u32>,
+}
+
+impl PartialOrd for CommonLogKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.region_id.partial_cmp(&other.region_id) {
+            Some(std::cmp::Ordering::Equal) => match self.table_id.partial_cmp(&other.table_id) {
+                Some(std::cmp::Ordering::Equal) => {
+                    match self.sequence_num.partial_cmp(&other.sequence_num) {
+                        Some(std::cmp::Ordering::Equal) => {
+                            self.compare_num_remaining_bytes(&other.num_remaining_bytes)
+                        }
+                        v => v,
+                    }
+                }
+                v => v,
+            },
+            v => v,
+        }
+    }
 }
 
 impl CommonLogKey {
     pub fn new(region_id: u64, table_id: TableId, sequence_num: SequenceNumber) -> Self {
-        Self::with_offset(region_id, table_id, sequence_num, None)
+        Self::part(region_id, table_id, sequence_num, None)
     }
 
-    pub fn with_offset(
+    pub fn part(
         region_id: u64,
         table_id: TableId,
         sequence_num: SequenceNumber,
-        offset: Option<u32>,
+        num_remaining_bytes: Option<u32>,
     ) -> Self {
         Self {
             region_id,
             table_id,
             sequence_num,
-            offset,
+            num_remaining_bytes,
         }
     }
+
+    #[inline]
+    pub fn has_remaining(&self) -> bool {
+        false
+    }
+
+    fn compare_num_remaining_bytes(&self, other: &Option<u32>) -> Option<std::cmp::Ordering> {
+        match (self.num_remaining_bytes, other) {
+            (Some(a), Some(b)) => Some(a.cmp(b).reverse()),
+            (Some(_), None) => Some(Ordering::Greater),
+            (None, Some(_)) => Some(Ordering::Less),
+            (None, None) => Some(Ordering::Equal),
+        }
+    }
+}
+
+#[inline]
+fn reverse_u32(v: u32) -> u32 {
+    u32::MAX - v
 }
 
 #[derive(Debug, Clone)]
@@ -643,9 +683,9 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
     /// Key format:
     ///
     /// ```text
-    /// +---------------+----------------+---------------+-------------------+--------------------+------------------------+
-    /// | namespace(u8) | region_id(u64) | table_id(u64) | sequence_num(u64) | version header(u8) | offset[optional] (u32) |
-    /// +---------------+----------------+---------------+-------------------+--------------------+------------------------+
+    /// +---------------+----------------+---------------+-------------------+--------------------+---------------------------------------------+
+    /// | namespace(u8) | region_id(u64) | table_id(u64) | sequence_num(u64) | version header(u8) | u32::MAX - remaining_bytes [optional] (u32) |
+    /// +---------------+----------------+---------------+-------------------+--------------------+---------------------------------------------+
     /// ```
     ///
     /// More information can be extended after the incremented `version header`.
@@ -656,8 +696,8 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
         buf.try_put_u64(log_key.sequence_num)
             .context(EncodeLogKey)?;
         buf.try_put_u8(self.version).context(EncodeLogKey)?;
-        if let Some(offset) = log_key.offset {
-            buf.try_put_u32(offset).context(EncodeLogKey)?;
+        if let Some(v) = log_key.num_remaining_bytes {
+            buf.try_put_u32(reverse_u32(v)).context(EncodeLogKey)?;
         }
 
         Ok(())
@@ -697,12 +737,15 @@ impl Decoder<CommonLogKey> for CommonLogKeyEncoder {
             }
         );
 
-        let offset = buf.try_get_u32().map(Some).unwrap_or_default();
+        let num_remaining_bytes = match buf.try_get_u32() {
+            Ok(v) => Some(reverse_u32(v)),
+            Err(_) => None,
+        };
         let log_key = CommonLogKey {
             region_id,
             table_id,
             sequence_num,
-            offset,
+            num_remaining_bytes,
         };
 
         Ok(log_key)
@@ -821,7 +864,7 @@ mod tests {
                 region_id,
                 table_id,
                 sequence_num: seq,
-                offset: None,
+                num_remaining_bytes: None,
             };
 
             encoding.encode_key(&mut buf, &common_log_key).unwrap();

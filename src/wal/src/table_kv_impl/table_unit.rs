@@ -799,12 +799,15 @@ impl<T: TableKv> TableLogIterator<T> {
 
         Ok(())
     }
-}
 
-impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
-    fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<&'_ [u8]>>> {
+    /// Collect log from current iterator, returns true if a log iterator is not
+    /// exhausted.
+    fn collect_log_from_one_kv(
+        &mut self,
+        log_collector: &mut IntegrateLogCollector,
+    ) -> manager::Result<bool> {
         if self.no_more_data() {
-            return Ok(None);
+            return Ok(false);
         }
 
         // If `current_iter` is None, scan from current to last bucket util we get a
@@ -813,13 +816,13 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
             let has_valid_iter = self.scan_buckets().box_err().context(manager::Read)?;
             if !has_valid_iter {
                 assert!(self.no_more_data());
-                return Ok(None);
+                return Ok(false);
             }
         }
 
         // Fetch and decode current log entry.
         let current_iter = self.current_iter.as_ref().unwrap();
-        self.current_log_key = self
+        let current_log_key = self
             .log_encoding
             .decode_key(current_iter.key())
             .box_err()
@@ -830,9 +833,33 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
             .box_err()
             .context(manager::Encoding)?;
 
+        self.current_log_key = current_log_key.clone();
+        log_collector.collect(current_log_key, payload);
+
+        Ok(true)
+    }
+}
+
+impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
+    fn next_log_entry(&mut self) -> manager::Result<Option<LogEntry<&'_ [u8]>>> {
+        let mut log_collector = IntegrateLogCollector::default();
+        let log_payload = loop {
+            let has_more = self
+                .collect_log_from_one_kv(&mut log_collector)
+                .box_err()
+                .context(manager::Read)?;
+
+            if log_collector.is_integrate() {
+                break (log_collector.log_payload);
+            }
+            if !has_more {
+                return Ok(None);
+            }
+        };
+
         // To unblock pr#119, we use the following to simple resolve borrow-check error.
         // detail info: https://github.com/CeresDB/ceresdb/issues/120
-        self.previous_value = payload.to_owned();
+        self.previous_value = log_payload;
 
         // Step current iterator, if it becomes invalid, reset `current_iter` to None
         // and advance `current_bucket_index`.
@@ -845,6 +872,69 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
         };
 
         Ok(Some(log_entry))
+    }
+}
+
+/// Collect an integrate log from multiple log parts.
+#[derive(Default)]
+struct IntegrateLogCollector {
+    log_key: Option<CommonLogKey>,
+    log_payload: Vec<u8>,
+}
+
+impl IntegrateLogCollector {
+    /// Collect the new log part.
+    ///
+    /// If the collected log is already integrate, nothing will be changed.
+    /// If the new log is not part of the collected log, the collected log will
+    /// be dropped and the collector tries to collect the new log.
+    fn collect(&mut self, new_log_key: CommonLogKey, new_log_payload: &[u8]) {
+        if self.log_key.is_none() {
+            // Init the log key and value.
+            self.init_log(new_log_key, new_log_payload);
+            return;
+        }
+
+        // Check whether the log key/value is integrate.
+        if self.is_integrate() {
+            return;
+        }
+
+        // Check whether the new log matches the being-collected log.
+        if self.is_part_log(&new_log_key) {
+            // The new log is part of the being-collected log, and let's merge them.
+            self.merge_log(new_log_key, new_log_payload);
+        } else {
+            // Ignore the collected log and reset the log state because it's not integrate.
+            self.init_log(new_log_key, new_log_payload);
+        }
+    }
+
+    #[inline]
+    fn is_integrate(&self) -> bool {
+        self.log_key
+            .as_ref()
+            .map(|v| !v.has_remaining())
+            .unwrap_or(false)
+    }
+
+    #[inline]
+    fn init_log(&mut self, new_log_key: CommonLogKey, new_log_payload: &[u8]) {
+        self.log_key = Some(new_log_key);
+        self.log_payload = new_log_payload.to_vec();
+    }
+
+    fn is_part_log(&self, new_log_key: &CommonLogKey) -> bool {
+        let curr_log_key = self.log_key.as_ref().unwrap();
+
+        curr_log_key.region_id == new_log_key.region_id
+            && curr_log_key.table_id == new_log_key.table_id
+            && curr_log_key.sequence_num == new_log_key.sequence_num
+    }
+
+    fn merge_log(&mut self, new_log_key: CommonLogKey, new_log_payload: &[u8]) {
+        self.log_key = Some(new_log_key);
+        self.log_payload.extend_from_slice(new_log_payload);
     }
 }
 
@@ -1206,11 +1296,12 @@ impl LogBatchSplitEncoder {
                     let mut inserter = write_batch_builder.insert_splitted_entries();
                     for (offset, len) in sub_entry_offsets {
                         // The offset and len has been ensured to be in the valid range.
-                        let key = CommonLogKey::with_offset(
+                        let num_remaining_bytes = entries[index].payload.len() - offset - len;
+                        let key = CommonLogKey::part(
                             self.region_id,
                             self.table_id,
                             next_seq_num,
-                            Some(offset as u32),
+                            Some(num_remaining_bytes as u32),
                         );
                         log_encoding
                             .encode_key(&mut key_buf, &key)
