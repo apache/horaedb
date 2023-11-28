@@ -18,6 +18,7 @@ package cluster
 
 import (
 	"context"
+	"strings"
 
 	"github.com/CeresDB/horaemeta/server/cluster/metadata"
 	"github.com/CeresDB/horaemeta/server/coordinator"
@@ -32,8 +33,8 @@ import (
 )
 
 const (
-	defaultProcedurePrefixKey = "procedure"
-	defaultAllocStep          = 5
+	defaultProcedurePrefixKey = "ProcedureID"
+	defaultAllocStep          = 50
 )
 
 type Cluster struct {
@@ -52,7 +53,9 @@ func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *
 		return nil, errors.WithMessage(err, "create procedure manager")
 	}
 	dispatch := eventdispatch.NewDispatchImpl()
-	procedureFactory := coordinator.NewFactory(logger, id.NewAllocatorImpl(logger, client, defaultProcedurePrefixKey, defaultAllocStep), dispatch, procedureStorage)
+
+	procedureIDRootPath := strings.Join([]string{rootPath, metadata.Name(), defaultProcedurePrefixKey}, "/")
+	procedureFactory := coordinator.NewFactory(logger, id.NewAllocatorImpl(logger, client, procedureIDRootPath, defaultAllocStep), dispatch, procedureStorage)
 
 	schedulerManager := manager.NewManager(logger, procedureManager, procedureFactory, metadata, client, rootPath, metadata.GetTopologyType(), metadata.GetProcedureExecutingBatchSize())
 
