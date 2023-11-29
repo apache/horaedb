@@ -38,7 +38,7 @@ pub struct IterOptions {
 /// The `schema()` should be the same as the RecordBatch from `read()`.
 /// The reader is exhausted if the `read()` returns the `Ok(None)`.
 #[async_trait]
-pub trait RecordBatchWithKeyIterator: Send {
+pub trait FetchingRecordBatchIterator: Send {
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn schema(&self) -> &RecordSchemaWithKey;
@@ -47,7 +47,7 @@ pub trait RecordBatchWithKeyIterator: Send {
         -> std::result::Result<Option<FetchingRecordBatch>, Self::Error>;
 }
 
-pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + Unpin + 'static>(
+pub fn record_batch_with_key_iter_to_stream<I: FetchingRecordBatchIterator + Unpin + 'static>(
     mut iter: I,
 ) -> RecordBatchStream {
     let record_batch_stream = try_stream! {

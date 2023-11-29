@@ -26,7 +26,7 @@ use logger::{info, trace};
 use macros::define_result;
 use snafu::{ResultExt, Snafu};
 
-use crate::row_iter::{IterOptions, RecordBatchWithKeyIterator};
+use crate::row_iter::{FetchingRecordBatchIterator, IterOptions};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -67,7 +67,7 @@ pub struct DedupIterator<I> {
     total_selected_rows: usize,
 }
 
-impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
+impl<I: FetchingRecordBatchIterator> DedupIterator<I> {
     pub fn new(request_id: RequestId, iter: I, iter_options: IterOptions) -> Self {
         let schema_with_key = iter.schema();
         let primary_key_indexes = schema_with_key.primary_key_idx().to_vec();
@@ -173,7 +173,7 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
 }
 
 #[async_trait]
-impl<I: RecordBatchWithKeyIterator> RecordBatchWithKeyIterator for DedupIterator<I> {
+impl<I: FetchingRecordBatchIterator> FetchingRecordBatchIterator for DedupIterator<I> {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {

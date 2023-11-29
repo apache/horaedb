@@ -24,7 +24,7 @@ use analytic_engine::{
     row_iter::{
         dedup::DedupIterator,
         merge::{MergeBuilder, MergeConfig},
-        IterOptions, RecordBatchWithKeyIterator,
+        FetchingRecordBatchIterator, IterOptions,
     },
     space::SpaceId,
     sst::{

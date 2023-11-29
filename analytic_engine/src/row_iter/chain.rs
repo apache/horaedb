@@ -37,7 +37,7 @@ use crate::{
         record_batch_stream::{
             self, BoxedPrefetchableRecordBatchStream, MemtableStreamContext, SstStreamContext,
         },
-        RecordBatchWithKeyIterator,
+        FetchingRecordBatchIterator,
     },
     space::SpaceId,
     sst::{
@@ -377,7 +377,7 @@ impl Drop for ChainIterator {
 }
 
 #[async_trait]
-impl RecordBatchWithKeyIterator for ChainIterator {
+impl FetchingRecordBatchIterator for ChainIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {

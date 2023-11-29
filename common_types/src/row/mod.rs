@@ -560,8 +560,8 @@ pub trait RowView {
     fn column_by_idx(&self, column_idx: usize) -> Datum;
 }
 
-// TODO(yingwen): Add a method to get row view on RecordBatchWithKey.
-/// A row view on the [RecordBatchWithKey].
+// TODO(yingwen): Add a method to get row view on FetchingRecordBatch.
+/// A row view on the [FetchingRecordBatch].
 ///
 /// `row_idx < record_batch.num_rows()` is ensured.
 #[derive(Debug)]

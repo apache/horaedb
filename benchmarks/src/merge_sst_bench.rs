@@ -22,7 +22,7 @@ use analytic_engine::{
         chain::ChainConfig,
         dedup::DedupIterator,
         merge::{MergeBuilder, MergeConfig},
-        IterOptions, RecordBatchWithKeyIterator,
+        FetchingRecordBatchIterator, IterOptions,
     },
     space::SpaceId,
     sst::{

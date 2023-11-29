@@ -73,7 +73,7 @@ use crate::{
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
-type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send + Unpin>;
+type FetchingRecordBatchStream = Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send + Unpin>;
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -147,7 +147,7 @@ impl<'a> Reader<'a> {
     async fn maybe_read_parallelly(
         &mut self,
         read_parallelism: usize,
-    ) -> Result<Vec<RecordBatchWithKeyStream>> {
+    ) -> Result<Vec<FetchingRecordBatchStream>> {
         assert!(read_parallelism > 0);
 
         self.init_if_necessary().await?;
@@ -156,13 +156,13 @@ impl<'a> Reader<'a> {
             return Ok(Vec::new());
         }
 
-        let row_projector = self.record_fetching_ctx.take().unwrap();
+        let record_fetching_ctx = self.record_fetching_ctx.take().unwrap();
         let streams: Vec<_> = streams
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
                     stream,
-                    row_projector.clone(),
+                    record_fetching_ctx.clone(),
                     self.metrics.metrics_collector.clone(),
                 )) as _
             })
@@ -240,7 +240,7 @@ impl<'a> Reader<'a> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
-        let row_projector = self.record_fetching_ctx.as_ref().unwrap();
+        let record_fetching_ctx = self.record_fetching_ctx.as_ref().unwrap();
         let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
         // Get target row groups.
         let target_row_groups = {
@@ -296,7 +296,10 @@ impl<'a> Reader<'a> {
         let parquet_metadata = meta_data.parquet();
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
-            row_projector.existed_source_projection().iter().copied(),
+            record_fetching_ctx
+                .existed_source_projection()
+                .iter()
+                .copied(),
         );
         debug!(
             "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",

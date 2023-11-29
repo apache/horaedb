@@ -456,18 +456,11 @@ impl FetchingRecordBatch {
         Row::from_datums(datums)
     }
 
-    /// Project the [RecordBatchWithKey] into a [RecordBatch] according to
+    /// Project the [FetchingRecordBatch] into a [RecordBatch] according to
     /// [ProjectedSchema].
-    ///
-    /// REQUIRE: The schema_with_key of the [RecordBatchWithKey] is the same as
-    /// the schema_with_key of [ProjectedSchema].
+    // TODO: how do we ensure `ProjectedSchema` passed here is same as the source
+    // `ProjectedSchema` of `RecordSchema` here?
     pub fn try_project(mut self, projected_schema: &ProjectedSchema) -> Result<RecordBatch> {
-        // FIXME
-        // debug_assert_eq!(
-        //     &self.schema,
-        //     projected_schema.as_record_schema_with_key()
-        // );
-
         // Get the schema after projection.
         let record_schema = projected_schema.to_record_schema();
         let mut column_blocks = Vec::with_capacity(record_schema.num_columns());
@@ -717,7 +710,7 @@ impl FetchingRecordBatchBuilder {
         }
     }
 
-    /// Build [RecordBatchWithKey] and reset the builder.
+    /// Build [FetchingRecordBatch] and reset the builder.
     pub fn build(&mut self) -> Result<FetchingRecordBatch> {
         let column_blocks: Vec<_> = self
             .builders

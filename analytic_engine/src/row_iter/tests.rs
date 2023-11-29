@@ -25,7 +25,7 @@ use common_types::{
 use macros::define_result;
 use snafu::Snafu;
 
-use crate::row_iter::RecordBatchWithKeyIterator;
+use crate::row_iter::FetchingRecordBatchIterator;
 
 #[derive(Debug, Snafu)]
 pub enum Error {}
@@ -49,7 +49,7 @@ impl VectorIterator {
 }
 
 #[async_trait]
-impl RecordBatchWithKeyIterator for VectorIterator {
+impl FetchingRecordBatchIterator for VectorIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
@@ -105,7 +105,7 @@ pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> F
     builder.build().unwrap()
 }
 
-pub async fn check_iterator<T: RecordBatchWithKeyIterator>(iter: &mut T, expected_rows: Vec<Row>) {
+pub async fn check_iterator<T: FetchingRecordBatchIterator>(iter: &mut T, expected_rows: Vec<Row>) {
     let mut visited_rows = 0;
     while let Some(batch) = iter.next_batch().await.unwrap() {
         for row_idx in 0..batch.num_rows() {

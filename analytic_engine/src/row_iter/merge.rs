@@ -45,7 +45,7 @@ use crate::{
             self, BoxedPrefetchableRecordBatchStream, MemtableStreamContext, SequencedRecordBatch,
             SstStreamContext,
         },
-        IterOptions, RecordBatchWithKeyIterator,
+        FetchingRecordBatchIterator, IterOptions,
     },
     space::SpaceId,
     sst::{
@@ -900,7 +900,7 @@ impl MergeIterator {
 }
 
 #[async_trait]
-impl RecordBatchWithKeyIterator for MergeIterator {
+impl FetchingRecordBatchIterator for MergeIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {

@@ -130,7 +130,7 @@ pub enum Error {
 
 define_result!(Error);
 
-// TODO(yingwen): Can we move sequence to RecordBatchWithKey and remove this
+// TODO(yingwen): Can we move sequence to FetchingRecordBatch and remove this
 // struct? But what is the sequence after merge?
 #[derive(Debug)]
 pub struct SequencedRecordBatch {

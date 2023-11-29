@@ -48,7 +48,7 @@ use crate::{
         chain::{ChainConfig, ChainIterator},
         dedup::DedupIterator,
         merge::{MergeBuilder, MergeConfig, MergeIterator},
-        IterOptions, RecordBatchWithKeyIterator,
+        FetchingRecordBatchIterator, IterOptions,
     },
     table::{
         data::TableData,
@@ -168,7 +168,7 @@ impl Instance {
     fn build_partitioned_streams(
         &self,
         request: &ReadRequest,
-        partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
+        partitioned_iters: Vec<impl FetchingRecordBatchIterator + 'static>,
     ) -> Result<PartitionedStreams> {
         let read_parallelism = request.opts.read_parallelism;
 
@@ -365,7 +365,7 @@ struct StreamStateOnMultiIters<I> {
     projected_schema: ProjectedSchema,
 }
 
-impl<I: RecordBatchWithKeyIterator + 'static> StreamStateOnMultiIters<I> {
+impl<I: FetchingRecordBatchIterator + 'static> StreamStateOnMultiIters<I> {
     fn is_exhausted(&self) -> bool {
         self.curr_iter_idx >= self.iters.len()
     }
@@ -397,7 +397,7 @@ impl<I: RecordBatchWithKeyIterator + 'static> StreamStateOnMultiIters<I> {
 }
 
 fn iters_to_stream(
-    iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
+    iters: Vec<impl FetchingRecordBatchIterator + 'static>,
     projected_schema: ProjectedSchema,
 ) -> SendableRecordBatchStream {
     let mut state = StreamStateOnMultiIters {

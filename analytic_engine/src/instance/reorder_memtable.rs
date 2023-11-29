@@ -70,7 +70,7 @@ pub enum Error {
 define_result!(Error);
 
 pub type DfResult<T> = std::result::Result<T, DataFusionError>;
-type SendableRecordBatchWithkeyStream =
+type SendableFetchingRecordBatchStream =
     Pin<Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send>>;
 
 impl From<DataFusionError> for Error {
@@ -253,7 +253,7 @@ impl Reorder {
 
     // TODO: In theory we can construct a physical plan directly, here we choose
     // logical because it has a convenient builder API for use.
-    pub async fn into_stream(self) -> Result<SendableRecordBatchWithkeyStream> {
+    pub async fn into_stream(self) -> Result<SendableFetchingRecordBatchStream> {
         // 1. Init datafusion context
         let runtime = Arc::new(RuntimeEnv::default());
         let state = SessionState::with_config_rt(SessionConfig::new(), runtime);
