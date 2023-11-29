@@ -25,13 +25,13 @@ use arrow_ext::{
     ipc,
     ipc::{CompressOptions, CompressionMethod},
 };
+use common_types::{record_batch::RecordBatch, schema::RecordSchema};
+use futures::{Stream, StreamExt};
+use generic_error::BoxError;
 use horaedbproto::{
     remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
     storage::arrow_payload,
 };
-use common_types::{record_batch::RecordBatch, schema::RecordSchema};
-use futures::{Stream, StreamExt};
-use generic_error::BoxError;
 use logger::{error, info};
 use router::RouterRef;
 use runtime::Runtime;

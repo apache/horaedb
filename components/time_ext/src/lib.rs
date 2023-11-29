@@ -24,9 +24,9 @@ use std::{
     time::{Duration, Instant, UNIX_EPOCH},
 };
 
-use horaedbproto::manifest as manifest_pb;
 use chrono::{DateTime, Utc};
 use common_types::time::Timestamp;
+use horaedbproto::manifest as manifest_pb;
 use macros::define_result;
 use serde::{
     de::{self, Visitor},

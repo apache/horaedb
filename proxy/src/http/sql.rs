@@ -15,15 +15,15 @@
 use std::io::Cursor;
 
 use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch as ArrowRecordBatch};
-use horaedbproto::storage::{
-    arrow_payload::Compression, sql_query_response::Output as OutputPb, ArrowPayload,
-    SqlQueryResponse,
-};
 use common_types::{
     datum::{Datum, DatumKind},
     record_batch::RecordBatch,
 };
 use generic_error::BoxError;
+use horaedbproto::storage::{
+    arrow_payload::Compression, sql_query_response::Output as OutputPb, ArrowPayload,
+    SqlQueryResponse,
+};
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
 use logger::error;

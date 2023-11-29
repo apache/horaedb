@@ -21,10 +21,6 @@ use std::{
 };
 
 use bytes::Bytes;
-use horaedbproto::storage::{
-    storage_service_client::StorageServiceClient, value, RouteRequest as RouteRequestPb, Value,
-    WriteRequest, WriteResponse as WriteResponsePB, WriteSeriesEntry, WriteTableRequest,
-};
 use cluster::config::SchemaConfig;
 use common_types::{
     column_schema::ColumnSchema,
@@ -36,6 +32,10 @@ use common_types::{
 };
 use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 use generic_error::BoxError;
+use horaedbproto::storage::{
+    storage_service_client::StorageServiceClient, value, RouteRequest as RouteRequestPb, Value,
+    WriteRequest, WriteResponse as WriteResponsePB, WriteSeriesEntry, WriteTableRequest,
+};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use logger::{debug, error, info, warn};
@@ -1022,7 +1022,6 @@ fn need_evict_partition_table(msg: String) -> bool {
 
 #[cfg(test)]
 mod test {
-    use horaedbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
     use common_types::{
         column_schema::{self},
         datum::{Datum, DatumKind},
@@ -1030,6 +1029,7 @@ mod test {
         schema::Builder,
         time::Timestamp,
     };
+    use horaedbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
     use system_catalog::sys_catalog_table::TIMESTAMP_COLUMN_NAME;
 
     use super::*;

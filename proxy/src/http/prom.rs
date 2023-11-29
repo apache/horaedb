@@ -24,16 +24,16 @@ use std::{
 
 use async_trait::async_trait;
 use catalog::consts::DEFAULT_CATALOG;
-use horaedbproto::storage::{
-    value, Field, FieldGroup, PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse,
-    RequestContext as GrpcRequestContext, Tag, Value, WriteRequest as GrpcWriteRequest,
-    WriteSeriesEntry, WriteTableRequest,
-};
 use common_types::{
     datum::DatumKind,
     schema::{RecordSchema, TSID_COLUMN},
 };
 use generic_error::BoxError;
+use horaedbproto::storage::{
+    value, Field, FieldGroup, PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse,
+    RequestContext as GrpcRequestContext, Tag, Value, WriteRequest as GrpcWriteRequest,
+    WriteSeriesEntry, WriteTableRequest,
+};
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
 use logger::{error, info};

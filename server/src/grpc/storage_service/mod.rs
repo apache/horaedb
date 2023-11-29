@@ -22,6 +22,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use futures::{stream, stream::BoxStream, StreamExt};
 use horaedbproto::{
     common::ResponseHeader,
     storage::{
@@ -30,7 +31,6 @@ use horaedbproto::{
         SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
     },
 };
-use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
 use proxy::{Context, Proxy, FORWARDED_FROM};
 use table_engine::engine::EngineRuntimes;

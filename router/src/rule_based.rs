@@ -17,8 +17,8 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use horaedbproto::storage::{self, Route};
 use cluster::config::SchemaConfig;
+use horaedbproto::storage::{self, Route};
 use logger::info;
 use meta_client::types::ShardId;
 use serde::{Deserialize, Serialize};

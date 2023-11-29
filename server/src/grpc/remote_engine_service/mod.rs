@@ -25,6 +25,12 @@ use std::{
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
+use common_types::{record_batch::RecordBatch, request_id::RequestId};
+use futures::{
+    stream::{self, BoxStream, FuturesUnordered, StreamExt},
+    Future,
+};
+use generic_error::BoxError;
 use horaedbproto::{
     remote_engine::{
         execute_plan_request, read_response::Output::Arrow,
@@ -35,12 +41,6 @@ use horaedbproto::{
     },
     storage::{arrow_payload, ArrowPayload},
 };
-use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use futures::{
-    stream::{self, BoxStream, FuturesUnordered, StreamExt},
-    Future,
-};
-use generic_error::BoxError;
 use logger::{error, info, slow_query};
 use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{

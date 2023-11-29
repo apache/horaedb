@@ -21,10 +21,10 @@ use arrow::{
     temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS},
 };
 use bytes_ext::Bytes;
-use horaedbproto::schema::DataType as DataTypePb;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use datafusion::scalar::ScalarValue;
 use hash_ext::hash64;
+use horaedbproto::schema::DataType as DataTypePb;
 use serde::ser::{Serialize, Serializer};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::{DataType as SqlDataType, Value};

@@ -20,9 +20,6 @@ use std::{
 };
 
 use bytes_ext::{ByteVec, Bytes};
-use horaedbproto::remote_engine::{
-    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
-};
 use common_types::{
     request_id::RequestId,
     row::{
@@ -32,6 +29,9 @@ use common_types::{
     schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
+use horaedbproto::remote_engine::{
+    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
+};
 use itertools::Itertools;
 use macros::define_result;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};

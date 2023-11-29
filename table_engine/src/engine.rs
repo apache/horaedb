@@ -17,12 +17,12 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use horaedbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     schema::Schema,
     table::{ShardId, DEFAULT_SHARD_ID},
 };
 use generic_error::{GenericError, GenericResult};
+use horaedbproto::sys_catalog as sys_catalog_pb;
 use macros::define_result;
 use runtime::RuntimeRef;
 use snafu::{ensure, Backtrace, Snafu};

@@ -17,6 +17,9 @@
 use std::sync::Arc;
 
 use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
+use common_types::record_batch::RecordBatch;
+use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
+use generic_error::BoxError;
 use horaedbproto::{
     common::ResponseHeader,
     storage::{
@@ -24,9 +27,6 @@ use horaedbproto::{
         ArrowPayload, SqlQueryRequest, SqlQueryResponse,
     },
 };
-use common_types::record_batch::RecordBatch;
-use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
-use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use logger::{error, warn};

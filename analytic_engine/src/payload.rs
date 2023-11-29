@@ -15,7 +15,6 @@
 //! Payloads to write to wal
 
 use bytes_ext::{Buf, BufMut, SafeBuf, SafeBufMut};
-use horaedbproto::{manifest as manifest_pb, table_requests};
 use codec::{
     columnar::{ColumnarDecoder, DecodeContext, DecodeResult},
     row::WalRowDecoder,
@@ -26,6 +25,7 @@ use common_types::{
     schema::Schema,
     table::TableId,
 };
+use horaedbproto::{manifest as manifest_pb, table_requests};
 use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};

@@ -19,8 +19,8 @@ pub mod rule_based;
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use horaedbproto::storage::{Route, RouteRequest as RouteRequestPb};
 pub use cluster_based::ClusterBasedRouter;
+use horaedbproto::storage::{Route, RouteRequest as RouteRequestPb};
 use macros::define_result;
 use meta_client::types::TableInfo;
 pub use rule_based::{RuleBasedRouter, RuleList};

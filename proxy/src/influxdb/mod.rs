@@ -20,10 +20,10 @@ pub mod types;
 
 use std::time::Instant;
 
+use generic_error::BoxError;
 use horaedbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
-use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use logger::{debug, info};

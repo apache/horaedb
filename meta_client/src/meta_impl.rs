@@ -15,11 +15,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use generic_error::BoxError;
 use horaedbproto::{
     common::ResponseHeader,
     meta_service::{self, horae_meta_rpc_service_client::HoraeMetaRpcServiceClient},
 };
-use generic_error::BoxError;
 use logger::{debug, info};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};

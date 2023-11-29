@@ -386,8 +386,8 @@ impl<B: ClientBuilder> Forwarder<B> {
 #[cfg(test)]
 mod tests {
     use catalog::consts::DEFAULT_SCHEMA;
-    use horaedbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
+    use horaedbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use meta_client::types::TableInfo;
     use router::Router;
     use tonic::IntoRequest;

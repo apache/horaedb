@@ -17,14 +17,14 @@
 use std::collections::{BTreeMap, HashMap};
 
 use bytes::Bytes;
-use horaedbproto::storage::{
-    value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
-};
 use common_types::{
     column_schema::ColumnSchema, datum::Datum, record_batch::RecordBatch, schema::RecordSchema,
     time::Timestamp,
 };
 use generic_error::BoxError;
+use horaedbproto::storage::{
+    value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
+};
 use http::Method;
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;

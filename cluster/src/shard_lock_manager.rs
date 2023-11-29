@@ -20,11 +20,11 @@ use std::{
 };
 
 use bytes_ext::Bytes;
-use horaedbproto::meta_event::ShardLockValue;
 use common_types::table::ShardId;
 use etcd_client::{
     Client, Compare, CompareOp, LeaseKeepAliveStream, LeaseKeeper, PutOptions, Txn, TxnOp,
 };
+use horaedbproto::meta_event::ShardLockValue;
 use logger::{debug, error, info, warn};
 use macros::define_result;
 use prost::Message;

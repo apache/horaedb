@@ -25,7 +25,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use horaedbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     column_schema::ColumnSchema,
     datum::Datum,
@@ -35,6 +34,7 @@ use common_types::{
     schema::{RecordSchemaWithKey, Schema, Version},
 };
 use generic_error::{BoxError, GenericError};
+use horaedbproto::sys_catalog as sys_catalog_pb;
 use macros::define_result;
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
