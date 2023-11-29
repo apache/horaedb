@@ -14,8 +14,9 @@
 
 name: Publish Docker image
 
-on:
-  workflow_dispatch:
+# FIXME: Temporary disable the release before the rename and transfer finished.
+# on:
+#   workflow_dispatch:
 
 jobs:
   docker:
