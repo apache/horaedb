@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: Update Docker Hub Description
+# name: Update Docker Hub Description
 
 # FIXME: Temporary disable the release before the rename and transfer finished.
 # on:
@@ -24,17 +24,17 @@ name: Update Docker Hub Description
 #       - ./docs/dockerhub-description.md
 #       - .github/workflows/dockerhub-description.yml
 
-jobs:
-  dockerHubDescription:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Docker Hub Description
-        uses: peter-evans/dockerhub-description@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ceresdb/ceresdb-server
-          readme-filepath: ./docs/dockerhub-description.md
-          # docker hub only support 100 chars, enable this when this limit is canceled
-          # short-description: ${{ github.event.repository.description }}
+# jobs:
+#   dockerHubDescription:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v3
+#       - name: Docker Hub Description
+#         uses: peter-evans/dockerhub-description@v3
+#         with:
+#           username: ${{ secrets.DOCKERHUB_USERNAME }}
+#           password: ${{ secrets.DOCKERHUB_TOKEN }}
+#           repository: ceresdb/ceresdb-server
+#           readme-filepath: ./docs/dockerhub-description.md
+#           # docker hub only support 100 chars, enable this when this limit is canceled
+#           # short-description: ${{ github.event.repository.description }}
