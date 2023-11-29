@@ -20,7 +20,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, RouteRequest as RouteRequestPb,
 };
 use logger::{debug, error, warn};
@@ -386,7 +386,7 @@ impl<B: ClientBuilder> Forwarder<B> {
 #[cfg(test)]
 mod tests {
     use catalog::consts::DEFAULT_SCHEMA;
-    use ceresdbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
+    use horaedbproto::storage::{Route, SqlQueryRequest, SqlQueryResponse};
     use futures::FutureExt;
     use meta_client::types::TableInfo;
     use router::Router;

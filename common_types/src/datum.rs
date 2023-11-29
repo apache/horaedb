@@ -21,7 +21,7 @@ use arrow::{
     temporal_conversions::{EPOCH_DAYS_FROM_CE, NANOSECONDS},
 };
 use bytes_ext::Bytes;
-use ceresdbproto::schema::DataType as DataTypePb;
+use horaedbproto::schema::DataType as DataTypePb;
 use chrono::{Datelike, Local, NaiveDate, NaiveTime, TimeZone, Timelike};
 use datafusion::scalar::ScalarValue;
 use hash_ext::hash64;

@@ -16,7 +16,7 @@
 
 use std::{sync::Arc, time::Instant};
 
-use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
+use horaedbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
 use generic_error::GenericError;

@@ -51,7 +51,7 @@ use catalog::{
     },
     CatalogRef,
 };
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
     PrometheusRemoteQueryResponse, Route,
 };

@@ -15,7 +15,7 @@
 //! Payloads to write to wal
 
 use bytes_ext::{Buf, BufMut, SafeBuf, SafeBufMut};
-use ceresdbproto::{manifest as manifest_pb, table_requests};
+use horaedbproto::{manifest as manifest_pb, table_requests};
 use codec::{
     columnar::{ColumnarDecoder, DecodeContext, DecodeResult},
     row::WalRowDecoder,

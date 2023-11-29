@@ -20,7 +20,7 @@ pub mod types;
 
 use std::time::Instant;
 
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
 use generic_error::BoxError;

@@ -18,7 +18,7 @@ use std::{
     time::Instant,
 };
 
-use ceresdbproto::{
+use horaedbproto::{
     common::ResponseHeader,
     prometheus::{Label, Sample, TimeSeries},
     storage::{PrometheusQueryRequest, PrometheusQueryResponse},

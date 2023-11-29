@@ -16,7 +16,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
 };
 use futures::FutureExt;

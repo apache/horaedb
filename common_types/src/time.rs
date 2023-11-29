@@ -21,7 +21,7 @@ use std::{
     time::{self, Duration, SystemTime},
 };
 
-use ceresdbproto::time_range;
+use horaedbproto::time_range;
 use datafusion::{
     prelude::{col, lit, Expr},
     scalar::ScalarValue,

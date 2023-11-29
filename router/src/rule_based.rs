@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use ceresdbproto::storage::{self, Route};
+use horaedbproto::storage::{self, Route};
 use cluster::config::SchemaConfig;
 use logger::info;
 use meta_client::types::ShardId;

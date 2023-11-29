@@ -17,7 +17,7 @@
 use std::iter;
 
 use bytes_ext::ByteVec;
-use ceresdbproto::{schema as schema_pb, table_requests};
+use horaedbproto::{schema as schema_pb, table_requests};
 use codec::{
     columnar::{ColumnarEncoder, EncodeHint},
     row,

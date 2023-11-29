@@ -14,7 +14,7 @@
 
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
+use horaedbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
 pub use common_types::table::{ShardId, ShardVersion};
 use common_types::{
     schema::{SchemaId, SchemaName},

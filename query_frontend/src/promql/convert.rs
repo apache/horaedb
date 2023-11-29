@@ -14,7 +14,7 @@
 
 use std::{convert::TryFrom, sync::Arc};
 
-use ceresdbproto::prometheus::{
+use horaedbproto::prometheus::{
     self, operand, sub_expr::OperatorType, Expr as ExprPb, Filter as FilterPb,
     FilterType as FilterPbType, Operand as OperandPb, Selector as PbSelector, SubExpr as PbSubExpr,
 };

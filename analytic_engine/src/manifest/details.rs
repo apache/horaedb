@@ -25,7 +25,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::manifest as manifest_pb;
+use horaedbproto::manifest as manifest_pb;
 use generic_error::{BoxError, GenericError, GenericResult};
 use lazy_static::lazy_static;
 use logger::{debug, info, warn};

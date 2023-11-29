@@ -21,7 +21,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     storage_service_client::StorageServiceClient, value, RouteRequest as RouteRequestPb, Value,
     WriteRequest, WriteResponse as WriteResponsePB, WriteSeriesEntry, WriteTableRequest,
 };
@@ -1022,7 +1022,7 @@ fn need_evict_partition_table(msg: String) -> bool {
 
 #[cfg(test)]
 mod test {
-    use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
+    use horaedbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
     use common_types::{
         column_schema::{self},
         datum::{Datum, DatumKind},

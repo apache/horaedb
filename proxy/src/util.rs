@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::prometheus::{
+use horaedbproto::prometheus::{
     expr::{Node, Node::Operand},
     operand::Value::Selector,
     sub_expr::OperatorType,
@@ -59,14 +59,14 @@ pub fn table_from_expr(expr: &Expr) -> Option<String> {
 mod tests {
     use std::{assert_eq, vec};
 
-    use ceresdbproto::prometheus::{expr, operand::Value::Selector, Expr, Operand};
+    use horaedbproto::prometheus::{expr, operand::Value::Selector, Expr, Operand};
 
     use crate::util::table_from_expr;
 
     #[test]
     fn test_measurement_from_expr() {
         let expr = {
-            let selector = ceresdbproto::prometheus::Selector {
+            let selector = horaedbproto::prometheus::Selector {
                 measurement: "aaa".to_string(),
                 filters: vec![],
                 start: 0,

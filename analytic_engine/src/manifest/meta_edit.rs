@@ -17,7 +17,7 @@
 use std::convert::TryFrom;
 
 use bytes_ext::{Buf, BufMut};
-use ceresdbproto::{manifest as manifest_pb, schema as schema_pb};
+use horaedbproto::{manifest as manifest_pb, schema as schema_pb};
 use common_types::{
     schema::{Schema, Version},
     SequenceNumber,

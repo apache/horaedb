@@ -15,7 +15,7 @@
 //! hotspot recorder
 use std::{fmt::Write, sync::Arc};
 
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     PrometheusQueryRequest, RequestContext, SqlQueryRequest, WriteRequest,
 };
 use logger::{info, warn};
@@ -318,7 +318,7 @@ impl HotspotRecorder {
 mod test {
     use std::{thread, time::Duration};
 
-    use ceresdbproto::{
+    use horaedbproto::{
         storage,
         storage::{
             value::Value::StringValue, Field, FieldGroup, Value, WriteSeriesEntry,

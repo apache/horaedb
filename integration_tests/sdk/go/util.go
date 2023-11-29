@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/CeresDB/ceresdb-client-go/ceresdb"
+	"github.com/CeresDB/horaedb-client-go/ceresdb"
 )
 
 const table = "godemo"

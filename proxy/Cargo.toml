@@ -33,7 +33,7 @@ arrow_ext = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 catalog = { workspace = true }
-ceresdbproto = { workspace = true }
+horaedbproto = { workspace = true }
 clru = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }

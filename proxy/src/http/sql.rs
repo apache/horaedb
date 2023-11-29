@@ -15,7 +15,7 @@
 use std::io::Cursor;
 
 use arrow::{ipc::reader::StreamReader, record_batch::RecordBatch as ArrowRecordBatch};
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     arrow_payload::Compression, sql_query_response::Output as OutputPb, ArrowPayload,
     SqlQueryResponse,
 };

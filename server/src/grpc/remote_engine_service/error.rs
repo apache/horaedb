@@ -14,7 +14,7 @@
 
 //! Error definitions for meta event service.
 
-use ceresdbproto::common::ResponseHeader;
+use horaedbproto::common::ResponseHeader;
 use generic_error::GenericError;
 use macros::define_result;
 use snafu::Snafu;

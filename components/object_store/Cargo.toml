@@ -30,7 +30,7 @@ workspace = true
 [dependencies]
 async-trait = { workspace = true }
 bytes = { workspace = true }
-ceresdbproto = { workspace = true }
+horaedbproto = { workspace = true }
 chrono = { workspace = true }
 clru = { workspace = true }
 crc = "3.0.0"

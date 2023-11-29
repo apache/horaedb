@@ -15,7 +15,7 @@
 //! Meta encoding of wal's message queue implementation
 
 use bytes_ext::{Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
-use ceresdbproto::wal_on_mq::{
+use horaedbproto::wal_on_mq::{
     table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
     TableMetaData as TableMetaDataPb,
 };

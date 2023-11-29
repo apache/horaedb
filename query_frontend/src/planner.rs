@@ -29,7 +29,7 @@ use arrow::{
     error::ArrowError,
 };
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use ceresdbproto::storage::{value::Value as PbValue, WriteTableRequest};
+use horaedbproto::storage::{value::Value as PbValue, WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::{
     column_schema::{self, ColumnSchema},
@@ -1391,7 +1391,7 @@ pub fn get_table_ref(table_name: &str) -> TableReference {
 #[cfg(test)]
 mod tests {
 
-    use ceresdbproto::storage::{
+    use horaedbproto::storage::{
         value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
     };
     use datafusion::{

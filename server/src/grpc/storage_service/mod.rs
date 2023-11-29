@@ -22,7 +22,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::{
+use horaedbproto::{
     common::ResponseHeader,
     storage::{
         storage_service_server::StorageService, PrometheusQueryRequest, PrometheusQueryResponse,

@@ -25,7 +25,7 @@ use std::{
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
-use ceresdbproto::{
+use horaedbproto::{
     remote_engine::{
         execute_plan_request, read_response::Output::Arrow,
         remote_engine_service_server::RemoteEngineService, row_group, AlterTableOptionsRequest,
@@ -1066,7 +1066,7 @@ async fn handle_get_table_info(
 
     Ok(GetTableInfoResponse {
         header: None,
-        table_info: Some(ceresdbproto::remote_engine::TableInfo {
+        table_info: Some(horaedbproto::remote_engine::TableInfo {
             catalog_name: request.table.catalog,
             schema_name: schema.name().to_string(),
             schema_id: schema.id().as_u32(),

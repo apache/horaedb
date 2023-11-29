@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
-use ceresdbproto::{
+use horaedbproto::{
     common::ResponseHeader,
     storage::{
         arrow_payload, sql_query_response, storage_service_client::StorageServiceClient,

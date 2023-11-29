@@ -17,7 +17,7 @@
 use std::{collections::HashSet, fmt, ops::Index, sync::Arc};
 
 use bytes_ext::Bytes;
-use ceresdbproto::{schema as schema_pb, sst as sst_pb};
+use horaedbproto::{schema as schema_pb, sst as sst_pb};
 use common_types::{
     datum::DatumKind,
     schema::{RecordSchemaWithKey, Schema},

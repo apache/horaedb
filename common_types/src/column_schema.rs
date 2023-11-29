@@ -17,7 +17,7 @@
 use std::{collections::HashMap, convert::TryFrom, str::FromStr, sync::Arc};
 
 use arrow::datatypes::{DataType, Field};
-use ceresdbproto::{remote_engine::ColumnDesc, schema as schema_pb};
+use horaedbproto::{remote_engine::ColumnDesc, schema as schema_pb};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use sqlparser::ast::Expr;
 

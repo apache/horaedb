@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/CeresDB/ceresdb-client-go/ceresdb"
+	"github.com/CeresDB/horaedb-client-go/ceresdb"
 )
 
 var endpoint = "127.0.0.1:8831"

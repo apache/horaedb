@@ -21,7 +21,7 @@ use std::{
 
 use async_trait::async_trait;
 use catalog::table_operator::TableOperator;
-use ceresdbproto::meta_event::{
+use horaedbproto::meta_event::{
     meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
     CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest, CloseTableOnShardResponse,
     CreateTableOnShardRequest, CreateTableOnShardResponse, DropTableOnShardRequest,

@@ -21,7 +21,7 @@ use std::{
     time::Duration,
 };
 
-use ceresdbproto::{
+use horaedbproto::{
     meta_event::meta_event_service_server::MetaEventServiceServer,
     remote_engine::remote_engine_service_server::RemoteEngineServiceServer,
     storage::storage_service_server::StorageServiceServer,

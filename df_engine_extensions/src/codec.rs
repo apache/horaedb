@@ -14,7 +14,7 @@
 
 use std::{fmt, sync::Arc};
 
-use ceresdbproto::remote_engine::{extension_node::TypedExtension, ExtensionNode};
+use horaedbproto::remote_engine::{extension_node::TypedExtension, ExtensionNode};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::FunctionRegistry,

@@ -24,7 +24,7 @@ use std::{
     time::{Duration, Instant, UNIX_EPOCH},
 };
 
-use ceresdbproto::manifest as manifest_pb;
+use horaedbproto::manifest as manifest_pb;
 use chrono::{DateTime, Utc};
 use common_types::time::Timestamp;
 use macros::define_result;

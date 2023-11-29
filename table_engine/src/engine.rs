@@ -17,7 +17,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use ceresdbproto::sys_catalog as sys_catalog_pb;
+use horaedbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     schema::Schema,
     table::{ShardId, DEFAULT_SHARD_ID},

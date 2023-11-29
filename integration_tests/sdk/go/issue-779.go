@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/CeresDB/ceresdb-client-go/ceresdb"
+	"github.com/CeresDB/horaedb-client-go/ceresdb"
 )
 
 func checkAutoAddColumnsWithCreateTable(ctx context.Context, client ceresdb.Client) error {

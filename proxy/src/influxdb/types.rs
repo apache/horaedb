@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use bytes::Bytes;
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     value, Field, FieldGroup, Tag, Value, WriteSeriesEntry, WriteTableRequest,
 };
 use common_types::{
@@ -564,7 +564,7 @@ pub(crate) fn convert_write_request(req: WriteRequest) -> Result<Vec<WriteTableR
     Ok(req_by_measurement.into_values().collect())
 }
 
-/// Convert influxdb's FieldValue to ceresdbproto's Value
+/// Convert influxdb's FieldValue to horaedbproto's Value
 fn convert_influx_value(field_value: FieldValue) -> Value {
     let v = match field_value {
         FieldValue::I64(v) => value::Value::Int64Value(v),

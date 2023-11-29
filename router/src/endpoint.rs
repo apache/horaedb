@@ -16,7 +16,7 @@
 
 use std::str::FromStr;
 
-use ceresdbproto::storage;
+use horaedbproto::storage;
 use generic_error::GenericError;
 use serde::{Deserialize, Serialize};
 

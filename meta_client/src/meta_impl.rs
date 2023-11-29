@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ceresdbproto::{
+use horaedbproto::{
     common::ResponseHeader,
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };

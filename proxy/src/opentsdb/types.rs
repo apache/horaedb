@@ -18,7 +18,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     value, Field, FieldGroup, Tag, Value as ProtoValue, WriteSeriesEntry, WriteTableRequest,
 };
 use generic_error::BoxError;

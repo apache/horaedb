@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::common::ResponseHeader;
+use horaedbproto::common::ResponseHeader;
 use generic_error::GenericError;
 use http::StatusCode;
 use macros::define_result;

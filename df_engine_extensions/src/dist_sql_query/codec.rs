@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use ceresdbproto::remote_engine::{extension_node::TypedExtension, DistSqlQueryExtensionNode};
+use horaedbproto::remote_engine::{extension_node::TypedExtension, DistSqlQueryExtensionNode};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::FunctionRegistry,

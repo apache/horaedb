@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::prometheus::sub_expr::OperatorType;
+use horaedbproto::prometheus::sub_expr::OperatorType;
 use datafusion::error::DataFusionError;
 use macros::define_result;
 use snafu::{Backtrace, Snafu};

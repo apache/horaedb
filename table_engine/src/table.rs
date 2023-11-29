@@ -25,7 +25,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::sys_catalog as sys_catalog_pb;
+use horaedbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     column_schema::ColumnSchema,
     datum::Datum,
@@ -335,8 +335,8 @@ impl Default for ReadOptions {
     }
 }
 
-impl From<ceresdbproto::remote_engine::ReadOptions> for ReadOptions {
-    fn from(pb: ceresdbproto::remote_engine::ReadOptions) -> Self {
+impl From<horaedbproto::remote_engine::ReadOptions> for ReadOptions {
+    fn from(pb: horaedbproto::remote_engine::ReadOptions) -> Self {
         Self {
             batch_size: pb.batch_size as usize,
             read_parallelism: pb.read_parallelism as usize,
@@ -349,7 +349,7 @@ impl From<ceresdbproto::remote_engine::ReadOptions> for ReadOptions {
     }
 }
 
-impl From<ReadOptions> for ceresdbproto::remote_engine::ReadOptions {
+impl From<ReadOptions> for horaedbproto::remote_engine::ReadOptions {
     fn from(opts: ReadOptions) -> Self {
         Self {
             batch_size: opts.batch_size as u64,
@@ -419,7 +419,7 @@ impl fmt::Debug for ReadRequest {
     }
 }
 
-impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
+impl TryFrom<ReadRequest> for horaedbproto::remote_engine::TableReadRequest {
     type Error = Error;
 
     fn try_from(request: ReadRequest) -> std::result::Result<Self, Error> {
@@ -446,10 +446,10 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
     }
 }
 
-impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
+impl TryFrom<horaedbproto::remote_engine::TableReadRequest> for ReadRequest {
     type Error = Error;
 
-    fn try_from(pb: ceresdbproto::remote_engine::TableReadRequest) -> Result<Self> {
+    fn try_from(pb: horaedbproto::remote_engine::TableReadRequest) -> Result<Self> {
         let opts = pb.opts.context(EmptyReadOptions)?.into();
         let projected_schema = pb
             .projected_schema
