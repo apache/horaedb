@@ -135,15 +135,17 @@ struct ExecutePlanMetricCollector {
     query: String,
     request_id: RequestId,
     slow_threshold: Duration,
+    priority: Priority,
 }
 
 impl ExecutePlanMetricCollector {
-    fn new(request_id: u64, query: String, slow_threshold_secs: u64) -> Self {
+    fn new(request_id: u64, query: String, slow_threshold_secs: u64, priority: Priority) -> Self {
         Self {
             start: Instant::now(),
             query,
             request_id: request_id.into(),
             slow_threshold: Duration::from_secs(slow_threshold_secs),
+            priority,
         }
     }
 }
@@ -159,6 +161,10 @@ impl MetricCollector for ExecutePlanMetricCollector {
                 self.query
             );
         }
+
+        REMOTE_ENGINE_QUERY_COUNTER
+            .with_label_values(&[self.priority.as_str()])
+            .inc();
         REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC
             .execute_physical_plan
             .observe(cost.as_secs_f64());
@@ -631,9 +637,6 @@ impl RemoteEngineServiceImpl {
             ctx.timeout_ms,
             priority,
         );
-        REMOTE_ENGINE_QUERY_COUNTER
-            .with_label_values(&[query_ctx.priority.as_str()])
-            .inc();
 
         debug!(
             "Execute remote query, ctx:{query_ctx:?}, query:{}",
@@ -643,6 +646,7 @@ impl RemoteEngineServiceImpl {
             ctx.request_id,
             ctx.displayable_query,
             slow_threshold_secs,
+            query_ctx.priority,
         );
 
         let rt = self
@@ -681,11 +685,6 @@ impl RemoteEngineServiceImpl {
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
         let priority = ctx.priority();
-        let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id,
-            ctx.displayable_query,
-            slow_threshold_secs,
-        );
         let query_ctx = create_query_ctx(
             ctx.request_id,
             ctx.default_catalog,
@@ -693,11 +692,12 @@ impl RemoteEngineServiceImpl {
             ctx.timeout_ms,
             priority,
         );
-        let rt = self
-            .runtimes
-            .read_runtime
-            .choose_runtime(&query_ctx.priority);
-
+        let metric = ExecutePlanMetricCollector::new(
+            ctx.request_id,
+            ctx.displayable_query,
+            slow_threshold_secs,
+            query_ctx.priority,
+        );
         let key = PhysicalPlanKey {
             encoded_plan: encoded_plan.clone(),
         };
@@ -708,6 +708,10 @@ impl RemoteEngineServiceImpl {
             ..
         } = query_dedup;
 
+        let rt = self
+            .runtimes
+            .read_runtime
+            .choose_runtime(&query_ctx.priority);
         let (tx, rx) = mpsc::channel(config.notify_queue_cap);
         match physical_plan_notifiers.insert_notifier(key.clone(), tx) {
             // The first request, need to handle it, and then notify the other requests.
