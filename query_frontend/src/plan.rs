@@ -32,6 +32,7 @@ use datafusion::{
 };
 use logger::{debug, warn};
 use macros::define_result;
+use runtime::Priority;
 use snafu::Snafu;
 use table_engine::{partition::PartitionInfo, table::TableRef};
 
@@ -102,7 +103,7 @@ impl QueryPlan {
     /// Note: When it timestamp filter evals to false(such as ts < 10 and ts >
     /// 100), it will return None, which means no valid time range for this
     /// query.
-    pub fn extract_time_range(&self) -> Option<TimeRange> {
+    fn extract_time_range(&self) -> Option<TimeRange> {
         let ts_column = if let Some(v) = self.find_timestamp_column() {
             v
         } else {
@@ -168,6 +169,32 @@ impl QueryPlan {
         }
 
         TimeRange::new(start.into(), end.into())
+    }
+
+    /// Decide the query priority based on the query plan.
+    /// When query contains invalid time range, it will return None.
+    // TODO: Currently we only consider the time range, consider other factors, such
+    // as the number of series, or slow log metrics.
+    pub fn decide_query_priority(&self, threshold: u64) -> Option<Priority> {
+        let time_range = self.extract_time_range()?;
+        let is_expensive = if let Some(v) = time_range
+            .exclusive_end()
+            .as_i64()
+            .checked_sub(time_range.inclusive_start().as_i64())
+        {
+            v as u64 >= threshold
+        } else {
+            // When overflow, we treat it as expensive query.
+            true
+        };
+
+        let priority = if is_expensive {
+            Priority::Lower
+        } else {
+            Priority::Higher
+        };
+
+        Some(priority)
     }
 }
 

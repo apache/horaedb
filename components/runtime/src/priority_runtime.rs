@@ -16,6 +16,7 @@ use std::future::Future;
 
 use crate::{JoinHandle, RuntimeRef};
 
+// TODO: maybe we could move this to common_types crate.
 #[derive(Copy, Clone, Debug, Default)]
 #[repr(u8)]
 pub enum Priority {

@@ -155,9 +155,10 @@ impl MetricCollector for ExecutePlanMetricCollector {
         let cost = self.start.elapsed();
         if cost > self.slow_threshold {
             slow_query!(
-                "Remote query elapsed:{:?}, id:{}, query:{}",
+                "Remote query elapsed:{:?}, id:{}, priority:{}, query:{}",
                 cost,
                 self.request_id,
+                self.priority.as_str(),
                 self.query
             );
         }

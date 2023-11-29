@@ -3728,6 +3728,7 @@ version = "1.2.6-alpha"
 dependencies = [
  "chrono",
  "log",
+ "runtime",
  "serde",
  "slog",
  "slog-async",
@@ -5458,6 +5459,7 @@ dependencies = [
  "prom-remote-api",
  "regex",
  "regex-syntax 0.6.29",
+ "runtime",
  "schema",
  "snafu 0.6.10",
  "sqlparser",

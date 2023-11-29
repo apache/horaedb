@@ -28,6 +28,7 @@ use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
+    plan::Plan,
     provider::CatalogMetaProvider,
 };
 use router::endpoint::Endpoint;
@@ -168,7 +169,7 @@ impl Proxy {
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
         let slow_threshold = Duration::from_secs(slow_threshold_secs);
-        let slow_timer = SlowTimer::new(ctx.request_id.as_u64(), sql, slow_threshold);
+        let mut slow_timer = SlowTimer::new(ctx.request_id.as_u64(), sql, slow_threshold);
         let deadline = ctx.timeout.map(|t| slow_timer.start_time() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
@@ -224,6 +225,11 @@ impl Proxy {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to create plan",
             })?;
+        if let Plan::Query(plan) = &plan {
+            if let Some(priority) = plan.decide_query_priority(self.expensive_query_threshold) {
+                slow_timer.priority(priority);
+            }
+        }
 
         let output = if enable_partition_table_access {
             self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)

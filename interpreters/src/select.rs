@@ -15,7 +15,6 @@
 //! Interpreter for select statement
 
 use async_trait::async_trait;
-use common_types::time::TimeRange;
 use futures::TryStreamExt;
 use generic_error::{BoxError, GenericError};
 use logger::debug;
@@ -74,39 +73,23 @@ impl SelectInterpreter {
             query_runtime,
         })
     }
-
-    // Currently, we only consider the time range.
-    // TODO: consider other factors, such as the number of series, or slow log
-    // metrics.
-    fn is_expensive_query(time_range: &TimeRange, threshold: u64) -> bool {
-        if let Some(v) = time_range
-            .exclusive_end()
-            .as_i64()
-            .checked_sub(time_range.inclusive_start().as_i64())
-        {
-            v as u64 >= threshold
-        } else {
-            true
-        }
-    }
 }
 
 #[async_trait]
 impl Interpreter for SelectInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
-        let time_range = self.plan.extract_time_range();
-        // TODO: if not time range is found, we should return an empty result directly.
-        let is_expensive_query = if let Some(time_range) = time_range {
-            Self::is_expensive_query(&time_range, self.ctx.expensive_query_threshold())
-        } else {
-            false
+        let plan = self.plan;
+        let priority = match plan.decide_query_priority(self.ctx.expensive_query_threshold()) {
+            Some(v) => v,
+            None => {
+                debug!(
+                    "Query has invalid query range, return empty result directly, id:{request_id}, plan:{plan:?}"
+                );
+                return Ok(Output::Records(Vec::new()));
+            }
         };
-        let priority = if is_expensive_query {
-            Priority::Lower
-        } else {
-            Priority::Higher
-        };
+
         ENGINE_QUERY_COUNTER
             .with_label_values(&[priority.as_str()])
             .inc();
@@ -118,14 +101,13 @@ impl Interpreter for SelectInterpreter {
             .context(Select)?;
 
         debug!(
-            "Interpreter execute select begin, request_id:{}, plan:{:?}, time_range:{:?}, is_expensive:{}",
-            request_id, self.plan, time_range, is_expensive_query
+            "Interpreter execute select begin, request_id:{request_id}, plan:{plan:?}, priority:{priority:?}"
         );
 
         // Create physical plan.
         let physical_plan = self
             .physical_planner
-            .plan(&query_ctx, self.plan)
+            .plan(&query_ctx, plan)
             .await
             .box_err()
             .context(ExecutePlan {
@@ -133,7 +115,7 @@ impl Interpreter for SelectInterpreter {
             })
             .context(Select)?;
 
-        if is_expensive_query {
+        if matches!(priority, Priority::Lower) {
             let executor = self.executor;
             return self
                 .query_runtime

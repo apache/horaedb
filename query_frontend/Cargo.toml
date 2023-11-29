@@ -58,6 +58,7 @@ paste = { workspace = true }
 prom-remote-api = { workspace = true }
 regex = { workspace = true }
 regex-syntax = "0.6.28"
+runtime = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }
 table_engine = { workspace = true }
