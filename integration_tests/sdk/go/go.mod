@@ -2,7 +2,7 @@ module go-sdk-test
 
 go 1.17
 
-require github.com/CeresDB/horaedb-client-go v1.1.4-0.20231130011242-4193ca51027b
+require github.com/CeresDB/horaedb-client-go v1.2.0
 
 require (
 	github.com/CeresDB/horaedbproto/golang v0.0.0-20231129131648-5d5d868218c3 // indirect
