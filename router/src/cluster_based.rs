@@ -15,9 +15,9 @@
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
-use ceresdbproto::storage::Route;
 use cluster::ClusterRef;
 use generic_error::BoxError;
+use horaedbproto::storage::Route;
 use logger::trace;
 use meta_client::types::RouteTablesRequest;
 use moka::future::Cache;
@@ -198,11 +198,11 @@ impl Router for ClusterBasedRouter {
 mod tests {
     use std::{collections::HashMap, sync::Arc, thread::sleep, time::Duration};
 
-    use ceresdbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
     };
     use common_types::table::ShardId;
+    use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
     };

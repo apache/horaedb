@@ -17,8 +17,8 @@ mod metadata_reader;
 
 use std::{str::Utf8Error, sync::Arc};
 
-use ceresdbproto::sst as sst_pb;
 use common_types::{schema::Schema, time::TimeRange, SequenceNumber};
+use horaedbproto::sst as sst_pb;
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;

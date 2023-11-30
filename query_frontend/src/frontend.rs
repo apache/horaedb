@@ -16,10 +16,10 @@
 
 use std::{sync::Arc, time::Instant};
 
-use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
 use generic_error::GenericError;
+use horaedbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::storage::{RouteRequest as RouteRequestPb, RouteResponse};
+use horaedbproto::storage::{RouteRequest as RouteRequestPb, RouteResponse};
 use router::RouteRequest;
 
 use crate::{error, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};

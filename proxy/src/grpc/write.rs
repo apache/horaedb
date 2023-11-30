@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::storage::{WriteRequest, WriteResponse};
+use horaedbproto::storage::{WriteRequest, WriteResponse};
 
 use crate::{error, error::build_ok_header, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
 

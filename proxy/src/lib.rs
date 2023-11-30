@@ -51,10 +51,6 @@ use catalog::{
     },
     CatalogRef,
 };
-use ceresdbproto::storage::{
-    storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
-    PrometheusRemoteQueryResponse, Route,
-};
 use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
 use datafusion::{
     prelude::{Column, Expr},
@@ -62,6 +58,10 @@ use datafusion::{
 };
 use futures::FutureExt;
 use generic_error::BoxError;
+use horaedbproto::storage::{
+    storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
+    PrometheusRemoteQueryResponse, Route,
+};
 use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
     context::Context as InterpreterContext,

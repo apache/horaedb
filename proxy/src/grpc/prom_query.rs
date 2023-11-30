@@ -18,17 +18,17 @@ use std::{
     time::Instant,
 };
 
-use ceresdbproto::{
-    common::ResponseHeader,
-    prometheus::{Label, Sample, TimeSeries},
-    storage::{PrometheusQueryRequest, PrometheusQueryResponse},
-};
 use common_types::{
     datum::DatumKind,
     record_batch::RecordBatch,
     schema::{RecordSchema, TSID_COLUMN},
 };
 use generic_error::BoxError;
+use horaedbproto::{
+    common::ResponseHeader,
+    prometheus::{Label, Sample, TimeSeries},
+    storage::{PrometheusQueryRequest, PrometheusQueryResponse},
+};
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
 use logger::info;

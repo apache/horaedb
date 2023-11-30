@@ -90,7 +90,7 @@ impl TableScanContext {
     }
 }
 
-impl TryFrom<TableScanContext> for ceresdbproto::remote_engine::TableScanContext {
+impl TryFrom<TableScanContext> for horaedbproto::remote_engine::TableScanContext {
     type Error = datafusion::error::DataFusionError;
 
     fn try_from(value: TableScanContext) -> DfResult<Self> {
@@ -116,10 +116,10 @@ impl TryFrom<TableScanContext> for ceresdbproto::remote_engine::TableScanContext
     }
 }
 
-impl TryFrom<ceresdbproto::remote_engine::TableScanContext> for TableScanContext {
+impl TryFrom<horaedbproto::remote_engine::TableScanContext> for TableScanContext {
     type Error = datafusion::error::DataFusionError;
 
-    fn try_from(value: ceresdbproto::remote_engine::TableScanContext) -> DfResult<Self> {
+    fn try_from(value: horaedbproto::remote_engine::TableScanContext) -> DfResult<Self> {
         let projected_schema = value
             .projected_schema
             .ok_or(DataFusionError::Internal(

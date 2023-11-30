@@ -17,7 +17,7 @@ use std::{
     time::{self, SystemTime},
 };
 
-use ceresdb_client::{
+use horaedb_client::{
     db_client::{Builder, DbClient, Mode},
     model::{
         sql_query::{Request as SqlQueryRequest, Response as SqlQueryResponse},

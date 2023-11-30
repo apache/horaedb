@@ -29,9 +29,9 @@ workspace = true
 
 [dependencies]
 # In alphabetical order
-ceresdbproto = { workspace = true }
 chrono = { workspace = true }
 common_types = { workspace = true }
+horaedbproto = { workspace = true }
 macros = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

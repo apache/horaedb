@@ -18,9 +18,9 @@ use arrow::{compute, record_batch::RecordBatch as ArrowRecordBatch};
 use async_trait::async_trait;
 use bytes::Bytes;
 use bytes_ext::{BytesMut, SafeBufMut};
-use ceresdbproto::sst as sst_pb;
 use common_types::schema::{ArrowSchemaRef, Schema};
 use generic_error::{BoxError, GenericError};
+use horaedbproto::sst as sst_pb;
 use macros::define_result;
 use parquet::{
     arrow::AsyncArrowWriter,

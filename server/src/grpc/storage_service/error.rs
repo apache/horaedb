@@ -14,7 +14,7 @@
 
 //! Error definitions for storage service.
 
-use ceresdbproto::common::ResponseHeader;
+use horaedbproto::common::ResponseHeader;
 
 pub fn build_err_header(code: u32, msg: String) -> ResponseHeader {
     ResponseHeader { code, error: msg }

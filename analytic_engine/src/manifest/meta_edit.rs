@@ -17,11 +17,11 @@
 use std::convert::TryFrom;
 
 use bytes_ext::{Buf, BufMut};
-use ceresdbproto::{manifest as manifest_pb, schema as schema_pb};
 use common_types::{
     schema::{Schema, Version},
     SequenceNumber,
 };
+use horaedbproto::{manifest as manifest_pb, schema as schema_pb};
 use macros::define_result;
 use prost::Message;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};

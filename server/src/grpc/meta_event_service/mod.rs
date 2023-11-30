@@ -21,14 +21,6 @@ use std::{
 
 use async_trait::async_trait;
 use catalog::table_operator::TableOperator;
-use ceresdbproto::meta_event::{
-    meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
-    CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest, CloseTableOnShardResponse,
-    CreateTableOnShardRequest, CreateTableOnShardResponse, DropTableOnShardRequest,
-    DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse, OpenShardRequest,
-    OpenShardResponse, OpenTableOnShardRequest, OpenTableOnShardResponse, SplitShardRequest,
-    SplitShardResponse,
-};
 use cluster::{
     shard_operation::{WalCloserAdapter, WalRegionCloserRef},
     shard_operator::{
@@ -44,6 +36,14 @@ use common_types::{
 };
 use future_ext::RetryConfig;
 use generic_error::BoxError;
+use horaedbproto::meta_event::{
+    meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
+    CloseShardRequest, CloseShardResponse, CloseTableOnShardRequest, CloseTableOnShardResponse,
+    CreateTableOnShardRequest, CreateTableOnShardResponse, DropTableOnShardRequest,
+    DropTableOnShardResponse, MergeShardsRequest, MergeShardsResponse, OpenShardRequest,
+    OpenShardResponse, OpenTableOnShardRequest, OpenTableOnShardResponse, SplitShardRequest,
+    SplitShardResponse,
+};
 use logger::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;

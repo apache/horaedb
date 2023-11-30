@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::common::ResponseHeader;
 use generic_error::GenericError;
+use horaedbproto::common::ResponseHeader;
 use http::StatusCode;
 use macros::define_result;
 use snafu::{Backtrace, Snafu};

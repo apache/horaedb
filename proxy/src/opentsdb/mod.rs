@@ -15,7 +15,7 @@
 //! This module implements [put][1] for OpenTSDB
 //! [1]: http://opentsdb.net/docs/build/html/api_http/put.html
 
-use ceresdbproto::storage::{
+use horaedbproto::storage::{
     RequestContext as GrpcRequestContext, WriteRequest as GrpcWriteRequest,
 };
 use http::StatusCode;

@@ -16,7 +16,7 @@
 
 use std::{collections::HashMap, sync::RwLock};
 
-use ceresdbproto::storage::{self, RequestContext};
+use horaedbproto::storage::{self, RequestContext};
 use logger::debug;
 use router::{endpoint::Endpoint, RouteRequest, RouterRef};
 use snafu::{OptionExt, ResultExt};

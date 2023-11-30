@@ -25,13 +25,13 @@ use arrow_ext::{
     ipc,
     ipc::{CompressOptions, CompressionMethod},
 };
-use ceresdbproto::{
-    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
-    storage::arrow_payload,
-};
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
+use horaedbproto::{
+    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
+    storage::arrow_payload,
+};
 use logger::{error, info};
 use router::RouterRef;
 use runtime::Runtime;
@@ -87,7 +87,7 @@ impl Client {
         let table_ident = request.table.clone();
         let record_schema = request.read_request.projected_schema.to_record_schema();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
-        let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
+        let request_pb = horaedbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()
             .context(Convert {
                 msg: "Failed to convert ReadRequest to pb",
@@ -252,7 +252,7 @@ impl Client {
         let route_context = self.cached_router.route(&request.table_ident).await?;
 
         let table_ident = request.table_ident.clone();
-        let request_pb: ceresdbproto::remote_engine::AlterTableSchemaRequest = request.into();
+        let request_pb: horaedbproto::remote_engine::AlterTableSchemaRequest = request.into();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
         let mut result = Ok(());
@@ -310,7 +310,7 @@ impl Client {
         let route_context = self.cached_router.route(&request.table_ident).await?;
 
         let table_ident = request.table_ident.clone();
-        let request_pb: ceresdbproto::remote_engine::AlterTableOptionsRequest = request.into();
+        let request_pb: horaedbproto::remote_engine::AlterTableOptionsRequest = request.into();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
         let mut result = Ok(());
@@ -363,7 +363,7 @@ impl Client {
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
         let table_ident = request.table.clone();
-        let request_pb = ceresdbproto::remote_engine::GetTableInfoRequest::try_from(request)
+        let request_pb = horaedbproto::remote_engine::GetTableInfoRequest::try_from(request)
             .box_err()
             .context(Convert {
                 msg: "Failed to convert GetTableInfoRequest to pb",
@@ -453,7 +453,7 @@ impl Client {
         let plan_schema = request.plan_schema;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb =
-            ceresdbproto::remote_engine::ExecutePlanRequest::try_from(request.remote_request)
+            horaedbproto::remote_engine::ExecutePlanRequest::try_from(request.remote_request)
                 .box_err()
                 .context(Convert {
                     msg: "Failed to convert RemoteExecuteRequest to pb",

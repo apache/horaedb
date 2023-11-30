@@ -183,7 +183,7 @@ impl ProjectedSchema {
     }
 }
 
-impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
+impl From<ProjectedSchema> for horaedbproto::schema::ProjectedSchema {
     fn from(request: ProjectedSchema) -> Self {
         let table_schema_pb = (&request.0.original_schema).into();
         let projection_pb = request.0.projection.as_ref().map(|project| {
@@ -191,7 +191,7 @@ impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
                 .iter()
                 .map(|one_project| *one_project as u64)
                 .collect::<Vec<u64>>();
-            ceresdbproto::schema::Projection { idx: project }
+            horaedbproto::schema::Projection { idx: project }
         });
 
         Self {
@@ -201,11 +201,11 @@ impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
     }
 }
 
-impl TryFrom<ceresdbproto::schema::ProjectedSchema> for ProjectedSchema {
+impl TryFrom<horaedbproto::schema::ProjectedSchema> for ProjectedSchema {
     type Error = Error;
 
     fn try_from(
-        pb: ceresdbproto::schema::ProjectedSchema,
+        pb: horaedbproto::schema::ProjectedSchema,
     ) -> std::result::Result<Self, Self::Error> {
         let schema: Schema = pb
             .table_schema

@@ -14,12 +14,12 @@
 
 use std::sync::Arc;
 
-use ceresdbproto::remote_engine::{extension_node::TypedExtension, DistSqlQueryExtensionNode};
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
     execution::FunctionRegistry,
     physical_plan::ExecutionPlan,
 };
+use horaedbproto::remote_engine::{extension_node::TypedExtension, DistSqlQueryExtensionNode};
 
 use crate::{
     codec::TypedPhysicalExtensionCodec, dist_sql_query::physical_plan::UnresolvedSubTableScan,

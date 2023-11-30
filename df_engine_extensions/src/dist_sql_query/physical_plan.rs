@@ -558,11 +558,11 @@ impl DisplayAs for UnresolvedSubTableScan {
     }
 }
 
-impl TryFrom<ceresdbproto::remote_engine::UnresolvedSubScan> for UnresolvedSubTableScan {
+impl TryFrom<horaedbproto::remote_engine::UnresolvedSubScan> for UnresolvedSubTableScan {
     type Error = DataFusionError;
 
     fn try_from(
-        value: ceresdbproto::remote_engine::UnresolvedSubScan,
+        value: horaedbproto::remote_engine::UnresolvedSubScan,
     ) -> Result<Self, Self::Error> {
         let table = value
             .table
@@ -587,7 +587,7 @@ impl TryFrom<ceresdbproto::remote_engine::UnresolvedSubScan> for UnresolvedSubTa
     }
 }
 
-impl TryFrom<UnresolvedSubTableScan> for ceresdbproto::remote_engine::UnresolvedSubScan {
+impl TryFrom<UnresolvedSubTableScan> for horaedbproto::remote_engine::UnresolvedSubScan {
     type Error = DataFusionError;
 
     fn try_from(value: UnresolvedSubTableScan) -> Result<Self, Self::Error> {

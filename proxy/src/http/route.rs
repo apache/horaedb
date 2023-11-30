@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use ceresdbproto::storage::RouteRequest as RouteRequestPb;
+use horaedbproto::storage::RouteRequest as RouteRequestPb;
 use router::{endpoint::Endpoint, RouteRequest};
 use serde::Serialize;
 
@@ -40,7 +40,7 @@ impl Proxy {
         }
 
         let req_pb = RouteRequestPb {
-            context: Some(ceresdbproto::storage::RequestContext {
+            context: Some(horaedbproto::storage::RequestContext {
                 database: ctx.schema.clone(),
             }),
             tables: vec![table.to_string()],

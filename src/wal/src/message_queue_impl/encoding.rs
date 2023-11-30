@@ -15,12 +15,12 @@
 //! Meta encoding of wal's message queue implementation
 
 use bytes_ext::{Buf, BufMut, BytesMut, SafeBuf, SafeBufMut};
-use ceresdbproto::wal_on_mq::{
+use codec::{Decoder, Encoder};
+use generic_error::{BoxError, GenericError};
+use horaedbproto::wal_on_mq::{
     table_meta_data::SafeDeleteOffset, RegionMetaSnapshot as RegionMetaSnapshotPb,
     TableMetaData as TableMetaDataPb,
 };
-use codec::{Decoder, Encoder};
-use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use prost::Message;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
