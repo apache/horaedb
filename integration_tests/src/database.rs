@@ -17,7 +17,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdb_client::{
+use horaedb_client::{
     db_client::{Builder, DbClient, Mode},
     model::sql_query::{display::CsvFormatter, Request},
     RpcContext,

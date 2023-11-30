@@ -1296,49 +1296,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "ceresdb-client"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ef195bacb1ca0eb02d6a0562b09852941d01de2b962c7066c922115fab7dcb7"
-dependencies = [
- "arrow 38.0.0",
- "async-trait",
- "ceresdbproto",
- "dashmap 5.4.0",
- "futures 0.3.28",
- "paste 1.0.12",
- "thiserror",
- "tokio",
- "tonic 0.8.3",
- "zstd",
-]
-
-[[package]]
 name = "ceresdb-test"
 version = "1.2.6-alpha"
 dependencies = [
  "anyhow",
  "async-trait",
- "ceresdb-client",
+ "horaedb-client",
  "local-ip-address",
  "reqwest",
  "serde",
  "sqlness",
  "tokio",
  "uuid",
-]
-
-[[package]]
-name = "ceresdbproto"
-version = "1.0.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "566b40a90db96af9274f42dd6ef088e220ffa7c306e3d3d1ed3848d2c770da99"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic 0.8.3",
- "tonic-build",
- "walkdir",
 ]
 
 [[package]]
@@ -3071,6 +3040,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
+]
+
+[[package]]
+name = "horaedb-client"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bb850f1e1fc5d95b31278a842836652f0159e7f00d5e846e78c6076ae46b3b3"
+dependencies = [
+ "arrow 38.0.0",
+ "async-trait",
+ "dashmap 5.4.0",
+ "futures 0.3.28",
+ "horaedbproto",
+ "paste 1.0.12",
+ "thiserror",
+ "tokio",
+ "tonic 0.8.3",
+ "zstd",
 ]
 
 [[package]]
@@ -5952,7 +5939,7 @@ dependencies = [
 name = "rust-sdk-test"
 version = "1.2.6-alpha"
 dependencies = [
- "ceresdb-client",
+ "horaedb-client",
  "tokio",
 ]
 
