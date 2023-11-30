@@ -96,7 +96,6 @@ dependencies = [
  "atomic_enum",
  "base64 0.13.1",
  "bytes_ext",
- "ceresdbproto",
  "codec",
  "common_types",
  "datafusion",
@@ -105,6 +104,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "hex",
+ "horaedbproto",
  "hyperloglog",
  "id_allocator",
  "itertools 0.10.5",
@@ -1515,11 +1515,11 @@ dependencies = [
  "async-trait",
  "bytes_ext",
  "catalog",
- "ceresdbproto",
  "common_types",
  "etcd-client",
  "future_ext",
  "generic_error",
+ "horaedbproto",
  "logger",
  "macros",
  "meta_client",
@@ -1593,10 +1593,10 @@ dependencies = [
  "arrow 43.0.0",
  "arrow_ext",
  "bytes_ext",
- "ceresdbproto",
  "chrono",
  "datafusion",
  "hash_ext",
+ "horaedbproto",
  "macros",
  "paste 1.0.12",
  "prost",
@@ -2348,12 +2348,12 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "catalog",
- "ceresdbproto",
  "common_types",
  "datafusion",
  "datafusion-proto",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto",
  "insta",
  "lazy_static",
  "prometheus 0.12.0",
@@ -3071,6 +3071,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
+]
+
+[[package]]
+name = "horaedbproto"
+version = "1.0.23"
+dependencies = [
+ "prost",
+ "protoc-bin-vendored",
+ "tonic 0.8.3",
+ "tonic-build",
+ "walkdir",
 ]
 
 [[package]]
@@ -3902,10 +3913,10 @@ name = "meta_client"
 version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
- "ceresdbproto",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto",
  "logger",
  "macros",
  "prost",
@@ -4427,13 +4438,13 @@ version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "bytes",
- "ceresdbproto",
  "chrono",
  "clru",
  "crc",
  "futures 0.3.28",
  "generic_error",
  "hash_ext",
+ "horaedbproto",
  "lazy_static",
  "logger",
  "lru 0.7.8",
@@ -5304,7 +5315,6 @@ dependencies = [
  "async-trait",
  "bytes",
  "catalog",
- "ceresdbproto",
  "clru",
  "cluster",
  "common_types",
@@ -5312,6 +5322,7 @@ dependencies = [
  "df_operator",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto",
  "http",
  "influxdb-line-protocol",
  "interpreters",
@@ -5431,7 +5442,6 @@ dependencies = [
  "arrow 43.0.0",
  "async-trait",
  "catalog",
- "ceresdbproto",
  "cluster",
  "codec",
  "common_types",
@@ -5440,6 +5450,7 @@ dependencies = [
  "df_operator",
  "generic_error",
  "hash_ext",
+ "horaedbproto",
  "influxdb_influxql_parser",
  "iox_query_influxql",
  "itertools 0.10.5",
@@ -5742,10 +5753,10 @@ version = "1.2.6-alpha"
 dependencies = [
  "arrow_ext",
  "async-trait",
- "ceresdbproto",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto",
  "logger",
  "macros",
  "router",
@@ -5871,10 +5882,10 @@ name = "router"
 version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
- "ceresdbproto",
  "cluster",
  "common_types",
  "generic_error",
+ "horaedbproto",
  "logger",
  "macros",
  "meta_client",
@@ -6246,7 +6257,6 @@ dependencies = [
  "async-trait",
  "bytes_ext",
  "catalog",
- "ceresdbproto",
  "clru",
  "cluster",
  "common_types",
@@ -6256,6 +6266,7 @@ dependencies = [
  "future_ext",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto",
  "http",
  "influxdb-line-protocol",
  "interpreters",
@@ -6772,11 +6783,11 @@ dependencies = [
  "async-trait",
  "bytes_ext",
  "catalog",
- "ceresdbproto",
  "codec",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto",
  "logger",
  "macros",
  "prost",
@@ -6794,7 +6805,6 @@ dependencies = [
  "arrow_ext",
  "async-trait",
  "bytes_ext",
- "ceresdbproto",
  "common_types",
  "datafusion",
  "datafusion-proto",
@@ -6802,6 +6812,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "hash_ext",
+ "horaedbproto",
  "itertools 0.10.5",
  "lazy_static",
  "logger",
@@ -6997,9 +7008,9 @@ dependencies = [
 name = "time_ext"
 version = "1.2.6-alpha"
 dependencies = [
- "ceresdbproto",
  "chrono",
  "common_types",
+ "horaedbproto",
  "macros",
  "serde",
  "serde_json",
@@ -7509,8 +7520,8 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
- "rand 0.3.23",
+ "cfg-if 1.0.0",
+ "rand 0.8.5",
  "static_assertions",
 ]
 
@@ -7649,12 +7660,12 @@ version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "bytes_ext",
- "ceresdbproto",
  "chrono",
  "codec",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto",
  "lazy_static",
  "logger",
  "macros",

@@ -19,7 +19,6 @@ use std::{collections::HashMap, mem};
 use async_trait::async_trait;
 use bytes_ext::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
 use catalog::consts;
-use ceresdbproto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
 use codec::{memcomparable::MemComparable, Encoder};
 use common_types::{
     column_schema,
@@ -33,6 +32,7 @@ use common_types::{
     time::Timestamp,
 };
 use futures::TryStreamExt;
+use horaedbproto::sys_catalog::{CatalogEntry, SchemaEntry, TableEntry};
 use logger::{debug, info, warn};
 use macros::define_result;
 use prost::Message;

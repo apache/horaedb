@@ -29,7 +29,7 @@ workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-ceresdbproto = { workspace = true }
+horaedbproto = { workspace = true }
 common_types = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }

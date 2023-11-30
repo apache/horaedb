@@ -32,7 +32,7 @@ arrow = { workspace = true }
 async-recursion = "1.0.4"
 async-trait = { workspace = true }
 catalog = { workspace = true, features = ["test"] }
-ceresdbproto = { workspace = true }
+horaedbproto = { workspace = true }
 common_types = { workspace = true, features = ["test"] }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }

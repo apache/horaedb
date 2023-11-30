@@ -17,13 +17,13 @@
 use std::{collections::HashSet, fmt, ops::Index, sync::Arc};
 
 use bytes_ext::Bytes;
-use ceresdbproto::{schema as schema_pb, sst as sst_pb};
 use common_types::{
     datum::DatumKind,
     schema::{RecordSchemaWithKey, Schema},
     time::TimeRange,
     SequenceNumber,
 };
+use horaedbproto::{schema as schema_pb, sst as sst_pb};
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::xor8::{Xor8, Xor8Builder};

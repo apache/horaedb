@@ -17,7 +17,6 @@
 use std::iter;
 
 use bytes_ext::ByteVec;
-use ceresdbproto::{schema as schema_pb, table_requests};
 use codec::{
     columnar::{ColumnarEncoder, EncodeHint},
     row,
@@ -27,6 +26,7 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
     MIN_SEQUENCE_NUMBER,
 };
+use horaedbproto::{schema as schema_pb, table_requests};
 use itertools::Itertools;
 use logger::{debug, error, info, trace, warn};
 use macros::define_result;

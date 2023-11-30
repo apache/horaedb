@@ -20,9 +20,6 @@ use std::{
 };
 
 use bytes_ext::{ByteVec, Bytes};
-use ceresdbproto::remote_engine::{
-    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
-};
 use common_types::{
     request_id::RequestId,
     row::{
@@ -32,6 +29,9 @@ use common_types::{
     schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
 };
 use generic_error::{BoxError, GenericError, GenericResult};
+use horaedbproto::remote_engine::{
+    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
+};
 use itertools::Itertools;
 use macros::define_result;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -104,8 +104,8 @@ pub struct TableIdentifier {
     pub table: String,
 }
 
-impl From<ceresdbproto::remote_engine::TableIdentifier> for TableIdentifier {
-    fn from(pb: ceresdbproto::remote_engine::TableIdentifier) -> Self {
+impl From<horaedbproto::remote_engine::TableIdentifier> for TableIdentifier {
+    fn from(pb: horaedbproto::remote_engine::TableIdentifier) -> Self {
         Self {
             catalog: pb.catalog,
             schema: pb.schema,
@@ -114,7 +114,7 @@ impl From<ceresdbproto::remote_engine::TableIdentifier> for TableIdentifier {
     }
 }
 
-impl From<TableIdentifier> for ceresdbproto::remote_engine::TableIdentifier {
+impl From<TableIdentifier> for horaedbproto::remote_engine::TableIdentifier {
     fn from(table_ident: TableIdentifier) -> Self {
         Self {
             catalog: table_ident.catalog,
@@ -129,10 +129,10 @@ pub struct ReadRequest {
     pub read_request: TableReadRequest,
 }
 
-impl TryFrom<ceresdbproto::remote_engine::ReadRequest> for ReadRequest {
+impl TryFrom<horaedbproto::remote_engine::ReadRequest> for ReadRequest {
     type Error = Error;
 
-    fn try_from(pb: ceresdbproto::remote_engine::ReadRequest) -> Result<Self> {
+    fn try_from(pb: horaedbproto::remote_engine::ReadRequest) -> Result<Self> {
         let table_identifier = pb.table.context(EmptyTableIdentifier)?;
         let table_read_request = pb.read_request.context(EmptyTableReadRequest)?;
         Ok(Self {
@@ -145,7 +145,7 @@ impl TryFrom<ceresdbproto::remote_engine::ReadRequest> for ReadRequest {
     }
 }
 
-impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::ReadRequest {
+impl TryFrom<ReadRequest> for horaedbproto::remote_engine::ReadRequest {
     type Error = Error;
 
     fn try_from(request: ReadRequest) -> Result<Self> {
@@ -165,7 +165,7 @@ pub struct WriteBatchRequest {
 }
 
 impl WriteBatchRequest {
-    pub fn convert_into_pb(self) -> Result<ceresdbproto::remote_engine::WriteBatchRequest> {
+    pub fn convert_into_pb(self) -> Result<horaedbproto::remote_engine::WriteBatchRequest> {
         let batch = self
             .batch
             .into_iter()
@@ -190,7 +190,7 @@ impl WriteRequest {
     }
 
     pub fn decode_row_group_from_contiguous_payload(
-        payload: ceresdbproto::remote_engine::ContiguousRows,
+        payload: horaedbproto::remote_engine::ContiguousRows,
         schema: &Schema,
     ) -> Result<RowGroup> {
         validate_contiguous_payload_schema(schema, &payload.column_descs)?;
@@ -216,7 +216,7 @@ impl WriteRequest {
         Ok(RowGroup::new_unchecked(schema.clone(), rows))
     }
 
-    pub fn convert_into_pb(self) -> Result<ceresdbproto::remote_engine::WriteRequest> {
+    pub fn convert_into_pb(self) -> Result<horaedbproto::remote_engine::WriteRequest> {
         let row_group = self.write_request.row_group;
         let table_schema = row_group.schema();
 
@@ -238,12 +238,12 @@ impl WriteRequest {
             .iter()
             .map(ColumnDesc::from)
             .collect_vec();
-        let contiguous_rows = ceresdbproto::remote_engine::ContiguousRows {
+        let contiguous_rows = horaedbproto::remote_engine::ContiguousRows {
             schema_version: table_schema.version(),
             encoded_rows,
             column_descs,
         };
-        let row_group_pb = ceresdbproto::remote_engine::RowGroup {
+        let row_group_pb = horaedbproto::remote_engine::RowGroup {
             // Deprecated: the two timestamps are not used anymore.
             min_timestamp: 0,
             max_timestamp: 0,
@@ -253,7 +253,7 @@ impl WriteRequest {
         // Table ident to pb.
         let table_pb = self.table.into();
 
-        Ok(ceresdbproto::remote_engine::WriteRequest {
+        Ok(horaedbproto::remote_engine::WriteRequest {
             table: Some(table_pb),
             row_group: Some(row_group_pb),
         })
@@ -298,7 +298,7 @@ pub struct AlterTableSchemaRequest {
     pub pre_schema_version: Version,
 }
 
-impl TryFrom<ceresdbproto::remote_engine::AlterTableSchemaRequest> for AlterTableSchemaRequest {
+impl TryFrom<horaedbproto::remote_engine::AlterTableSchemaRequest> for AlterTableSchemaRequest {
     type Error = Error;
 
     fn try_from(value: remote_engine::AlterTableSchemaRequest) -> Result<Self> {
@@ -317,7 +317,7 @@ impl TryFrom<ceresdbproto::remote_engine::AlterTableSchemaRequest> for AlterTabl
     }
 }
 
-impl From<AlterTableSchemaRequest> for ceresdbproto::remote_engine::AlterTableSchemaRequest {
+impl From<AlterTableSchemaRequest> for horaedbproto::remote_engine::AlterTableSchemaRequest {
     fn from(value: AlterTableSchemaRequest) -> Self {
         let table = value.table_ident.into();
         let table_schema = (&value.table_schema).into();
@@ -335,7 +335,7 @@ pub struct AlterTableOptionsRequest {
     pub options: HashMap<String, String>,
 }
 
-impl TryFrom<ceresdbproto::remote_engine::AlterTableOptionsRequest> for AlterTableOptionsRequest {
+impl TryFrom<horaedbproto::remote_engine::AlterTableOptionsRequest> for AlterTableOptionsRequest {
     type Error = Error;
 
     fn try_from(value: remote_engine::AlterTableOptionsRequest) -> Result<Self> {
@@ -348,7 +348,7 @@ impl TryFrom<ceresdbproto::remote_engine::AlterTableOptionsRequest> for AlterTab
     }
 }
 
-impl From<AlterTableOptionsRequest> for ceresdbproto::remote_engine::AlterTableOptionsRequest {
+impl From<AlterTableOptionsRequest> for horaedbproto::remote_engine::AlterTableOptionsRequest {
     fn from(value: AlterTableOptionsRequest) -> Self {
         let table = value.table_ident.into();
         let options = value.options;
@@ -363,16 +363,16 @@ pub struct GetTableInfoRequest {
     pub table: TableIdentifier,
 }
 
-impl TryFrom<ceresdbproto::remote_engine::GetTableInfoRequest> for GetTableInfoRequest {
+impl TryFrom<horaedbproto::remote_engine::GetTableInfoRequest> for GetTableInfoRequest {
     type Error = Error;
 
-    fn try_from(value: ceresdbproto::remote_engine::GetTableInfoRequest) -> Result<Self> {
+    fn try_from(value: horaedbproto::remote_engine::GetTableInfoRequest) -> Result<Self> {
         let table = value.table.context(EmptyTableIdentifier)?.into();
         Ok(Self { table })
     }
 }
 
-impl TryFrom<GetTableInfoRequest> for ceresdbproto::remote_engine::GetTableInfoRequest {
+impl TryFrom<GetTableInfoRequest> for horaedbproto::remote_engine::GetTableInfoRequest {
     type Error = Error;
 
     fn try_from(value: GetTableInfoRequest) -> Result<Self> {
@@ -454,7 +454,7 @@ pub enum PhysicalPlan {
     Datafusion(Bytes),
 }
 
-impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequest {
+impl From<RemoteExecuteRequest> for horaedbproto::remote_engine::ExecutePlanRequest {
     fn from(value: RemoteExecuteRequest) -> Self {
         let rest_duration_ms = if let Some(deadline) = value.context.deadline {
             deadline.duration_since(Instant::now()).as_millis() as i64
@@ -462,7 +462,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             NO_TIMEOUT
         };
 
-        let pb_context = ceresdbproto::remote_engine::ExecContext {
+        let pb_context = horaedbproto::remote_engine::ExecContext {
             request_id: value.context.request_id.as_u64(),
             default_catalog: value.context.default_catalog,
             default_schema: value.context.default_schema,
@@ -477,7 +477,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             }
         };
 
-        let pb_table = ceresdbproto::remote_engine::TableIdentifier::from(value.table);
+        let pb_table = horaedbproto::remote_engine::TableIdentifier::from(value.table);
 
         Self {
             table: Some(pb_table),
@@ -487,11 +487,11 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
     }
 }
 
-impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteRequest {
+impl TryFrom<horaedbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteRequest {
     type Error = crate::remote::model::Error;
 
     fn try_from(
-        value: ceresdbproto::remote_engine::ExecutePlanRequest,
+        value: horaedbproto::remote_engine::ExecutePlanRequest,
     ) -> std::result::Result<Self, Self::Error> {
         // Table ident
         let pb_table = value.table.context(ConvertRemoteExecuteRequest {
@@ -503,7 +503,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
         let pb_exec_ctx = value.context.context(ConvertRemoteExecuteRequest {
             msg: "missing exec ctx",
         })?;
-        let ceresdbproto::remote_engine::ExecContext {
+        let horaedbproto::remote_engine::ExecContext {
             request_id,
             default_catalog,
             default_schema,
@@ -532,7 +532,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             msg: "missing physical plan",
         })?;
         let plan = match pb_plan {
-            ceresdbproto::remote_engine::execute_plan_request::PhysicalPlan::Datafusion(plan) => {
+            horaedbproto::remote_engine::execute_plan_request::PhysicalPlan::Datafusion(plan) => {
                 PhysicalPlan::Datafusion(Bytes::from(plan))
             }
         };

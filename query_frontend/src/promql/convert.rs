@@ -14,10 +14,6 @@
 
 use std::{convert::TryFrom, sync::Arc};
 
-use ceresdbproto::prometheus::{
-    self, operand, sub_expr::OperatorType, Expr as ExprPb, Filter as FilterPb,
-    FilterType as FilterPbType, Operand as OperandPb, Selector as PbSelector, SubExpr as PbSubExpr,
-};
 use common_types::{
     schema::{Schema, TSID_COLUMN},
     time::{TimeRange, Timestamp},
@@ -33,6 +29,10 @@ use datafusion::{
     optimizer::utils::conjunction,
     prelude::ident,
     sql::planner::ContextProvider,
+};
+use horaedbproto::prometheus::{
+    self, operand, sub_expr::OperatorType, Expr as ExprPb, Filter as FilterPb,
+    FilterType as FilterPbType, Operand as OperandPb, Selector as PbSelector, SubExpr as PbSubExpr,
 };
 use snafu::{ensure, OptionExt, ResultExt};
 

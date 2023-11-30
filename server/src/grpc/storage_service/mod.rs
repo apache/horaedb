@@ -22,7 +22,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::{
+use futures::{stream, stream::BoxStream, StreamExt};
+use horaedbproto::{
     common::ResponseHeader,
     storage::{
         storage_service_server::StorageService, PrometheusQueryRequest, PrometheusQueryResponse,
@@ -30,7 +31,6 @@ use ceresdbproto::{
         SqlQueryRequest, SqlQueryResponse, WriteRequest, WriteResponse,
     },
 };
-use futures::{stream, stream::BoxStream, StreamExt};
 use http::StatusCode;
 use proxy::{Context, Proxy, FORWARDED_FROM};
 use table_engine::engine::EngineRuntimes;

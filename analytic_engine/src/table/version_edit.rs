@@ -16,8 +16,8 @@
 
 use std::convert::TryFrom;
 
-use ceresdbproto::manifest as manifest_pb;
 use common_types::{time::TimeRange, SequenceNumber};
+use horaedbproto::manifest as manifest_pb;
 use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 

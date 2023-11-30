@@ -29,7 +29,6 @@ use arrow::{
     error::ArrowError,
 };
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use ceresdbproto::storage::{value::Value as PbValue, WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::{
     column_schema::{self, ColumnSchema},
@@ -49,6 +48,7 @@ use datafusion::{
     },
 };
 use generic_error::GenericError;
+use horaedbproto::storage::{value::Value as PbValue, WriteTableRequest};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use logger::{debug, trace};
 use macros::define_result;
@@ -1391,13 +1391,13 @@ pub fn get_table_ref(table_name: &str) -> TableReference {
 #[cfg(test)]
 mod tests {
 
-    use ceresdbproto::storage::{
-        value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
-    };
     use datafusion::{
         common::tree_node::{TreeNode, TreeNodeVisitor, VisitRecursion},
         datasource::source_as_provider,
         logical_expr::LogicalPlan,
+    };
+    use horaedbproto::storage::{
+        value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
     };
     use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
     use sqlparser::ast::Value;

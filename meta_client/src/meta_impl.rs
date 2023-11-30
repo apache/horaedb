@@ -15,11 +15,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use ceresdbproto::{
+use generic_error::BoxError;
+use horaedbproto::{
     common::ResponseHeader,
     meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
 };
-use generic_error::BoxError;
 use logger::{debug, info};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};

@@ -16,11 +16,11 @@
 
 use std::{sync::Arc, time::Duration};
 
-use ceresdbproto::storage::{
-    storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
-};
 use futures::FutureExt;
 use generic_error::BoxError;
+use horaedbproto::storage::{
+    storage_service_client::StorageServiceClient, RequestContext, SqlQueryRequest, SqlQueryResponse,
+};
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use logger::{error, info, warn, SlowTimer};

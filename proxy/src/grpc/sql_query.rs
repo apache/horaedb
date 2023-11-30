@@ -17,16 +17,16 @@
 use std::sync::Arc;
 
 use arrow_ext::ipc::{CompressOptions, CompressionMethod, RecordBatchesEncoder};
-use ceresdbproto::{
+use common_types::record_batch::RecordBatch;
+use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
+use generic_error::BoxError;
+use horaedbproto::{
     common::ResponseHeader,
     storage::{
         arrow_payload, sql_query_response, storage_service_client::StorageServiceClient,
         ArrowPayload, SqlQueryRequest, SqlQueryResponse,
     },
 };
-use common_types::record_batch::RecordBatch;
-use futures::{stream, stream::BoxStream, FutureExt, StreamExt};
-use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use logger::{error, warn};

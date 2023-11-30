@@ -18,10 +18,10 @@ use std::{
 };
 
 use bytes::Bytes;
-use ceresdbproto::storage::{
+use generic_error::BoxError;
+use horaedbproto::storage::{
     value, Field, FieldGroup, Tag, Value as ProtoValue, WriteSeriesEntry, WriteTableRequest,
 };
-use generic_error::BoxError;
 use http::StatusCode;
 use serde::Deserialize;
 use serde_json::from_slice;
