@@ -28,9 +28,9 @@ workspace = true
 workspace = true
 
 [dependencies]
+# In alphabetical order
 chrono = { workspace = true }
 common_types = { workspace = true }
-# In alphabetical order
 horaedbproto = { workspace = true }
 macros = { workspace = true }
 serde = { workspace = true }
