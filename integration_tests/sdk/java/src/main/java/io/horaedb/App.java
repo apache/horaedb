@@ -1,5 +1,6 @@
-package io.ceresdb;
+package io.horaedb;
 
+import io.ceresdb.CeresDBClient;
 import io.ceresdb.models.*;
 import io.ceresdb.options.CeresDBOptions;
 import org.junit.Assert;
@@ -21,7 +22,7 @@ public class App {
     private static CeresDBClient CLIENT;
 
     static {
-        final CeresDBOptions opts = CeresDBOptions.newBuilder(HOST, PORT, DIRECT) // CeresDB default grpc port 8831，use DIRECT RouteMode
+        final CeresDBOptions opts = CeresDBOptions.newBuilder(HOST, PORT, DIRECT) // HoraeDB default grpc port 8831，use DIRECT RouteMode
                 .database("public") // use database for client, can be overridden by the RequestContext in request
                 // maximum retry times when write fails
                 // (only some error codes will be retried, such as the routing table failure)
@@ -32,7 +33,7 @@ public class App {
 
         CLIENT = new CeresDBClient();
         if (!CLIENT.init(opts)) {
-            throw new IllegalStateException("Fail to start CeresDBClient");
+            throw new IllegalStateException("Fail to start HoraeDBClient");
         }
     }
 
