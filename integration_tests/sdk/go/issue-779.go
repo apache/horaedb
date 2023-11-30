@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 
-	"github.com/CeresDB/horaedb-client-go/ceresdb"
+	"github.com/CeresDB/horaedb-client-go/horaedb"
 )
 
-func checkAutoAddColumnsWithCreateTable(ctx context.Context, client ceresdb.Client) error {
+func checkAutoAddColumnsWithCreateTable(ctx context.Context, client horaedb.Client) error {
 	timestampName := "timestamp"
 
 	err := dropTable(ctx, client, table)

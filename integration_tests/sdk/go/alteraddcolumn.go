@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/CeresDB/horaedb-client-go/ceresdb"
+	"github.com/CeresDB/horaedb-client-go/horaedb"
 )
 
 const fieldName = "b"
 const tagName = "btag"
 const timestampName = "t"
 
-func checkPartitionTableAddColumn(ctx context.Context, client ceresdb.Client) error {
+func checkPartitionTableAddColumn(ctx context.Context, client horaedb.Client) error {
 	err := dropTable(ctx, client, partitionTable)
 	if err != nil {
 		return err
@@ -37,7 +37,7 @@ func checkPartitionTableAddColumn(ctx context.Context, client ceresdb.Client) er
 	ts := currentMS()
 
 	// First write will fail, because the schema is not updated yet.
-	// Currently, ceresdb will update the schema when write failed.
+	// Currently, horaedb will update the schema when write failed.
 	err = writePartitionTableNewField(ctx, client, ts, fieldName)
 	if err == nil {
 		panic("first write should fail")
@@ -70,14 +70,14 @@ func checkPartitionTableAddColumn(ctx context.Context, client ceresdb.Client) er
 	return nil
 }
 
-func writePartitionTableNewField(ctx context.Context, client ceresdb.Client, ts int64, fieldName string) error {
-	points := make([]ceresdb.Point, 0, 2)
+func writePartitionTableNewField(ctx context.Context, client horaedb.Client, ts int64, fieldName string) error {
+	points := make([]horaedb.Point, 0, 2)
 	for i := 0; i < 2; i++ {
-		builder := ceresdb.NewPointBuilder(partitionTable).
+		builder := horaedb.NewPointBuilder(partitionTable).
 			SetTimestamp(ts).
-			AddTag("name", ceresdb.NewStringValue(fmt.Sprintf("tag-%d", i))).
-			AddField("value", ceresdb.NewInt64Value(int64(i))).
-			AddField(fieldName, ceresdb.NewStringValue("ss"))
+			AddTag("name", horaedb.NewStringValue(fmt.Sprintf("tag-%d", i))).
+			AddField("value", horaedb.NewInt64Value(int64(i))).
+			AddField(fieldName, horaedb.NewStringValue("ss"))
 
 		point, err := builder.Build()
 
@@ -87,7 +87,7 @@ func writePartitionTableNewField(ctx context.Context, client ceresdb.Client, ts 
 		points = append(points, point)
 	}
 
-	resp, err := client.Write(ctx, ceresdb.WriteRequest{
+	resp, err := client.Write(ctx, horaedb.WriteRequest{
 		Points: points,
 	})
 	if err != nil {
@@ -100,15 +100,15 @@ func writePartitionTableNewField(ctx context.Context, client ceresdb.Client, ts 
 	return nil
 }
 
-func writePartitionTableNewTag(ctx context.Context, client ceresdb.Client, ts int64, tagName string) error {
-	points := make([]ceresdb.Point, 0, 2)
+func writePartitionTableNewTag(ctx context.Context, client horaedb.Client, ts int64, tagName string) error {
+	points := make([]horaedb.Point, 0, 2)
 	for i := 0; i < 2; i++ {
-		builder := ceresdb.NewPointBuilder(partitionTable).
+		builder := horaedb.NewPointBuilder(partitionTable).
 			SetTimestamp(ts).
-			AddTag("name", ceresdb.NewStringValue(fmt.Sprintf("tag-%d", i))).
-			AddField("value", ceresdb.NewInt64Value(int64(i))).
-			AddTag(tagName, ceresdb.NewStringValue("sstag")).
-			AddField(fieldName, ceresdb.NewStringValue("ss"))
+			AddTag("name", horaedb.NewStringValue(fmt.Sprintf("tag-%d", i))).
+			AddField("value", horaedb.NewInt64Value(int64(i))).
+			AddTag(tagName, horaedb.NewStringValue("sstag")).
+			AddField(fieldName, horaedb.NewStringValue("ss"))
 
 		point, err := builder.Build()
 
@@ -118,7 +118,7 @@ func writePartitionTableNewTag(ctx context.Context, client ceresdb.Client, ts in
 		points = append(points, point)
 	}
 
-	resp, err := client.Write(ctx, ceresdb.WriteRequest{
+	resp, err := client.Write(ctx, horaedb.WriteRequest{
 		Points: points,
 	})
 	if err != nil {
@@ -131,10 +131,10 @@ func writePartitionTableNewTag(ctx context.Context, client ceresdb.Client, ts in
 	return nil
 }
 
-func queryPartitionTable(ctx context.Context, client ceresdb.Client, ts int64, timestampName string) error {
+func queryPartitionTable(ctx context.Context, client horaedb.Client, ts int64, timestampName string) error {
 	sql := fmt.Sprintf("select t, name, value,%s,%s from %s where %s = %d order by name,%s", fieldName, tagName, partitionTable, timestampName, ts, tagName)
 
-	resp, err := client.SQLQuery(ctx, ceresdb.SQLQueryRequest{
+	resp, err := client.SQLQuery(ctx, horaedb.SQLQueryRequest{
 		Tables: []string{partitionTable},
 		SQL:    sql,
 	})
@@ -146,34 +146,34 @@ func queryPartitionTable(ctx context.Context, client ceresdb.Client, ts int64, t
 		return fmt.Errorf("expect 2 rows, current: %+v", len(resp.Rows))
 	}
 
-	row0 := []ceresdb.Value{
-		ceresdb.NewInt64Value(ts),
-		ceresdb.NewStringValue("tag-0"),
-		ceresdb.NewInt64Value(0),
-		ceresdb.NewStringValue("ss"),
-		ceresdb.NewStringValue("sstag"),
+	row0 := []horaedb.Value{
+		horaedb.NewInt64Value(ts),
+		horaedb.NewStringValue("tag-0"),
+		horaedb.NewInt64Value(0),
+		horaedb.NewStringValue("ss"),
+		horaedb.NewStringValue("sstag"),
 	}
 
-	row1 := []ceresdb.Value{
-		ceresdb.NewInt64Value(ts),
-		ceresdb.NewStringValue("tag-0"),
-		ceresdb.NewInt64Value(0),
-		ceresdb.NewStringValue("ss"),
+	row1 := []horaedb.Value{
+		horaedb.NewInt64Value(ts),
+		horaedb.NewStringValue("tag-0"),
+		horaedb.NewInt64Value(0),
+		horaedb.NewStringValue("ss"),
 	}
 
-	row2 := []ceresdb.Value{
-		ceresdb.NewInt64Value(ts),
-		ceresdb.NewStringValue("tag-1"),
-		ceresdb.NewInt64Value(1),
-		ceresdb.NewStringValue("ss"),
-		ceresdb.NewStringValue("sstag"),
+	row2 := []horaedb.Value{
+		horaedb.NewInt64Value(ts),
+		horaedb.NewStringValue("tag-1"),
+		horaedb.NewInt64Value(1),
+		horaedb.NewStringValue("ss"),
+		horaedb.NewStringValue("sstag"),
 	}
 
-	row3 := []ceresdb.Value{
-		ceresdb.NewInt64Value(ts),
-		ceresdb.NewStringValue("tag-1"),
-		ceresdb.NewInt64Value(1),
-		ceresdb.NewStringValue("ss"),
+	row3 := []horaedb.Value{
+		horaedb.NewInt64Value(ts),
+		horaedb.NewStringValue("tag-1"),
+		horaedb.NewInt64Value(1),
+		horaedb.NewStringValue("ss"),
 	}
 
 	if err := ensureRow(row0,

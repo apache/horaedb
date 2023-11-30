@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/CeresDB/horaedb-client-go/ceresdb"
+	"github.com/CeresDB/horaedb-client-go/horaedb"
 )
 
 var endpoint = "127.0.0.1:8831"
@@ -20,8 +20,8 @@ func init() {
 func main() {
 	fmt.Printf("Begin test, endpoint %s...\n", endpoint)
 
-	client, err := ceresdb.NewClient(endpoint, ceresdb.Direct,
-		ceresdb.WithDefaultDatabase("public"),
+	client, err := horaedb.NewClient(endpoint, horaedb.Direct,
+		horaedb.WithDefaultDatabase("public"),
 	)
 	if err != nil {
 		panic(err)
