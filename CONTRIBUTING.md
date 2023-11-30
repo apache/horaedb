@@ -4,7 +4,7 @@ Thank you for thinking of contributing! We very much welcome contributions from 
 To make the process easier and more valuable for everyone involved we have a few rules and guidelines to follow.
 
 Anyone with a Github account is free to file issues on the project.
-However, if you want to contribute documentation or code then you will need to sign [CeresDB's Individual Contributor License Agreement (CLA)](https://cla-assistant.io/CeresDB/ceresdb).
+However, if you want to contribute documentation or code then you will need to sign [CeresDB's Individual Contributor License Agreement (CLA)](https://cla-assistant.io/CeresDB/horaedb).
 
 ## Submitting Issues and Feature Requests
 
@@ -33,14 +33,14 @@ Please see the [Style Guide](docs/style_guide.md) for more details.
 
 To open a PR you will need to have a Github account.
 Fork the `horaemeta` repo and work on a branch on your fork.
-When you have completed your changes, or you want some incremental feedback make a Pull Request to CeresDB [here](https://github.com/CeresDB/horaemeta/compare).
+When you have completed your changes, or you want some incremental feedback make a Pull Request to HoraeDB [here](https://github.com/CeresDB/horaemeta/compare).
 
 If you want to discuss some work in progress then please prefix `[WIP]` to the
 PR title.
 
 For PRs that you consider ready for review, verify the following locally before you submit it:
 
-* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://github.com/CeresDB/ceresdb/docs/conventional-commit.md) specification;
+* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://github.com/CeresDB/horaedb/docs/conventional-commit.md) specification;
 * all the tests and/or benchmarks pass, including documentation tests;
 * the code is correctly formatted and all linter checks pass; and
 * you haven't left any "code cruft" (commented out code blocks etc).

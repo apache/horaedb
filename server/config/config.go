@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The CeresDB Authors
+ * Copyright 2022 The HoraeDB Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ const (
 	defaultHTTPPort = 8080
 	defaultGrpcPort = 2379
 
-	defaultDataDir = "/tmp/ceresmeta"
+	defaultDataDir = "/tmp/horaemeta"
 
 	defaultEtcdDataDir = "/etcd"
 	defaultWalDir      = "/wal"

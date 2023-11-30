@@ -1,4 +1,4 @@
-# Copyright 2022 The CeresDB Authors
+# Copyright 2022 The HoraeDB Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,9 +34,9 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and Push CeresDB Server Docker Image
+      - name: Build and Push HoraeDB Server Docker Image
         uses: docker/build-push-action@v3
         with:
           context: .
           push: true
-          tags: ceresdb/ceresmeta-server:latest,ceresdb/ceresmeta-server:${{github.ref_name}}
+          tags: ceresdb/horaemeta-server:latest,horaedb/horaemeta-server:${{github.ref_name}}

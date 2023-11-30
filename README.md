@@ -19,7 +19,7 @@ Although HoraeMeta is designed to deployed as a cluster with three or more insta
 ```bash
 # HoraeMeta0
 mkdir /tmp/meta0
-./bin/ceresmeta-server --config ./config/example-standalone.toml
+./bin/horaemeta-server --config ./config/example-standalone.toml
 ```
 
 ### Cluster mode
@@ -31,13 +31,13 @@ mkdir /tmp/meta1
 mkdir /tmp/meta2
 
 # horaemeta0
-./bin/ceresmeta-server --config ./config/exampl-cluster0.toml
+./bin/horaemeta-server --config ./config/exampl-cluster0.toml
 
 # horaemeta1
-./bin/ceresmeta-server --config ./config/exampl-cluster1.toml
+./bin/horaemeta-server --config ./config/exampl-cluster1.toml
 
 # horaemeta2
-./bin/ceresmeta-server --config ./config/exampl-cluster2.toml
+./bin/horaemeta-server --config ./config/exampl-cluster2.toml
 ```
 
 ## Acknowledgment

@@ -27,7 +27,7 @@ test:
 	@ go test -timeout 5m -coverprofile=coverage.txt -covermode=atomic $(PACKAGES)
 
 build:
-	@ go build -ldflags="-X main.commitID=$(COMMIT_ID) -X main.branchName=$(BRANCH_NAME) -X main.buildDate=$(BUILD_DATE)" -o bin/ceresmeta-server ./cmd/ceresmeta-server
+	@ go build -ldflags="-X main.commitID=$(COMMIT_ID) -X main.branchName=$(BRANCH_NAME) -X main.buildDate=$(BUILD_DATE)" -o bin/horaemeta-server ./cmd/horaemeta-server
 
 integration-test: build
 	@ bash ./scripts/run-integration-test.sh

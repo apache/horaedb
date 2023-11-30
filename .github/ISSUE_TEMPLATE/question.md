@@ -1,6 +1,6 @@
 ---
 name: Question
-about: Ask question about CeresDB
+about: Ask question about HoraeDB
 labels: question
 ---
 

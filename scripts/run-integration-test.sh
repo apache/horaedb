@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2022 The CeresDB Authors
+# Copyright 2022 The HoraeDB Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,14 +14,15 @@
 # limitations under the License.
 
 
+
 set -exo
 
-META_BIN_PATH="$(pwd)/bin/ceresmeta-server"
+META_BIN_PATH="$(pwd)/bin/horaemeta-server"
 INTEGRATION_TEST_PATH=$(mktemp -d)
 
 # Download HoraeDB Code
 cd $INTEGRATION_TEST_PATH
-git clone --depth 1 https://github.com/ceresdb/horaedb.git --branch main
+git clone --depth 1 https://github.com/CeresDB/horaedb.git --branch main
 
 # Run integration_test
 cd horaedb/integration_tests

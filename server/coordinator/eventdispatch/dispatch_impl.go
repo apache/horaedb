@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 The CeresDB Authors
+ * Copyright 2022 The HoraeDB Authors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/CeresDB/ceresdbproto/golang/pkg/metaeventpb"
+	"github.com/CeresDB/horaedbproto/golang/pkg/metaeventpb"
 	"github.com/CeresDB/horaemeta/pkg/coderr"
 	"github.com/CeresDB/horaemeta/server/cluster/metadata"
 	"github.com/CeresDB/horaemeta/server/service"

@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for CeresDB
+about: Suggest an idea for HoraeDB
 labels: enhancement
 ---
 

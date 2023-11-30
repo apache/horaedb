@@ -1,4 +1,4 @@
-# Copyright 2022 The CeresDB Authors
+# Copyright 2022 The HoraeDB Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ceresdb/ceresmeta-server
+  IMAGE_NAME: ceresdb/horaemeta-server
 
 jobs:
   docker:
@@ -58,4 +58,4 @@ jobs:
           push: true
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:nightly-${{ env.BUILD_DATE }}-${{ env.SHORT_SHA }}
-            registry.cn-hangzhou.aliyuncs.com/ceresdb/ceresmeta-server:nightly-${{ env.BUILD_DATE }}-${{ env.SHORT_SHA }}
+            registry.cn-hangzhou.aliyuncs.com/ceresdb/horaemeta-server:nightly-${{ env.BUILD_DATE }}-${{ env.SHORT_SHA }}
