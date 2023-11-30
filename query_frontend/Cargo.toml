@@ -35,7 +35,6 @@ test = []
 arrow = { workspace = true }
 async-trait = { workspace = true }
 catalog = { workspace = true }
-horaedbproto = { workspace = true }
 cluster = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
@@ -44,6 +43,7 @@ datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
 generic_error = { workspace = true }
 hash_ext = { workspace = true }
+horaedbproto = { workspace = true }
 influxql-logical-planner = { workspace = true }
 influxql-parser = { workspace = true }
 influxql-schema = { workspace = true }

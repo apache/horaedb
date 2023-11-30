@@ -29,10 +29,10 @@ workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-horaedbproto = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
 generic_error = { workspace = true }
+horaedbproto = { workspace = true }
 logger = { workspace = true }
 macros = { workspace = true }
 meta_client = { workspace = true }

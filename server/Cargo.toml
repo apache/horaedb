@@ -34,7 +34,6 @@ arrow_ext = { workspace = true }
 async-trait = { workspace = true }
 bytes_ext = { workspace = true }
 catalog = { workspace = true }
-horaedbproto = { workspace = true }
 clru = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
@@ -44,6 +43,7 @@ flate2 = "1.0"
 future_ext = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
+horaedbproto = { workspace = true }
 http = "0.2"
 influxdb-line-protocol = "1.0"
 interpreters = { workspace = true }
