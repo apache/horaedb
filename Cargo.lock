@@ -3075,7 +3075,9 @@ dependencies = [
 
 [[package]]
 name = "horaedbproto"
-version = "1.0.23"
+version = "1.0.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5907c770ee20818978cf2050341ca2c4c7fb7888423ccb090cbb2fda250dfad7"
 dependencies = [
  "prost",
  "protoc-bin-vendored",
