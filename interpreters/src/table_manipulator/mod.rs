@@ -73,7 +73,7 @@ pub enum Error {
     #[snafu(display("Failed to drop table, msg:{}, err:{}", msg, source))]
     DropWithCause { msg: String, source: GenericError },
 
-    #[snafu(display("Failed to create partition table without ceresmeta, table:{}", table))]
+    #[snafu(display("Failed to create partition table without horaemeta, table:{}", table))]
     PartitionTableNotSupported { table: String },
 
     #[snafu(display("Failed to operate table, err:{}", source))]

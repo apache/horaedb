@@ -351,7 +351,7 @@ pub struct EngineRuntimes {
     pub write_runtime: RuntimeRef,
     /// Runtime for compacting data
     pub compact_runtime: RuntimeRef,
-    /// Runtime for ceresmeta communication
+    /// Runtime for horaemeta communication
     pub meta_runtime: RuntimeRef,
     /// Runtime for some other tasks which are not so important
     pub default_runtime: RuntimeRef,

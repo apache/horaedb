@@ -31,9 +31,9 @@ const CERESDB_BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
 const CERESDB_STDOUT_FILE_ENV: &str = "CERESDB_STDOUT_FILE";
 const CERESDB_CONFIG_FILE_ENV: &str = "CERESDB_CONFIG_FILE";
 
-const CERESMETA_BINARY_PATH_ENV: &str = "CERESMETA_BINARY_PATH";
-const CERESMETA_CONFIG_ENV: &str = "CERESMETA_CONFIG_PATH";
-const CERESMETA_STDOUT_FILE_ENV: &str = "CERESMETA_STDOUT_FILE";
+const HORAEMETA_BINARY_PATH_ENV: &str = "HORAEMETA_BINARY_PATH";
+const HORAEMETA_CONFIG_ENV: &str = "HORAEMETA_CONFIG_PATH";
+const HORAEMETA_STDOUT_FILE_ENV: &str = "HORAEMETA_STDOUT_FILE";
 const CERESDB_CONFIG_FILE_0_ENV: &str = "CERESDB_CONFIG_FILE_0";
 const CERESDB_CONFIG_FILE_1_ENV: &str = "CERESDB_CONFIG_FILE_1";
 const CLUSTER_CERESDB_STDOUT_FILE_0_ENV: &str = "CLUSTER_CERESDB_STDOUT_FILE_0";
@@ -72,7 +72,7 @@ pub struct CeresDBServer {
 pub struct CeresDBCluster {
     server0: CeresDBServer,
     server1: CeresDBServer,
-    ceresmeta_process: Child,
+    horaemeta_process: Child,
 
     /// Used in meta health check
     db_client: Arc<dyn DbClient>,
@@ -135,23 +135,23 @@ impl CeresDBCluster {
 #[async_trait]
 impl Backend for CeresDBCluster {
     fn start() -> Self {
-        let ceresmeta_bin =
-            env::var(CERESMETA_BINARY_PATH_ENV).expect("Cannot parse ceresdb binary path env");
-        let ceresmeta_config =
-            env::var(CERESMETA_CONFIG_ENV).expect("Cannot parse ceresmeta config path env");
-        let ceresmeta_stdout =
-            env::var(CERESMETA_STDOUT_FILE_ENV).expect("Cannot parse ceresmeta stdout env");
-        println!("Start ceresmeta at {ceresmeta_bin} with config {ceresmeta_config} and stdout {ceresmeta_stdout}");
+        let horaemeta_bin =
+            env::var(HORAEMETA_BINARY_PATH_ENV).expect("Cannot parse ceresdb binary path env");
+        let horaemeta_config =
+            env::var(HORAEMETA_CONFIG_ENV).expect("Cannot parse horaemeta config path env");
+        let horaemeta_stdout =
+            env::var(HORAEMETA_STDOUT_FILE_ENV).expect("Cannot parse horaemeta stdout env");
+        println!("Start horaemeta at {horaemeta_bin} with config {horaemeta_config} and stdout {horaemeta_stdout}");
 
-        let ceresmeta_stdout =
-            File::create(ceresmeta_stdout).expect("Cannot create ceresmeta stdout");
-        let ceresmeta_process = std::process::Command::new(&ceresmeta_bin)
-            .args(["--config", &ceresmeta_config])
-            .stdout(ceresmeta_stdout)
+        let horaemeta_stdout =
+            File::create(horaemeta_stdout).expect("Cannot create horaemeta stdout");
+        let horaemeta_process = std::process::Command::new(&horaemeta_bin)
+            .args(["--config", &horaemeta_config])
+            .stdout(horaemeta_stdout)
             .spawn()
             .expect("Failed to spawn process to start server");
 
-        println!("wait for ceresmeta ready...\n");
+        println!("wait for horaemeta ready...\n");
         std::thread::sleep(Duration::from_secs(10));
 
         let ceresdb_bin =
@@ -183,7 +183,7 @@ impl Backend for CeresDBCluster {
         Self {
             server0,
             server1,
-            ceresmeta_process,
+            horaemeta_process,
             db_client,
             meta_stable_check_sql,
         }
@@ -222,9 +222,9 @@ impl Backend for CeresDBCluster {
     fn stop(&mut self) {
         self.server0.stop();
         self.server1.stop();
-        self.ceresmeta_process
+        self.horaemeta_process
             .kill()
-            .expect("Failed to kill ceresmeta");
+            .expect("Failed to kill horaemeta");
     }
 }
 

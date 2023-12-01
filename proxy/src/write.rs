@@ -93,8 +93,8 @@ impl Proxy {
         Ok(resp)
     }
 
-    // Handle write requests based on ceresmeta.
-    // 1. Create table via ceresmeta if it does not exist.
+    // Handle write requests based on horaemeta.
+    // 1. Create table via horaemeta if it does not exist.
     // 2. Split write request.
     // 3. Process write.
     async fn handle_write_with_meta(
@@ -127,7 +127,7 @@ impl Proxy {
         self.collect_write_response(futures).await
     }
 
-    // Handle write requests without ceresmeta.
+    // Handle write requests without horaemeta.
     // 1. Split write request.
     // 2. Create table if not exist.
     // 3. Process write.
