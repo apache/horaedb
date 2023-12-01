@@ -170,7 +170,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-      - name: Build and Run CeresDB-Cluster
+      - name: Build and Run HoraeDB Cluster
         working-directory: integration_tests
         run: |
           make prepare
