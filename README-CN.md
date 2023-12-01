@@ -73,7 +73,7 @@ cargo build --release
 
 使用下载的代码中提供的默认配置文件，即可启动：
 ```bash
-./target/release/ceresdb-server --config ./docs/minimal.toml
+./target/release/horaedb-server --config ./docs/minimal.toml
 ```
 
 ### 进行数据读写
@@ -92,7 +92,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "INSERT INTO demo(t, name, value) VALUES(1651737067000, '\''ceresdb'\'', 100)"
+    "query": "INSERT INTO demo(t, name, value) VALUES(1651737067000, '\''horaedb'\'', 100)"
 }'
 ```
 

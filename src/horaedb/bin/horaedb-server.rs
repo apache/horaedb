@@ -16,7 +16,7 @@
 
 use std::env;
 
-use ceresdb::{
+use horaedb::{
     config::{ClusterDeployment, Config},
     setup,
 };

@@ -18,11 +18,11 @@ build:
 
 build-wal-table-kv:
 	ls -alh
-	cd $(DIR)/src/ceresdb; cargo build --release --no-default-features --features wal-table-kv
+	cd $(DIR)/src/horaedb; cargo build --release --no-default-features --features wal-table-kv
 
 build-wal-message-queue:
 	ls -alh
-	cd $(DIR)/src/ceresdb; cargo build --release --no-default-features --features wal-message-queue
+	cd $(DIR)/src/horaedb; cargo build --release --no-default-features --features wal-message-queue
 
 build-slim:
 	ls -alh
@@ -98,9 +98,6 @@ miri:
 ensure-disk-quota:
 	# ensure the target directory not to exceed 30GB
 	python3 ./scripts/clean-large-folder.py ./target 30
-
-tsbs: build
-	cd $(DIR); sh scripts/run-tsbs.sh
 
 # install dev dependencies
 ifeq ($(shell uname), Darwin)

@@ -34,4 +34,4 @@ docker run -d --name ceresdb-server \
 ```
 
 # Documentation
-- https://docs.ceresdb.io/
+- https://ceresdb.github.io/docs

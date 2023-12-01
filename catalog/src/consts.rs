@@ -14,6 +14,7 @@
 
 //! Catalog constants
 
+// TODO: rename ceresdb to horaedb is a breaking change, we should config it in the config file.
 /// Default catalog name
 pub const DEFAULT_CATALOG: &str = "ceresdb";
 /// Default schema name

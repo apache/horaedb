@@ -18,19 +18,19 @@ use std::{env, fmt::Display, path::Path};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use database::{Backend, CeresDB};
+use database::{Backend, HoraeDB};
 use sqlness::{Database, EnvController, QueryContext, Runner};
 
-use crate::database::{CeresDBCluster, CeresDBServer};
+use crate::database::{HoraeDBCluster, HoraeDBServer};
 
 mod database;
 
-const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
-const ENV_FILTER_ENV: &str = "CERESDB_ENV_FILTER";
-const RUN_MODE: &str = "CERESDB_INTEGRATION_TEST_BIN_RUN_MODE";
+const CASE_ROOT_PATH_ENV: &str = "HORAEDB_TEST_CASE_PATH";
+const ENV_FILTER_ENV: &str = "HORAEDB_ENV_FILTER";
+const RUN_MODE: &str = "HORAEDB_INTEGRATION_TEST_BIN_RUN_MODE";
 
-struct CeresDBController;
-struct UntypedCeresDB {
+struct HoraeDBController;
+struct UntypedHoraeDB {
     db: DbRef,
 }
 
@@ -40,32 +40,32 @@ pub trait StoppableDatabase: Database {
 
 pub type DbRef = Box<dyn StoppableDatabase + Send + Sync>;
 
-impl<T: Backend + Send + Sync> StoppableDatabase for CeresDB<T> {
+impl<T: Backend + Send + Sync> StoppableDatabase for HoraeDB<T> {
     fn stop(&mut self) {
         self.stop();
     }
 }
 
 #[async_trait]
-impl Database for UntypedCeresDB {
+impl Database for UntypedHoraeDB {
     async fn query(&self, context: QueryContext, query: String) -> Box<dyn Display> {
         self.db.query(context, query).await
     }
 }
 
 #[async_trait]
-impl EnvController for CeresDBController {
-    type DB = UntypedCeresDB;
+impl EnvController for HoraeDBController {
+    type DB = UntypedHoraeDB;
 
     async fn start(&self, env: &str, _config: Option<&Path>) -> Self::DB {
         println!("start with env {env}");
         let db = match env {
-            "local" => Box::new(CeresDB::<CeresDBServer>::create().await) as DbRef,
-            "cluster" => Box::new(CeresDB::<CeresDBCluster>::create().await) as DbRef,
+            "local" => Box::new(HoraeDB::<HoraeDBServer>::create().await) as DbRef,
+            "cluster" => Box::new(HoraeDB::<HoraeDBCluster>::create().await) as DbRef,
             _ => panic!("invalid env {env}"),
         };
 
-        UntypedCeresDB { db }
+        UntypedHoraeDB { db }
     }
 
     async fn stop(&self, env: &str, mut database: Self::DB) {
@@ -76,7 +76,7 @@ impl EnvController for CeresDBController {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let controller = CeresDBController;
+    let controller = HoraeDBController;
     let run_mode = env::var(RUN_MODE).unwrap_or_else(|_| "sql_test".to_string());
 
     match run_mode.as_str() {
