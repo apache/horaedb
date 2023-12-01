@@ -50,8 +50,8 @@ use crate::{
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
 ///
 /// Its functions are to:
-///  - Handle the some action from the CeresMeta;
-///  - Handle the heartbeat between ceresdb-server and CeresMeta;
+///  - Handle the some action from the HoraeMeta;
+///  - Handle the heartbeat between ceresdb-server and HoraeMeta;
 ///  - Provide the cluster topology.
 pub struct ClusterImpl {
     inner: Arc<Inner>,
@@ -192,7 +192,7 @@ impl Inner {
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
         // TODO: we should use self.topology to cache the route result to reduce the
-        // pressure on the CeresMeta.
+        // pressure on the HoraeMeta.
         let route_resp = self
             .meta_client
             .route_tables(req.clone())

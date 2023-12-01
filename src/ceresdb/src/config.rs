@@ -76,10 +76,10 @@ pub struct Config {
 /// The cluster deployment decides how to deploy the CeresDB cluster.
 ///
 /// [ClusterDeployment::NoMeta] means to start one or multiple CeresDB
-/// instance(s) without CeresMeta.
+/// instance(s) without HoraeMeta.
 ///
 /// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
-/// instance(s) under the control of CeresMeta.
+/// instance(s) under the control of HoraeMeta.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
 #[allow(clippy::large_enum_variant)]

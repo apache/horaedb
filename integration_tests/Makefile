@@ -3,7 +3,7 @@ ROOT = $(shell pwd)
 CERESDB_DATA_DIR = /tmp/ceresdb
 CERESDB_DATA_DIR_0 = /tmp/ceresdb0
 CERESDB_DATA_DIR_1 = /tmp/ceresdb1
-CERESMETA_DATA_DIR = /tmp/ceresmeta
+HORAEMETA_DATA_DIR = /tmp/horaemeta
 
 export CERESDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
 export CERESDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/ceresdb-test
@@ -16,9 +16,9 @@ export CERESDB_STDOUT_FILE ?= /tmp/ceresdb-stdout.log
 export CERESDB_CONFIG_FILE ?= $(ROOT)/../docs/minimal.toml
 
 # Environment variables for cluster
-export CERESMETA_BINARY_PATH ?= $(ROOT)/ceresmeta/ceresmeta-server
-export CERESMETA_CONFIG_PATH ?= $(ROOT)/config/ceresmeta.toml
-export CERESMETA_STDOUT_FILE ?= /tmp/ceresmeta-stdout.log
+export HORAEMETA_BINARY_PATH ?= $(ROOT)/horaemeta/horaemeta-server
+export HORAEMETA_CONFIG_PATH ?= $(ROOT)/config/horaemeta.toml
+export HORAEMETA_STDOUT_FILE ?= /tmp/horaemeta-stdout.log
 export CERESDB_CONFIG_FILE_0 ?= $(ROOT)/config/ceresdb-cluster-0.toml
 export CERESDB_CONFIG_FILE_1 ?= $(ROOT)/config/ceresdb-cluster-1.toml
 export CLUSTER_CERESDB_STDOUT_FILE_0 ?= /tmp/ceresdb-stdout-0.log
@@ -31,7 +31,7 @@ export RUST_BACKTRACE=1
 export UPDATE_REPOS_TO_LATEST ?= true
 
 clean:
-	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(CERESMETA_DATA_DIR)
+	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(HORAEMETA_DATA_DIR)
 
 build-meta:
 	./build_meta.sh
@@ -44,18 +44,18 @@ build-test:
 
 build: build-ceresdb build-test
 
-kill-old-ceresmeta:
-	killall ceresmeta-server | true
+kill-old-horaemeta:
+	killall horaemeta-server | true
 
 kill-old-ceresdb:
 	killall ceresdb-server | true
 
-kill-old-process: kill-old-ceresmeta kill-old-ceresdb
+kill-old-process: kill-old-horaemeta kill-old-ceresdb
 
 prepare: clean build kill-old-process
 
-run-ceresmeta: build-meta
-	nohup $(CERESMETA_BINARY_PATH) --config ${CERESMETA_CONFIG_PATH} > /tmp/ceresmeta-stdout.log 2>&1 &
+run-horaemeta: build-meta
+	nohup $(HORAEMETA_BINARY_PATH) --config ${HORAEMETA_CONFIG_PATH} > /tmp/horaemeta-stdout.log 2>&1 &
 	sleep 10
 
 run-ceresdb-cluster: build-ceresdb

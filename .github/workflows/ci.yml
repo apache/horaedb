@@ -39,8 +39,6 @@ env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
-  CERESMETA_IMAGE_NAME: ceresdb/ceresmeta-server:latest
-  CERESDB_IMAGE_NAME: ceresdb/ceresdb-server:latest
   LOCK_FILE: Cargo.lock
   RUST_VERSION: nightly-2023-08-28
 
@@ -176,7 +174,7 @@ jobs:
         working-directory: integration_tests
         run: |
           make prepare
-          make run-ceresmeta
+          make run-horaemeta
           make run-ceresdb-cluster
       - name: Run Go SDK tests
         working-directory: integration_tests

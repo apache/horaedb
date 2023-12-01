@@ -394,11 +394,11 @@ impl Proxy {
                     return Ok(());
                 }
 
-                info!("Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta,\
+                info!("Drop partition table because the id of the table in ceresdb is different from the one in horaemeta,\
                        catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{table_id}, new_table_id:{}",
                       partition_table_info.id);
                 // Drop partition table because the id of the table in ceresdb is different from
-                // the one in ceresmeta.
+                // the one in horaemeta.
                 self.drop_partition_table(
                     schema.clone(),
                     catalog_name.to_string(),
@@ -408,10 +408,10 @@ impl Proxy {
                 .await?;
             }
             (Some(table), None) => {
-                // Drop partition table because it does not exist in ceresmeta but exists in
+                // Drop partition table because it does not exist in horaemeta but exists in
                 // ceresdb-server.
                 if table.partition_info().is_some() {
-                    info!("Drop partition table because it does not exist in ceresmeta but exists in ceresdb-server,\
+                    info!("Drop partition table because it does not exist in horaemeta but exists in ceresdb-server,\
                            catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}", table.id());
                     self.drop_partition_table(
                         schema.clone(),
@@ -442,7 +442,7 @@ impl Proxy {
             )
             .await?;
         // Partition table is a virtual table, so we need to create it manually.
-        // Partition info is stored in ceresmeta, so we need to use create_table_request
+        // Partition info is stored in horaemeta, so we need to use create_table_request
         // to create it.
         let params = CreateTableParams {
             catalog_name: catalog_name.to_string(),

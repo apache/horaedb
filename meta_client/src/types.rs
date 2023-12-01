@@ -209,10 +209,10 @@ pub struct ShardInfo {
     pub id: ShardId,
     pub role: ShardRole,
     pub version: ShardVersion,
-    // This status is only used for request ceresdb send to ceresmeta via heartbeat
+    // This status is only used for request ceresdb send to horaemeta via heartbeat
     // When ceresdb receive this via open shard request, this field is meaningless.
     // TODO: Use different request and response body between ceresdb and
-    // ceresmeta.
+    // horaemeta.
     pub status: ShardStatus,
 }
 
@@ -251,7 +251,7 @@ impl Default for MetaClientConfig {
         Self {
             cluster_name: String::new(),
             meta_addr: "127.0.0.1:8080".to_string(),
-            meta_members_url: "ceresmeta/members".to_string(),
+            meta_members_url: "horaemeta/members".to_string(),
             lease: ReadableDuration::secs(10),
             timeout: ReadableDuration::secs(5),
             cq_count: 8,
