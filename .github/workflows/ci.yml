@@ -144,7 +144,7 @@ jobs:
           name: CI-${{ github.sha }}
           path: |
             /tmp/ceresdb-stdout.log
-            /tmp/ceresmeta.log
+            /tmp/horaemeta-stdout.log
             /tmp/ceresdb-stdout-0.log
             /tmp/ceresdb-stdout-1.log
 
@@ -175,7 +175,7 @@ jobs:
         run: |
           make prepare
           make run-horaemeta
-          make run-ceresdb-cluster
+          make run-horaedb-cluster
       - name: Run Go SDK tests
         working-directory: integration_tests
         run: |

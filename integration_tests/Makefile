@@ -58,7 +58,7 @@ run-horaemeta: build-meta
 	nohup $(HORAEMETA_BINARY_PATH) --config ${HORAEMETA_CONFIG_PATH} > /tmp/horaemeta-stdout.log 2>&1 &
 	sleep 10
 
-run-ceresdb-cluster: build-ceresdb
+run-horaedb-cluster: build-ceresdb
 	nohup ${CERESDB_BINARY_PATH} --config ${CERESDB_CONFIG_FILE_0} > ${CLUSTER_CERESDB_STDOUT_FILE_0} 2>&1 &
 	nohup ${CERESDB_BINARY_PATH} --config ${CERESDB_CONFIG_FILE_1} > ${CLUSTER_CERESDB_STDOUT_FILE_1} 2>&1 &
 	sleep 30
