@@ -34,4 +34,5 @@ docker run -d --name horaedb-server \
 ```
 
 # Documentation
-- https://docs.ceresdb.io/
+
+- https://ceresdb.github.io/docs

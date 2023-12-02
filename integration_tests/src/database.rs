@@ -65,13 +65,13 @@ pub trait Backend {
     fn stop(&mut self);
 }
 
-pub struct CeresDBServer {
+pub struct HoraeDBServer {
     server_process: Child,
 }
 
-pub struct CeresDBCluster {
-    server0: CeresDBServer,
-    server1: CeresDBServer,
+pub struct HoraeDBCluster {
+    server0: HoraeDBServer,
+    server1: HoraeDBServer,
     horaemeta_process: Child,
 
     /// Used in meta health check
@@ -79,7 +79,7 @@ pub struct CeresDBCluster {
     meta_stable_check_sql: String,
 }
 
-impl CeresDBServer {
+impl HoraeDBServer {
     fn spawn(bin: String, config: String, stdout: String) -> Self {
         let local_ip = local_ip_address::local_ip()
             .expect("fail to get local ip")
@@ -98,7 +98,7 @@ impl CeresDBServer {
 }
 
 #[async_trait]
-impl Backend for CeresDBServer {
+impl Backend for HoraeDBServer {
     fn start() -> Self {
         let config = env::var(HORAEDB_CONFIG_FILE_ENV).expect("Cannot parse horaedb config env");
         let bin = env::var(HORAEDB_BINARY_PATH_ENV).expect("Cannot parse binary path env");
@@ -115,7 +115,7 @@ impl Backend for CeresDBServer {
     }
 }
 
-impl CeresDBCluster {
+impl HoraeDBCluster {
     async fn check_meta_stable(&self) -> bool {
         let query_ctx = RpcContext {
             database: Some("public".to_string()),
@@ -133,7 +133,7 @@ impl CeresDBCluster {
 }
 
 #[async_trait]
-impl Backend for CeresDBCluster {
+impl Backend for HoraeDBCluster {
     fn start() -> Self {
         let horaemeta_bin =
             env::var(HORAEMETA_BINARY_PATH_ENV).expect("Cannot parse horaedb binary path env");
@@ -154,19 +154,19 @@ impl Backend for CeresDBCluster {
         println!("wait for horaemeta ready...\n");
         std::thread::sleep(Duration::from_secs(10));
 
-        let ceresdb_bin =
+        let horaedb_bin =
             env::var(HORAEDB_BINARY_PATH_ENV).expect("Cannot parse horaedb binary path env");
-        let ceresdb_config_0 =
-            env::var(HORAEDB_CONFIG_FILE_0_ENV).expect("Cannot parse ceresdb0 config env");
-        let ceresdb_config_1 =
-            env::var(HORAEDB_CONFIG_FILE_1_ENV).expect("Cannot parse ceresdb1 config env");
+        let horaedb_config_0 =
+            env::var(HORAEDB_CONFIG_FILE_0_ENV).expect("Cannot parse horaedb0 config env");
+        let horaedb_config_1 =
+            env::var(HORAEDB_CONFIG_FILE_1_ENV).expect("Cannot parse horaedb1 config env");
         let stdout0 =
-            env::var(CLUSTER_HORAEDB_STDOUT_FILE_0_ENV).expect("Cannot parse ceresdb0 stdout env");
+            env::var(CLUSTER_HORAEDB_STDOUT_FILE_0_ENV).expect("Cannot parse horaedb0 stdout env");
         let stdout1 =
-            env::var(CLUSTER_HORAEDB_STDOUT_FILE_1_ENV).expect("Cannot parse ceresdb1 stdout env");
+            env::var(CLUSTER_HORAEDB_STDOUT_FILE_1_ENV).expect("Cannot parse horaedb1 stdout env");
 
-        let server0 = CeresDBServer::spawn(ceresdb_bin.clone(), ceresdb_config_0, stdout0);
-        let server1 = CeresDBServer::spawn(ceresdb_bin, ceresdb_config_1, stdout1);
+        let server0 = HoraeDBServer::spawn(horaedb_bin.clone(), horaedb_config_0, stdout0);
+        let server1 = HoraeDBServer::spawn(horaedb_bin, horaedb_config_1, stdout1);
 
         // Meta stable check context
         let endpoint = env::var(SERVER_GRPC_ENDPOINT_ENV).unwrap_or_else(|_| {
@@ -228,7 +228,7 @@ impl Backend for CeresDBCluster {
     }
 }
 
-pub struct CeresDB<T> {
+pub struct HoraeDB<T> {
     backend: T,
     db_client: Arc<dyn DbClient>,
     // FIXME: Currently, the new protocol does not support by the dbclient but is exposed by http
@@ -285,7 +285,7 @@ impl ProtocolParser {
 }
 
 #[async_trait]
-impl<T: Send + Sync> Database for CeresDB<T> {
+impl<T: Send + Sync> Database for HoraeDB<T> {
     async fn query(&self, context: QueryContext, query: String) -> Box<dyn Display> {
         let protocol = ProtocolParser
             .parse_from_ctx(&context.context)
@@ -313,8 +313,8 @@ impl<T: Send + Sync> Database for CeresDB<T> {
     }
 }
 
-impl<T: Backend> CeresDB<T> {
-    pub async fn create() -> CeresDB<T> {
+impl<T: Backend> HoraeDB<T> {
+    pub async fn create() -> HoraeDB<T> {
         let backend = T::start();
         backend.wait_for_ready().await;
 
@@ -326,7 +326,7 @@ impl<T: Backend> CeresDB<T> {
             panic!("Cannot read server endpoint from env {SERVER_HTTP_ENDPOINT_ENV:?}")
         });
 
-        CeresDB {
+        HoraeDB {
             backend,
             db_client,
             http_client: HttpClient::new(http_endpoint),
@@ -338,7 +338,7 @@ impl<T: Backend> CeresDB<T> {
     }
 }
 
-impl<T> CeresDB<T> {
+impl<T> HoraeDB<T> {
     fn parse_pre_cmd(ctx: &HashMap<String, String>) -> Option<Result<Command, String>> {
         ctx.get("pre_cmd").map(|s| Command::try_from(s.as_str()))
     }

@@ -1,4 +1,4 @@
-# Integration tests suite for CeresDB
+# Integration tests suite for HoraeDB
 
 ## Running test
 

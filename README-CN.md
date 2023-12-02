@@ -1,5 +1,3 @@
-![HoraeDB](docs/logo/CeresDB.png)
-
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 [![CI](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/horaedb)](https://github.com/CeresDB/horaedb/issues)
@@ -147,4 +145,4 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 在生产环境中，我们重度使用 [OceanBase](https://github.com/oceanbase/oceanbase) 作为 WAL 和 ObjectStore 的实现，而且 OceanBase 团队还帮助我们一起维护集群的稳定，感谢 OceanBase 团队一直以来的帮助。
 
 ## 开源许可
-HoraeDB 基于 [Apache License 2.0](./LICENSE) 协议。
+HoraeDB 基于 [Apache License 2.0](LICENSE) 协议。
