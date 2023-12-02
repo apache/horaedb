@@ -1373,7 +1373,7 @@ mod test {
 
     #[test]
     fn test_disk_cache_bytes_crc() {
-        let testcases = vec![("abc", 910901175), ("hello horaedb", 2026251212)];
+        let testcases = vec![("abc", 910901175), ("hello horaedb", 4015368565)];
 
         for (input, expect) in testcases {
             let actual = CASTAGNOLI.checksum(input.as_bytes());
