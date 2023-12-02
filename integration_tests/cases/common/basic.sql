@@ -16,7 +16,7 @@ INSERT INTO demo (t, name, value)
 SELECT * FROM demo;
 
 INSERT INTO demo (t, name, value)
-    VALUES (1651737067001, "ceresdb", 100);
+    VALUES (1651737067001, "horaedb", 100);
 
 SELECT * FROM demo;
 
