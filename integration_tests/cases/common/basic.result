@@ -20,7 +20,7 @@ affected_rows: 1
 SELECT * FROM demo;
 
 tsid,t,name,value,
-UInt64(12128845460635970325),Timestamp(1651737067000),String("horaedb"),Double(100.0),
+UInt64(1023872802579860359),Timestamp(1651737067000),String("horaedb"),Double(100.0),
 
 
 INSERT INTO demo (t, name, value)
@@ -31,8 +31,8 @@ affected_rows: 1
 SELECT * FROM demo;
 
 tsid,t,name,value,
-UInt64(12128845460635970325),Timestamp(1651737067000),String("horaedb"),Double(100.0),
-UInt64(12128845460635970325),Timestamp(1651737067001),String("horaedb"),Double(100.0),
+UInt64(1023872802579860359),Timestamp(1651737067000),String("horaedb"),Double(100.0),
+UInt64(1023872802579860359),Timestamp(1651737067001),String("horaedb"),Double(100.0),
 
 
 DROP TABLE IF EXISTS `demo`;
@@ -78,7 +78,7 @@ affected_rows: 1
 SELECT * FROM binary_demo WHERE value = x'11';
 
 tsid,t,name,value,
-UInt64(12128845460635970325),Timestamp(1667374200022),String("horaedb"),Varbinary([17]),
+UInt64(1023872802579860359),Timestamp(1667374200022),String("horaedb"),Varbinary([17]),
 
 
 DROP TABLE `binary_demo`;
