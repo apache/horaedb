@@ -28,7 +28,7 @@ use horaedbproto::storage::{
 use http::Method;
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
-use query_frontend::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
+use query_frontend::influxql::planner::HORAEDB_MEASUREMENT_COLUMN_NAME;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
 
@@ -309,7 +309,7 @@ impl InfluxqlResultBuilder {
         // described when introducing `column_schemas`.
         let mut col_iter = column_schemas.iter().enumerate();
         // The first column may be measurement column in normal.
-        ensure!(col_iter.next().unwrap().1.name == CERESDB_MEASUREMENT_COLUMN_NAME, InternalNoCause {
+        ensure!(col_iter.next().unwrap().1.name == HORAEDB_MEASUREMENT_COLUMN_NAME, InternalNoCause {
             msg: format!("invalid schema whose first column is not measurement column, schema:{column_schemas:?}"),
         });
 
@@ -804,7 +804,7 @@ mod tests {
         let arrow_schema = schema.to_arrow_schema_ref();
         let fields = arrow_schema.fields.to_owned();
         let measurement_field = ArrowField::new(
-            CERESDB_MEASUREMENT_COLUMN_NAME.to_string(),
+            HORAEDB_MEASUREMENT_COLUMN_NAME.to_string(),
             schema::DataType::Utf8,
             false,
         );

@@ -1,28 +1,28 @@
 MODE ?= debug
 ROOT = $(shell pwd)
-CERESDB_DATA_DIR = /tmp/ceresdb
-CERESDB_DATA_DIR_0 = /tmp/ceresdb0
-CERESDB_DATA_DIR_1 = /tmp/ceresdb1
+HORAEDB_DATA_DIR = /tmp/ceresdb
+HORAEDB_DATA_DIR_0 = /tmp/ceresdb0
+HORAEDB_DATA_DIR_1 = /tmp/ceresdb1
 HORAEMETA_DATA_DIR = /tmp/horaemeta
 
-export CERESDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
-export CERESDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/ceresdb-test
+export HORAEDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
+export HORAEDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/ceresdb-test
 
 # Environment variables for standalone
-export CERESDB_SERVER_GRPC_ENDPOINT ?= 127.0.0.1:8831
-export CERESDB_SERVER_HTTP_ENDPOINT ?= 127.0.0.1:5440
-export CERESDB_BINARY_PATH ?= $(ROOT)/../target/$(MODE)/ceresdb-server
-export CERESDB_STDOUT_FILE ?= /tmp/ceresdb-stdout.log
-export CERESDB_CONFIG_FILE ?= $(ROOT)/../docs/minimal.toml
+export HORAEDB_SERVER_GRPC_ENDPOINT ?= 127.0.0.1:8831
+export HORAEDB_SERVER_HTTP_ENDPOINT ?= 127.0.0.1:5440
+export HORAEDB_BINARY_PATH ?= $(ROOT)/../target/$(MODE)/ceresdb-server
+export HORAEDB_STDOUT_FILE ?= /tmp/ceresdb-stdout.log
+export HORAEDB_CONFIG_FILE ?= $(ROOT)/../docs/minimal.toml
 
 # Environment variables for cluster
 export HORAEMETA_BINARY_PATH ?= $(ROOT)/horaemeta/horaemeta-server
 export HORAEMETA_CONFIG_PATH ?= $(ROOT)/config/horaemeta.toml
 export HORAEMETA_STDOUT_FILE ?= /tmp/horaemeta-stdout.log
-export CERESDB_CONFIG_FILE_0 ?= $(ROOT)/config/ceresdb-cluster-0.toml
-export CERESDB_CONFIG_FILE_1 ?= $(ROOT)/config/ceresdb-cluster-1.toml
-export CLUSTER_CERESDB_STDOUT_FILE_0 ?= /tmp/ceresdb-stdout-0.log
-export CLUSTER_CERESDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
+export HORAEDB_CONFIG_FILE_0 ?= $(ROOT)/config/ceresdb-cluster-0.toml
+export HORAEDB_CONFIG_FILE_1 ?= $(ROOT)/config/ceresdb-cluster-1.toml
+export CLUSTER_HORAEDB_STDOUT_FILE_0 ?= /tmp/ceresdb-stdout-0.log
+export CLUSTER_HORAEDB_STDOUT_FILE_1 ?= /tmp/ceresdb-stdout-1.log
 export RUST_BACKTRACE=1
 
 # Whether update related repos
@@ -31,7 +31,7 @@ export RUST_BACKTRACE=1
 export UPDATE_REPOS_TO_LATEST ?= true
 
 clean:
-	rm -rf $(CERESDB_DATA_DIR) $(CERESDB_DATA_DIR_0) $(CERESDB_DATA_DIR_1) $(HORAEMETA_DATA_DIR)
+	rm -rf $(HORAEDB_DATA_DIR) $(HORAEDB_DATA_DIR_0) $(HORAEDB_DATA_DIR_1) $(HORAEMETA_DATA_DIR)
 
 build-meta:
 	./build_meta.sh
@@ -59,18 +59,18 @@ run-horaemeta: build-meta
 	sleep 10
 
 run-horaedb-cluster: build-ceresdb
-	nohup ${CERESDB_BINARY_PATH} --config ${CERESDB_CONFIG_FILE_0} > ${CLUSTER_CERESDB_STDOUT_FILE_0} 2>&1 &
-	nohup ${CERESDB_BINARY_PATH} --config ${CERESDB_CONFIG_FILE_1} > ${CLUSTER_CERESDB_STDOUT_FILE_1} 2>&1 &
+	nohup ${HORAEDB_BINARY_PATH} --config ${HORAEDB_CONFIG_FILE_0} > ${CLUSTER_HORAEDB_STDOUT_FILE_0} 2>&1 &
+	nohup ${HORAEDB_BINARY_PATH} --config ${HORAEDB_CONFIG_FILE_1} > ${CLUSTER_HORAEDB_STDOUT_FILE_1} 2>&1 &
 	sleep 30
 
 run: prepare build-meta
-	$(CERESDB_TEST_BINARY)
+	$(HORAEDB_TEST_BINARY)
 
 run-local: prepare
-	CERESDB_ENV_FILTER=local $(CERESDB_TEST_BINARY)
+	HORAEDB_ENV_FILTER=local $(HORAEDB_TEST_BINARY)
 
 run-cluster: prepare build-meta
-	CERESDB_ENV_FILTER=cluster $(CERESDB_TEST_BINARY)
+	HORAEDB_ENV_FILTER=cluster $(HORAEDB_TEST_BINARY)
 
 run-java:
 	java -version
@@ -98,5 +98,5 @@ run-recovery: clean build-ceresdb kill-old-process
 	cd recovery && ./run.sh && ./run.sh shard_based
 
 run-dist-query: prepare build-meta
-	CERESDB_INTEGRATION_TEST_BIN_RUN_MODE=build_cluster $(CERESDB_TEST_BINARY)
+	HORAEDB_INTEGRATION_TEST_BIN_RUN_MODE=build_cluster $(HORAEDB_TEST_BINARY)
 	cd dist_query && ./run.sh

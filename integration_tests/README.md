@@ -21,9 +21,9 @@ Takes 49.020203ms. Diff: false. Test case "/home/ruihang/repo/CeresDB/tests/case
 Run 1 finished. 0 cases are different.
 ```
 
-Users can set `CERESDB_ENV_FILTER` variables to filter env to run. For example:
+Users can set `HORAEDB_ENV_FILTER` variables to filter env to run. For example:
 ```
-CERESDB_ENV_FILTER=local make run
+HORAEDB_ENV_FILTER=local make run
 ```
 This command will only run cases in `local`.
 

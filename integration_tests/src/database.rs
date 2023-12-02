@@ -25,22 +25,22 @@ use horaedb_client::{
 use reqwest::{ClientBuilder, StatusCode, Url};
 use sqlness::{Database, QueryContext};
 
-const SERVER_GRPC_ENDPOINT_ENV: &str = "CERESDB_SERVER_GRPC_ENDPOINT";
-const SERVER_HTTP_ENDPOINT_ENV: &str = "CERESDB_SERVER_HTTP_ENDPOINT";
-const CERESDB_BINARY_PATH_ENV: &str = "CERESDB_BINARY_PATH";
-const CERESDB_STDOUT_FILE_ENV: &str = "CERESDB_STDOUT_FILE";
-const CERESDB_CONFIG_FILE_ENV: &str = "CERESDB_CONFIG_FILE";
+const SERVER_GRPC_ENDPOINT_ENV: &str = "HORAEDB_SERVER_GRPC_ENDPOINT";
+const SERVER_HTTP_ENDPOINT_ENV: &str = "HORAEDB_SERVER_HTTP_ENDPOINT";
+const HORAEDB_BINARY_PATH_ENV: &str = "HORAEDB_BINARY_PATH";
+const HORAEDB_STDOUT_FILE_ENV: &str = "HORAEDB_STDOUT_FILE";
+const HORAEDB_CONFIG_FILE_ENV: &str = "HORAEDB_CONFIG_FILE";
 
 const HORAEMETA_BINARY_PATH_ENV: &str = "HORAEMETA_BINARY_PATH";
 const HORAEMETA_CONFIG_ENV: &str = "HORAEMETA_CONFIG_PATH";
 const HORAEMETA_STDOUT_FILE_ENV: &str = "HORAEMETA_STDOUT_FILE";
-const CERESDB_CONFIG_FILE_0_ENV: &str = "CERESDB_CONFIG_FILE_0";
-const CERESDB_CONFIG_FILE_1_ENV: &str = "CERESDB_CONFIG_FILE_1";
-const CLUSTER_CERESDB_STDOUT_FILE_0_ENV: &str = "CLUSTER_CERESDB_STDOUT_FILE_0";
-const CLUSTER_CERESDB_STDOUT_FILE_1_ENV: &str = "CLUSTER_CERESDB_STDOUT_FILE_1";
-const CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS: usize = 5;
+const HORAEDB_CONFIG_FILE_0_ENV: &str = "HORAEDB_CONFIG_FILE_0";
+const HORAEDB_CONFIG_FILE_1_ENV: &str = "HORAEDB_CONFIG_FILE_1";
+const CLUSTER_HORAEDB_STDOUT_FILE_0_ENV: &str = "CLUSTER_HORAEDB_STDOUT_FILE_0";
+const CLUSTER_HORAEDB_STDOUT_FILE_1_ENV: &str = "CLUSTER_HORAEDB_STDOUT_FILE_1";
+const CLUSTER_HORAEDB_HEALTH_CHECK_INTERVAL_SECONDS: usize = 5;
 
-const CERESDB_SERVER_ADDR: &str = "CERESDB_SERVER_ADDR";
+const HORAEDB_SERVER_ADDR: &str = "HORAEDB_SERVER_ADDR";
 
 // Used to access CeresDB by http service.
 #[derive(Clone)]
@@ -88,7 +88,7 @@ impl CeresDBServer {
 
         let stdout = File::create(stdout).expect("Failed to create stdout file");
         let server_process = std::process::Command::new(&bin)
-            .env(CERESDB_SERVER_ADDR, local_ip)
+            .env(HORAEDB_SERVER_ADDR, local_ip)
             .args(["--config", &config])
             .stdout(stdout)
             .spawn()
@@ -100,9 +100,9 @@ impl CeresDBServer {
 #[async_trait]
 impl Backend for CeresDBServer {
     fn start() -> Self {
-        let config = env::var(CERESDB_CONFIG_FILE_ENV).expect("Cannot parse horaedb config env");
-        let bin = env::var(CERESDB_BINARY_PATH_ENV).expect("Cannot parse binary path env");
-        let stdout = env::var(CERESDB_STDOUT_FILE_ENV).expect("Cannot parse stdout env");
+        let config = env::var(HORAEDB_CONFIG_FILE_ENV).expect("Cannot parse horaedb config env");
+        let bin = env::var(HORAEDB_BINARY_PATH_ENV).expect("Cannot parse binary path env");
+        let stdout = env::var(HORAEDB_STDOUT_FILE_ENV).expect("Cannot parse stdout env");
         Self::spawn(bin, config, stdout)
     }
 
@@ -155,15 +155,15 @@ impl Backend for CeresDBCluster {
         std::thread::sleep(Duration::from_secs(10));
 
         let ceresdb_bin =
-            env::var(CERESDB_BINARY_PATH_ENV).expect("Cannot parse horaedb binary path env");
+            env::var(HORAEDB_BINARY_PATH_ENV).expect("Cannot parse horaedb binary path env");
         let ceresdb_config_0 =
-            env::var(CERESDB_CONFIG_FILE_0_ENV).expect("Cannot parse ceresdb0 config env");
+            env::var(HORAEDB_CONFIG_FILE_0_ENV).expect("Cannot parse ceresdb0 config env");
         let ceresdb_config_1 =
-            env::var(CERESDB_CONFIG_FILE_1_ENV).expect("Cannot parse ceresdb1 config env");
+            env::var(HORAEDB_CONFIG_FILE_1_ENV).expect("Cannot parse ceresdb1 config env");
         let stdout0 =
-            env::var(CLUSTER_CERESDB_STDOUT_FILE_0_ENV).expect("Cannot parse ceresdb0 stdout env");
+            env::var(CLUSTER_HORAEDB_STDOUT_FILE_0_ENV).expect("Cannot parse ceresdb0 stdout env");
         let stdout1 =
-            env::var(CLUSTER_CERESDB_STDOUT_FILE_1_ENV).expect("Cannot parse ceresdb1 stdout env");
+            env::var(CLUSTER_HORAEDB_STDOUT_FILE_1_ENV).expect("Cannot parse ceresdb1 stdout env");
 
         let server0 = CeresDBServer::spawn(ceresdb_bin.clone(), ceresdb_config_0, stdout0);
         let server1 = CeresDBServer::spawn(ceresdb_bin, ceresdb_config_1, stdout1);
@@ -210,10 +210,10 @@ impl Backend for CeresDBCluster {
             }
 
             wait_cnt += 1;
-            let has_waited = wait_cnt * CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS;
+            let has_waited = wait_cnt * CLUSTER_HORAEDB_HEALTH_CHECK_INTERVAL_SECONDS;
             println!("waiting for cluster service stable, has_waited:{has_waited}s");
             tokio::time::sleep(Duration::from_secs(
-                CLUSTER_CERESDB_HEALTH_CHECK_INTERVAL_SECONDS as u64,
+                CLUSTER_HORAEDB_HEALTH_CHECK_INTERVAL_SECONDS as u64,
             ))
             .await;
         }

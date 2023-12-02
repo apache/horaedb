@@ -25,9 +25,9 @@ use crate::database::{CeresDBCluster, CeresDBServer};
 
 mod database;
 
-const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
-const ENV_FILTER_ENV: &str = "CERESDB_ENV_FILTER";
-const RUN_MODE: &str = "CERESDB_INTEGRATION_TEST_BIN_RUN_MODE";
+const CASE_ROOT_PATH_ENV: &str = "HORAEDB_TEST_CASE_PATH";
+const ENV_FILTER_ENV: &str = "HORAEDB_ENV_FILTER";
+const RUN_MODE: &str = "HORAEDB_INTEGRATION_TEST_BIN_RUN_MODE";
 
 struct CeresDBController;
 struct UntypedCeresDB {

@@ -1263,39 +1263,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ceresdb"
-version = "1.2.6-alpha"
-dependencies = [
- "analytic_engine",
- "catalog",
- "catalog_impls",
- "clap 3.2.23",
- "cluster",
- "datafusion",
- "df_operator",
- "etcd-client",
- "interpreters",
- "logger",
- "meta_client",
- "moka",
- "panic_ext",
- "proxy",
- "query_engine",
- "router",
- "runtime",
- "serde",
- "server",
- "signal-hook",
- "size_ext",
- "table_engine",
- "toml 0.7.3",
- "toml_ext",
- "tracing_util",
- "vergen",
- "wal",
-]
-
-[[package]]
 name = "ceresdb-test"
 version = "1.2.6-alpha"
 dependencies = [
@@ -3040,6 +3007,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
+]
+
+[[package]]
+name = "horaedb"
+version = "1.2.6-alpha"
+dependencies = [
+ "analytic_engine",
+ "catalog",
+ "catalog_impls",
+ "clap 3.2.23",
+ "cluster",
+ "datafusion",
+ "df_operator",
+ "etcd-client",
+ "interpreters",
+ "logger",
+ "meta_client",
+ "moka",
+ "panic_ext",
+ "proxy",
+ "query_engine",
+ "router",
+ "runtime",
+ "serde",
+ "server",
+ "signal-hook",
+ "size_ext",
+ "table_engine",
+ "toml 0.7.3",
+ "toml_ext",
+ "tracing_util",
+ "vergen",
+ "wal",
 ]
 
 [[package]]

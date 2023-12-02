@@ -25,7 +25,7 @@ use logger::info;
 
 /// By this environment variable, the address of current node can be overridden.
 /// And it could be domain name or ip address, but no port follows it.
-const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
+const NODE_ADDR: &str = "HORAEDB_SERVER_ADDR";
 /// By this environment variable, the cluster name of current node can be
 /// overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";

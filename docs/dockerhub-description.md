@@ -1,7 +1,7 @@
-![logo](https://github.com/CeresDB/ceresdb/raw/main/docs/logo/CeresDB.png)
+![logo](https://github.com/CeresDB/horaedb/raw/main/docs/logo/CeresDB.png)
 
 
-[CeresDB](https://github.com/CeresDB/ceresdb) is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
+[CeresDB](https://github.com/CeresDB/horaedb) is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
 
 # How to use this image
 

@@ -96,9 +96,9 @@ pub struct TimeWindowCompactionOptions {
 
 // TODO: MAX_INPUT_SSTABLE_SIZE is a temp solution to control sst size
 // Remove this when we can control compaction's output size
-// https://github.com/CeresDB/ceresdb/issues/408
+// https://github.com/CeresDB/horaedb/issues/408
 pub fn get_max_input_sstable_size() -> ReadableSize {
-    match std::env::var("CERESDB_MAX_INPUT_SSTABLE_SIZE") {
+    match std::env::var("HORAEDB_MAX_INPUT_SSTABLE_SIZE") {
         Ok(size) => ReadableSize::from_str(&size).unwrap_or_else(|_| ReadableSize::mb(1200)),
         Err(_) => ReadableSize::mb(1200),
     }

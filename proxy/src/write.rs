@@ -526,7 +526,7 @@ impl Proxy {
                 }
                 Err(e) => {
                     // TODO: remove this logic.
-                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
+                    // Refer to https://github.com/CeresDB/horaedb/issues/1248.
                     if need_evict_partition_table(e.error_message()) {
                         warn!("Evict partition table:{}", table.name());
                         self.evict_partition_table(table, catalog_name, &schema_name)
@@ -595,7 +595,7 @@ impl Proxy {
             let plan = match write_table_request_to_insert_plan(table, write_table_req) {
                 Err(e) => {
                     // TODO: remove this logic.
-                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
+                    // Refer to https://github.com/CeresDB/horaedb/issues/1248.
                     if need_evict_partition_table(e.error_message()) {
                         warn!("Evict partition table:{}", table_clone.name());
                         self.evict_partition_table(table_clone, &catalog, &schema)

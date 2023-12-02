@@ -12,8 +12,8 @@ cleanup() {
     fi
 }
 
-ADDR=${CERESDB_ADDR:-"127.0.0.1"}
-PORT=${CERESDB_PORT:-"5440"}
+ADDR=${HORAEDB_ADDR:-"127.0.0.1"}
+PORT=${HORAEDB_PORT:-"5440"}
 
 URL="http://${ADDR}:${PORT}/sql"
 
