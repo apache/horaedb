@@ -27,21 +27,21 @@ For features, we don't plan to support we will close the feature request ticket 
 
 ## Contributing Changes
 
-CeresDB is written mostly in idiomatic Rust—please see the [Style Guide](https://docs.ceresdb.io/dev/style_guide.html) for more details.
+HoraeDB is written mostly in idiomatic Rust—please see the [Style Guide](https://ceresdb.github.io/docs/dev/style_guide.html) for more details.
 All code must adhere to the `rustfmt` format, and pass all of the `clippy` checks we run in CI (there are more details further down this README).
 
 ### Making a PR
 
 To open a PR you will need to have a GitHub account.
-Fork the `ceresdb` repo and work on a branch on your fork.
-When you have completed your changes, or you want some incremental feedback make a Pull Request to CeresDB [here](https://github.com/CeresDB/horaedb/compare).
+Fork the `horaedb` repo and work on a branch on your fork.
+When you have completed your changes, or you want some incremental feedback make a Pull Request to HoraeDB [here](https://github.com/CeresDB/horaedb/compare).
 
 If you want to discuss some work in progress then please prefix `[WIP]` to the
 PR title.
 
 For PRs that you consider ready for review, verify the following locally before you submit it:
 
-* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://docs.ceresdb.io/dev/conventional_commit.html) specification;
+* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://ceresdb.github.io/docs/dev/conventional_commit.html) specification;
 * all the tests and/or benchmarks pass, including documentation tests;
 * the code is correctly formatted and all `clippy` checks pass; and
 * you haven't left any "code cruft" (commented out code blocks etc).
