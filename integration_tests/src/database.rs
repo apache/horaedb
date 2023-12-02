@@ -100,7 +100,7 @@ impl CeresDBServer {
 #[async_trait]
 impl Backend for CeresDBServer {
     fn start() -> Self {
-        let config = env::var(CERESDB_CONFIG_FILE_ENV).expect("Cannot parse ceresdb config env");
+        let config = env::var(CERESDB_CONFIG_FILE_ENV).expect("Cannot parse horaedb config env");
         let bin = env::var(CERESDB_BINARY_PATH_ENV).expect("Cannot parse binary path env");
         let stdout = env::var(CERESDB_STDOUT_FILE_ENV).expect("Cannot parse stdout env");
         Self::spawn(bin, config, stdout)
@@ -136,7 +136,7 @@ impl CeresDBCluster {
 impl Backend for CeresDBCluster {
     fn start() -> Self {
         let horaemeta_bin =
-            env::var(HORAEMETA_BINARY_PATH_ENV).expect("Cannot parse ceresdb binary path env");
+            env::var(HORAEMETA_BINARY_PATH_ENV).expect("Cannot parse horaedb binary path env");
         let horaemeta_config =
             env::var(HORAEMETA_CONFIG_ENV).expect("Cannot parse horaemeta config path env");
         let horaemeta_stdout =
@@ -155,7 +155,7 @@ impl Backend for CeresDBCluster {
         std::thread::sleep(Duration::from_secs(10));
 
         let ceresdb_bin =
-            env::var(CERESDB_BINARY_PATH_ENV).expect("Cannot parse ceresdb binary path env");
+            env::var(CERESDB_BINARY_PATH_ENV).expect("Cannot parse horaedb binary path env");
         let ceresdb_config_0 =
             env::var(CERESDB_CONFIG_FILE_0_ENV).expect("Cannot parse ceresdb0 config env");
         let ceresdb_config_1 =

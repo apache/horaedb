@@ -394,10 +394,10 @@ impl Proxy {
                     return Ok(());
                 }
 
-                info!("Drop partition table because the id of the table in ceresdb is different from the one in horaemeta,\
+                info!("Drop partition table because the id of the table in horaedb is different from the one in horaemeta,\
                        catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{table_id}, new_table_id:{}",
                       partition_table_info.id);
-                // Drop partition table because the id of the table in ceresdb is different from
+                // Drop partition table because the id of the table in horaedb is different from
                 // the one in horaemeta.
                 self.drop_partition_table(
                     schema.clone(),
@@ -409,9 +409,9 @@ impl Proxy {
             }
             (Some(table), None) => {
                 // Drop partition table because it does not exist in horaemeta but exists in
-                // ceresdb-server.
+                // horaedb-server.
                 if table.partition_info().is_some() {
-                    info!("Drop partition table because it does not exist in horaemeta but exists in ceresdb-server,\
+                    info!("Drop partition table because it does not exist in horaemeta but exists in horaedb-server,\
                            catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}", table.id());
                     self.drop_partition_table(
                         schema.clone(),

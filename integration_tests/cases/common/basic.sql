@@ -10,7 +10,7 @@ CREATE TABLE demo (
 
 
 INSERT INTO demo (t, name, value)
-    VALUES (1651737067000, 'ceresdb', 100);
+    VALUES (1651737067000, 'horaedb', 100);
 
 
 SELECT * FROM demo;
@@ -45,7 +45,7 @@ CREATE TABLE `binary_demo` (
     enable_ttl = 'false'
 );
 
-INSERT INTO binary_demo(t, name, value) VALUES(1667374200022, 'ceresdb', x'11');
+INSERT INTO binary_demo(t, name, value) VALUES(1667374200022, 'horaedb', x'11');
 
 SELECT * FROM binary_demo WHERE value = x'11';
 

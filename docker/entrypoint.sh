@@ -16,4 +16,4 @@ mkdir -p ${DATA_DIR}
 chmod +777 -R ${DATA_DIR}
 chown -R ${USER}.${USER} ${DATA_DIR}
 
-exec /usr/bin/ceresdb-server --config ${CONFIG_FILE}
+exec /usr/bin/horaedb-server --config ${CONFIG_FILE}

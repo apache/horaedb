@@ -86,13 +86,13 @@ if [ ! -f ${DATA_FILE} ]; then
 fi
 
 
-# Write data to ceresdb
+# Write data to horaedb
 ./tsbs_load_ceresdb --ceresdb-addr=${CERESDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATCH_SIZE} --workers ${WRITE_WORKER_NUM} | tee ${LOG_DIR}/write.log
 
 # Generate queries for query
 ./scripts/generate_queries.sh
 
-# Run queries against ceresdb
+# Run queries against horaedb
 # TODO: support more kinds of queries besides 5-8-1.
 cat ${BULK_DATA_DIR}/ceresdb-single-groupby-5-8-1-queries.gz | gunzip | ./tsbs_run_queries_ceresdb --ceresdb-addr=${CERESDB_ADDR} | tee ${LOG_DIR}/5-8-1.log
 

@@ -103,7 +103,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             prefix: String::from("tracing"),
-            dir: String::from("/tmp/ceresdb"),
+            dir: String::from("/tmp/horaedb"),
             level: String::from("info"),
             console: None,
         }

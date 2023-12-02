@@ -34,7 +34,7 @@ on:
 env:
   CERESDB_ADDR: 127.0.0.1
   CERESDB_PORT: 5440
-  IMAGE_NAME: ceresdb-server:latest
+  IMAGE_NAME: horaedb-server:latest
   SERVER_NAME: standalone-server
 
 jobs:

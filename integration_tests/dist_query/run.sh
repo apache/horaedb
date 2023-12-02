@@ -70,10 +70,10 @@ fi
 # Clean old table if exist
 curl -XPOST "${CERESDB_HTTP_ADDR}/sql" -d 'DROP TABLE IF EXISTS `cpu`'
 
-# Write data to ceresdb
+# Write data to horaedb
 ${CURR_DIR}/tsbs/tsbs_load_ceresdb --ceresdb-addr=${CERESDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATCH_SIZE} --workers ${WRITE_WORKER_NUM}  --access-mode proxy --partition-keys hostname --update-mode APPEND | tee ${OUTPUT_DIR}/${CASE_DIR}-${CASE_DATASOURCE}.log
 
-# Run queries against ceresdb
+# Run queries against horaedb
 # TODO: support more kinds of queries besides 5-8-1.
 cat ${BULK_DATA_DIR}/${CASE_QUERY} | gunzip | ${CURR_DIR}/tsbs/tsbs_run_queries_ceresdb --ceresdb-addr=${CERESDB_ADDR} --print-responses true --access-mode proxy --responses-file ${QUERY_RESULTS_FILE} | tee ${OUTPUT_DIR}/${CASE_DIR}-${CASE_QUERY}.log
 

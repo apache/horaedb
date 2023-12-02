@@ -209,9 +209,9 @@ pub struct ShardInfo {
     pub id: ShardId,
     pub role: ShardRole,
     pub version: ShardVersion,
-    // This status is only used for request ceresdb send to horaemeta via heartbeat
-    // When ceresdb receive this via open shard request, this field is meaningless.
-    // TODO: Use different request and response body between ceresdb and
+    // This status is only used for request horaedb send to horaemeta via heartbeat
+    // When horaedb receive this via open shard request, this field is meaningless.
+    // TODO: Use different request and response body between horaedb and
     // horaemeta.
     pub status: ShardStatus,
 }

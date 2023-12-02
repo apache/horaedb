@@ -38,7 +38,7 @@ pub struct StorageOptions {
 
 impl Default for StorageOptions {
     fn default() -> Self {
-        let root_path = "/tmp/ceresdb".to_string();
+        let root_path = "/tmp/horaedb".to_string();
 
         StorageOptions {
             mem_cache_capacity: ReadableSize::mb(512),

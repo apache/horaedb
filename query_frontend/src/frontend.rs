@@ -282,8 +282,8 @@ mod tests {
     fn test_parse_table_name() {
         let table = "test_parse_table_name";
         let test_cases = vec![
-                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'ceresdb', 100)"),
-                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'ceresdb', 100)"),
+                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'horaedb', 100)"),
+                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'horaedb', 100)"),
                             format!("select * from {table}"),
                             format!("select * from `{table}`"),
                             format!("explain select * from {table}"),

@@ -122,7 +122,7 @@ where
         } else if self.slow.is_some() && tag == SLOW_QUERY_TAG {
             self.slow.as_ref().unwrap().log(record, values)
         } else {
-            // For crates outside ceresdb
+            // For crates outside horaedb
             self.normal.log(record, values)
         }
     }

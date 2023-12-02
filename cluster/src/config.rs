@@ -37,7 +37,7 @@ impl Default for SchemaConfig {
     }
 }
 
-const DEFAULT_ETCD_ROOT_PATH: &str = "/ceresdb";
+const DEFAULT_ETCD_ROOT_PATH: &str = "/horaedb";
 const MIN_SHARD_LOCK_LEASE_TTL_SEC: u64 = 15;
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
@@ -55,7 +55,7 @@ pub struct TlsConfig {
 pub struct EtcdClientConfig {
     /// The etcd server addresses
     pub server_addrs: Vec<String>,
-    /// Root path in the etcd used by the ceresdb server
+    /// Root path in the etcd used by the horaedb server
     pub root_path: String,
 
     /// Timeout to connect to etcd cluster
