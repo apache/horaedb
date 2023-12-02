@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
-
 pub mod codec;
 pub mod dist_sql_query;
 pub mod metrics;

@@ -858,7 +858,7 @@ fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<
 /// Add quotes in table name (for example: convert table to `table`).
 ///
 /// It is used to process table name in `SELECT`, for preventing `datafusion`
-/// converting the table name to lowercase, because `CeresDB` only support
+/// converting the table name to lowercase, because `HoraeDB` only support
 /// case-sensitive in sql.
 // TODO: maybe other items(such as: alias, column name) need to be normalized,
 // too.

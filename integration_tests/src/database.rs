@@ -42,7 +42,7 @@ const CLUSTER_HORAEDB_HEALTH_CHECK_INTERVAL_SECONDS: usize = 5;
 
 const HORAEDB_SERVER_ADDR: &str = "HORAEDB_SERVER_ADDR";
 
-// Used to access CeresDB by http service.
+// Used to access HoraeDB by http service.
 #[derive(Clone)]
 struct HttpClient {
     client: reqwest::Client,

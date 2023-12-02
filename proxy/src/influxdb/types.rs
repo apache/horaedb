@@ -72,8 +72,8 @@ pub type WriteResponse = ();
 ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-2
 ///
 /// NOTE:
-///     - `db` is not required and default to `public` in CeresDB.
-///     - `precision`'s default value is `ms` but not `ns` in CeresDB.
+///     - `db` is not required and default to `public` in HoraeDB.
+///     - `precision`'s default value is `ms` but not `ns` in HoraeDB.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct WriteParams {
@@ -200,9 +200,9 @@ impl From<&str> for Precision {
 ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1
 ///
 /// NOTE:
-///     - `db` is not required and default to `public` in CeresDB.
-///     - `chunked` is not supported in CeresDB.
-///     - `epoch`'s default value is `ms` but not `ns` in CeresDB.
+///     - `db` is not required and default to `public` in HoraeDB.
+///     - `chunked` is not supported in HoraeDB.
+///     - `epoch`'s default value is `ms` but not `ns` in HoraeDB.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct InfluxqlParams {

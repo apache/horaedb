@@ -166,7 +166,7 @@ impl Proxy {
     }
 
     /// This method is used to handle forwarded gRPC query from
-    /// another CeresDB instance.
+    /// another HoraeDB instance.
     pub async fn handle_prom_grpc_query(
         &self,
         timeout: Option<Duration>,

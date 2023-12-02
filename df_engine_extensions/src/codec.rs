@@ -37,7 +37,7 @@ pub trait TypedPhysicalExtensionCodec: fmt::Debug + Sync + Send + 'static {
     fn try_encode(&self, node: Arc<dyn ExecutionPlan>) -> Option<DfResult<TypedExtension>>;
 }
 
-/// CeresDB datafusion `PhysicalExtensionCodec`
+/// HoraeDB datafusion `PhysicalExtensionCodec`
 /// Each extension physical plan will define its `TypedPhysicalExtensionCodec`,
 /// and register into here.
 #[derive(Debug)]

@@ -12,7 +12,7 @@ WORKDIR /ceresdb
 
 RUN make build
 
-## CeresDB
+## HoraeDB
 FROM ubuntu:20.04
 
 RUN useradd -m -s /bin/bash ceres

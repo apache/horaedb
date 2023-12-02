@@ -44,7 +44,7 @@ use crate::{
 // Same with iox
 pub const HORAEDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 
-// Port from https://github.com/ceresdb/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
+// Port from https://github.com/CeresDB/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
     tables_cache: OnceCell<Vec<TableRef>>,

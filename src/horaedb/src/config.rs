@@ -73,12 +73,12 @@ pub struct Config {
     pub limiter: LimiterConfig,
 }
 
-/// The cluster deployment decides how to deploy the CeresDB cluster.
+/// The cluster deployment decides how to deploy the HoraeDB cluster.
 ///
-/// [ClusterDeployment::NoMeta] means to start one or multiple CeresDB
+/// [ClusterDeployment::NoMeta] means to start one or multiple HoraeDB
 /// instance(s) without HoraeMeta.
 ///
-/// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
+/// [ClusterDeployment::WithMeta] means to start one or multiple HoraeDB
 /// instance(s) under the control of HoraeMeta.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
