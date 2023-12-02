@@ -58,7 +58,7 @@ jobs:
       - name: Test the Built Image With Config
         run: |
           docker run --name ${SERVER_NAME} -p ${HORAEDB_ADDR}:${HORAEDB_PORT}:${HORAEDB_PORT} \
-            -v `pwd`/docs/minimal.toml:/etc/ceresdb/ceresdb.toml -d ${IMAGE_NAME}
+            -v `pwd`/docs/minimal.toml:/etc/horaedb/horaedb.toml -d ${IMAGE_NAME}
           sleep 10
           bash ./docker/basic.sh
           docker rm -f ${SERVER_NAME}

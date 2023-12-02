@@ -5,8 +5,8 @@ set -exo pipefail
 ## init varibles
 USER="ceres"
 DATA_DIR="/home/${USER}/data"
-DATA_PATH="${DATA_DIR}/ceresdb"
-CONFIG_FILE="/etc/ceresdb/ceresdb.toml"
+DATA_PATH="${DATA_DIR}/horaedb"
+CONFIG_FILE="/etc/horaedb/horaedb.toml"
 
 # enable jemalloc heap profiling
 export MALLOC_CONF="prof:true,prof_active:false,lg_prof_sample:19"

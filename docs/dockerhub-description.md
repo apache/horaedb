@@ -20,7 +20,7 @@ CeresDB will listen three ports when start:
 - 5440, HTTP port
 
 There are some files used by server inside Docker image, the following one is the most important:
-- `/etc/ceresdb/ceresdb.toml`, config
+- `/etc/horaedb/horaedb.toml`, config
 
 You overwrite config with this command:
 

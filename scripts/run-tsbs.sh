@@ -15,7 +15,7 @@ export RESULT_FILE=${RESULT_FILE:-${DEFAULT_RESULT_FILE}}
 export HORAEDB_CONFIG_FILE=${HORAEDB_CONFIG_FILE:-docs/minimal.toml}
 export LOG_DIR=${LOG_DIR:-${CURR_DIR}/logs}
 export HORAEDB_ADDR=${HORAEDB_ADDR:-127.0.0.1:8831}
-export HORAEDB_PID_FILE=${CURR_DIR}/ceresdb-server.pid
+export HORAEDB_PID_FILE=${CURR_DIR}/horaedb-server.pid
 export WRITE_WORKER_NUM=${WRITE_WORKER_NUM:-36}
 export WRITE_BATCH_SIZE=${WRITE_BATCH_SIZE:-500}
 # Where generated data stored
@@ -62,7 +62,7 @@ cleanup() {
 mkdir -p ${LOG_DIR}
 
 kill_ceresdb_server
-nohup ./target/release/ceresdb-server -c ${HORAEDB_CONFIG_FILE} > ${LOG_DIR}/server.log & echo $! > ${HORAEDB_PID_FILE}
+nohup ./target/release/horaedb-server -c ${HORAEDB_CONFIG_FILE} > ${LOG_DIR}/server.log & echo $! > ${HORAEDB_PID_FILE}
 
 git clone -b feat-ceresdb --depth 1 --single-branch https://github.com/CeresDB/tsbs.git
 
