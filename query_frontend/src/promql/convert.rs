@@ -85,11 +85,11 @@ impl TryFrom<OperandPb> for Expr {
                         query_range: TimeRange::new_unchecked(
                             Timestamp::new(start),
                             Timestamp::new(end + 1),
-                        ), /* [start, end] */
+                        ), // [start, end]
                         align_range: TimeRange::new_unchecked(
                             Timestamp::new(align_start),
                             Timestamp::new(align_end + 1),
-                        ), /* [align_start, align_end] */
+                        ), // [align_start, align_end]
                         step,
                         range,
                         offset,

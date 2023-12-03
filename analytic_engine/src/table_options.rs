@@ -249,7 +249,7 @@ pub enum StorageFormat {
     /// Traditional columnar format, every column is saved in one exact one
     /// column, for example:
     ///
-    ///```plaintext
+    /// ```plaintext
     /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |
     /// | --------- |---------- | ----------- | ----- | ----- |
     /// | 12:01     | A         | 0           | v1    | v1    |

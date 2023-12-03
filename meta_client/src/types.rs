@@ -176,7 +176,7 @@ pub struct NodeInfo {
 
 /// The status changes of a shard as following:
 ///
-///```plaintext
+/// ```plaintext
 ///   ┌────┐
 ///   │Init│
 ///   └──┬─┘
