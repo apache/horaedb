@@ -15,7 +15,7 @@ You can signal to the team that you're experiencing an existing issue with one o
 
 ### Submitting an Issue
 
-The [New Issue]((https://github.com/CeresDB/horaedb/issues/new)) page has templates for both bug reports and feature requests.
+The [New Issue](https://github.com/CeresDB/horaedb/issues/new) page has templates for both bug reports and feature requests.
 Please fill one of them out!
 The issue templates provide details on what information we will find useful to help us fix an issue.
 In short though, the more information you can provide us about your environment and what behaviour you're seeing, the easier we can fix the issue.
