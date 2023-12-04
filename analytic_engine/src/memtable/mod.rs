@@ -233,7 +233,7 @@ pub trait MemTable {
 
     /// Insert one row into the memtable.
     ///
-    ///.- ctx: The put context
+    /// .- ctx: The put context
     /// - sequence: The sequence of the row
     /// - row: The row to insert
     /// - schema: The schema of the row

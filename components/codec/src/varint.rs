@@ -56,7 +56,6 @@ pub fn encode_varint<B: SafeBufMut>(buf: &mut B, value: i64) -> Result<usize> {
     encode_uvarint(buf, x)
 }
 
-//
 // from https://golang.org/src/encoding/binary/varint.go?s=1611:1652#L31
 //
 // ```go

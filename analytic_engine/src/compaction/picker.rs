@@ -257,7 +257,7 @@ impl Bucket {
 
     #[inline]
     fn hotness(f: &FileHandle) -> f64 {
-        //prevent NAN hotness
+        // prevent NAN hotness
         let row_num = f.row_num().max(1);
         f.read_meter().h2_rate() / (row_num as f64)
     }
