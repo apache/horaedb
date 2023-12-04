@@ -100,12 +100,12 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
             }
         };
 
-        let ceresdb_arrow_schema = table_source.schema();
+        let horaedb_arrow_schema = table_source.schema();
         let influxql_schema = match convert_to_influxql_schema(table_source.schema()) {
             Ok(schema) => schema,
             Err(e) => {
                 // Same as above here.
-                error!("Influxql planner failed to convert schema to influxql schema, schema:{ceresdb_arrow_schema}, err:{e}");
+                error!("Influxql planner failed to convert schema to influxql schema, schema:{horaedb_arrow_schema}, err:{e}");
                 return None;
             }
         };
@@ -133,8 +133,8 @@ pub(crate) struct Planner<'a, P: MetaProvider> {
     schema_provider: InfluxQLSchemaProvider<'a, P>,
 }
 
-fn convert_to_influxql_schema(ceresdb_arrow_schema: ArrowSchemaRef) -> Result<Schema> {
-    ceresdb_schema_to_influxdb(ceresdb_arrow_schema)
+fn convert_to_influxql_schema(horaedb_arrow_schema: ArrowSchemaRef) -> Result<Schema> {
+    ceresdb_schema_to_influxdb(horaedb_arrow_schema)
         .box_err()
         .and_then(|s| Schema::try_from(s).box_err())
         .context(BuildPlanWithCause {

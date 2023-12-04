@@ -127,7 +127,7 @@ impl AnalyzerRule for TypeConversion {
     }
 
     fn name(&self) -> &str {
-        "ceresdb_type_conversion"
+        "horaedb_type_conversion"
     }
 }
 

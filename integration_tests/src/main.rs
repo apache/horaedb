@@ -29,8 +29,8 @@ const CASE_ROOT_PATH_ENV: &str = "HORAEDB_TEST_CASE_PATH";
 const ENV_FILTER_ENV: &str = "HORAEDB_ENV_FILTER";
 const RUN_MODE: &str = "HORAEDB_INTEGRATION_TEST_BIN_RUN_MODE";
 
-struct CeresDBController;
-struct UntypedCeresDB {
+struct HoraeDBController;
+struct UntypedHoraeDB {
     db: DbRef,
 }
 
@@ -47,15 +47,15 @@ impl<T: Backend + Send + Sync> StoppableDatabase for HoraeDB<T> {
 }
 
 #[async_trait]
-impl Database for UntypedCeresDB {
+impl Database for UntypedHoraeDB {
     async fn query(&self, context: QueryContext, query: String) -> Box<dyn Display> {
         self.db.query(context, query).await
     }
 }
 
 #[async_trait]
-impl EnvController for CeresDBController {
-    type DB = UntypedCeresDB;
+impl EnvController for HoraeDBController {
+    type DB = UntypedHoraeDB;
 
     async fn start(&self, env: &str, _config: Option<&Path>) -> Self::DB {
         println!("start with env {env}");
@@ -65,7 +65,7 @@ impl EnvController for CeresDBController {
             _ => panic!("invalid env {env}"),
         };
 
-        UntypedCeresDB { db }
+        UntypedHoraeDB { db }
     }
 
     async fn stop(&self, env: &str, mut database: Self::DB) {
@@ -76,7 +76,7 @@ impl EnvController for CeresDBController {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let controller = CeresDBController;
+    let controller = HoraeDBController;
     let run_mode = env::var(RUN_MODE).unwrap_or_else(|_| "sql_test".to_string());
 
     match run_mode.as_str() {
