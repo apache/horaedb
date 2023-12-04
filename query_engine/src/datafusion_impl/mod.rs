@@ -26,7 +26,7 @@ use datafusion::{
     prelude::{SessionConfig, SessionContext},
 };
 use df_engine_extensions::codec::PhysicalExtensionCodecImpl;
-use table_engine::{provider::CeresdbOptions, remote::RemoteEngineRef};
+use table_engine::{provider::HoraeDBOptions, remote::RemoteEngineRef};
 
 use crate::{
     context::Context,
@@ -139,7 +139,7 @@ impl DfContextBuilder {
         let timeout = ctx
             .deadline
             .map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
-        let ceresdb_options = CeresdbOptions {
+        let options = HoraeDBOptions {
             request_id: ctx.request_id.as_u64(),
             request_timeout: timeout,
             default_catalog: ctx.default_catalog.clone(),
@@ -152,10 +152,7 @@ impl DfContextBuilder {
             )
             .with_target_partitions(self.config.read_parallelism);
 
-        df_session_config
-            .options_mut()
-            .extensions
-            .insert(ceresdb_options);
+        df_session_config.options_mut().extensions.insert(options);
 
         // Using default logcial optimizer, if want to add more custom rule, using
         // `add_optimizer_rule` to add.
