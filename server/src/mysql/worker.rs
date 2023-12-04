@@ -59,7 +59,7 @@ where
     ) -> Result<()> {
         info.error(
             ErrorKind::ER_NOT_SUPPORTED_YET,
-            "Prepare is not supported in CeresDB".as_bytes(),
+            "Prepare is not supported in HoraeDB".as_bytes(),
         )?;
         Ok(())
     }
@@ -72,7 +72,7 @@ where
     ) -> Result<()> {
         writer.error(
             ErrorKind::ER_NOT_SUPPORTED_YET,
-            "Execute is not supported in CeresDB".as_bytes(),
+            "Execute is not supported in HoraeDB".as_bytes(),
         )?;
         Ok(())
     }

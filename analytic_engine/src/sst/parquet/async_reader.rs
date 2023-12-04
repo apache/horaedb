@@ -388,7 +388,7 @@ impl<'a> Reader<'a> {
                     file_path: self.path.to_string(),
                 })?;
 
-        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
+        // TODO: Support page index until https://github.com/CeresDB/horaedb/issues/1040 is fixed.
 
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter, self.store.clone())
             .await

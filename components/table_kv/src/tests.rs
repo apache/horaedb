@@ -204,7 +204,7 @@ fn test_memory() {
 }
 
 fn run_table_kv_test<T: TableKv>(mut tester: TableKvTester<T>) {
-    let table_name = random_table_name("ceresdb");
+    let table_name = random_table_name("horaedb");
     tester.create_table(&table_name);
     tester.truncate_table(&table_name);
 

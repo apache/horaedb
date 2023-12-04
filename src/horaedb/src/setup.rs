@@ -287,7 +287,7 @@ async fn build_with_meta<T: WalsOpener>(
         binary_version: config.node.binary_version.clone(),
     };
 
-    info!("Build ceresdb with node meta info:{node_meta_info:?}");
+    info!("Build horaedb with node meta info:{node_meta_info:?}");
 
     let endpoint = node_meta_info.endpoint();
     let meta_client =

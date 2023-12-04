@@ -16,16 +16,16 @@
 
 use std::env;
 
-use ceresdb::{
+use clap::{App, Arg};
+use horaedb::{
     config::{ClusterDeployment, Config},
     setup,
 };
-use clap::{App, Arg};
 use logger::info;
 
 /// By this environment variable, the address of current node can be overridden.
 /// And it could be domain name or ip address, but no port follows it.
-const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
+const NODE_ADDR: &str = "HORAEDB_SERVER_ADDR";
 /// By this environment variable, the cluster name of current node can be
 /// overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
@@ -59,7 +59,7 @@ fn fetch_version() -> String {
 
 fn main() {
     let version = fetch_version();
-    let matches = App::new("CeresDB Server")
+    let matches = App::new("HoraeDB Server")
         .version(version.as_str())
         .arg(
             Arg::with_name("config")
@@ -88,7 +88,7 @@ fn main() {
         }
     }
 
-    println!("CeresDB server tries starting with config:{config:?}");
+    println!("HoraeDB server tries starting with config:{config:?}");
 
     // Setup log.
     let runtime_level = setup::setup_logger(&config);

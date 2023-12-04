@@ -58,7 +58,7 @@ pub struct CeresdbOptions {
 }
 
 impl ConfigExtension for CeresdbOptions {
-    const PREFIX: &'static str = "ceresdb";
+    const PREFIX: &'static str = "horaedb";
 }
 
 impl ExtensionOptions for CeresdbOptions {

@@ -305,7 +305,7 @@ impl Builder {
 impl Default for Builder {
     fn default() -> Self {
         let params = CreateTableParams {
-            catalog_name: "ceresdb".to_string(),
+            catalog_name: "horaedb".to_string(),
             schema_name: "public".to_string(),
             table_name: "test_table".to_string(),
             table_schema: FixedSchemaTable::default_schema(),

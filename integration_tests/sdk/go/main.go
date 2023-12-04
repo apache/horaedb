@@ -12,7 +12,7 @@ import (
 var endpoint = "127.0.0.1:8831"
 
 func init() {
-	if v := os.Getenv("CERESDB_ADDR"); v != "" {
+	if v := os.Getenv("HORAEDB_ADDR"); v != "" {
 		endpoint = v
 	}
 }

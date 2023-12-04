@@ -1,10 +1,8 @@
-![HoraeDB](docs/logo/CeresDB.png)
-
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 [![CI](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/horaedb)](https://github.com/CeresDB/horaedb/issues)
 [![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
-[![Docker](https://img.shields.io/docker/v/ceresdb/ceresdb-server?logo=docker)](https://hub.docker.com/r/ceresdb/ceresdb-server)
+[![Docker](https://img.shields.io/docker/v/ceresdb/horaedb-server?logo=docker)](https://hub.docker.com/r/ceresdb/horaedb-server)
 
 [English](./README.md)
 
@@ -73,7 +71,7 @@ cargo build --release
 
 使用下载的代码中提供的默认配置文件，即可启动：
 ```bash
-./target/release/ceresdb-server --config ./docs/minimal.toml
+./target/release/horaedb-server --config ./docs/minimal.toml
 ```
 
 ### 进行数据读写
@@ -92,7 +90,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "INSERT INTO demo(t, name, value) VALUES(1651737067000, '\''ceresdb'\'', 100)"
+    "query": "INSERT INTO demo(t, name, value) VALUES(1651737067000, '\''horaedb'\'', 100)"
 }'
 ```
 
@@ -155,4 +153,4 @@ mysql -u root -P 3307 -h 127.0.0.1
 在生产环境中，我们重度使用 [OceanBase](https://github.com/oceanbase/oceanbase) 作为 WAL 和 ObjectStore 的实现，而且 OceanBase 团队还帮助我们一起维护集群的稳定，感谢 OceanBase 团队一直以来的帮助。
 
 ## 开源许可
-HoraeDB 基于 [Apache License 2.0](./LICENSE) 协议。
+HoraeDB 基于 [Apache License 2.0](LICENSE) 协议。

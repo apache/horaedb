@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Config for ceresdb server.
+// Config for horaedb server.
 
 use cluster::config::ClusterConfig;
 use proxy::limiter::LimiterConfig;
@@ -23,7 +23,7 @@ use size_ext::ReadableSize;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct NodeInfo {
-    /// The address of the ceresdb node. It can be a domain name or an IP
+    /// The address of the horaedb node. It can be a domain name or an IP
     /// address without port followed.
     pub addr: String,
     pub zone: String,
@@ -73,12 +73,12 @@ pub struct Config {
     pub limiter: LimiterConfig,
 }
 
-/// The cluster deployment decides how to deploy the CeresDB cluster.
+/// The cluster deployment decides how to deploy the HoraeDB cluster.
 ///
-/// [ClusterDeployment::NoMeta] means to start one or multiple CeresDB
+/// [ClusterDeployment::NoMeta] means to start one or multiple HoraeDB
 /// instance(s) without HoraeMeta.
 ///
-/// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
+/// [ClusterDeployment::WithMeta] means to start one or multiple HoraeDB
 /// instance(s) under the control of HoraeMeta.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]

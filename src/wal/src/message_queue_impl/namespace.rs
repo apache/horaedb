@@ -492,7 +492,7 @@ pub struct ScanRegionIterator<C: ConsumeIterator> {
     /// Terminated flag
     is_terminated: bool,
 
-    /// See the same problem in https://github.com/CeresDB/ceresdb/issues/120
+    /// See the same problem in https://github.com/CeresDB/horaedb/issues/120
     current_log_payload: Vec<u8>,
 }
 
@@ -579,7 +579,7 @@ pub struct ReadTableIterator<C: ConsumeIterator> {
     /// Terminated flag
     is_terminated: bool,
 
-    /// See the same problem in https://github.com/CeresDB/ceresdb/issues/120
+    /// See the same problem in https://github.com/CeresDB/horaedb/issues/120
     previous_value: Vec<u8>,
 }
 

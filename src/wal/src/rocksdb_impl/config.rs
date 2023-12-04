@@ -31,7 +31,7 @@ pub struct RocksDBStorageConfig {
 impl Default for RocksDBStorageConfig {
     fn default() -> Self {
         Self {
-            data_dir: "/tmp/ceresdb".to_string(),
+            data_dir: "/tmp/horaedb".to_string(),
             data_namespace: Default::default(),
             meta_namespace: Default::default(),
         }

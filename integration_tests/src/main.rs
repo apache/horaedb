@@ -18,16 +18,16 @@ use std::{env, fmt::Display, path::Path};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use database::{Backend, CeresDB};
+use database::{Backend, HoraeDB};
 use sqlness::{Database, EnvController, QueryContext, Runner};
 
-use crate::database::{CeresDBCluster, CeresDBServer};
+use crate::database::{HoraeDBCluster, HoraeDBServer};
 
 mod database;
 
-const CASE_ROOT_PATH_ENV: &str = "CERESDB_TEST_CASE_PATH";
-const ENV_FILTER_ENV: &str = "CERESDB_ENV_FILTER";
-const RUN_MODE: &str = "CERESDB_INTEGRATION_TEST_BIN_RUN_MODE";
+const CASE_ROOT_PATH_ENV: &str = "HORAEDB_TEST_CASE_PATH";
+const ENV_FILTER_ENV: &str = "HORAEDB_ENV_FILTER";
+const RUN_MODE: &str = "HORAEDB_INTEGRATION_TEST_BIN_RUN_MODE";
 
 struct CeresDBController;
 struct UntypedCeresDB {
@@ -40,7 +40,7 @@ pub trait StoppableDatabase: Database {
 
 pub type DbRef = Box<dyn StoppableDatabase + Send + Sync>;
 
-impl<T: Backend + Send + Sync> StoppableDatabase for CeresDB<T> {
+impl<T: Backend + Send + Sync> StoppableDatabase for HoraeDB<T> {
     fn stop(&mut self) {
         self.stop();
     }
@@ -60,8 +60,8 @@ impl EnvController for CeresDBController {
     async fn start(&self, env: &str, _config: Option<&Path>) -> Self::DB {
         println!("start with env {env}");
         let db = match env {
-            "local" => Box::new(CeresDB::<CeresDBServer>::create().await) as DbRef,
-            "cluster" => Box::new(CeresDB::<CeresDBCluster>::create().await) as DbRef,
+            "local" => Box::new(HoraeDB::<HoraeDBServer>::create().await) as DbRef,
+            "cluster" => Box::new(HoraeDB::<HoraeDBCluster>::create().await) as DbRef,
             _ => panic!("invalid env {env}"),
         };
 

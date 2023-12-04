@@ -179,7 +179,7 @@ fn check_scan_result(expect: &[(&[u8], &[u8])], result: &[(Vec<u8>, Vec<u8>)]) {
 fn test_obkv() {
     let mut tester = ObkvTester::default();
 
-    let table_name = random_table_name("ceresdb");
+    let table_name = random_table_name("horaedb");
     tester.create_table(&table_name);
     tester.truncate_table(&table_name);
 

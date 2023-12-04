@@ -25,7 +25,7 @@ use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
 /// The datafusion filter exprs extractor
 ///
 /// It's used to extract the meaningful `Expr`s and convert them to
-/// [PartitionFilter](the inner filter type in ceresdb).
+/// [PartitionFilter](the inner filter type in horaedb).
 ///
 /// NOTICE: When you implements [PartitionRule] for specific partition strategy,
 /// you should implement the corresponding [FilterExtractor], too.
