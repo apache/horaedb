@@ -133,8 +133,8 @@ pub(crate) struct Planner<'a, P: MetaProvider> {
     schema_provider: InfluxQLSchemaProvider<'a, P>,
 }
 
-fn convert_to_influxql_schema(ceresdb_arrow_schema: ArrowSchemaRef) -> Result<Schema> {
-    ceresdb_schema_to_influxdb(ceresdb_arrow_schema)
+fn convert_to_influxql_schema(horaedb_arrow_schema: ArrowSchemaRef) -> Result<Schema> {
+    ceresdb_schema_to_influxdb(horaedb_arrow_schema)
         .box_err()
         .and_then(|s| Schema::try_from(s).box_err())
         .context(BuildPlanWithCause {
