@@ -22,19 +22,19 @@ log_level = "debug"
 read_parallelism = 8
 
 [analytic]
-wal_path = "/tmp/ceresdb"
+wal_path = "/tmp/horaedb"
 sst_meta_cache_cap = 10000
 
 [analytic.storage]
 mem_cache_capacity = '1G'
 mem_cache_partition_bits = 0
-disk_cache_path = "/tmp/ceresdb"
+disk_cache_path = "/tmp/horaedb"
 disk_cache_capacity = '2G'
 disk_cache_page_size = '1M'
 
 [analytic.storage.object_store]
 type = "Local"
-data_path = "/tmp/ceresdb"
+data_path = "/tmp/horaedb"
 
 [[meta_client.cluster_view.schema_shards]]
 schema = 'public'

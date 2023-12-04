@@ -21,15 +21,15 @@ grpc_port = 8831
 level = "info"
 
 [tracing]
-dir = "/tmp/ceresdb"
+dir = "/tmp/horaedb"
 
 [analytic]
 recover_mode = "ShardBased"
 
 [analytic.storage.object_store]
 type = "Local"
-data_dir = "/tmp/ceresdb"
+data_dir = "/tmp/horaedb"
 
 [analytic.wal]
 type = "RocksDB"
-data_dir = "/tmp/ceresdb"
+data_dir = "/tmp/horaedb"

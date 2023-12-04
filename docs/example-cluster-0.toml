@@ -31,11 +31,11 @@ mem_cache_partition_bits = 0
 
 [analytic.storage.object_store]
 type = "Local"
-data_dir = "/tmp/ceresdb0"
+data_dir = "/tmp/horaedb0"
 
 [analytic.wal]
 type = "RocksDB"
-data_dir = "/tmp/ceresdb0"
+data_dir = "/tmp/horaedb0"
 
 [cluster_deployment]
 mode = "WithMeta"

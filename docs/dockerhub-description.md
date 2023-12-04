@@ -13,7 +13,8 @@ docker run -d --name horaedb-server \
   horaedb/horaedb-server:$(version)
 ```
 
-CeresDB will listen three ports when start:
+HoraeDB will listen three ports when started:
+
 - 8831, gRPC port
 - 3307, MySQL port
 - 5440, HTTP port
