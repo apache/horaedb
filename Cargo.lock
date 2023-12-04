@@ -5809,6 +5809,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "resource_keeper"
+version = "1.2.6-alpha"
+dependencies = [
+ "logger",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
 name = "rgb"
 version = "0.8.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"

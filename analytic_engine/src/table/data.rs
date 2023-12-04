@@ -1,3 +1,17 @@
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -584,9 +598,7 @@ impl TableData {
     }
 
     /// Returns true if the memory usage of this table reaches flush threshold
-    ///
-    /// REQUIRE: Do in write worker
-    pub fn should_flush_table(&self, serial_exec: &mut TableOpSerialExecutor) -> bool {
+    pub fn should_flush_table(&self, in_flush: bool) -> bool {
         // Fallback to usize::MAX if Failed to convert arena_block_size into
         // usize (overflow)
         let max_write_buffer_size = self
@@ -602,7 +614,6 @@ impl TableData {
 
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
-        let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(

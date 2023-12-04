@@ -1,3 +1,17 @@
+// Copyright 2023 The CeresDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -542,12 +556,12 @@ async fn replay_table_log_entries(
                 }
 
                 // Flush the table if necessary.
-                if table_data.should_flush_table(serial_exec) {
+                let flush_scheduler = serial_exec.flush_scheduler();
+                if table_data.should_flush_table(flush_scheduler.is_in_flush()) {
                     let opts = TableFlushOptions {
                         res_sender: None,
                         max_retry_flush_limit,
                     };
-                    let flush_scheduler = serial_exec.flush_scheduler();
                     flusher
                         .schedule_flush(flush_scheduler, table_data, opts)
                         .await

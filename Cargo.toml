@@ -46,6 +46,7 @@ members = [
     "components/parquet_ext",
     "components/partitioned_lock",
     "components/profile",
+    "components/resource_keeper",
     "components/runtime",
     "components/sampling_cache",
     "components/size_ext",
@@ -149,6 +150,7 @@ query_engine = { path = "query_engine" }
 query_frontend = { path = "query_frontend" }
 rand = "0.7"
 remote_engine_client = { path = "remote_engine_client" }
+resource_keeper = { path = "components/resource_keeper" }
 reqwest = { version = "0.11", default-features = false, features = [
     "rustls-tls",
     "json",
