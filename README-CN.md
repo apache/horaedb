@@ -123,6 +123,14 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 }'
 ```
 
+### 支持使用 MySQL Client 连接
+
+HoraeDB 也支持使用 MySQL Client 连接执行 SQL
+
+```shell
+mysql -u root -P 3307 -h 127.0.0.1
+```
+
 ## 平台支持
 
 |          target          |         OS        |         status        |
