@@ -74,7 +74,7 @@ where
             return RequestResult::Wait;
         }
 
-        //the key is not existed, insert the key and the notifier.
+        // the key is not existed, insert the key and the notifier.
         notifiers_by_key.insert(key, Notifiers::new(notifier));
         RequestResult::First
     }
