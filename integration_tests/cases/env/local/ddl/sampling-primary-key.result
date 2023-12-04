@@ -25,20 +25,20 @@ String("sampling_primary_key_table"),String("CREATE TABLE `sampling_primary_key_
 
 INSERT INTO `sampling_primary_key_table` (t, name, myVALUE)
     VALUES
-    (1695348000000, "ceresdb2", 200),
-    (1695348000005, "ceresdb2", 100),
-    (1695348000001, "ceresdb1", 100),
-    (1695348000003, "ceresdb3", 200);
+    (1695348000000, "horaedb2", 200),
+    (1695348000005, "horaedb2", 100),
+    (1695348000001, "horaedb1", 100),
+    (1695348000003, "horaedb3", 200);
 
 affected_rows: 4
 
 select * from `sampling_primary_key_table`;
 
 tsid,t,v1,v2,v3,v5,name,myVALUE,
-UInt64(5478297384049724685),Timestamp(1695348000000),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb2"),Int64(200),
-UInt64(5478297384049724685),Timestamp(1695348000005),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb2"),Int64(100),
-UInt64(9680600349107584624),Timestamp(1695348000001),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb1"),Int64(100),
-UInt64(13753293625875895842),Timestamp(1695348000003),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb3"),Int64(200),
+UInt64(5478297384049724685),Timestamp(1695348000000),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb2"),Int64(200),
+UInt64(5478297384049724685),Timestamp(1695348000005),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb2"),Int64(100),
+UInt64(9680600349107584624),Timestamp(1695348000001),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb1"),Int64(100),
+UInt64(13753293625875895842),Timestamp(1695348000003),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb3"),Int64(200),
 
 
 -- After flush, its primary key should changed.
@@ -52,10 +52,10 @@ String("sampling_primary_key_table"),String("CREATE TABLE `sampling_primary_key_
 select * from `sampling_primary_key_table`;
 
 tsid,t,v1,v2,v3,v5,name,myVALUE,
-UInt64(9680600349107584624),Timestamp(1695348000001),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb1"),Int64(100),
-UInt64(5478297384049724685),Timestamp(1695348000005),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb2"),Int64(100),
-UInt64(5478297384049724685),Timestamp(1695348000000),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb2"),Int64(200),
-UInt64(13753293625875895842),Timestamp(1695348000003),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("ceresdb3"),Int64(200),
+UInt64(9680600349107584624),Timestamp(1695348000001),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb1"),Int64(100),
+UInt64(5478297384049724685),Timestamp(1695348000005),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb2"),Int64(100),
+UInt64(5478297384049724685),Timestamp(1695348000000),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb2"),Int64(200),
+UInt64(13753293625875895842),Timestamp(1695348000003),Double(0.0),Double(0.0),Double(0.0),Double(0.0),String("horaedb3"),Int64(200),
 
 
 DROP TABLE IF EXISTS `sampling_primary_key_table`;

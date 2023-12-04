@@ -23,7 +23,7 @@ mysql_port = 3307
 deploy_mode = "Cluster"
 
 [tracing]
-dir = "/tmp/ceresdb0"
+dir = "/tmp/horaedb0"
 
 [analytic.storage]
 mem_cache_capacity = '1G'
@@ -31,11 +31,11 @@ mem_cache_partition_bits = 0
 
 [analytic.storage.object_store]
 type = "Local"
-data_dir = "/tmp/ceresdb0"
+data_dir = "/tmp/horaedb0"
 
 [analytic.wal]
 type = "RocksDB"
-data_dir = "/tmp/ceresdb0"
+data_dir = "/tmp/horaedb0"
 
 [cluster_deployment]
 mode = "WithMeta"

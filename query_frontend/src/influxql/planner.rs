@@ -100,12 +100,12 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
             }
         };
 
-        let ceresdb_arrow_schema = table_source.schema();
+        let horaedb_arrow_schema = table_source.schema();
         let influxql_schema = match convert_to_influxql_schema(table_source.schema()) {
             Ok(schema) => schema,
             Err(e) => {
                 // Same as above here.
-                error!("Influxql planner failed to convert schema to influxql schema, schema:{ceresdb_arrow_schema}, err:{e}");
+                error!("Influxql planner failed to convert schema to influxql schema, schema:{horaedb_arrow_schema}, err:{e}");
                 return None;
             }
         };
