@@ -105,7 +105,7 @@ String("__partition_table_t_1"),String("CREATE TABLE `__partition_table_t_1` (`t
 SHOW CREATE TABLE __partition_table_t_2;
 
 Table,Create Table,
-String("__partition_table_t_2"),String("CREATE TABLE `__partition_table_t_2` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, `b` string, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
+String("__partition_table_t_2"),String("CREATE TABLE `__partition_table_t_2` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `name` string TAG, `id` int TAG, `value` double NOT NULL, `b` string, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', memtable_type='skiplist', num_rows_per_row_group='8192', segment_duration='2h', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='33554432')"),
 
 
 SHOW CREATE TABLE __partition_table_t_3;
