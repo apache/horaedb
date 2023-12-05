@@ -37,7 +37,7 @@ docker run -d -t --name horaedb -p 5440:5440 -p 8831:8831 horaedb
 #### 开发依赖（Ubuntu20.04）
 开发环境这里以 Ubuntu20.04 为例，执行如下的命令，即可安装好所需的依赖：
 ```shell
-apt install git curl gcc g++ libssl-dev pkg-config cmake
+sudo apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
 需要注意的是，项目的编译对 cmake、gcc、g++ 等实际上都是有版本要求的，如果开发环境使用的是较老的 Linux 发行版的话，一般需要手动安装较高版本的这些依赖。
