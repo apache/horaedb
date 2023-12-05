@@ -18,7 +18,7 @@ package id
 
 import "context"
 
-// Allocator defines the id allocator on the ceresdb cluster meta info.
+// Allocator defines the id allocator on the horaedb cluster meta info.
 type Allocator interface {
 	// Alloc allocs a unique id.
 	Alloc(ctx context.Context) (uint64, error)
