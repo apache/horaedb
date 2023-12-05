@@ -72,7 +72,6 @@ DROP TABLE `05_alter_table_t0`;
 
 affected_rows: 0
 
-
 -- alter table options
 CREATE TABLE `t`(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 
@@ -89,3 +88,4 @@ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to cr
 ALTER TABLE `t` MODIFY SETTING ttl='10d';
 
 affected_rows: 0
+
