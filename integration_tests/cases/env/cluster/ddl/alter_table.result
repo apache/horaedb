@@ -78,7 +78,7 @@ CREATE TABLE `t`(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analyti
 
 affected_rows: 0
 
- ALTER TABLE `t` MODIFY SETTING write_buffer_size='300M';
+ALTER TABLE `t` MODIFY SETTING write_buffer_size='300M';
 
 affected_rows: 0
 
