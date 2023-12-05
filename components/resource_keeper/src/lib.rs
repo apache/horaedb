@@ -12,20 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Copyright 2023 The HoraeDB Authors
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 use std::{
     ops::Deref,
     sync::{Arc, Mutex},
@@ -59,6 +45,8 @@ impl<'a, T: Send + Sync> Drop for ResourceGuard<'a, T> {
     }
 }
 
+/// The keeper will track the usage of the wrapped resource, and provide a way
+/// to wait until all the acquired reference is dropped.
 pub struct ResourceKeeper<T: Send + Sync> {
     resource: T,
     state: Arc<Mutex<State>>,
@@ -125,5 +113,53 @@ impl<T: Send + Sync> ResourceKeeper<T> {
     fn check_released_once(&self) -> bool {
         let state = self.state.lock().unwrap();
         state.ref_count == 0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_normal_acquire_release() {
+        let keeper = ResourceKeeper::new("test".to_string(), 1, Duration::from_millis(10));
+
+        let guard1 = keeper.try_acquire().unwrap();
+        let guard2 = keeper.try_acquire().unwrap();
+        assert_eq!(*guard1, 1);
+        assert_eq!(*guard2, 1);
+
+        drop(guard1);
+        drop(guard2);
+
+        keeper.wait_release().await;
+    }
+
+    // It should fail to acquire while wait release it triggered.
+    #[tokio::test]
+    async fn test_acquire_when_release() {
+        let keeper = Arc::new(ResourceKeeper::new(
+            "test".to_string(),
+            1,
+            Duration::from_millis(10),
+        ));
+
+        let guard1 = keeper.try_acquire();
+        assert!(guard1.is_some());
+
+        let keeper2 = keeper.clone();
+        let h = tokio::spawn(async move {
+            keeper2.wait_release().await;
+        });
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        let guard2 = keeper.try_acquire();
+        assert!(guard2.is_none());
+        drop(guard2);
+        drop(guard1);
+
+        h.await.unwrap();
     }
 }
