@@ -72,3 +72,18 @@ DROP TABLE `05_alter_table_t0`;
 
 affected_rows: 0
 
+CREATE TABLE `t`(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+
+ affected_rows: 0
+
+ ALTER TABLE `t` MODIFY SETTING write_buffer_size='300M';
+
+ affected_rows: 0
+
+ CREATE TABLE `t` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='314572800');
+
+ Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:tsid is a reserved column name sql:CREATE TABLE `t` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='314572800');" })
+
+ ALTER TABLE `t` MODIFY SETTING ttl='10d';
+
+ affected_rows: 0
