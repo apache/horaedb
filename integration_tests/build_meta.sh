@@ -8,7 +8,7 @@ META_BIN_PATH=${META_BIN_PATH:-""}
 
 if [[ -z "${META_BIN_PATH}" ]]; then
     echo "Fetch and install ceresmeta-server..."
-    go install -a github.com/CeresDB/horaemeta/cmd/ceresmeta-server@main
+    go install -v -a github.com/CeresDB/ceresmeta/cmd/ceresmeta-server@dev
     META_BIN_PATH="$(go env GOPATH)/bin/ceresmeta-server"
 fi
 
