@@ -4,18 +4,12 @@ repos:
     hooks:
       - id: check-yaml
       - id: check-toml
-  - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.4.2
+  - repo: local
     hooks:
-      - id: insert-license
-        files: \.rs$
-        args:
-          - --license-filepath
-          - scripts/license-header.txt
-          - --detect-license-in-X-top-lines=13
-          - --comment-style
-          - //
-          - --use-current-year
+      - id: check-license
+        files: \.(rs|toml|yml)$
+        language: system
+        entry: make check-license-header
   - repo: local
     hooks:
       - id: cargo-sort

@@ -68,6 +68,9 @@ fmt:
 check-cargo-toml:
 	cd $(DIR); cargo sort --workspace --check
 
+check-license-header:
+	cd $(DIR); docker run --rm -v $(shell pwd):/github/workspace ghcr.io/korandoru/hawkeye-native:v3 check
+
 udeps:
 	cd $(DIR); cargo udeps --all-targets --all-features --workspace
 
