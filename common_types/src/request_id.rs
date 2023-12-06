@@ -14,26 +14,24 @@
 
 //! Request id.
 
-use std::{
-    fmt,
-    sync::atomic::{AtomicU64, Ordering},
-};
+use std::fmt;
 
-#[derive(Debug, Clone, Copy)]
-pub struct RequestId(u64);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct RequestId(String);
 
 impl RequestId {
     /// Acquire next request id.
     pub fn next_id() -> Self {
-        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-
-        let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-
+        let id = "".to_string();
         Self(id)
     }
 
     #[inline]
-    pub fn as_u64(&self) -> u64 {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn to_string(self) -> String {
         self.0
     }
 }
@@ -44,9 +42,15 @@ impl fmt::Display for RequestId {
     }
 }
 
-impl From<u64> for RequestId {
-    fn from(id: u64) -> Self {
+impl From<String> for RequestId {
+    fn from(id: String) -> Self {
         Self(id)
+    }
+}
+
+impl From<&str> for RequestId {
+    fn from(id: &str) -> Self {
+        Self(id.to_string())
     }
 }
 
@@ -57,10 +61,8 @@ mod tests {
     #[test]
     fn test_request_id() {
         let id = RequestId::next_id();
-        assert_eq!(1, id.0);
-        let id = RequestId::next_id();
-        assert_eq!(2, id.0);
+        let id2 = RequestId::next_id();
 
-        assert_eq!("2", id.to_string());
+        assert_ne!(id, id2);
     }
 }

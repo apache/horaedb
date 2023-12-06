@@ -291,7 +291,7 @@ impl FlushTask {
         // Start flush duration timer.
         let local_metrics = self.table_data.metrics.local_flush_metrics();
         let _timer = local_metrics.start_flush_timer();
-        self.dump_memtables(request_id, &mems_to_flush, flush_req.need_reorder)
+        self.dump_memtables(&request_id, &mems_to_flush, flush_req.need_reorder)
             .await
             .box_err()
             .context(FlushJobWithCause {
@@ -408,7 +408,7 @@ impl FlushTask {
     /// number in dumped memtables will be sent to the [WalManager].
     async fn dump_memtables(
         &self,
-        request_id: RequestId,
+        request_id: &RequestId,
         mems_to_flush: &FlushableMemTables,
         need_reorder: bool,
     ) -> Result<()> {
@@ -583,7 +583,7 @@ impl FlushTask {
 
                 let sst_info = writer
                     .write(
-                        request_id,
+                        request_id.clone(),
                         &sst_meta,
                         Box::new(batch_record_receiver.map_err(|e| Box::new(e) as _)),
                     )
@@ -677,7 +677,7 @@ impl FlushTask {
     /// Flush rows in normal (non-sampling) memtable to at most one sst file.
     async fn dump_normal_memtable(
         &self,
-        request_id: RequestId,
+        request_id: &RequestId,
         memtable_state: &MemTableState,
     ) -> Result<Option<FileMeta>> {
         let (min_key, max_key) = match (memtable_state.mem.min_key(), memtable_state.mem.max_key())
@@ -785,7 +785,7 @@ impl SpaceStore {
         }
 
         for files in task.expired() {
-            self.delete_expired_files(table_data, request_id, files, &mut edit_meta);
+            self.delete_expired_files(table_data, &request_id, files, &mut edit_meta);
         }
 
         info!(
@@ -838,7 +838,7 @@ impl SpaceStore {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn compact_input_files(
         &self,
-        request_id: RequestId,
+        request_id: &RequestId,
         table_data: &TableData,
         input: &CompactionInputFiles,
         scan_options: ScanOptions,
@@ -905,6 +905,7 @@ impl SpaceStore {
             let space_id = table_data.space_id;
             let table_id = table_data.id;
             let sequence = table_data.last_sequence();
+            let request_id = request_id.clone();
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,
                 metrics_collector: None,
@@ -1038,7 +1039,7 @@ impl SpaceStore {
     pub(crate) fn delete_expired_files(
         &self,
         table_data: &TableData,
-        request_id: RequestId,
+        request_id: &RequestId,
         expired: &ExpiredFiles,
         edit_meta: &mut VersionEditMeta,
     ) {
