@@ -20,9 +20,9 @@ SELECT * FROM `05_alter_table_t0`;
 DROP TABLE `05_alter_table_t0`;
 
 -- alter table options
-CREATE TABLE `t`(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
+CREATE TABLE `05_alter_table_t1`(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 ALTER TABLE `t` MODIFY SETTING write_buffer_size='300M';
 
-CREATE TABLE `t` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='314572800');
-ALTER TABLE `t` MODIFY SETTING ttl='10d';
+CREATE TABLE `05_alter_table_t2` (`tsid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='314572800');
+ALTER TABLE `05_alter_table_t2` MODIFY SETTING ttl='10d';
 
