@@ -317,3 +317,4 @@ affected_rows: 0
 DROP TABLE IF EXISTS `05_create_tables_t12`;
 
 affected_rows: 0
+
