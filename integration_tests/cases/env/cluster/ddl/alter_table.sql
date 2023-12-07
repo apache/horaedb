@@ -23,12 +23,12 @@ DROP TABLE `05_alter_table_t0`;
 CREATE TABLE `05_alter_table_t1`(a int, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic;
 ALTER TABLE `05_alter_table_t1` MODIFY SETTING write_buffer_size='300M';
 
-show create table;
+show create table 05_alter_table_t1;
 drop table 05_alter_table_t1;
 
 CREATE TABLE `05_alter_table_t1` (`sid` uint64 NOT NULL, `t` timestamp NOT NULL, `a` int, PRIMARY KEY(tsid,t), TIMESTAMP KEY(t)) ENGINE=Analytic WITH(arena_block_size='2097152', compaction_strategy='default', compression='ZSTD', enable_ttl='true', num_rows_per_row_group='8192', segment_duration='', storage_format='AUTO', ttl='7d', update_mode='OVERWRITE', write_buffer_size='314572800');
 ALTER TABLE `05_alter_table_t1` MODIFY SETTING ttl='10d';
-show create table;
+show create table 05_alter_table_t1;
 drop table 05_alter_table_t1;
 
 

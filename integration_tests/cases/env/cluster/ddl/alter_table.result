@@ -79,7 +79,7 @@ affected_rows: 0
 ALTER TABLE `05_alter_table_t1` MODIFY SETTING write_buffer_size='300M';
 affected_rows: 0
 
-show create table;
+show create table 05_alter_table_t1;
 affected_rows: 0
 
 drop table 05_alter_table_t1;
@@ -91,7 +91,7 @@ affected_rows: 0
 ALTER TABLE `05_alter_table_t1` MODIFY SETTING ttl='10d';
 affected_rows: 0
 
-show create table;
+show create table 05_alter_table_t1;
 affected_rows: 0
 
 drop table 05_alter_table_t1;
