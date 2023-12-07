@@ -51,7 +51,7 @@ const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 
 #[derive(Clone, Debug)]
 pub struct CeresdbOptions {
-    pub request_id: u64,
+    pub request_id: String,
     pub request_timeout: Option<u64>,
     pub default_schema: String,
     pub default_catalog: String,
@@ -76,13 +76,7 @@ impl ExtensionOptions for CeresdbOptions {
 
     fn set(&mut self, key: &str, value: &str) -> Result<()> {
         match key {
-            "request_id" => {
-                self.request_id = value.parse::<u64>().map_err(|e| {
-                    DataFusionError::External(
-                        format!("could not parse request_id, input:{value}, err:{e:?}").into(),
-                    )
-                })?
-            }
+            "request_id" => self.request_id = value.to_string(),
             "request_timeout" => {
                 self.request_timeout = Some(value.parse::<u64>().map_err(|e| {
                     DataFusionError::External(
@@ -182,7 +176,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
         assert!(ceresdb_options.is_some());
         let ceresdb_options = ceresdb_options.unwrap();
-        let request_id = RequestId::from(ceresdb_options.request_id);
+        let request_id = RequestId::from(ceresdb_options.request_id.clone());
         let deadline = ceresdb_options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
