@@ -174,7 +174,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 
 	metaClient, err := s.getForwardedMetaClient(ctx)
 	if err != nil {
-		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, err.Error())}, nil
 	}
 
 	// Forward request to the leader.
@@ -188,7 +188,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	c, err := clusterManager.GetCluster(ctx, req.GetHeader().GetClusterName())
 	if err != nil {
 		log.Error("fail to create table", zap.Error(err))
-		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, err.Error())}, nil
 	}
 
 	errorCh := make(chan error, 1)
@@ -211,13 +211,13 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 	})
 	if err != nil {
 		log.Error("fail to create table, factory create procedure", zap.Error(err))
-		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, err.Error())}, nil
 	}
 
 	err = c.GetProcedureManager().Submit(ctx, p)
 	if err != nil {
 		log.Error("fail to create table, manager submit procedure", zap.Error(err))
-		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, err.Error())}, nil
 	}
 
 	select {
@@ -239,7 +239,7 @@ func (s *Service) CreateTable(ctx context.Context, req *metaservicepb.CreateTabl
 		}, nil
 	case err = <-errorCh:
 		log.Warn("create table failed", zap.String("tableName", req.Name), zap.Int64("costTime", time.Since(start).Milliseconds()), zap.Error(err))
-		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, "create table")}, nil
+		return &metaservicepb.CreateTableResponse{Header: responseHeader(err, err.Error())}, nil
 	}
 }
 
