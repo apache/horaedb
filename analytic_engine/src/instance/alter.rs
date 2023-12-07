@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -146,6 +146,7 @@ impl<'a> Alterer<'a> {
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
+                table_catalog_info: self.table_data.table_catalog_info.clone(),
             }
         };
         self.instance
@@ -279,6 +280,7 @@ impl<'a> Alterer<'a> {
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
+                table_catalog_info: self.table_data.table_catalog_info.clone(),
             }
         };
         self.instance

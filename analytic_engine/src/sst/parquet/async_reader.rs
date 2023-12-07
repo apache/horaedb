@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -732,6 +732,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
         );
 
         let channel_cap_per_sub_reader = self.channel_cap / sub_readers.len();
+        let channel_cap_per_sub_reader = channel_cap_per_sub_reader.max(1);
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
             .map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader))
             .unzip();

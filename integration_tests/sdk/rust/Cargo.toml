@@ -1,4 +1,4 @@
-# Copyright 2023 The CeresDB Authors
+# Copyright 2023 The HoraeDB Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,9 +14,14 @@
 
 [package]
 name = "rust-sdk-test"
-version = "0.1.0"
+
+[package.license]
+workspace = true
 
 [package.edition]
+workspace = true
+
+[package.version]
 workspace = true
 
 [dependencies]

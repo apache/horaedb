@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #![feature(trait_alias)]
 
 pub mod config;
+mod dummy;
 pub mod kv_encoder;
 pub mod log_batch;
 pub mod manager;

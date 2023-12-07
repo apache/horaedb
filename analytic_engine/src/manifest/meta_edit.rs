@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ use crate::{
     space::SpaceId,
     sst::manager::FileId,
     table::{
-        data::{MemTableId, TableShardInfo},
+        data::{MemTableId, TableCatalogInfo, TableShardInfo},
         version::TableVersionMeta,
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
@@ -530,4 +530,5 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
 pub struct MetaEditRequest {
     pub shard_info: TableShardInfo,
     pub meta_edit: MetaEdit,
+    pub table_catalog_info: TableCatalogInfo,
 }

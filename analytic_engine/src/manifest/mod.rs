@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,13 +25,14 @@ use common_types::table::ShardId;
 use generic_error::GenericResult;
 use table_engine::table::TableId;
 
-use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId};
+use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId, table::data::TableCatalogInfo};
 
 #[derive(Debug)]
 pub struct LoadRequest {
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub shard_id: ShardId,
+    pub table_catalog_info: TableCatalogInfo,
 }
 
 pub type SnapshotRequest = LoadRequest;

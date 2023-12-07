@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -350,6 +350,7 @@ impl FlushTask {
                 let edit_req = MetaEditRequest {
                     shard_info: table_data.shard_info,
                     meta_edit: MetaEdit::Update(meta_update),
+                    table_catalog_info: table_data.table_catalog_info.clone(),
                 };
                 self.space_store
                     .manifest
@@ -370,6 +371,7 @@ impl FlushTask {
                 MetaEditRequest {
                     shard_info: table_data.shard_info,
                     meta_edit: MetaEdit::Update(meta_update),
+                    table_catalog_info: table_data.table_catalog_info.clone(),
                 }
             };
             self.space_store
@@ -479,6 +481,7 @@ impl FlushTask {
             MetaEditRequest {
                 shard_info: self.table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
+                table_catalog_info: self.table_data.table_catalog_info.clone(),
             }
         };
         // Update manifest and remove immutable memtables
@@ -821,6 +824,7 @@ impl SpaceStore {
             MetaEditRequest {
                 shard_info: table_data.shard_info,
                 meta_edit: MetaEdit::Update(meta_update),
+                table_catalog_info: table_data.table_catalog_info.clone(),
             }
         };
         self.manifest

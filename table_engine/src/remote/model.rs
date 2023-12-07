@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -453,6 +453,7 @@ pub struct ExecContext {
     pub deadline: Option<Instant>,
     pub default_catalog: String,
     pub default_schema: String,
+    pub query: String,
 }
 
 pub enum PhysicalPlan {
@@ -472,6 +473,8 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             default_catalog: value.context.default_catalog,
             default_schema: value.context.default_schema,
             timeout_ms: rest_duration_ms,
+            priority: 0, // not used now
+            displayable_query: value.context.query,
         };
 
         let pb_plan = match value.physical_plan {
@@ -511,6 +514,8 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_catalog,
             default_schema,
             timeout_ms,
+            displayable_query,
+            ..
         } = pb_exec_ctx;
 
         let request_id = RequestId::from(request_id);
@@ -525,6 +530,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             deadline,
             default_catalog,
             default_schema,
+            query: displayable_query,
         };
 
         // Plan
