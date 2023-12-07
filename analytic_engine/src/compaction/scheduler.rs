@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -523,7 +523,7 @@ impl ScheduleWorker {
             }
             let res = space_store
                 .compact_table(
-                    request_id,
+                    request_id.clone(),
                     &table_data,
                     &compaction_task,
                     scan_options,

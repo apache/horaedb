@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -291,7 +291,7 @@ impl FlushTask {
         // Start flush duration timer.
         let local_metrics = self.table_data.metrics.local_flush_metrics();
         let _timer = local_metrics.start_flush_timer();
-        self.dump_memtables(request_id, &mems_to_flush, flush_req.need_reorder)
+        self.dump_memtables(request_id.clone(), &mems_to_flush, flush_req.need_reorder)
             .await
             .box_err()
             .context(FlushJobWithCause {
@@ -421,7 +421,7 @@ impl FlushTask {
         if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
             if let Some(seq) = self
                 .dump_sampling_memtable(
-                    request_id,
+                    request_id.clone(),
                     sampling_mem,
                     &mut files_to_level0,
                     need_reorder,
@@ -436,7 +436,7 @@ impl FlushTask {
             }
         }
         for mem in &mems_to_flush.memtables {
-            let file = self.dump_normal_memtable(request_id, mem).await?;
+            let file = self.dump_normal_memtable(request_id.clone(), mem).await?;
             if let Some(file) = file {
                 let sst_size = file.size;
                 files_to_level0.push(AddFile {
@@ -565,6 +565,7 @@ impl FlushTask {
             let store = self.space_store.clone();
             let storage_format_hint = self.table_data.table_options().storage_format_hint;
             let sst_write_options = sst_write_options.clone();
+            let request_id = request_id.clone();
 
             // spawn build sst
             let handler = self.runtime.spawn(async move {
@@ -785,7 +786,7 @@ impl SpaceStore {
         }
 
         for files in task.expired() {
-            self.delete_expired_files(table_data, request_id, files, &mut edit_meta);
+            self.delete_expired_files(table_data, &request_id, files, &mut edit_meta);
         }
 
         info!(
@@ -798,7 +799,7 @@ impl SpaceStore {
 
         for input in inputs {
             self.compact_input_files(
-                request_id,
+                request_id.clone(),
                 table_data,
                 input,
                 scan_options.clone(),
@@ -874,7 +875,7 @@ impl SpaceStore {
 
         info!(
             "Instance try to compact table, table:{}, table_id:{}, request_id:{}, input_files:{:?}",
-            table_data.name, table_data.id, request_id, input.files,
+            table_data.name, table_data.id, &request_id, input.files,
         );
 
         // The schema may be modified during compaction, so we acquire it first and use
@@ -905,6 +906,7 @@ impl SpaceStore {
             let space_id = table_data.space_id;
             let table_id = table_data.id;
             let sequence = table_data.last_sequence();
+            let request_id = request_id.clone();
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id,
                 metrics_collector: None,
@@ -933,7 +935,7 @@ impl SpaceStore {
 
         let record_batch_stream = if table_options.need_dedup() {
             row_iter::record_batch_with_key_iter_to_stream(DedupIterator::new(
-                request_id,
+                request_id.clone(),
                 merge_iter,
                 iter_options,
             ))
@@ -978,7 +980,7 @@ impl SpaceStore {
             })?;
 
         let sst_info = sst_writer
-            .write(request_id, &sst_meta, record_batch_stream)
+            .write(request_id.clone(), &sst_meta, record_batch_stream)
             .await
             .box_err()
             .with_context(|| WriteSst {
@@ -1038,7 +1040,7 @@ impl SpaceStore {
     pub(crate) fn delete_expired_files(
         &self,
         table_data: &TableData,
-        request_id: RequestId,
+        request_id: &RequestId,
         expired: &ExpiredFiles,
         edit_meta: &mut VersionEditMeta,
     ) {

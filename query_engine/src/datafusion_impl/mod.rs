@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -136,7 +136,7 @@ impl DfContextBuilder {
             .deadline
             .map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
         let ceresdb_options = CeresdbOptions {
-            request_id: ctx.request_id.as_u64(),
+            request_id: ctx.request_id.clone().to_string(),
             request_timeout: timeout,
             default_catalog: ctx.default_catalog.clone(),
             default_schema: ctx.default_schema.clone(),

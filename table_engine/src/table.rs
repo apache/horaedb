@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -440,7 +440,7 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
                 })?;
 
         Ok(Self {
-            request_id: request.request_id.as_u64(),
+            request_id: 0, // this field not used any more
             opts: Some(request.opts.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),
@@ -468,7 +468,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
                 .context(ConvertPredicate)?,
         );
         Ok(Self {
-            request_id: pb.request_id.into(),
+            request_id: pb.request_id.to_string().into(),
             opts,
             projected_schema,
             predicate,

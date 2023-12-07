@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -247,6 +247,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         let space_id = config.space_id;
         let table_id = config.table_id;
         let sequence = max_sequence + 1;
+        let request_id = request_id.clone();
 
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
@@ -272,7 +273,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     };
 
     let record_batch_stream = if config.dedup {
-        let iter = DedupIterator::new(request_id, iter, iter_options);
+        let iter = DedupIterator::new(request_id.clone(), iter, iter_options);
         row_iter::record_batch_with_key_iter_to_stream(iter)
     } else {
         row_iter::record_batch_with_key_iter_to_stream(iter)

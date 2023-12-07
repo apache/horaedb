@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -185,7 +185,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             .get::<CeresdbOptions>();
         assert!(ceresdb_options.is_some());
         let ceresdb_options = ceresdb_options.unwrap();
-        let request_id = RequestId::from(ceresdb_options.request_id);
+        let request_id = RequestId::from(ceresdb_options.request_id.clone());
         let deadline = ceresdb_options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
@@ -254,7 +254,7 @@ struct DistQueryResolverBuilder {
 impl DistQueryResolverBuilder {
     fn build(&self, ctx: &Context) -> Resolver {
         let scan_builder = Box::new(ExecutableScanBuilderImpl {
-            request_id: ctx.request_id,
+            request_id: ctx.request_id.clone(),
             deadline: ctx.deadline,
         });
 
@@ -288,7 +288,7 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
         };
 
         let read_request = ReadRequest {
-            request_id: self.request_id,
+            request_id: self.request_id.clone(),
             opts: read_opts,
             projected_schema: ctx.projected_schema,
             predicate: ctx.predicate,

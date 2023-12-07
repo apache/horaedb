@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -465,7 +465,8 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
         };
 
         let pb_context = ceresdbproto::remote_engine::ExecContext {
-            request_id: value.context.request_id.as_u64(),
+            request_id: 0, // not used any more
+            request_id_str: value.context.request_id.to_string(),
             default_catalog: value.context.default_catalog,
             default_schema: value.context.default_schema,
             timeout_ms: rest_duration_ms,
@@ -510,7 +511,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             QueryPriority::High => Priority::Higher,
         };
         let ceresdbproto::remote_engine::ExecContext {
-            request_id,
+            request_id_str,
             default_catalog,
             default_schema,
             timeout_ms,
@@ -518,7 +519,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             ..
         } = pb_exec_ctx;
 
-        let request_id = RequestId::from(request_id);
+        let request_id = RequestId::from(request_id_str);
         let deadline = if timeout_ms >= 0 {
             Some(Instant::now() + Duration::from_millis(timeout_ms as u64))
         } else {

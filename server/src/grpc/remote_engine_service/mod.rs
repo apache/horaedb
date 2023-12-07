@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -139,7 +139,12 @@ struct ExecutePlanMetricCollector {
 }
 
 impl ExecutePlanMetricCollector {
-    fn new(request_id: u64, query: String, slow_threshold_secs: u64, priority: Priority) -> Self {
+    fn new(
+        request_id: String,
+        query: String,
+        slow_threshold_secs: u64,
+        priority: Priority,
+    ) -> Self {
         Self {
             start: Instant::now(),
             query,
@@ -632,7 +637,7 @@ impl RemoteEngineServiceImpl {
 
         let priority = ctx.priority();
         let query_ctx = create_query_ctx(
-            ctx.request_id,
+            ctx.request_id_str,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
@@ -644,7 +649,7 @@ impl RemoteEngineServiceImpl {
             &ctx.displayable_query
         );
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id,
+            ctx.request_id.to_string(),
             ctx.displayable_query,
             slow_threshold_secs,
             query_ctx.priority,
@@ -687,14 +692,14 @@ impl RemoteEngineServiceImpl {
             .load(std::sync::atomic::Ordering::Relaxed);
         let priority = ctx.priority();
         let query_ctx = create_query_ctx(
-            ctx.request_id,
+            ctx.request_id_str,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
             priority,
         );
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id,
+            ctx.request_id.to_string(),
             ctx.displayable_query,
             slow_threshold_secs,
             query_ctx.priority,
@@ -922,7 +927,7 @@ async fn handle_stream_read(
         msg: "fail to convert read request",
     })?;
 
-    let request_id = read_request.request_id;
+    let request_id = &read_request.request_id;
     info!(
         "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, predicate:{:?} ",
         read_request.opts,
@@ -1129,7 +1134,7 @@ fn extract_plan_from_req(request: ExecutePlanRequest) -> Result<(ExecContext, Ve
 }
 
 fn create_query_ctx(
-    request_id: u64,
+    request_id: String,
     default_catalog: String,
     default_schema: String,
     timeout_ms: i64,

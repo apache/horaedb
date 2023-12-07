@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -200,7 +200,7 @@ impl TestContext {
             .extract_time_range(&test_schema, &logical_filters)
             .build();
         let read_request = ReadRequest {
-            request_id: 42.into(),
+            request_id: "42".into(),
             opts: ReadOptions::default(),
             projected_schema,
             predicate,
@@ -427,7 +427,7 @@ impl ExecutableScanBuilder for MockScanBuilder {
         priority: Priority,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let request = ReadRequest {
-            request_id: RequestId::from(42),
+            request_id: RequestId::from("test"),
             opts: ReadOptions {
                 batch_size: ctx.batch_size,
                 read_parallelism: ctx.read_parallelism,

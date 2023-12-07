@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -155,7 +155,7 @@ impl MergeMemTableBench {
         let request_id = RequestId::next_id();
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
-            request_id,
+            request_id: request_id.clone(),
             metrics_collector: None,
             deadline: None,
             space_id,
@@ -181,7 +181,8 @@ impl MergeMemTableBench {
             let mut batch_num = 0;
 
             if self.dedup {
-                let mut dedup_iter = DedupIterator::new(request_id, merge_iter, iter_options);
+                let mut dedup_iter =
+                    DedupIterator::new(request_id.clone(), merge_iter, iter_options);
                 while let Some(batch) = dedup_iter.next_batch().await.unwrap() {
                     let num_rows = batch.num_rows();
                     total_rows += num_rows;
