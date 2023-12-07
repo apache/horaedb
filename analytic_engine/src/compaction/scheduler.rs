@@ -523,7 +523,7 @@ impl ScheduleWorker {
             }
             let res = space_store
                 .compact_table(
-                    request_id,
+                    request_id.clone(),
                     &table_data,
                     &compaction_task,
                     scan_options,

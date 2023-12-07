@@ -140,7 +140,7 @@ struct ExecutePlanMetricCollector {
 }
 
 impl ExecutePlanMetricCollector {
-    fn new(request_id: u64, query: String, slow_threshold_secs: u64) -> Self {
+    fn new(request_id: String, query: String, slow_threshold_secs: u64) -> Self {
         Self {
             start: Instant::now(),
             query,
@@ -668,12 +668,12 @@ impl RemoteEngineServiceImpl {
             .load(std::sync::atomic::Ordering::Relaxed);
 
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id,
+            ctx.request_id_str.clone(),
             ctx.displayable_query,
             slow_threshold_secs,
         );
         let query_ctx = create_query_ctx(
-            ctx.request_id,
+            ctx.request_id_str,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
@@ -722,12 +722,12 @@ impl RemoteEngineServiceImpl {
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id,
+            ctx.request_id_str.clone(),
             ctx.displayable_query,
             slow_threshold_secs,
         );
         let query_ctx = create_query_ctx(
-            ctx.request_id,
+            ctx.request_id_str,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
@@ -958,7 +958,7 @@ async fn handle_stream_read(
         msg: "fail to convert read request",
     })?;
 
-    let request_id = read_request.request_id;
+    let request_id = &read_request.request_id;
     info!(
         "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, predicate:{:?} ",
         read_request.opts,
@@ -1165,7 +1165,7 @@ fn extract_plan_from_req(request: ExecutePlanRequest) -> Result<(ExecContext, Ve
 }
 
 fn create_query_ctx(
-    request_id: u64,
+    request_id: String,
     default_catalog: String,
     default_schema: String,
     timeout_ms: i64,

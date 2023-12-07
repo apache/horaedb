@@ -204,7 +204,7 @@ impl Instance {
                 .metrics_collector
                 .span(format!("{MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
             let merge_config = MergeConfig {
-                request_id: request.request_id,
+                request_id: request.request_id.clone(),
                 metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
                 space_id: table_data.space_id,
@@ -230,7 +230,7 @@ impl Instance {
                     table: &table_data.name,
                 })?;
             let dedup_iter =
-                DedupIterator::new(request.request_id, merge_iter, iter_options.clone());
+                DedupIterator::new(request.request_id.clone(), merge_iter, iter_options.clone());
 
             iters.push(dedup_iter);
         }
@@ -263,7 +263,7 @@ impl Instance {
                 .metrics_collector
                 .span(format!("{CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
             let chain_config = ChainConfig {
-                request_id: request.request_id,
+                request_id: request.request_id.clone(),
                 metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
                 num_streams_to_prefetch: self.scan_options.num_streams_to_prefetch,
