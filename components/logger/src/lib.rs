@@ -467,7 +467,7 @@ pub fn init_test_logger() {
 /// Timer for collecting slow query
 #[derive(Debug)]
 pub struct SlowTimer<'a> {
-    request_id: u64,
+    request_id: &'a str,
     sql: &'a str,
     slow_threshold: Duration,
     start_time: Instant,
@@ -488,7 +488,7 @@ impl<'a> Drop for SlowTimer<'a> {
 }
 
 impl<'a> SlowTimer<'a> {
-    pub fn new(request_id: u64, sql: &'a str, threshold: Duration) -> SlowTimer {
+    pub fn new(request_id: &'a str, sql: &'a str, threshold: Duration) -> SlowTimer<'a> {
         SlowTimer {
             request_id,
             sql,

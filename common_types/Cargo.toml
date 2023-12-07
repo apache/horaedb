@@ -48,3 +48,4 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }
+uuid = { workspace = true, features = ["fast-rng"] }

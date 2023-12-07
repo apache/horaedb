@@ -137,7 +137,7 @@ impl Proxy {
             function_registry: &*self.instance.function_registry,
         };
         let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
-        let sql_ctx = SqlContext::new(request_id, deadline);
+        let sql_ctx = SqlContext::new(request_id.clone(), deadline);
 
         let mut stmts = frontend
             .parse_influxql(&sql_ctx, &req.query)
@@ -180,7 +180,13 @@ impl Proxy {
                 msg: "Query is blocked",
             })?;
         let output = self
-            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .execute_plan(
+                request_id.clone(),
+                &ctx.catalog,
+                &ctx.schema,
+                plan,
+                deadline,
+            )
             .await?;
 
         info!(
