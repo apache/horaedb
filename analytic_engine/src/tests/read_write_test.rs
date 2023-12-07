@@ -667,15 +667,15 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
         .await;
 
         // TODO(lee) a better way to wait table flushing finishes.
-        thread::sleep(time::Duration::from_millis(1500));
+        // https://github.com/CeresDB/horaedb/issues/1241
+        thread::sleep(time::Duration::from_millis(10000));
 
         let stats = table.stats();
         assert_eq!(old_stats.num_read + 5, stats.num_read);
         assert_eq!(old_stats.num_write + 2, stats.num_write);
 
         // Flush when reaches (db/space) write_buffer size limitation.
-        // TODO: reopen this when this issue is fixed: https://github.com/CeresDB/horaedb/issues/1241
-        // assert_eq!(old_stats.num_flush + 1, stats.num_flush);
+        assert_eq!(old_stats.num_flush + 1, stats.num_flush);
 
         drop(table);
         // Reopen db.
