@@ -161,14 +161,14 @@ impl Proxy {
         sql: &str,
         enable_partition_table_access: bool,
     ) -> Result<Output> {
-        let request_id = ctx.request_id;
+        let request_id = &ctx.request_id;
         let slow_threshold_secs = self
             .instance()
             .dyn_config
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
         let slow_threshold = Duration::from_secs(slow_threshold_secs);
-        let slow_timer = SlowTimer::new(ctx.request_id.as_u64(), sql, slow_threshold);
+        let slow_timer = SlowTimer::new(request_id.as_str(), sql, slow_threshold);
         let deadline = ctx.timeout.map(|t| slow_timer.start_time() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
@@ -185,7 +185,7 @@ impl Proxy {
         };
         let frontend = Frontend::new(provider, instance.dyn_config.fronted.clone());
 
-        let mut sql_ctx = SqlContext::new(request_id, deadline);
+        let mut sql_ctx = SqlContext::new(request_id.clone(), deadline);
         // Parse sql, frontend error of invalid sql already contains sql
         // TODO(yingwen): Maybe move sql from frontend error to outer error
         let mut stmts = frontend
@@ -236,10 +236,16 @@ impl Proxy {
         }
 
         let output = if enable_partition_table_access {
-            self.execute_plan_involving_partition_table(request_id, catalog, schema, plan, deadline)
-                .await
+            self.execute_plan_involving_partition_table(
+                request_id.clone(),
+                catalog,
+                schema,
+                plan,
+                deadline,
+            )
+            .await
         } else {
-            self.execute_plan(request_id, catalog, schema, plan, deadline)
+            self.execute_plan(request_id.clone(), catalog, schema, plan, deadline)
                 .await
         };
         let output = output.box_err().with_context(|| ErrWithCause {

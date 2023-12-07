@@ -117,7 +117,7 @@ impl Proxy {
         metric: String,
         query: Query,
     ) -> Result<QueryResult> {
-        let request_id = ctx.request_id;
+        let request_id = &ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         info!("Handle prom remote query begin, ctx:{ctx:?}, metric:{metric}, request:{query:?}");
@@ -133,7 +133,7 @@ impl Proxy {
             function_registry: &*self.instance.function_registry,
         };
         let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
-        let plan_ctx = Context::new(request_id, deadline);
+        let plan_ctx = Context::new(request_id.clone(), deadline);
 
         let RemoteQueryPlan {
             plan,
@@ -156,7 +156,13 @@ impl Proxy {
                 msg: "Query is blocked",
             })?;
         let output = self
-            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .execute_plan(
+                request_id.clone(),
+                &ctx.catalog,
+                &ctx.schema,
+                plan,
+                deadline,
+            )
             .await?;
 
         let cost = begin_instant.saturating_elapsed().as_millis();

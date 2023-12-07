@@ -291,7 +291,7 @@ impl FlushTask {
         // Start flush duration timer.
         let local_metrics = self.table_data.metrics.local_flush_metrics();
         let _timer = local_metrics.start_flush_timer();
-        self.dump_memtables(&request_id, &mems_to_flush, flush_req.need_reorder)
+        self.dump_memtables(request_id.clone(), &mems_to_flush, flush_req.need_reorder)
             .await
             .box_err()
             .context(FlushJobWithCause {
@@ -408,7 +408,7 @@ impl FlushTask {
     /// number in dumped memtables will be sent to the [WalManager].
     async fn dump_memtables(
         &self,
-        request_id: &RequestId,
+        request_id: RequestId,
         mems_to_flush: &FlushableMemTables,
         need_reorder: bool,
     ) -> Result<()> {
@@ -421,7 +421,7 @@ impl FlushTask {
         if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
             if let Some(seq) = self
                 .dump_sampling_memtable(
-                    request_id,
+                    request_id.clone(),
                     sampling_mem,
                     &mut files_to_level0,
                     need_reorder,
@@ -436,7 +436,7 @@ impl FlushTask {
             }
         }
         for mem in &mems_to_flush.memtables {
-            let file = self.dump_normal_memtable(request_id, mem).await?;
+            let file = self.dump_normal_memtable(request_id.clone(), mem).await?;
             if let Some(file) = file {
                 let sst_size = file.size;
                 files_to_level0.push(AddFile {
@@ -565,6 +565,7 @@ impl FlushTask {
             let store = self.space_store.clone();
             let storage_format_hint = self.table_data.table_options().storage_format_hint;
             let sst_write_options = sst_write_options.clone();
+            let request_id = request_id.clone();
 
             // spawn build sst
             let handler = self.runtime.spawn(async move {
@@ -583,7 +584,7 @@ impl FlushTask {
 
                 let sst_info = writer
                     .write(
-                        request_id.clone(),
+                        request_id,
                         &sst_meta,
                         Box::new(batch_record_receiver.map_err(|e| Box::new(e) as _)),
                     )
@@ -677,7 +678,7 @@ impl FlushTask {
     /// Flush rows in normal (non-sampling) memtable to at most one sst file.
     async fn dump_normal_memtable(
         &self,
-        request_id: &RequestId,
+        request_id: RequestId,
         memtable_state: &MemTableState,
     ) -> Result<Option<FileMeta>> {
         let (min_key, max_key) = match (memtable_state.mem.min_key(), memtable_state.mem.max_key())
@@ -798,7 +799,7 @@ impl SpaceStore {
 
         for input in inputs {
             self.compact_input_files(
-                request_id,
+                request_id.clone(),
                 table_data,
                 input,
                 scan_options.clone(),
@@ -838,7 +839,7 @@ impl SpaceStore {
     #[allow(clippy::too_many_arguments)]
     pub(crate) async fn compact_input_files(
         &self,
-        request_id: &RequestId,
+        request_id: RequestId,
         table_data: &TableData,
         input: &CompactionInputFiles,
         scan_options: ScanOptions,
@@ -874,7 +875,7 @@ impl SpaceStore {
 
         info!(
             "Instance try to compact table, table:{}, table_id:{}, request_id:{}, input_files:{:?}",
-            table_data.name, table_data.id, request_id, input.files,
+            table_data.name, table_data.id, &request_id, input.files,
         );
 
         // The schema may be modified during compaction, so we acquire it first and use
@@ -934,7 +935,7 @@ impl SpaceStore {
 
         let record_batch_stream = if table_options.need_dedup() {
             row_iter::record_batch_with_key_iter_to_stream(DedupIterator::new(
-                request_id,
+                request_id.clone(),
                 merge_iter,
                 iter_options,
             ))
@@ -979,7 +980,7 @@ impl SpaceStore {
             })?;
 
         let sst_info = sst_writer
-            .write(request_id, &sst_meta, record_batch_stream)
+            .write(request_id.clone(), &sst_meta, record_batch_stream)
             .await
             .box_err()
             .with_context(|| WriteSst {
