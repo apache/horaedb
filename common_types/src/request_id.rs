@@ -22,7 +22,7 @@ pub struct RequestId(String);
 impl RequestId {
     /// Acquire next request id.
     pub fn next_id() -> Self {
-        let id = "".to_string();
+        let id = uuid::Uuid::new_v4().to_string();
         Self(id)
     }
 

@@ -29,7 +29,7 @@ use cluster::config::SchemaConfig;
 use common_types::{
     column_schema::ColumnSchema,
     datum::{Datum, DatumKind},
-    request_id::{RequestId},
+    request_id::RequestId,
     row::{Row, RowGroup},
     schema::Schema,
     time::Timestamp,
