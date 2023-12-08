@@ -35,8 +35,8 @@ workspace = true
 [dependencies]
 chrono = { workspace = true }
 log = "0.4"
+runtime = { workspace = true }
 serde = { workspace = true }
 slog = { workspace = true }
-runtime = { workspace = true }
 slog-async = "2.6"
 slog-term = "2.8"
