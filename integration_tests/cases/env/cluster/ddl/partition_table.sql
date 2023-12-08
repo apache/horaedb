@@ -35,6 +35,14 @@ SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2
 
 SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7","ceresdb8", "ceresdb9", "ceresdb10") order by name;
 
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb0";
+
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb1";
+
 ALTER TABLE partition_table_t ADD COLUMN (b string);
 
 INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "ceresdb0", 100);

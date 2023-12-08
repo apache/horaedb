@@ -78,6 +78,22 @@ UInt64(9923681778193615344),Timestamp(1651737067000),String("ceresdb8"),Int32(0)
 UInt64(4860320137932382618),Timestamp(1651737067000),String("ceresdb9"),Int32(0),Double(109.0),
 
 
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb0";
+
+plan_type,plan,
+String("Plan with Metrics"),String("ResolvedPartitionedScan: pushdown_continue:false, partition_count:1, metrics=[\npartition_table_t:\n    __partition_table_t_1:\n        poll_duration=xxs\n        total_duration=xxs\n        wait_duration=xxs\n\n__partition_table_t_1:\nCoalescePartitionsExec, metrics=[output_rows=1, elapsed_compute=xxs]\n  ScanTable: table=__partition_table_t_1, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1:\n\n\nPredicate { exprs:[name = Utf8(\"ceresdb0\")], time_range:TimeRange { inclusive_start: Timestamp(-9223372036854775808), exclusive_end: Timestamp(9223372036854775807) } }=0]\n=0]\n"),
+
+
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb1";
+
+plan_type,plan,
+String("Plan with Metrics"),String("ResolvedPartitionedScan: pushdown_continue:false, partition_count:1, metrics=[\npartition_table_t:\n    __partition_table_t_3:\n        poll_duration=xxs\n        total_duration=xxs\n        wait_duration=xxs\n\n__partition_table_t_3:\nCoalescePartitionsExec, metrics=[output_rows=1, elapsed_compute=xxs]\n  ScanTable: table=__partition_table_t_3, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1:\n\n\nPredicate { exprs:[name = Utf8(\"ceresdb1\")], time_range:TimeRange { inclusive_start: Timestamp(-9223372036854775808), exclusive_end: Timestamp(9223372036854775807) } }=0]\n=0]\n"),
+
+
 ALTER TABLE partition_table_t ADD COLUMN (b string);
 
 affected_rows: 0

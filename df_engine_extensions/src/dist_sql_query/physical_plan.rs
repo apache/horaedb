@@ -263,7 +263,7 @@ pub(crate) struct SubTablePlanContext {
     table: TableIdentifier,
     plan: Arc<dyn ExecutionPlan>,
     metrics_collector: MetricsCollector,
-    remote_metrics: Arc<Mutex<String>>,
+    remote_metrics: Arc<Mutex<Option<String>>>,
 }
 
 impl SubTablePlanContext {
@@ -365,25 +365,25 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 
     fn metrics(&self) -> Option<MetricsSet> {
         let mut metric_set = MetricsSet::new();
-
-        for sub_table_ctx in &self.remote_exec_ctx.plan_ctxs {
-            let metrics_desc = format!(
-                "\n{}:\n{}",
-                sub_table_ctx.table.table,
-                sub_table_ctx.remote_metrics.lock().unwrap()
-            );
-            metric_set.push(Arc::new(Metric::new(
-                MetricValue::Count {
-                    name: metrics_desc.into(),
-                    count: Count::new(),
-                },
-                None,
-            )));
-        }
-
         let mut format_visitor = FormatCollectorVisitor::default();
         self.metrics_collector.visit(&mut format_visitor);
-        let metrics_desc = format_visitor.into_string();
+        let mut metrics_desc = format_visitor.into_string();
+
+        // collect metrics from remote
+        let mut metrics = Vec::with_capacity(self.remote_exec_ctx.plan_ctxs.len());
+        for sub_table_ctx in &self.remote_exec_ctx.plan_ctxs {
+            if let Some(remote_metrics) = sub_table_ctx.remote_metrics.lock().unwrap().take() {
+                metrics.push(format!(
+                    "\n{}:\n{}",
+                    sub_table_ctx.table.table, remote_metrics
+                ));
+            }
+        }
+        metrics.sort();
+        for metric in &metrics {
+            metrics_desc.push_str(metric);
+        }
+
         metric_set.push(Arc::new(Metric::new(
             MetricValue::Count {
                 name: format!("\n{metrics_desc}").into(),
@@ -391,7 +391,6 @@ impl ExecutionPlan for ResolvedPartitionedScan {
             },
             None,
         )));
-
         Some(metric_set)
     }
 }

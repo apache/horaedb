@@ -412,7 +412,7 @@ pub struct ExecutePlanRequest {
     pub remote_request: RemoteExecuteRequest,
 
     /// Collect metrics of remote plan
-    pub remote_metrics: Arc<Mutex<String>>,
+    pub remote_metrics: Arc<Mutex<Option<String>>>,
 }
 
 impl ExecutePlanRequest {
@@ -421,7 +421,7 @@ impl ExecutePlanRequest {
         plan_schema: RecordSchema,
         context: ExecContext,
         physical_plan: PhysicalPlan,
-        remote_metrics: Arc<Mutex<String>>,
+        remote_metrics: Arc<Mutex<Option<String>>>,
     ) -> Self {
         let remote_request = RemoteExecuteRequest {
             table,

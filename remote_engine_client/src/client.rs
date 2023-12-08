@@ -508,7 +508,7 @@ pub struct ClientReadRecordBatchStream {
     pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub record_schema: RecordSchema,
-    pub remote_metrics: Arc<Mutex<String>>,
+    pub remote_metrics: Arc<Mutex<Option<String>>>,
 }
 
 impl ClientReadRecordBatchStream {
@@ -516,7 +516,7 @@ impl ClientReadRecordBatchStream {
         table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
         record_schema: RecordSchema,
-        remote_metrics: Arc<Mutex<String>>,
+        remote_metrics: Arc<Mutex<Option<String>>>,
     ) -> Self {
         Self {
             table_ident,
@@ -544,7 +544,8 @@ impl Stream for ClientReadRecordBatchStream {
                 }
 
                 if let Some(metrics) = response.metrics {
-                    this.remote_metrics.lock().unwrap().push_str(&metrics);
+                    let mut remote_metrics = this.remote_metrics.lock().unwrap();
+                    *remote_metrics = Some(metrics);
                 }
 
                 match response.output {
