@@ -271,13 +271,12 @@ impl SubTablePlanContext {
         table: TableIdentifier,
         plan: Arc<dyn ExecutionPlan>,
         metrics_collector: MetricsCollector,
-        remote_metrics: Arc<Mutex<String>>,
     ) -> Self {
         Self {
             table,
             plan,
             metrics_collector,
-            remote_metrics,
+            remote_metrics: Default::default(),
         }
     }
 }
@@ -346,14 +345,14 @@ impl ExecutionPlan for ResolvedPartitionedScan {
             remote_metrics,
         } = &self.remote_exec_ctx.plan_ctxs[partition];
 
-        let remote_task_ctx =
-            RemoteTaskContext::new(context, sub_table.clone(), remote_metrics.clone());
+        let remote_task_ctx = RemoteTaskContext::new(context, remote_metrics.clone());
 
         // Send plan for remote execution.
-        let stream_future = self
-            .remote_exec_ctx
-            .executor
-            .execute(remote_task_ctx, plan.clone())?;
+        let stream_future = self.remote_exec_ctx.executor.execute(
+            remote_task_ctx,
+            sub_table.clone(),
+            plan.clone(),
+        )?;
         let record_stream =
             PartitionedScanStream::new(stream_future, plan.schema(), metrics_collector.clone());
 
@@ -369,13 +368,13 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 
         for sub_table_ctx in &self.remote_exec_ctx.plan_ctxs {
             let metrics_desc = format!(
-                "{}:\n{}",
+                "\n{}:\n{}",
                 sub_table_ctx.table.table,
                 sub_table_ctx.remote_metrics.lock().unwrap()
             );
             metric_set.push(Arc::new(Metric::new(
                 MetricValue::Count {
-                    name: format!("\n{metrics_desc}").into(),
+                    name: metrics_desc.into(),
                     count: Count::new(),
                 },
                 None,

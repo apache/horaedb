@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
@@ -135,12 +135,7 @@ impl Resolver {
                     });
                     let sub_metrics_collect = metrics_collector.span(table.table.clone());
 
-                    SubTablePlanContext::new(
-                        table,
-                        plan,
-                        sub_metrics_collect,
-                        Arc::new(Mutex::new(String::new())),
-                    )
+                    SubTablePlanContext::new(table, plan, sub_metrics_collect)
                 })
                 .collect::<Vec<_>>();
 

@@ -42,7 +42,9 @@ use snafu::ResultExt;
 use table_engine::{
     provider::{CeresdbOptions, ScanTable, SCAN_TABLE_METRICS_COLLECTOR_NAME},
     remote::{
-        model::{ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest},
+        model::{
+            ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest, TableIdentifier,
+        },
         RemoteEngineRef,
     },
     stream::ToDfStream,
@@ -171,6 +173,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
     fn execute(
         &self,
         task_context: RemoteTaskContext,
+        table: TableIdentifier,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
@@ -213,7 +216,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         let remote_engine = self.remote_engine.clone();
         let future = Box::pin(async move {
             let remote_request = RemoteExecuteRequest {
-                table: task_context.table,
+                table,
                 context: exec_ctx,
                 physical_plan: PhysicalPlan::Datafusion(encoded_plan),
             };

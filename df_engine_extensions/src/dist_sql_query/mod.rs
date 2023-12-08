@@ -39,6 +39,7 @@ pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
     fn execute(
         &self,
         task_context: RemoteTaskContext,
+        table: TableIdentifier,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
 }
@@ -62,19 +63,13 @@ type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;
 
 pub struct RemoteTaskContext {
     pub task_ctx: Arc<TaskContext>,
-    pub table: TableIdentifier,
     pub remote_metrics: Arc<Mutex<String>>,
 }
 
 impl RemoteTaskContext {
-    pub fn new(
-        task_ctx: Arc<TaskContext>,
-        table: TableIdentifier,
-        remote_metrics: Arc<Mutex<String>>,
-    ) -> Self {
+    pub fn new(task_ctx: Arc<TaskContext>, remote_metrics: Arc<Mutex<String>>) -> Self {
         Self {
             task_ctx,
-            table,
             remote_metrics,
         }
     }

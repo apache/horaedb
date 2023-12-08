@@ -119,7 +119,7 @@ impl Client {
             table_ident,
             response,
             record_schema,
-            Arc::new(Mutex::new(String::new())),
+            Default::default(),
         );
 
         Ok(remote_read_record_batch_stream)
