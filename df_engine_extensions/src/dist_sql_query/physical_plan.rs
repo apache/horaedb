@@ -365,6 +365,7 @@ impl ExecutionPlan for ResolvedPartitionedScan {
 
     fn metrics(&self) -> Option<MetricsSet> {
         let mut metric_set = MetricsSet::new();
+
         let mut format_visitor = FormatCollectorVisitor::default();
         self.metrics_collector.visit(&mut format_visitor);
         let mut metrics_desc = format_visitor.into_string();
