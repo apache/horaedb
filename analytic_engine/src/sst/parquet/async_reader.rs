@@ -17,7 +17,7 @@
 use std::{
     ops::Range,
     pin::Pin,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -773,8 +773,8 @@ impl MetricsObserver for ObjectStoreMetricsObserver {
 
     fn num_bytes_fetched(&self, _: &Path, num_bytes: usize) {
         self.table_level_sst_metrics
-            .fetched_sst_bytes_counter
-            .inc_by(num_bytes as u64)
+            .fetched_sst_bytes
+            .fetch_add(num_bytes as u64, Ordering::Relaxed);
     }
 }
 
