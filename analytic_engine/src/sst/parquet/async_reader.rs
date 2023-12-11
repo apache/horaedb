@@ -329,7 +329,7 @@ impl<'a> Reader<'a> {
             debug!(
                 "Build row selection for file path:{}, result:{row_selection:?}, page indexes:{}",
                 self.path,
-                parquet_metadata.page_indexes().is_some()
+                parquet_metadata.column_index().is_some()
             );
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
