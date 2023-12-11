@@ -17,7 +17,7 @@
 use std::{
     ops::Range,
     pin::Pin,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -43,7 +43,10 @@ use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
+use parquet_ext::{
+    meta_data::ChunkReader,
+    reader::{MetricsObserver, ObjectStoreReader},
+};
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
@@ -235,7 +238,6 @@ impl<'a> Reader<'a> {
     }
 
     // TODO: remove it and use the suggested api.
-    #[allow(deprecated)]
     async fn fetch_record_batch_streams(
         &mut self,
         suggested_parallelism: usize,
@@ -307,11 +309,15 @@ impl<'a> Reader<'a> {
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
+        let metrics_collector = ObjectStoreMetricsObserver {
+            table_level_sst_metrics: self.table_level_sst_metrics.clone(),
+        };
         for chunk in target_row_group_chunks {
-            let object_store_reader = ObjectStoreReader::new(
+            let object_store_reader = ObjectStoreReader::with_metrics(
                 self.store.clone(),
                 self.path.clone(),
                 parquet_metadata.clone(),
+                metrics_collector.clone(),
             );
             let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
@@ -323,7 +329,7 @@ impl<'a> Reader<'a> {
             debug!(
                 "Build row selection for file path:{}, result:{row_selection:?}, page indexes:{}",
                 self.path,
-                parquet_metadata.page_indexes().is_some()
+                parquet_metadata.column_index().is_some()
             );
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
@@ -752,6 +758,23 @@ impl<'a> SstReader for ThreadedReader<'a> {
             cur_rx_idx: 0,
             drop_helper: AbortOnDropMany(handles),
         }) as _)
+    }
+}
+
+#[derive(Clone)]
+struct ObjectStoreMetricsObserver {
+    table_level_sst_metrics: Arc<MaybeTableLevelMetrics>,
+}
+
+impl MetricsObserver for ObjectStoreMetricsObserver {
+    fn elapsed(&self, path: &Path, elapsed: Duration) {
+        debug!("ObjectStoreReader dropped, path:{path}, elapsed:{elapsed:?}",);
+    }
+
+    fn num_bytes_fetched(&self, _: &Path, num_bytes: usize) {
+        self.table_level_sst_metrics
+            .fetched_sst_bytes
+            .fetch_add(num_bytes as u64, Ordering::Relaxed);
     }
 }
 

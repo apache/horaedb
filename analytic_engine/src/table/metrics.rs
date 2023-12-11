@@ -165,11 +165,10 @@ impl From<&AtomicTableStats> for TableStats {
 /// Now the registered labels won't remove from the metrics vec to avoid panic
 /// on concurrent removal.
 pub struct Metrics {
-    // Stats of a single table.
+    /// The table name used for metric label
+    maybe_table_name: String,
+    /// Stats of a single table.
     stats: Arc<AtomicTableStats>,
-
-    // Maybe table level sst metrics
-    maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
 
     compaction_input_sst_size_histogram: Histogram,
     compaction_output_sst_size_histogram: Histogram,
@@ -193,8 +192,8 @@ pub struct Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Self {
+            maybe_table_name: DEFAULT_METRICS_KEY.to_string(),
             stats: Arc::new(AtomicTableStats::default()),
-            maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new(DEFAULT_METRICS_KEY)),
             compaction_input_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
                 .with_label_values(&["input"]),
             compaction_output_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
@@ -290,16 +289,15 @@ impl<'a> MetricsContext<'a> {
 impl Metrics {
     pub fn new(mut metric_ctx: MetricsContext) -> Self {
         Self {
-            maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new(
-                metric_ctx.maybe_table_name(),
-            )),
+            maybe_table_name: metric_ctx.maybe_table_name().to_string(),
             ..Default::default()
         }
     }
 
+    /// Generate a table-level metric observer.
     #[inline]
     pub fn maybe_table_level_metrics(&self) -> Arc<MaybeTableLevelMetrics> {
-        self.maybe_table_level_metrics.clone()
+        Arc::new(MaybeTableLevelMetrics::new(&self.maybe_table_name))
     }
 
     #[inline]

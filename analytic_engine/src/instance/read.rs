@@ -106,16 +106,10 @@ impl Instance {
         let now = current_time_millis() as i64;
 
         let query_time_range = (end_time as f64 - start_time as f64) / 1000.0;
-        table_data
-            .metrics
-            .maybe_table_level_metrics()
-            .query_time_range
-            .observe(query_time_range);
-
+        let table_metrics = table_data.metrics.maybe_table_level_metrics();
+        table_metrics.query_time_range.observe(query_time_range);
         let since_start = (now as f64 - start_time as f64) / 1000.0;
-        table_data
-            .metrics
-            .maybe_table_level_metrics()
+        table_metrics
             .duration_since_query_query_start_time
             .observe(since_start);
 
@@ -132,11 +126,7 @@ impl Instance {
         let sst_read_options = create_sst_read_option(
             ScanType::Query,
             self.scan_options.clone(),
-            table_data
-                .metrics
-                .maybe_table_level_metrics()
-                .sst_metrics
-                .clone(),
+            table_metrics.sst_metrics.clone(),
             table_options.num_rows_per_row_group,
             request.projected_schema.clone(),
             request.predicate.clone(),
