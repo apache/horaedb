@@ -48,21 +48,29 @@ lazy_static! {
         "The counter for row group after prune",
         &["table"]
     ).unwrap();
+
+    static ref FETCHED_SST_BYTES_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "fetched_sst_bytes",
+        "The counter for row group after prune",
+        &["table"]
+    ).unwrap();
 }
 
 #[derive(Debug)]
 pub struct MaybeTableLevelMetrics {
     pub row_group_before_prune_counter: IntCounter,
     pub row_group_after_prune_counter: IntCounter,
+    pub fetched_sst_bytes_counter: IntCounter,
 }
 
 impl MaybeTableLevelMetrics {
-    pub fn new(table: &str) -> Self {
+    pub fn new(table_name: &str) -> Self {
         Self {
             row_group_before_prune_counter: ROW_GROUP_BEFORE_PRUNE_COUNTER
-                .with_label_values(&[table]),
+                .with_label_values(&[table_name]),
             row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER
-                .with_label_values(&[table]),
+                .with_label_values(&[table_name]),
+            fetched_sst_bytes_counter: FETCHED_SST_BYTES_COUNTER.with_label_values(&[table_name]),
         }
     }
 }
