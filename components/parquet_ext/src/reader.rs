@@ -107,14 +107,22 @@ impl<T: MetricsObserver> AsyncFileReader for ObjectStoreReader<T> {
         ranges: Vec<Range<usize>>,
     ) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
         async move {
-            self.storage
+            let get_res = self
+                .storage
                 .get_ranges(&self.path, &ranges)
                 .map_err(|e| {
                     parquet::errors::ParquetError::General(format!(
                         "Failed to fetch ranges from object store, err:{e}"
                     ))
                 })
-                .await
+                .await;
+
+            if let Ok(bytes) = &get_res {
+                let num_bytes: usize = bytes.iter().map(|v| v.len()).sum();
+                self.metrics.num_bytes_fetched(&self.path, num_bytes);
+            }
+
+            get_res
         }
         .boxed()
     }

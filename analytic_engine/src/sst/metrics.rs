@@ -55,7 +55,7 @@ lazy_static! {
         "fetched_sst_bytes",
         "Histogram for sst get range length",
         &["table"],
-        exponential_buckets(100.0, 2.0, 5).unwrap()
+        exponential_buckets(1024.0 * 1024.0, 4.0, 8).unwrap()
     ).unwrap();
 }
 
