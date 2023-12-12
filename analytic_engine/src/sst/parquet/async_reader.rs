@@ -773,7 +773,7 @@ impl MetricsObserver for ObjectStoreMetricsObserver {
 
     fn num_bytes_fetched(&self, _: &Path, num_bytes: usize) {
         self.table_level_sst_metrics
-            .fetched_sst_bytes
+            .num_fetched_sst_bytes
             .fetch_add(num_bytes as u64, Ordering::Relaxed);
     }
 }
