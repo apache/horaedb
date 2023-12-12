@@ -55,7 +55,8 @@ lazy_static! {
         "fetched_sst_bytes",
         "Histogram for sst get range length",
         &["table"],
-        exponential_buckets(100.0, 2.0, 5).unwrap()
+        // The buckets: [1MB, 2MB, 4MB, 8MB, ... , 8GB]
+        exponential_buckets(1024.0 * 1024.0, 2.0, 13).unwrap()
     ).unwrap();
 }
 
@@ -63,8 +64,8 @@ lazy_static! {
 pub struct MaybeTableLevelMetrics {
     pub row_group_before_prune_counter: IntCounter,
     pub row_group_after_prune_counter: IntCounter,
-    pub fetched_sst_bytes_hist: Histogram,
-    pub fetched_sst_bytes: AtomicU64,
+    pub num_fetched_sst_bytes_hist: Histogram,
+    pub num_fetched_sst_bytes: AtomicU64,
 }
 
 impl MaybeTableLevelMetrics {
@@ -74,20 +75,23 @@ impl MaybeTableLevelMetrics {
                 .with_label_values(&[table]),
             row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER
                 .with_label_values(&[table]),
-            fetched_sst_bytes_hist: FETCHED_SST_BYTES_HISTOGRAM.with_label_values(&[table]),
-            fetched_sst_bytes: AtomicU64::new(0),
+            num_fetched_sst_bytes_hist: FETCHED_SST_BYTES_HISTOGRAM.with_label_values(&[table]),
+            num_fetched_sst_bytes: AtomicU64::new(0),
         }
     }
 
     #[inline]
-    pub fn observe_fetched_sst_bytes(&self) {
-        self.fetched_sst_bytes_hist
-            .observe(self.fetched_sst_bytes.load(Ordering::Relaxed) as f64)
+    pub fn maybe_observe_num_fetched_sst_bytes(&self) {
+        let num_fetched_sst_bytes = self.num_fetched_sst_bytes.load(Ordering::Relaxed);
+        if num_fetched_sst_bytes != 0 {
+            self.num_fetched_sst_bytes_hist
+                .observe(num_fetched_sst_bytes as f64);
+        }
     }
 }
 
 impl Drop for MaybeTableLevelMetrics {
     fn drop(&mut self) {
-        self.observe_fetched_sst_bytes();
+        self.maybe_observe_num_fetched_sst_bytes();
     }
 }
