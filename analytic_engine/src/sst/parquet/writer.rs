@@ -29,17 +29,16 @@ use parquet::data_type::AsBytes;
 use snafu::{OptionExt, ResultExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::{
-    encoding::EncodeOptions,
-    meta_data::{ColumnValueSet, RowGroupFilter},
-};
 use crate::{
     sst::{
         factory::ObjectStorePickerRef,
         file::Level,
         parquet::{
-            encoding::{encode_sst_meta_data, ParquetEncoder},
-            meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
+            encoding::{encode_sst_meta_data, ColumnEncoding, EncodeOptions, ParquetEncoder},
+            meta_data::{
+                ColumnValueSet, ParquetFilter, ParquetMetaData, RowGroupFilter,
+                RowGroupFilterBuilder,
+            },
         },
         writer::{
             self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
@@ -51,6 +50,14 @@ use crate::{
 };
 
 const KEEP_COLUMN_VALUE_THRESHOLD: usize = 20;
+/// Only the row group which contains at least
+/// `MIN_NUM_ROWS_DICT_ENCODING_SAMPLE` rows can be sampling to decide whether
+/// to do dictionary encoding.
+const MIN_NUM_ROWS_SAMPLE_DICT_ENCODING: usize = 1024;
+/// If the number of unique value exceeds
+/// `total_num_values * MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING`, there is no need
+/// to do dictionary encoding for such column.
+const MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING: f64 = 0.08;
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
@@ -207,6 +214,19 @@ impl<'a> RecordBatchGroupWriter<'a> {
         Ok(curr_row_group)
     }
 
+    fn build_column_encodings(
+        &self,
+        sample_row_groups: &[RecordBatchWithKey],
+    ) -> Result<HashMap<String, ColumnEncoding>> {
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups,
+            meta_data: self.meta_data,
+            min_num_sample_rows: MIN_NUM_ROWS_SAMPLE_DICT_ENCODING,
+            max_unique_value_ratio: MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING,
+        };
+        sampler.sample()
+    }
+
     /// Build the parquet filter for the given `row_group`.
     fn build_row_group_filter(
         &self,
@@ -301,11 +321,13 @@ impl<'a> RecordBatchGroupWriter<'a> {
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 
+        let mut row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
+        let column_encodings = self.build_column_encodings(&row_group)?;
         let encode_options = EncodeOptions {
             num_rows_per_row_group: self.options.num_rows_per_row_group,
             max_buffer_size: self.options.max_buffer_size,
             compression: self.options.compression,
-            column_encodings: HashMap::new(),
+            column_encodings,
         };
         let mut parquet_encoder =
             ParquetEncoder::try_new(sink, &self.meta_data.schema, &encode_options)
@@ -317,11 +339,6 @@ impl<'a> RecordBatchGroupWriter<'a> {
             .then(ParquetFilter::default);
         let timestamp_index = self.meta_data.schema.timestamp_index();
         loop {
-            let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
-            if row_group.is_empty() {
-                break;
-            }
-
             if let Some(filter) = &mut parquet_filter {
                 filter.push_row_group_filter(self.build_row_group_filter(&row_group)?);
             }
@@ -349,6 +366,11 @@ impl<'a> RecordBatchGroupWriter<'a> {
             // allocated memory.
             arrow_row_group = Vec::with_capacity(num_batches);
             total_num_rows += num_rows;
+
+            row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
+            if row_group.is_empty() {
+                break;
+            }
         }
 
         let parquet_meta_data = {
@@ -493,6 +515,49 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             meta_path: meta_path.to_string(),
             time_range,
         })
+    }
+}
+
+struct ColumnEncodingSampler<'a> {
+    sample_row_groups: &'a [RecordBatchWithKey],
+    meta_data: &'a MetaData,
+    min_num_sample_rows: usize,
+    max_unique_value_ratio: f64,
+}
+
+impl<'a> ColumnEncodingSampler<'a> {
+    fn sample(&self) -> Result<HashMap<String, ColumnEncoding>> {
+        let num_total_rows: usize = self.sample_row_groups.iter().map(|v| v.num_rows()).sum();
+        if num_total_rows < self.min_num_sample_rows {
+            return Ok(HashMap::new());
+        }
+
+        assert!(self.max_unique_value_ratio <= 1.0 && self.max_unique_value_ratio >= 0.0);
+        let max_unique_values = (num_total_rows as f64 * self.max_unique_value_ratio) as usize;
+        let mut column_hashes = HashSet::with_capacity(max_unique_values);
+        let mut column_encodings = HashMap::with_capacity(self.meta_data.schema.num_columns());
+        for (col_idx, col_schema) in self.meta_data.schema.columns().iter().enumerate() {
+            for row_group in self.sample_row_groups {
+                let col_block = &row_group.columns()[col_idx];
+                for idx in 0..row_group.num_rows() {
+                    if column_hashes.len() >= max_unique_values {
+                        break;
+                    }
+                    let datum_view = col_block.datum_view(idx);
+                    datum_view.do_with_bytes(|val| {
+                        let hash = hash_ext::hash64(val);
+                        column_hashes.insert(hash);
+                    })
+                }
+            }
+
+            // The dictionary encoding make senses only if the number of unique values is
+            // small.
+            let enable_dict = column_hashes.len() < max_unique_values;
+            column_encodings.insert(col_schema.name.clone(), ColumnEncoding { enable_dict });
+        }
+
+        Ok(column_encodings)
     }
 }
 
