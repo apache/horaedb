@@ -25,6 +25,7 @@ use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;
 
+use super::parquet::writer::WriteOptions;
 use crate::{
     sst::{
         file::Level,
@@ -200,11 +201,16 @@ impl Factory for FactoryImpl {
         store_picker: &'a ObjectStorePickerRef,
         level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>> {
+        let write_options = WriteOptions {
+            num_rows_per_row_group: options.num_rows_per_row_group,
+            max_buffer_size: options.max_buffer_size,
+            compression: options.compression.into(),
+            sst_level: level,
+        };
         Ok(Box::new(ParquetSstWriter::new(
             path,
-            level,
+            write_options,
             store_picker,
-            options,
         )))
     }
 }
