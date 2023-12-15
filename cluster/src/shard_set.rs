@@ -261,14 +261,6 @@ impl ShardData {
             }
         );
 
-        ensure!(
-            self.shard_info.version == curr_shard_info.version,
-            ShardVersionMismatch {
-                shard_info: self.shard_info.clone(),
-                expect_version: curr_shard_info.version,
-            }
-        );
-
         let table = self.tables.iter().find(|v| v.id == new_table.id);
         ensure!(
             table.is_none(),
@@ -331,16 +323,10 @@ impl ShardData {
             }
         );
 
-        let table_idx = self
-            .tables
-            .iter()
-            .position(|v| v.id == new_table.id)
-            .with_context(|| TableNotFound {
-                msg: format!("the table to remove is not found, table:{new_table:?}"),
-            })?;
-
-        // Remove the table from the shard.
-        self.tables.swap_remove(table_idx);
+        if let Some(table_idx) = self.tables.iter().position(|v| v.id == new_table.id) {
+            // Remove the table from the shard.
+            self.tables.swap_remove(table_idx);
+        }
 
         // Update the shard version if necessary.
         if inc_version {
