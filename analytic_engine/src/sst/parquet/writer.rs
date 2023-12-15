@@ -57,7 +57,7 @@ const MIN_NUM_ROWS_SAMPLE_DICT_ENCODING: usize = 1024;
 /// If the number of unique value exceeds
 /// `total_num_values * MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING`, there is no need
 /// to do dictionary encoding for such column.
-const MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING: f64 = 0.08;
+const MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING: f64 = 0.12;
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
@@ -518,6 +518,8 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
     }
 }
 
+/// A sampler to decide the column encoding options (whether to do dictionary
+/// encoding) with a bunch of sample row groups.
 struct ColumnEncodingSampler<'a> {
     sample_row_groups: &'a [RecordBatchWithKey],
     meta_data: &'a MetaData,
@@ -537,6 +539,19 @@ impl<'a> ColumnEncodingSampler<'a> {
         let mut column_hashes = HashSet::with_capacity(max_unique_values);
         let mut column_encodings = HashMap::with_capacity(self.meta_data.schema.num_columns());
         for (col_idx, col_schema) in self.meta_data.schema.columns().iter().enumerate() {
+            // Only do dictionary encoding for string or bytes column.
+            let allowed_dict_type = matches!(
+                col_schema.data_type,
+                DatumKind::String | DatumKind::Varbinary
+            );
+            if !allowed_dict_type {
+                column_encodings.insert(
+                    col_schema.name.clone(),
+                    ColumnEncoding { enable_dict: false },
+                );
+                continue;
+            }
+
             for row_group in self.sample_row_groups {
                 let col_block = &row_group.columns()[col_idx];
                 for idx in 0..row_group.num_rows() {
@@ -554,6 +569,7 @@ impl<'a> ColumnEncodingSampler<'a> {
             // The dictionary encoding make senses only if the number of unique values is
             // small.
             let enable_dict = column_hashes.len() < max_unique_values;
+            column_hashes.clear();
             column_encodings.insert(col_schema.name.clone(), ColumnEncoding { enable_dict });
         }
 
@@ -879,5 +895,87 @@ mod tests {
             let actual_num_row: usize = batch.iter().map(|b| b.num_rows()).sum();
             assert_eq!(expect_num_row, actual_num_row);
         }
+    }
+
+    fn check_sample_column_encoding(
+        sampler: ColumnEncodingSampler<'_>,
+        expect_enable_dicts: Option<Vec<bool>>,
+    ) {
+        let column_encodings = sampler.sample().unwrap();
+        if expect_enable_dicts.is_none() {
+            assert!(column_encodings.is_empty());
+            return;
+        }
+
+        let expect_enable_dicts = expect_enable_dicts.unwrap();
+        for (col_idx, col_schema) in sampler.meta_data.schema.columns().iter().enumerate() {
+            let expect_enable_dict = expect_enable_dicts[col_idx];
+            let column_encoding = column_encodings.get(&col_schema.name).unwrap();
+            assert_eq!(
+                expect_enable_dict, column_encoding.enable_dict,
+                "column:{}",
+                col_schema.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_column_encoding_option_sample() {
+        let schema = build_schema();
+        let raw_rows = vec![
+            (b"a", 100, 10.0, "v4", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v4", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v5", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v5", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v6", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v6", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v8", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v8", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v9", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v9", 1000, 1_000_000),
+        ];
+        let rows: Vec<_> = raw_rows
+            .into_iter()
+            .map(|v| build_row(v.0, v.1, v.2, v.3, v.4, v.5))
+            .collect();
+        let record_batch_with_key0 = build_record_batch_with_key(schema.clone(), rows.clone());
+        let record_batch_with_key1 = build_record_batch_with_key(schema.clone(), rows);
+        let meta_data = MetaData {
+            min_key: Bytes::from_static(b""),
+            max_key: Bytes::from_static(b""),
+            time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
+            max_sequence: 200,
+            schema,
+        };
+        let record_batches_with_key = vec![record_batch_with_key0, record_batch_with_key1];
+
+        // Normal case 1
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups: &record_batches_with_key,
+            meta_data: &meta_data,
+            min_num_sample_rows: 10,
+            max_unique_value_ratio: 0.6,
+        };
+        let expect_enable_dicts = vec![true, false, false, true, false, false];
+        check_sample_column_encoding(sampler, Some(expect_enable_dicts));
+
+        // Normal case 2
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups: &record_batches_with_key,
+            meta_data: &meta_data,
+            min_num_sample_rows: 10,
+            max_unique_value_ratio: 0.2,
+        };
+        let expect_enable_dicts = vec![true, false, false, false, false, false];
+        check_sample_column_encoding(sampler, Some(expect_enable_dicts));
+
+        // Normal case 3
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups: &record_batches_with_key,
+            meta_data: &meta_data,
+            min_num_sample_rows: 30,
+            max_unique_value_ratio: 0.2,
+        };
+        check_sample_column_encoding(sampler, None);
     }
 }
