@@ -112,7 +112,7 @@ pub struct WriteOptions {
 impl WriteOptions {
     #[inline]
     pub fn need_custom_filter(&self) -> bool {
-        self.sst_level.is_min()
+        !self.sst_level.is_min()
     }
 }
 
