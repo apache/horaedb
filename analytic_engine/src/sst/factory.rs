@@ -25,7 +25,6 @@ use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;
 
-use super::parquet::writer::WriteOptions;
 use crate::{
     sst::{
         file::Level,
@@ -33,7 +32,10 @@ use crate::{
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
-        parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
+        parquet::{
+            writer::{ParquetSstWriter, WriteOptions},
+            AsyncParquetReader, ThreadedReader,
+        },
         reader::SstReader,
         writer::SstWriter,
     },

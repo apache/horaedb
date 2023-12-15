@@ -15,9 +15,11 @@
 use common_types::time::Timestamp;
 use snafu::{ensure, OptionExt, ResultExt};
 
-use super::{DecodeContext, Overflow, Result, ValuesDecoder, ValuesDecoderImpl, Varint};
 use crate::{
-    columnar::{InvalidVersion, ValuesEncoder, ValuesEncoderImpl},
+    columnar::{
+        DecodeContext, InvalidVersion, Overflow, Result, ValuesDecoder, ValuesDecoderImpl,
+        ValuesEncoder, ValuesEncoderImpl, Varint,
+    },
     consts::MAX_VARINT_BYTES,
     varint,
 };

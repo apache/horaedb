@@ -125,7 +125,7 @@ impl<'a> RecordBatchGroupWriter<'a> {
     ) -> Self {
         // No need to build complex index for the min-level sst so there is no need to
         // collect the column values.
-        let column_values = (!options.need_custom_filter()).then(|| {
+        let column_values = options.need_custom_filter().then(|| {
             meta_data
                 .schema
                 .columns()
@@ -338,7 +338,7 @@ impl<'a> RecordBatchGroupWriter<'a> {
             .need_custom_filter()
             .then(ParquetFilter::default);
         let timestamp_index = self.meta_data.schema.timestamp_index();
-        loop {
+        while !row_group.is_empty() {
             if let Some(filter) = &mut parquet_filter {
                 filter.push_row_group_filter(self.build_row_group_filter(&row_group)?);
             }
@@ -368,9 +368,6 @@ impl<'a> RecordBatchGroupWriter<'a> {
             total_num_rows += num_rows;
 
             row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
-            if row_group.is_empty() {
-                break;
-            }
         }
 
         let parquet_meta_data = {

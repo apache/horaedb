@@ -57,7 +57,6 @@ use tokio::sync::{
 };
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use super::meta_data::ColumnValueSet;
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{
@@ -68,7 +67,9 @@ use crate::{
         },
         metrics::MaybeTableLevelMetrics,
         parquet::{
-            encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
+            encoding::ParquetDecoder,
+            meta_data::{ColumnValueSet, ParquetFilter},
+            row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
     },

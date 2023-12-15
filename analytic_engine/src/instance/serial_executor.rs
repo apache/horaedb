@@ -30,9 +30,8 @@ use tokio::sync::{
     watch::{self, Receiver, Sender},
 };
 
-use super::flush_compaction::{BackgroundFlushFailed, TableFlushOptions};
 use crate::{
-    instance::flush_compaction::{Other, Result},
+    instance::flush_compaction::{BackgroundFlushFailed, Other, Result, TableFlushOptions},
     table::data::TableData,
 };
 
