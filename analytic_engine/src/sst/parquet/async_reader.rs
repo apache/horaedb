@@ -99,7 +99,7 @@ pub struct Reader<'a> {
     metrics: Metrics,
     df_plan_metrics: ExecutionPlanMetricsSet,
 
-    table_level_sst_metrics: Arc<MaybeTableLevelMetrics>,
+    table_level_sst_metrics: Option<Arc<MaybeTableLevelMetrics>>,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -129,6 +129,9 @@ impl<'a> Reader<'a> {
             ..Default::default()
         };
 
+        let table_level_sst_metrics = matches!(options.frequency, ReadFrequency::Frequent)
+            .then(|| options.maybe_table_level_metrics.clone());
+
         Self {
             path,
             store,
@@ -142,7 +145,7 @@ impl<'a> Reader<'a> {
             row_projector: None,
             metrics,
             df_plan_metrics,
-            table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
+            table_level_sst_metrics,
         }
     }
 
@@ -263,11 +266,11 @@ impl<'a> Reader<'a> {
         let num_row_group_after_prune = target_row_groups.len();
         // Maybe it is a sub table of partitioned table, try to extract its parent
         // table.
-        if let ReadFrequency::Frequent = self.frequency {
-            self.table_level_sst_metrics
+        if let Some(metrics) = &self.table_level_sst_metrics {
+            metrics
                 .row_group_before_prune_counter
                 .inc_by(num_row_group_before_prune as u64);
-            self.table_level_sst_metrics
+            metrics
                 .row_group_after_prune_counter
                 .inc_by(num_row_group_after_prune as u64);
         }
@@ -309,12 +312,8 @@ impl<'a> Reader<'a> {
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
-        let metrics_collector = {
-            let metrics_for_object_store = matches!(self.frequency, ReadFrequency::Frequent)
-                .then(|| self.table_level_sst_metrics.clone());
-            ObjectStoreMetricsObserver {
-                table_level_sst_metrics: metrics_for_object_store,
-            }
+        let metrics_collector = ObjectStoreMetricsObserver {
+            table_level_sst_metrics: self.table_level_sst_metrics.clone(),
         };
         for chunk in target_row_group_chunks {
             let object_store_reader = ObjectStoreReader::with_metrics(
