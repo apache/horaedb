@@ -28,61 +28,61 @@ workspace = true
 workspace = true
 
 [features]
-test              = ["tempfile"]
-wal-table-kv      = ["wal/wal-table-kv"]
+test = ["tempfile"]
+wal-table-kv = ["wal/wal-table-kv"]
 wal-message-queue = ["wal/wal-message-queue"]
-wal-rocksdb       = ["wal/wal-rocksdb"]
+wal-rocksdb = ["wal/wal-rocksdb"]
 
 [dependencies]
 # In alphabetical order
-arc-swap             = "1.4.0"
-arena                = { workspace = true }
-arrow                = { workspace = true }
-async-stream         = { workspace = true }
-async-trait          = { workspace = true }
-atomic_enum          = { workspace = true }
-base64               = { workspace = true }
-bytes_ext            = { workspace = true }
-ceresdbproto         = { workspace = true }
-codec                = { workspace = true }
-common_types         = { workspace = true }
-datafusion           = { workspace = true }
-future_ext           = { workspace = true }
-futures              = { workspace = true }
-generic_error        = { workspace = true }
-hash_ext             = { workspace = true }
-hex                  = { workspace = true }
-hyperloglog          = { workspace = true }
-id_allocator         = { workspace = true }
-itertools            = { workspace = true }
-lazy_static          = { workspace = true }
-logger               = { workspace = true }
-lru                  = { workspace = true }
-macros               = { workspace = true }
-message_queue        = { workspace = true }
-metric_ext           = { workspace = true }
-object_store         = { workspace = true }
-parquet              = { workspace = true }
-parquet_ext          = { workspace = true }
-prometheus           = { workspace = true }
-prost                = { workspace = true }
+arc-swap = "1.4.0"
+arena = { workspace = true }
+arrow = { workspace = true }
+async-stream = { workspace = true }
+async-trait = { workspace = true }
+atomic_enum = { workspace = true }
+base64 = { workspace = true }
+bytes_ext = { workspace = true }
+ceresdbproto = { workspace = true }
+codec = { workspace = true }
+common_types = { workspace = true }
+datafusion = { workspace = true }
+future_ext = { workspace = true }
+futures = { workspace = true }
+generic_error = { workspace = true }
+hash_ext = { workspace = true }
+hex = { workspace = true }
+hyperloglog = { workspace = true }
+id_allocator = { workspace = true }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+logger = { workspace = true }
+lru = { workspace = true }
+macros = { workspace = true }
+message_queue = { workspace = true }
+metric_ext = { workspace = true }
+object_store = { workspace = true }
+parquet = { workspace = true }
+parquet_ext = { workspace = true }
+prometheus = { workspace = true }
+prost = { workspace = true }
 remote_engine_client = { workspace = true }
-router               = { workspace = true }
-runtime              = { workspace = true }
-sampling_cache       = { workspace = true }
-serde                = { workspace = true }
-size_ext             = { workspace = true }
-skiplist             = { path = "../components/skiplist" }
-smallvec             = { workspace = true }
-snafu                = { workspace = true }
-table_engine         = { workspace = true }
-table_kv             = { workspace = true }
-tempfile             = { workspace = true, optional = true }
-time_ext             = { workspace = true }
-tokio                = { workspace = true }
-trace_metric         = { workspace = true }
-wal                  = { workspace = true }
-xorfilter-rs         = { workspace = true }
+router = { workspace = true }
+runtime = { workspace = true }
+sampling_cache = { workspace = true }
+serde = { workspace = true }
+size_ext = { workspace = true }
+skiplist = { path = "../components/skiplist" }
+smallvec = { workspace = true }
+snafu = { workspace = true }
+table_engine = { workspace = true }
+table_kv = { workspace = true }
+tempfile = { workspace = true, optional = true }
+time_ext = { workspace = true }
+tokio = { workspace = true }
+trace_metric = { workspace = true }
+wal = { workspace = true }
+xorfilter-rs = { workspace = true }
 
 [dev-dependencies]
 common_types = { workspace = true, features = ["test"] }
@@ -91,8 +91,4 @@ pin-project-lite = { workspace = true }
 rand = { workspace = true }
 tempfile = { workspace = true }
 test_util = { workspace = true }
-wal = { workspace = true, features = [
-    "wal-message-queue",
-    "wal-rocksdb",
-    "wal-table-kv",
-] }
+wal = { workspace = true, features = ["wal-message-queue", "wal-rocksdb", "wal-table-kv"] }
