@@ -32,7 +32,10 @@ use crate::{
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
-        parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
+        parquet::{
+            writer::{ParquetSstWriter, WriteOptions},
+            AsyncParquetReader, ThreadedReader,
+        },
         reader::SstReader,
         writer::SstWriter,
     },
@@ -200,11 +203,16 @@ impl Factory for FactoryImpl {
         store_picker: &'a ObjectStorePickerRef,
         level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>> {
+        let write_options = WriteOptions {
+            num_rows_per_row_group: options.num_rows_per_row_group,
+            max_buffer_size: options.max_buffer_size,
+            compression: options.compression.into(),
+            sst_level: level,
+        };
         Ok(Box::new(ParquetSstWriter::new(
             path,
-            level,
+            write_options,
             store_picker,
-            options,
         )))
     }
 }
