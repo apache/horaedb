@@ -14,7 +14,12 @@
 
 // Flush and compaction logic of instance
 
-use std::{cmp, collections::Bound, fmt, sync::Arc};
+use std::{
+    cmp,
+    collections::{Bound, HashMap},
+    fmt,
+    sync::Arc,
+};
 
 use common_types::{
     projected_schema::ProjectedSchema,
@@ -55,9 +60,9 @@ use crate::{
         IterOptions,
     },
     sst::{
-        factory::{self, ScanOptions, SstWriteOptions},
+        factory::{self, ColumnStats, ScanOptions, SstWriteOptions},
         file::{FileMeta, Level},
-        meta_data::SstMetaReader,
+        meta_data::{SstMetaData, SstMetaReader},
         writer::{MetaData, RecordBatchStream},
     },
     table::{
@@ -541,6 +546,7 @@ impl FlushTask {
             num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
             compression: self.table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            column_stats: Default::default(),
         };
 
         for time_range in &time_ranges {
@@ -712,6 +718,7 @@ impl FlushTask {
             num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
             compression: self.table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            column_stats: Default::default(),
         };
         let mut writer = self
             .space_store
@@ -943,6 +950,7 @@ impl SpaceStore {
             row_iter::record_batch_with_key_iter_to_stream(merge_iter)
         };
 
+        let mut column_stats = HashMap::new();
         let sst_meta = {
             let meta_reader = SstMetaReader {
                 space_id: table_data.space_id,
@@ -956,6 +964,10 @@ impl SpaceStore {
                 .await
                 .context(ReadSstMeta)?;
 
+            if let Some(meta) = sst_metas.get(0) {
+                collect_column_stats(meta, &mut column_stats);
+            }
+
             MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
         };
 
@@ -966,10 +978,17 @@ impl SpaceStore {
             .context(AllocFileId)?;
 
         let sst_file_path = table_data.set_sst_file_path(file_id);
+        let write_options = SstWriteOptions {
+            storage_format_hint: sst_write_options.storage_format_hint,
+            num_rows_per_row_group: sst_write_options.num_rows_per_row_group,
+            compression: sst_write_options.compression,
+            max_buffer_size: sst_write_options.max_buffer_size,
+            column_stats,
+        };
         let mut sst_writer = self
             .sst_factory
             .create_writer(
-                sst_write_options,
+                &write_options,
                 &sst_file_path,
                 self.store_picker(),
                 input.output_level,
@@ -1058,6 +1077,19 @@ impl SpaceStore {
                 level: expired.level,
                 file_id: file.id(),
             });
+        }
+    }
+}
+
+/// Collect the column stats from the sst meta data.
+fn collect_column_stats(meta_data: &SstMetaData, column_stats: &mut HashMap<String, ColumnStats>) {
+    let SstMetaData::Parquet(meta_data) = meta_data;
+    if let Some(column_values) = &meta_data.column_values {
+        for (col_idx, val_set) in column_values.iter().enumerate() {
+            let low_cardinality = val_set.is_some();
+            let col_name = meta_data.schema.column(col_idx).name.clone();
+            let col_stats = ColumnStats { low_cardinality };
+            column_stats.insert(col_name, col_stats);
         }
     }
 }

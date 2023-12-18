@@ -14,7 +14,7 @@
 
 //! Factory for different kinds sst writer and reader.
 
-use std::{fmt::Debug, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
@@ -25,6 +25,7 @@ use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;
 
+use super::parquet::encoding::ColumnEncoding;
 use crate::{
     sst::{
         file::Level,
@@ -146,6 +147,10 @@ pub struct SstReadOptions {
 
     pub runtime: Arc<Runtime>,
 }
+#[derive(Clone, Debug)]
+pub struct ColumnStats {
+    pub low_cardinality: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct SstWriteOptions {
@@ -153,6 +158,15 @@ pub struct SstWriteOptions {
     pub num_rows_per_row_group: usize,
     pub compression: Compression,
     pub max_buffer_size: usize,
+    pub column_stats: HashMap<String, ColumnStats>,
+}
+
+impl From<&ColumnStats> for ColumnEncoding {
+    fn from(value: &ColumnStats) -> Self {
+        ColumnEncoding {
+            enable_dict: value.low_cardinality,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -203,11 +217,16 @@ impl Factory for FactoryImpl {
         store_picker: &'a ObjectStorePickerRef,
         level: Level,
     ) -> Result<Box<dyn SstWriter + Send + 'a>> {
+        let column_encodings =
+            HashMap::from_iter(options.column_stats.iter().map(|(col_name, col_stats)| {
+                (col_name.to_owned(), ColumnEncoding::from(col_stats))
+            }));
         let write_options = WriteOptions {
             num_rows_per_row_group: options.num_rows_per_row_group,
             max_buffer_size: options.max_buffer_size,
             compression: options.compression.into(),
             sst_level: level,
+            column_encodings,
         };
         Ok(Box::new(ParquetSstWriter::new(
             path,

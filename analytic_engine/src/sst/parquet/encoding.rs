@@ -238,7 +238,7 @@ struct ColumnarRecordEncoder<W> {
     arrow_schema: ArrowSchemaRef,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnEncoding {
     pub enable_dict: bool,
 }

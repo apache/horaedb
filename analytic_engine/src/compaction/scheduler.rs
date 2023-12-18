@@ -505,6 +505,7 @@ impl ScheduleWorker {
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            column_stats: Default::default(),
         };
         let scan_options = self.scan_options.clone();
 
