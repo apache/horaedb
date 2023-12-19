@@ -104,6 +104,7 @@ impl Proxy {
                     schema,
                     &req.sql,
                     self.sub_table_access_perm.enable_others,
+                    true,
                 )
                 .await?
             }
@@ -170,6 +171,7 @@ impl Proxy {
                 schema,
                 &req.sql,
                 self.sub_table_access_perm.enable_others,
+                true,
             )
             .await?;
 

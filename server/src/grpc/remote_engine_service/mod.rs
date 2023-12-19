@@ -68,13 +68,13 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::{wrappers::ReceiverStream, Stream};
 use tonic::{Request, Response, Status};
 
-use super::metrics::REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM;
 use crate::{
     config::QueryDedupConfig,
     grpc::{
         metrics::{
             REMOTE_ENGINE_GRPC_HANDLER_COUNTER_VEC,
             REMOTE_ENGINE_GRPC_HANDLER_DURATION_HISTOGRAM_VEC,
+            REMOTE_ENGINE_WRITE_BATCH_NUM_ROWS_HISTOGRAM,
         },
         remote_engine_service::error::{ErrNoCause, ErrWithCause, Result, StatusCode},
     },

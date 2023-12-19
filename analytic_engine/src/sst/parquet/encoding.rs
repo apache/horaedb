@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::convert::TryFrom;
+use std::{collections::HashMap, convert::TryFrom};
 
 use arrow::{compute, record_batch::RecordBatch as ArrowRecordBatch};
 use async_trait::async_trait;
@@ -26,6 +26,7 @@ use parquet::{
     arrow::AsyncArrowWriter,
     basic::Compression,
     file::{metadata::KeyValue, properties::WriterProperties},
+    schema::types::ColumnPath,
 };
 use prost::{bytes, Message};
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -237,25 +238,40 @@ struct ColumnarRecordEncoder<W> {
     arrow_schema: ArrowSchemaRef,
 }
 
+#[derive(Debug, Clone)]
+pub struct ColumnEncoding {
+    pub enable_dict: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct EncodeOptions {
+    pub num_rows_per_row_group: usize,
+    pub max_buffer_size: usize,
+    pub compression: Compression,
+    pub column_encodings: HashMap<String, ColumnEncoding>,
+}
+
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
-    fn try_new(
-        sink: W,
-        schema: &Schema,
-        num_rows_per_row_group: usize,
-        max_buffer_size: usize,
-        compression: Compression,
-    ) -> Result<Self> {
+    fn try_new(sink: W, schema: &Schema, options: &EncodeOptions) -> Result<Self> {
         let arrow_schema = schema.to_arrow_schema_ref();
 
-        let write_props = WriterProperties::builder()
-            .set_max_row_group_size(num_rows_per_row_group)
-            .set_compression(compression)
-            .build();
+        let write_props = {
+            let mut builder = WriterProperties::builder()
+                .set_max_row_group_size(options.num_rows_per_row_group)
+                .set_compression(options.compression);
+
+            for (col_name, encoding) in &options.column_encodings {
+                let col_path = ColumnPath::new(vec![col_name.to_string()]);
+                builder = builder.set_column_dictionary_enabled(col_path, encoding.enable_dict);
+            }
+
+            builder.build()
+        };
 
         let arrow_writer = AsyncArrowWriter::try_new(
             sink,
             arrow_schema.clone(),
-            max_buffer_size,
+            options.max_buffer_size,
             Some(write_props),
         )
         .box_err()
@@ -326,18 +342,10 @@ impl ParquetEncoder {
     pub fn try_new<W: AsyncWrite + Unpin + Send + 'static>(
         sink: W,
         schema: &Schema,
-        num_rows_per_row_group: usize,
-        max_buffer_size: usize,
-        compression: Compression,
+        options: &EncodeOptions,
     ) -> Result<Self> {
         Ok(ParquetEncoder {
-            record_encoder: Box::new(ColumnarRecordEncoder::try_new(
-                sink,
-                schema,
-                num_rows_per_row_group,
-                max_buffer_size,
-                compression,
-            )?),
+            record_encoder: Box::new(ColumnarRecordEncoder::try_new(sink, schema, options)?),
         })
     }
 

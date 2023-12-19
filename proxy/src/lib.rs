@@ -523,14 +523,6 @@ impl Proxy {
         plan: Plan,
         deadline: Option<Instant>,
     ) -> Result<Output> {
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
-
         let interpreter =
             self.build_interpreter(request_id, catalog, schema, plan, deadline, false)?;
         Self::interpreter_execute_plan(interpreter, deadline).await
@@ -544,14 +536,6 @@ impl Proxy {
         plan: Plan,
         deadline: Option<Instant>,
     ) -> Result<Output> {
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
-
         let interpreter =
             self.build_interpreter(request_id, catalog, schema, plan, deadline, true)?;
         Self::interpreter_execute_plan(interpreter, deadline).await

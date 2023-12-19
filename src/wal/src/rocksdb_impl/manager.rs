@@ -38,7 +38,6 @@ use runtime::Runtime;
 use snafu::ResultExt;
 use tokio::sync::Mutex;
 
-use super::config::RocksDBConfig;
 use crate::{
     config::{Config, StorageConfig},
     kv_encoder::{CommonLogEncoding, CommonLogKey, MaxSeqMetaEncoding, MaxSeqMetaValue, MetaKey},
@@ -48,6 +47,7 @@ use crate::{
         ScanContext, ScanRequest, SyncLogIterator, WalLocation, WalManager, WalManagerRef,
         WalRuntimes, WalsOpener, WriteContext, MANIFEST_DIR_NAME, WAL_DIR_NAME,
     },
+    rocksdb_impl::config::RocksDBConfig,
 };
 
 /// Table unit in the Wal.

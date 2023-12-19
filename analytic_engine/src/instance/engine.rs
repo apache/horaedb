@@ -26,10 +26,14 @@ use table_engine::{
 };
 use wal::manager::WalLocation;
 
-use super::open::{TableContext, TablesOfShardContext};
 use crate::{
     engine::build_space_id,
-    instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, Instance},
+    instance::{
+        close::Closer,
+        drop::Dropper,
+        open::{OpenTablesOfShardResult, TableContext, TablesOfShardContext},
+        Instance,
+    },
     space::{MemSizeOptions, Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 

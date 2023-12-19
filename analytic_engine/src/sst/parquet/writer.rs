@@ -14,7 +14,7 @@
 
 //! Sst writer implementation based on parquet.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use common_types::{
@@ -29,14 +29,16 @@ use parquet::data_type::AsBytes;
 use snafu::{OptionExt, ResultExt};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use super::meta_data::{ColumnValueSet, RowGroupFilter};
 use crate::{
     sst::{
-        factory::{ObjectStorePickerRef, SstWriteOptions},
+        factory::ObjectStorePickerRef,
         file::Level,
         parquet::{
-            encoding::{encode_sst_meta_data, ParquetEncoder},
-            meta_data::{ParquetFilter, ParquetMetaData, RowGroupFilterBuilder},
+            encoding::{encode_sst_meta_data, ColumnEncoding, EncodeOptions, ParquetEncoder},
+            meta_data::{
+                ColumnValueSet, ParquetFilter, ParquetMetaData, RowGroupFilter,
+                RowGroupFilterBuilder,
+            },
         },
         writer::{
             self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
@@ -48,50 +50,47 @@ use crate::{
 };
 
 const KEEP_COLUMN_VALUE_THRESHOLD: usize = 20;
+/// Only the row group which contains at least
+/// `MIN_NUM_ROWS_DICT_ENCODING_SAMPLE` rows can be sampling to decide whether
+/// to do dictionary encoding.
+const MIN_NUM_ROWS_SAMPLE_DICT_ENCODING: usize = 1024;
+/// If the number of unique value exceeds
+/// `total_num_values * MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING`, there is no need
+/// to do dictionary encoding for such column.
+const MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING: f64 = 0.12;
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
 pub struct ParquetSstWriter<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
-    level: Level,
     /// The storage where the data is persist.
     store: &'a ObjectStoreRef,
-    /// Max row group size.
-    num_rows_per_row_group: usize,
-    max_buffer_size: usize,
-    compression: Compression,
+    options: WriteOptions,
 }
 
 impl<'a> ParquetSstWriter<'a> {
     pub fn new(
         path: &'a Path,
-        level: Level,
+        options: WriteOptions,
         store_picker: &'a ObjectStorePickerRef,
-        options: &SstWriteOptions,
     ) -> Self {
         let store = store_picker.default_store();
         Self {
             path,
-            level,
             store,
-            num_rows_per_row_group: options.num_rows_per_row_group,
-            compression: options.compression.into(),
-            max_buffer_size: options.max_buffer_size,
+            options,
         }
     }
 }
 
 /// The writer will reorganize the record batches into row groups, and then
 /// encode them to parquet file.
-struct RecordBatchGroupWriter {
+struct RecordBatchGroupWriter<'a> {
     request_id: RequestId,
     input: RecordBatchStream,
-    meta_data: MetaData,
-    num_rows_per_row_group: usize,
-    max_buffer_size: usize,
-    compression: Compression,
-    level: Level,
+    meta_data: &'a MetaData,
+    options: &'a WriteOptions,
 
     // inner status
     input_exhausted: bool,
@@ -102,21 +101,32 @@ struct RecordBatchGroupWriter {
     column_values: Option<Vec<Option<ColumnValueSet>>>,
 }
 
-impl RecordBatchGroupWriter {
+#[derive(Debug, Clone)]
+pub struct WriteOptions {
+    pub num_rows_per_row_group: usize,
+    pub max_buffer_size: usize,
+    pub compression: Compression,
+    pub sst_level: Level,
+}
+
+impl WriteOptions {
+    #[inline]
+    pub fn need_custom_filter(&self) -> bool {
+        !self.sst_level.is_min()
+    }
+}
+
+impl<'a> RecordBatchGroupWriter<'a> {
     fn new(
         request_id: RequestId,
         input: RecordBatchStream,
-        meta_data: MetaData,
-        num_rows_per_row_group: usize,
-        max_buffer_size: usize,
-        compression: Compression,
-        level: Level,
+        meta_data: &'a MetaData,
+        options: &'a WriteOptions,
     ) -> Self {
-        let column_values = if level.is_min() {
-            // There are not many rows in min level, so we don't record values for them.
-            None
-        } else {
-            let column_values = meta_data
+        // No need to build complex index for the min-level sst so there is no need to
+        // collect the column values.
+        let column_values = options.need_custom_filter().then(|| {
+            meta_data
                 .schema
                 .columns()
                 .iter()
@@ -128,19 +138,14 @@ impl RecordBatchGroupWriter {
                         None
                     }
                 })
-                .collect();
-
-            Some(column_values)
-        };
+                .collect()
+        });
 
         Self {
             request_id,
             input,
             meta_data,
-            num_rows_per_row_group,
-            max_buffer_size,
-            compression,
-            level,
+            options,
             input_exhausted: false,
             real_time_range: None,
             column_values,
@@ -158,7 +163,7 @@ impl RecordBatchGroupWriter {
     ) -> Result<Vec<RecordBatchWithKey>> {
         let mut curr_row_group = vec![];
         // Used to record the number of remaining rows to fill `curr_row_group`.
-        let mut remaining = self.num_rows_per_row_group;
+        let mut remaining = self.options.num_rows_per_row_group;
 
         // Keep filling `curr_row_group` until `remaining` is zero.
         while remaining > 0 {
@@ -209,6 +214,19 @@ impl RecordBatchGroupWriter {
         Ok(curr_row_group)
     }
 
+    fn build_column_encodings(
+        &self,
+        sample_row_groups: &[RecordBatchWithKey],
+    ) -> Result<HashMap<String, ColumnEncoding>> {
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups,
+            meta_data: self.meta_data,
+            min_num_sample_rows: MIN_NUM_ROWS_SAMPLE_DICT_ENCODING,
+            max_unique_value_ratio: MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING,
+        };
+        sampler.sample()
+    }
+
     /// Build the parquet filter for the given `row_group`.
     fn build_row_group_filter(
         &self,
@@ -228,10 +246,6 @@ impl RecordBatchGroupWriter {
         }
 
         builder.build().box_err().context(BuildParquetFilter)
-    }
-
-    fn need_custom_filter(&self) -> bool {
-        !self.level.is_min()
     }
 
     fn update_column_values(
@@ -307,28 +321,24 @@ impl RecordBatchGroupWriter {
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 
-        let mut parquet_encoder = ParquetEncoder::try_new(
-            sink,
-            &self.meta_data.schema,
-            self.num_rows_per_row_group,
-            self.max_buffer_size,
-            self.compression,
-        )
-        .box_err()
-        .context(EncodeRecordBatch)?;
-        let mut parquet_filter = if self.need_custom_filter() {
-            Some(ParquetFilter::default())
-        } else {
-            None
+        let mut row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
+        let column_encodings = self.build_column_encodings(&row_group)?;
+        let encode_options = EncodeOptions {
+            num_rows_per_row_group: self.options.num_rows_per_row_group,
+            max_buffer_size: self.options.max_buffer_size,
+            compression: self.options.compression,
+            column_encodings,
         };
+        let mut parquet_encoder =
+            ParquetEncoder::try_new(sink, &self.meta_data.schema, &encode_options)
+                .box_err()
+                .context(EncodeRecordBatch)?;
+        let mut parquet_filter = self
+            .options
+            .need_custom_filter()
+            .then(ParquetFilter::default);
         let timestamp_index = self.meta_data.schema.timestamp_index();
-
-        loop {
-            let row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
-            if row_group.is_empty() {
-                break;
-            }
-
+        while !row_group.is_empty() {
             if let Some(filter) = &mut parquet_filter {
                 filter.push_row_group_filter(self.build_row_group_filter(&row_group)?);
             }
@@ -356,6 +366,8 @@ impl RecordBatchGroupWriter {
             // allocated memory.
             arrow_row_group = Vec::with_capacity(num_batches);
             total_num_rows += num_rows;
+
+            row_group = self.fetch_next_row_group(&mut prev_record_batch).await?;
         }
 
         let parquet_meta_data = {
@@ -461,18 +473,10 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
     ) -> writer::Result<SstInfo> {
         debug!(
             "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
-            request_id, meta, self.num_rows_per_row_group
+            request_id, meta, self.options.num_rows_per_row_group
         );
 
-        let group_writer = RecordBatchGroupWriter::new(
-            request_id,
-            input,
-            meta.clone(),
-            self.num_rows_per_row_group,
-            self.max_buffer_size,
-            self.compression,
-            self.level,
-        );
+        let group_writer = RecordBatchGroupWriter::new(request_id, input, meta, &self.options);
 
         let (aborter, sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
@@ -508,6 +512,65 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             meta_path: meta_path.to_string(),
             time_range,
         })
+    }
+}
+
+/// A sampler to decide the column encoding options (whether to do dictionary
+/// encoding) with a bunch of sample row groups.
+struct ColumnEncodingSampler<'a> {
+    sample_row_groups: &'a [RecordBatchWithKey],
+    meta_data: &'a MetaData,
+    min_num_sample_rows: usize,
+    max_unique_value_ratio: f64,
+}
+
+impl<'a> ColumnEncodingSampler<'a> {
+    fn sample(&self) -> Result<HashMap<String, ColumnEncoding>> {
+        let num_total_rows: usize = self.sample_row_groups.iter().map(|v| v.num_rows()).sum();
+        if num_total_rows < self.min_num_sample_rows {
+            return Ok(HashMap::new());
+        }
+
+        assert!(self.max_unique_value_ratio <= 1.0 && self.max_unique_value_ratio >= 0.0);
+        let max_unique_values = (num_total_rows as f64 * self.max_unique_value_ratio) as usize;
+        let mut column_hashes = HashSet::with_capacity(max_unique_values);
+        let mut column_encodings = HashMap::with_capacity(self.meta_data.schema.num_columns());
+        for (col_idx, col_schema) in self.meta_data.schema.columns().iter().enumerate() {
+            // Only do dictionary encoding for string or bytes column.
+            let allowed_dict_type = matches!(
+                col_schema.data_type,
+                DatumKind::String | DatumKind::Varbinary
+            );
+            if !allowed_dict_type {
+                column_encodings.insert(
+                    col_schema.name.clone(),
+                    ColumnEncoding { enable_dict: false },
+                );
+                continue;
+            }
+
+            for row_group in self.sample_row_groups {
+                let col_block = &row_group.columns()[col_idx];
+                for idx in 0..row_group.num_rows() {
+                    if column_hashes.len() >= max_unique_values {
+                        break;
+                    }
+                    let datum_view = col_block.datum_view(idx);
+                    datum_view.do_with_bytes(|val| {
+                        let hash = hash_ext::hash64(val);
+                        column_hashes.insert(hash);
+                    })
+                }
+            }
+
+            // The dictionary encoding make senses only if the number of unique values is
+            // small.
+            let enable_dict = column_hashes.len() < max_unique_values;
+            column_hashes.clear();
+            column_encodings.insert(col_schema.name.clone(), ColumnEncoding { enable_dict });
+        }
+
+        Ok(column_encodings)
     }
 }
 
@@ -690,7 +753,7 @@ mod tests {
                     sst_meta.time_range,
                     TimeRange::new_unchecked(100.into(), 105.into())
                 );
-                assert_eq!(&sst_meta_readback, &ParquetMetaData::from(sst_meta));
+                assert_eq!(&sst_meta_readback, &ParquetMetaData::from(&sst_meta));
                 assert_eq!(
                     expected_num_rows,
                     reader
@@ -799,20 +862,24 @@ mod tests {
             Poll::Ready(Some(Ok(batch)))
         }));
 
+        let write_options = WriteOptions {
+            num_rows_per_row_group,
+            max_buffer_size: 0,
+            compression: Compression::UNCOMPRESSED,
+            sst_level: Level::default(),
+        };
+        let meta_data = MetaData {
+            min_key: Default::default(),
+            max_key: Default::default(),
+            time_range: Default::default(),
+            max_sequence: 1,
+            schema,
+        };
         let mut group_writer = RecordBatchGroupWriter::new(
             RequestId::next_id(),
             record_batch_stream,
-            MetaData {
-                min_key: Default::default(),
-                max_key: Default::default(),
-                time_range: Default::default(),
-                max_sequence: 1,
-                schema,
-            },
-            num_rows_per_row_group,
-            0,
-            Compression::UNCOMPRESSED,
-            Level::default(),
+            &meta_data,
+            &write_options,
         );
 
         let mut prev_record_batch = None;
@@ -825,5 +892,87 @@ mod tests {
             let actual_num_row: usize = batch.iter().map(|b| b.num_rows()).sum();
             assert_eq!(expect_num_row, actual_num_row);
         }
+    }
+
+    fn check_sample_column_encoding(
+        sampler: ColumnEncodingSampler<'_>,
+        expect_enable_dicts: Option<Vec<bool>>,
+    ) {
+        let column_encodings = sampler.sample().unwrap();
+        if expect_enable_dicts.is_none() {
+            assert!(column_encodings.is_empty());
+            return;
+        }
+
+        let expect_enable_dicts = expect_enable_dicts.unwrap();
+        for (col_idx, col_schema) in sampler.meta_data.schema.columns().iter().enumerate() {
+            let expect_enable_dict = expect_enable_dicts[col_idx];
+            let column_encoding = column_encodings.get(&col_schema.name).unwrap();
+            assert_eq!(
+                expect_enable_dict, column_encoding.enable_dict,
+                "column:{}",
+                col_schema.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_column_encoding_option_sample() {
+        let schema = build_schema();
+        let raw_rows = vec![
+            (b"a", 100, 10.0, "v4", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v4", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v5", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v5", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v6", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v6", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v8", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v8", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v9", 1000, 1_000_000),
+            (b"a", 100, 10.0, "v9", 1000, 1_000_000),
+        ];
+        let rows: Vec<_> = raw_rows
+            .into_iter()
+            .map(|v| build_row(v.0, v.1, v.2, v.3, v.4, v.5))
+            .collect();
+        let record_batch_with_key0 = build_record_batch_with_key(schema.clone(), rows.clone());
+        let record_batch_with_key1 = build_record_batch_with_key(schema.clone(), rows);
+        let meta_data = MetaData {
+            min_key: Bytes::from_static(b""),
+            max_key: Bytes::from_static(b""),
+            time_range: TimeRange::new_unchecked(Timestamp::new(1), Timestamp::new(2)),
+            max_sequence: 200,
+            schema,
+        };
+        let record_batches_with_key = vec![record_batch_with_key0, record_batch_with_key1];
+
+        // Normal case 1
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups: &record_batches_with_key,
+            meta_data: &meta_data,
+            min_num_sample_rows: 10,
+            max_unique_value_ratio: 0.6,
+        };
+        let expect_enable_dicts = vec![true, false, false, true, false, false];
+        check_sample_column_encoding(sampler, Some(expect_enable_dicts));
+
+        // Normal case 2
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups: &record_batches_with_key,
+            meta_data: &meta_data,
+            min_num_sample_rows: 10,
+            max_unique_value_ratio: 0.2,
+        };
+        let expect_enable_dicts = vec![true, false, false, false, false, false];
+        check_sample_column_encoding(sampler, Some(expect_enable_dicts));
+
+        // Normal case 3
+        let sampler = ColumnEncodingSampler {
+            sample_row_groups: &record_batches_with_key,
+            meta_data: &meta_data,
+            min_num_sample_rows: 30,
+            max_unique_value_ratio: 0.2,
+        };
+        check_sample_column_encoding(sampler, None);
     }
 }

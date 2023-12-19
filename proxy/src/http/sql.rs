@@ -55,6 +55,7 @@ impl Proxy {
                 schema,
                 &req.query,
                 self.sub_table_access_perm.enable_http,
+                false,
             )
             .await;
 

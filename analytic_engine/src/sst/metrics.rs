@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use lazy_static::lazy_static;
 use prometheus::{
-    exponential_buckets, register_counter, register_histogram, register_int_counter_vec, Counter,
-    Histogram, IntCounter, IntCounterVec,
+    exponential_buckets, register_counter, register_histogram, register_histogram_vec,
+    register_int_counter_vec, Counter, Histogram, HistogramVec, IntCounter, IntCounterVec,
 };
 
 lazy_static! {
@@ -48,12 +50,22 @@ lazy_static! {
         "The counter for row group after prune",
         &["table"]
     ).unwrap();
+
+    static ref FETCHED_SST_BYTES_HISTOGRAM: HistogramVec = register_histogram_vec!(
+        "fetched_sst_bytes",
+        "Histogram for sst get range length",
+        &["table"],
+        // The buckets: [1MB, 2MB, 4MB, 8MB, ... , 8GB]
+        exponential_buckets(1024.0 * 1024.0, 2.0, 13).unwrap()
+    ).unwrap();
 }
 
 #[derive(Debug)]
 pub struct MaybeTableLevelMetrics {
     pub row_group_before_prune_counter: IntCounter,
     pub row_group_after_prune_counter: IntCounter,
+    pub num_fetched_sst_bytes_hist: Histogram,
+    pub num_fetched_sst_bytes: AtomicU64,
 }
 
 impl MaybeTableLevelMetrics {
@@ -63,6 +75,23 @@ impl MaybeTableLevelMetrics {
                 .with_label_values(&[table]),
             row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER
                 .with_label_values(&[table]),
+            num_fetched_sst_bytes_hist: FETCHED_SST_BYTES_HISTOGRAM.with_label_values(&[table]),
+            num_fetched_sst_bytes: AtomicU64::new(0),
         }
+    }
+
+    #[inline]
+    pub fn maybe_observe_num_fetched_sst_bytes(&self) {
+        let num_fetched_sst_bytes = self.num_fetched_sst_bytes.load(Ordering::Relaxed);
+        if num_fetched_sst_bytes != 0 {
+            self.num_fetched_sst_bytes_hist
+                .observe(num_fetched_sst_bytes as f64);
+        }
+    }
+}
+
+impl Drop for MaybeTableLevelMetrics {
+    fn drop(&mut self) {
+        self.maybe_observe_num_fetched_sst_bytes();
     }
 }

@@ -413,7 +413,7 @@ impl ExecutionPlan for ScanTable {
         let pushdown_filters = &self.request.predicate;
         metric_set.push(Arc::new(Metric::new(
             MetricValue::Count {
-                name: format!("\n{metrics_desc}\n\n{pushdown_filters:?}").into(),
+                name: format!("\n{pushdown_filters:?}\n{metrics_desc}").into(),
                 count: Count::new(),
             },
             None,

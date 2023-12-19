@@ -50,6 +50,7 @@ datafusion = { workspace = true }
 future_ext = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
+hash_ext = { workspace = true }
 hex = { workspace = true }
 hyperloglog = { workspace = true }
 id_allocator = { workspace = true }

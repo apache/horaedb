@@ -26,13 +26,13 @@ use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
 
-use super::{engine::OpenTablesOfShard, flush_compaction::Flusher};
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
     engine,
     instance::{
-        engine::{OpenManifest, ReadMetaUpdate, Result},
+        engine::{OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
+        flush_compaction::Flusher,
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
         Instance, SpaceStore,
