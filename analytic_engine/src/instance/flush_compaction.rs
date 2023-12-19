@@ -950,8 +950,7 @@ impl SpaceStore {
             row_iter::record_batch_with_key_iter_to_stream(merge_iter)
         };
 
-        let mut column_stats = HashMap::new();
-        let sst_meta = {
+        let (sst_meta, column_stats) = {
             let meta_reader = SstMetaReader {
                 space_id: table_data.space_id,
                 table_id: table_data.id,
@@ -964,11 +963,10 @@ impl SpaceStore {
                 .await
                 .context(ReadSstMeta)?;
 
-            if let Some(meta) = sst_metas.get(0) {
-                collect_column_stats(meta, &mut column_stats);
-            }
+            let column_stats = collect_column_stats_from_meta_datas(&sst_metas);
 
-            MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
+            let merged_meta = MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema);
+            (merged_meta, column_stats)
         };
 
         // Alloc file id for the merged sst.
@@ -1081,17 +1079,38 @@ impl SpaceStore {
     }
 }
 
-/// Collect the column stats from the sst meta data.
-fn collect_column_stats(meta_data: &SstMetaData, column_stats: &mut HashMap<String, ColumnStats>) {
-    let SstMetaData::Parquet(meta_data) = meta_data;
-    if let Some(column_values) = &meta_data.column_values {
-        for (col_idx, val_set) in column_values.iter().enumerate() {
-            let low_cardinality = val_set.is_some();
-            let col_name = meta_data.schema.column(col_idx).name.clone();
-            let col_stats = ColumnStats { low_cardinality };
-            column_stats.insert(col_name, col_stats);
+/// Collect the column stats from a batch of sst meta data.
+fn collect_column_stats_from_meta_datas(metas: &[SstMetaData]) -> HashMap<String, ColumnStats> {
+    let mut low_cardinality_counts: HashMap<String, usize> = HashMap::new();
+    for meta_data in metas {
+        let SstMetaData::Parquet(meta_data) = meta_data;
+        if let Some(column_values) = &meta_data.column_values {
+            for (col_idx, val_set) in column_values.iter().enumerate() {
+                let low_cardinality = val_set.is_some();
+                if low_cardinality {
+                    let col_name = meta_data.schema.column(col_idx).name.clone();
+                    low_cardinality_counts
+                        .entry(col_name)
+                        .and_modify(|v| *v += 1)
+                        .or_insert(1);
+                }
+            }
         }
     }
+
+    // Only the column whose cardinality is low in all the metas is a
+    // low-cardinality column.
+    let low_cardinality_cols = low_cardinality_counts
+        .into_iter()
+        .filter_map(|(col_name, cnt)| {
+            (cnt == metas.len()).then_some((
+                col_name,
+                ColumnStats {
+                    low_cardinality: true,
+                },
+            ))
+        });
+    HashMap::from_iter(low_cardinality_cols)
 }
 
 fn split_record_batch_with_time_ranges(
