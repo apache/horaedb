@@ -1177,15 +1177,26 @@ fn build_mem_table_iter(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use bytes_ext::Bytes;
     use common_types::{
+        schema::Schema,
         tests::{
-            build_record_batch_with_key_by_rows, build_row, build_row_opt,
+            build_record_batch_with_key_by_rows, build_row, build_row_opt, build_schema,
             check_record_batch_with_key_with_rows,
         },
         time::TimeRange,
     };
 
-    use crate::instance::flush_compaction::split_record_batch_with_time_ranges;
+    use super::collect_column_stats_from_meta_datas;
+    use crate::{
+        instance::flush_compaction::split_record_batch_with_time_ranges,
+        sst::{
+            meta_data::SstMetaData,
+            parquet::meta_data::{ColumnValueSet, ParquetMetaData},
+        },
+    };
 
     #[test]
     fn test_split_record_batch_with_time_ranges() {
@@ -1237,5 +1248,72 @@ mod tests {
         check_record_batch_with_key_with_rows(&rets[0], rows0.len(), column_num, rows0);
         check_record_batch_with_key_with_rows(&rets[1], rows1.len(), column_num, rows1);
         check_record_batch_with_key_with_rows(&rets[2], rows2.len(), column_num, rows2);
+    }
+
+    fn check_collect_column_stats(
+        schema: &Schema,
+        expected_low_cardinality_col_indexes: Vec<usize>,
+        meta_datas: Vec<SstMetaData>,
+    ) {
+        let column_stats = collect_column_stats_from_meta_datas(&meta_datas);
+        assert_eq!(
+            column_stats.len(),
+            expected_low_cardinality_col_indexes.len()
+        );
+
+        for col_idx in expected_low_cardinality_col_indexes {
+            let col_schema = schema.column(col_idx);
+            assert!(column_stats.contains_key(&col_schema.name));
+        }
+    }
+
+    #[test]
+    fn test_collect_column_stats_from_metadata() {
+        let schema = build_schema();
+        let build_meta_data = |low_cardinality_col_indexes: Vec<usize>| {
+            let mut column_values = vec![None; 6];
+            for idx in low_cardinality_col_indexes {
+                column_values[idx] = Some(ColumnValueSet::StringValue(Default::default()));
+            }
+            let parquet_meta_data = ParquetMetaData {
+                min_key: Bytes::new(),
+                max_key: Bytes::new(),
+                time_range: TimeRange::empty(),
+                max_sequence: 0,
+                schema: schema.clone(),
+                parquet_filter: None,
+                column_values: Some(column_values),
+            };
+            SstMetaData::Parquet(Arc::new(parquet_meta_data))
+        };
+
+        // Normal case 0
+        let meta_datas = vec![
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0, 1]),
+            build_meta_data(vec![0, 2]),
+            build_meta_data(vec![0, 3]),
+        ];
+        check_collect_column_stats(&schema, vec![0], meta_datas);
+
+        // Normal case 1
+        let meta_datas = vec![
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0]),
+            build_meta_data(vec![]),
+            build_meta_data(vec![1]),
+            build_meta_data(vec![3]),
+        ];
+        check_collect_column_stats(&schema, vec![], meta_datas);
+
+        // Normal case 2
+        let meta_datas = vec![
+            build_meta_data(vec![3, 5]),
+            build_meta_data(vec![0, 3, 5]),
+            build_meta_data(vec![0, 1, 2, 3, 5]),
+            build_meta_data(vec![1, 3, 5]),
+        ];
+        check_collect_column_stats(&schema, vec![3, 5], meta_datas);
     }
 }
