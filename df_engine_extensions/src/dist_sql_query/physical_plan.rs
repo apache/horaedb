@@ -276,7 +276,7 @@ impl SubTablePlanContext {
             table,
             plan,
             metrics_collector,
-            remote_metrics: Default::default(),
+            remote_metrics: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -371,18 +371,13 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         let mut metrics_desc = format_visitor.into_string();
 
         // collect metrics from remote
-        let mut metrics = Vec::with_capacity(self.remote_exec_ctx.plan_ctxs.len());
         for sub_table_ctx in &self.remote_exec_ctx.plan_ctxs {
             if let Some(remote_metrics) = sub_table_ctx.remote_metrics.lock().unwrap().take() {
-                metrics.push(format!(
+                metrics_desc.push_str(&format!(
                     "\n{}:\n{}",
                     sub_table_ctx.table.table, remote_metrics
                 ));
             }
-        }
-        metrics.sort();
-        for metric in &metrics {
-            metrics_desc.push_str(metric);
         }
 
         metric_set.push(Arc::new(Metric::new(

@@ -27,11 +27,13 @@ use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
-        execute_plan_request, read_response::Output::Arrow,
-        remote_engine_service_server::RemoteEngineService, row_group, AlterTableOptionsRequest,
-        AlterTableOptionsResponse, AlterTableSchemaRequest, AlterTableSchemaResponse, ExecContext,
-        ExecutePlanRequest, GetTableInfoRequest, GetTableInfoResponse, ReadRequest, ReadResponse,
-        WriteBatchRequest, WriteRequest, WriteResponse,
+        execute_plan_request,
+        read_response::Output::{Arrow, Metric},
+        remote_engine_service_server::RemoteEngineService,
+        row_group, AlterTableOptionsRequest, AlterTableOptionsResponse, AlterTableSchemaRequest,
+        AlterTableSchemaResponse, ExecContext, ExecutePlanRequest, GetTableInfoRequest,
+        GetTableInfoResponse, MetricPayload, ReadRequest, ReadResponse, WriteBatchRequest,
+        WriteRequest, WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
@@ -84,9 +86,9 @@ const STREAM_QUERY_CHANNEL_LEN: usize = 200;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
 
 #[derive(Debug, Clone)]
-pub enum RecordBatchWithMetrics {
+pub enum RecordBatchWithMetric {
     RecordBatch(RecordBatch),
-    Metrics(String),
+    Metric(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -217,19 +219,19 @@ impl RemoteExecStream {
 }
 
 impl Stream for RemoteExecStream {
-    type Item = Result<RecordBatchWithMetrics>;
+    type Item = Result<RecordBatchWithMetric>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
         match this.inner.poll_next_unpin(cx) {
             Poll::Ready(Some(res)) => {
-                Poll::Ready(Some(res.map(RecordBatchWithMetrics::RecordBatch)))
+                Poll::Ready(Some(res.map(RecordBatchWithMetric::RecordBatch)))
             }
             Poll::Ready(None) => match &this.physical_plan {
                 Some(physical_plan) => {
                     let metrics = physical_plan.metrics_to_string();
                     this.physical_plan = None;
-                    Poll::Ready(Some(Ok(RecordBatchWithMetrics::Metrics(metrics))))
+                    Poll::Ready(Some(Ok(RecordBatchWithMetric::Metric(metrics))))
                 }
                 None => Poll::Ready(None),
             },
@@ -244,15 +246,14 @@ macro_rules! record_stream_to_response_stream {
             Ok(stream) => {
                 let new_stream: Self::$StreamType = Box::pin(stream.map(|res| match res {
                     Ok(res) => match res {
-                        RecordBatchWithMetrics::Metrics(metrics) => {
+                        RecordBatchWithMetric::Metric(metric) => {
                             let resp = ReadResponse {
                                 header: Some(error::build_ok_header()),
-                                metrics: Some(metrics),
-                                output: None,
+                                output: Some(Metric(MetricPayload { metric })),
                             };
                             Ok(resp)
                         }
-                        RecordBatchWithMetrics::RecordBatch(record_batch) => {
+                        RecordBatchWithMetric::RecordBatch(record_batch) => {
                             let resp = match ipc::encode_record_batch(
                                 &record_batch.into_arrow_record_batch(),
                                 CompressOptions {
@@ -277,7 +278,6 @@ macro_rules! record_stream_to_response_stream {
 
                                     ReadResponse {
                                         header: Some(error::build_ok_header()),
-                                        metrics: None,
                                         output: Some(Arrow(ArrowPayload {
                                             record_batches: vec![payload],
                                             compression: compression as i32,

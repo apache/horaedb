@@ -26,7 +26,11 @@ use arrow_ext::{
     ipc::{CompressOptions, CompressionMethod},
 };
 use ceresdbproto::{
-    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
+    remote_engine::{
+        self,
+        read_response::Output::{Arrow, Metric},
+        remote_engine_service_client::*,
+    },
     storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
@@ -543,15 +547,15 @@ impl Stream for ClientReadRecordBatchStream {
                     }.fail()));
                 }
 
-                if let Some(metrics) = response.metrics {
-                    let mut remote_metrics = this.remote_metrics.lock().unwrap();
-                    *remote_metrics = Some(metrics);
-                }
-
                 match response.output {
                     None => Poll::Ready(None),
                     Some(v) => match v {
                         Arrow(v) => Poll::Ready(Some(convert_arrow_payload(v))),
+                        Metric(v) => {
+                            let mut remote_metrics = this.remote_metrics.lock().unwrap();
+                            *remote_metrics = Some(v.metric);
+                            Poll::Ready(None)
+                        }
                     },
                 }
             }
