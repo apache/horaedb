@@ -15,7 +15,7 @@ HoraeDB 是一款高性能、分布式的云原生时序数据库。
 ### 获取代码
 通过 git 克隆代码仓库并进入代码目录：
 ```bash
-git clone git@github.com:CeresDB/horaedb.git
+git clone git@github.com:apache/incubator-horaedb.git horaedb
 cd horaedb
 ```
 
