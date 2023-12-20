@@ -44,7 +44,7 @@ github:
 
 notifications:
   commits:      commits@horaedb.apache.org
-  issues:       dev@horaedb.apache.org
+  issues:       commits@horaedb.apache.org
   pullrequests: commits@horaedb.apache.org
   jobs:         commits@horaedb.apache.org
-  discussions:  dev@horaedb.apache.org
+  discussions:  commits@horaedb.apache.org
