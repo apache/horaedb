@@ -12,7 +12,7 @@ repos:
         args:
           - --license-filepath
           - scripts/license-header.txt
-          - --detect-license-in-X-top-lines=13
+          - --detect-license-in-X-top-lines=16
           - --comment-style
           - //
           - --use-current-year
