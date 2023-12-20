@@ -16,6 +16,8 @@ HoraeDB is a high-performance, distributed, cloud native time-series database.
 ## Contributing
 Any contribution is welcome!
 
+Discuss at [dev mailing list](mailto:dev-subscribe@horaedb.apache.org) ([subscribe](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [unsubscribe](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [archives](https://lists.apache.org/list.html?dev@horaedb.apache.org))
+
 Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 
 ## Acknowledgment
