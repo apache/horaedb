@@ -16,8 +16,8 @@
 
 //! Configure utils
 
-//This module is forked from tikv and remove unnecessary code.
-//https://github.com/tikv/tikv/blob/HEAD/src/util/config.rs
+// This module is forked from tikv and remove unnecessary code.
+// https://github.com/tikv/tikv/blob/HEAD/src/util/config.rs
 use std::{
     fmt::{self, Write},
     ops::{Div, Mul},

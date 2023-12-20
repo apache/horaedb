@@ -2,7 +2,7 @@
 [![CI](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/horaedb)](https://github.com/CeresDB/horaedb/issues)
 [![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
-[![Docker](https://img.shields.io/docker/v/ceresdb/ceresdb-server?logo=docker)](https://hub.docker.com/r/ceresdb/ceresdb-server)
+[![Docker](https://img.shields.io/docker/v/ceresdb/horaedb-server?logo=docker)](https://hub.docker.com/r/ceresdb/horaedb-server)
 
 [中文](./README-CN.md)
 
@@ -19,7 +19,7 @@ Any contribution is welcome!
 Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 
 ## Acknowledgment
-When develop HoraeDB, we benefit a lot from several other open source projects,  such as [influxdb_iox](https://github.com/influxdata/influxdb_iox), [tikv](https://github.com/tikv/tikv) etc, thanks for their awesome work.
+When develop HoraeDB, we benefit a lot from several other open source projects,  such as [influxdb_iox](https://github.com/influxdata/influxdb/tree/main/influxdb_iox), [tikv](https://github.com/tikv/tikv) etc, thanks for their awesome work.
 
 In our production usage, we heavily use [OceanBase](https://github.com/oceanbase/oceanbase) as implementation of both WAL and ObjectStorage, and OceanBase team help us maintain stability of our cluster, thanks for their kindly support.
 

@@ -86,7 +86,7 @@ define_result!(Error);
 /// Table with catalog and schema
 // TODO: we should enable to get catalog and schema from table
 // (for example, store catalog id and schema id in table).
-// See issue: https://github.com/CeresDB/ceresdb/issues/1157
+// See issue: https://github.com/CeresDB/horaedb/issues/1157
 #[derive(Debug, Clone)]
 pub struct ResolvedTable {
     pub catalog: String,

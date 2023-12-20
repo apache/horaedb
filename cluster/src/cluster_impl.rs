@@ -51,7 +51,7 @@ use crate::{
 ///
 /// Its functions are to:
 ///  - Handle the some action from the HoraeMeta;
-///  - Handle the heartbeat between ceresdb-server and HoraeMeta;
+///  - Handle the heartbeat between horaedb-server and HoraeMeta;
 ///  - Provide the cluster topology.
 pub struct ClusterImpl {
     inner: Arc<Inner>,
@@ -425,8 +425,8 @@ mod tests {
     fn test_format_shard_lock_key_prefix() {
         let cases = vec![
             (
-                ("/ceresdb", "defaultCluster"),
-                Some("/ceresdb/defaultCluster/shards"),
+                ("/horaedb", "defaultCluster"),
+                Some("/horaedb/defaultCluster/shards"),
             ),
             (("", "defaultCluster"), None),
             (("vvv", "defaultCluster"), None),

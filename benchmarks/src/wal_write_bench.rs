@@ -80,7 +80,7 @@ impl WalWriteBench {
             let wal = WalNamespaceImpl::open(
                 MemoryImpl::default(),
                 runtimes.clone(),
-                "ceresdb",
+                "horaedb",
                 NamespaceConfig::default(),
             )
             .await

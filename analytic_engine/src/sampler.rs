@@ -597,18 +597,18 @@ mod tests {
         };
 
         let rows = vec![
-            (1, 100, "ceresdb", "a", 1, 1.0),
-            (2, 101, "ceresdb", "a", 2, 1.0),
-            (3, 102, "ceresdb", "a", 3, 1.0),
-            (4, 102, "ceresdb", "b", 4, 1.0),
+            (1, 100, "horaedb", "a", 1, 1.0),
+            (2, 101, "horaedb", "a", 2, 1.0),
+            (3, 102, "horaedb", "a", 3, 1.0),
+            (4, 102, "horaedb", "b", 4, 1.0),
         ];
         collect_and_suggest(rows, vec![2, 3, 0, 1]);
 
         let rows = vec![
-            (1, 100, "ceresdb", "a", 1, 1.0),
-            (2, 100, "ceresdb", "a", 2, 1.0),
-            (3, 100, "ceresdb", "a", 3, 1.0),
-            (4, 100, "ceresdb", "b", 4, 1.0),
+            (1, 100, "horaedb", "a", 1, 1.0),
+            (2, 100, "horaedb", "a", 2, 1.0),
+            (3, 100, "horaedb", "a", 3, 1.0),
+            (4, 100, "horaedb", "b", 4, 1.0),
         ];
         collect_and_suggest(rows, vec![2, 3, 0, 1]);
     }

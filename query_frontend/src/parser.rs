@@ -115,7 +115,7 @@ pub fn is_timestamp_key_constraint(constraint: &TableConstraint) -> bool {
     false
 }
 
-/// SQL Parser with ceresdb dialect support
+/// SQL Parser with horaedb dialect support
 pub struct Parser<'a> {
     parser: SqlParser<'a>,
 }
@@ -540,7 +540,7 @@ impl<'a> Parser<'a> {
                 Token::make_keyword(TS_KEY),
             ])))
         } else if self.consume_token(TAG) {
-            // Support TAG for ceresdb
+            // Support TAG for horaedb
             Ok(Some(ColumnOption::DialectSpecific(vec![
                 Token::make_keyword(TAG),
             ])))
@@ -549,7 +549,7 @@ impl<'a> Parser<'a> {
                 Token::make_keyword(DICTIONARY),
             ])))
         } else if self.consume_token(UNSIGN) {
-            // Support unsign for ceresdb
+            // Support unsign for horaedb
             Ok(Some(ColumnOption::DialectSpecific(vec![
                 Token::make_keyword(UNSIGN),
             ])))
@@ -858,7 +858,7 @@ fn build_timestamp_key_constraint(col_defs: &[ColumnDef], constraints: &mut Vec<
 /// Add quotes in table name (for example: convert table to `table`).
 ///
 /// It is used to process table name in `SELECT`, for preventing `datafusion`
-/// converting the table name to lowercase, because `CeresDB` only support
+/// converting the table name to lowercase, because `HoraeDB` only support
 /// case-sensitive in sql.
 // TODO: maybe other items(such as: alias, column name) need to be normalized,
 // too.

@@ -22,15 +22,15 @@ read_parallelism = 8
 
 [analytic.wal]
 type = "RocksDB"
-data_dir = "/tmp/ceresdb"
+data_dir = "/tmp/horaedb"
 
 [analytic.storage]
 mem_cache_capacity = '1G'
 mem_cache_partition_bits = 0
-disk_cache_dir = "/tmp/ceresdb"
+disk_cache_dir = "/tmp/horaedb"
 disk_cache_capacity = '2G'
 disk_cache_page_size = '1M'
 
 [analytic.storage.object_store]
 type = "Local"
-data_dir = "/tmp/ceresdb"
+data_dir = "/tmp/horaedb"

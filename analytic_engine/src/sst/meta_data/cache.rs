@@ -34,7 +34,7 @@ use crate::sst::{
 pub type MetaCacheRef = Arc<MetaCache>;
 
 /// The metadata of one sst file, including the original metadata of parquet and
-/// the custom metadata of ceresdb.
+/// the custom metadata of horaedb.
 #[derive(Debug, Clone)]
 pub struct MetaData {
     /// The extended information in the parquet is removed for less memory

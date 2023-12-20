@@ -1,10 +1,8 @@
-![HoraeDB](docs/logo/CeresDB.png)
-
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 [![CI](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/CeresDB/horaedb)](https://github.com/CeresDB/horaedb/issues)
 [![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
-[![Docker](https://img.shields.io/docker/v/ceresdb/ceresdb-server?logo=docker)](https://hub.docker.com/r/ceresdb/ceresdb-server)
+[![Docker](https://img.shields.io/docker/v/ceresdb/horaedb-server?logo=docker)](https://hub.docker.com/r/ceresdb/horaedb-server)
 
 [English](./README.md)
 
@@ -39,7 +37,7 @@ docker run -d -t --name horaedb -p 5440:5440 -p 8831:8831 horaedb
 #### 开发依赖（Ubuntu20.04）
 开发环境这里以 Ubuntu20.04 为例，执行如下的命令，即可安装好所需的依赖：
 ```shell
-apt install git curl gcc g++ libssl-dev pkg-config cmake
+sudo apt install git curl gcc g++ libssl-dev pkg-config cmake
 ```
 
 需要注意的是，项目的编译对 cmake、gcc、g++ 等实际上都是有版本要求的，如果开发环境使用的是较老的 Linux 发行版的话，一般需要手动安装较高版本的这些依赖。
@@ -73,7 +71,7 @@ cargo build --release
 
 使用下载的代码中提供的默认配置文件，即可启动：
 ```bash
-./target/release/ceresdb-server --config ./docs/minimal.toml
+./target/release/horaedb-server --config ./docs/minimal.toml
 ```
 
 ### 进行数据读写
@@ -92,7 +90,7 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "query": "INSERT INTO demo(t, name, value) VALUES(1651737067000, '\''ceresdb'\'', 100)"
+    "query": "INSERT INTO demo(t, name, value) VALUES(1651737067000, '\''horaedb'\'', 100)"
 }'
 ```
 
@@ -123,6 +121,14 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 }'
 ```
 
+### 支持使用 MySQL Client 连接
+
+HoraeDB 也支持使用 MySQL Client 连接执行 SQL
+
+```shell
+mysql -u root -P 3307 -h 127.0.0.1
+```
+
 ## 平台支持
 
 |          target          |         OS        |         status        |
@@ -142,9 +148,9 @@ curl --location --request POST 'http://127.0.0.1:5440/sql' \
 相关技术文档请参考[docs](https://ceresdb.github.io/docs)。
 
 ## 致谢
-在开发 HoraeDB 的过程中， 我们受到很多开源项目的影响和启发，例如  [influxdb_iox](https://github.com/influxdata/influxdb_iox), [tikv](https://github.com/tikv/tikv) 等等。感谢这些杰出的项目。
+在开发 HoraeDB 的过程中， 我们受到很多开源项目的影响和启发，例如  [influxdb_iox](https://github.com/influxdata/influxdb/tree/main/influxdb_iox), [tikv](https://github.com/tikv/tikv) 等等。感谢这些杰出的项目。
 
 在生产环境中，我们重度使用 [OceanBase](https://github.com/oceanbase/oceanbase) 作为 WAL 和 ObjectStore 的实现，而且 OceanBase 团队还帮助我们一起维护集群的稳定，感谢 OceanBase 团队一直以来的帮助。
 
 ## 开源许可
-HoraeDB 基于 [Apache License 2.0](./LICENSE) 协议。
+HoraeDB 基于 [Apache License 2.0](LICENSE) 协议。

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Cluster sub-crate includes serval functionalities for supporting CeresDB
+//! Cluster sub-crate includes several functionalities for supporting HoraeDB
 //! server to running in the distribute mode. Including:
 //! - Request HoraeMeta for reading topology or configuration.
 //! - Accept HoraeMeta's commands like open/close shard or create/drop table

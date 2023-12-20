@@ -32,9 +32,9 @@ on:
       - 'docs/minimal.toml'
 
 env:
-  CERESDB_ADDR: 127.0.0.1
-  CERESDB_PORT: 5440
-  IMAGE_NAME: ceresdb-server:latest
+  HORAEDB_ADDR: 127.0.0.1
+  HORAEDB_PORT: 5440
+  IMAGE_NAME: horaedb-server:latest
   SERVER_NAME: standalone-server
 
 jobs:
@@ -51,14 +51,14 @@ jobs:
         run: docker build -t ${IMAGE_NAME} .
       - name: Test the Built Image
         run: |
-          docker run --name ${SERVER_NAME} -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} -d ${IMAGE_NAME}
+          docker run --name ${SERVER_NAME} -p ${HORAEDB_ADDR}:${HORAEDB_PORT}:${HORAEDB_PORT} -d ${IMAGE_NAME}
           sleep 10
           bash ./docker/basic.sh
           docker rm -f ${SERVER_NAME}
       - name: Test the Built Image With Config
         run: |
-          docker run --name ${SERVER_NAME} -p ${CERESDB_ADDR}:${CERESDB_PORT}:${CERESDB_PORT} \
-            -v `pwd`/docs/minimal.toml:/etc/ceresdb/ceresdb.toml -d ${IMAGE_NAME}
+          docker run --name ${SERVER_NAME} -p ${HORAEDB_ADDR}:${HORAEDB_PORT}:${HORAEDB_PORT} \
+            -v `pwd`/docs/minimal.toml:/etc/horaedb/horaedb.toml -d ${IMAGE_NAME}
           sleep 10
           bash ./docker/basic.sh
           docker rm -f ${SERVER_NAME}

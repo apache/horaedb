@@ -213,7 +213,7 @@ impl<T: WalsOpener> TestContext<T> {
         let table_defs = table_infos
             .into_iter()
             .map(|table| TableDef {
-                catalog_name: "ceresdb".to_string(),
+                catalog_name: "horaedb".to_string(),
                 schema_name: "public".to_string(),
                 schema_id: self.schema_id,
                 id: table.0,
@@ -244,7 +244,7 @@ impl<T: WalsOpener> TestContext<T> {
         let table = self
             .engine()
             .open_table(OpenTableRequest {
-                catalog_name: "ceresdb".to_string(),
+                catalog_name: "horaedb".to_string(),
                 schema_name: "public".to_string(),
                 schema_id: self.schema_id,
                 table_name: table_name.to_string(),
@@ -267,7 +267,7 @@ impl<T: WalsOpener> TestContext<T> {
         let table_opt = self
             .engine()
             .open_table(OpenTableRequest {
-                catalog_name: "ceresdb".to_string(),
+                catalog_name: "horaedb".to_string(),
                 schema_name: "public".to_string(),
                 schema_id: self.schema_id,
                 table_name: table_name.to_string(),
@@ -290,7 +290,7 @@ impl<T: WalsOpener> TestContext<T> {
 
     pub async fn drop_table(&mut self, table_name: &str) -> bool {
         let request = DropTableRequest {
-            catalog_name: "ceresdb".to_string(),
+            catalog_name: "horaedb".to_string(),
             schema_name: "public".to_string(),
             schema_id: self.schema_id,
             table_name: table_name.to_string(),

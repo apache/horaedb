@@ -76,7 +76,7 @@ impl ShowCreateInterpreter {
     }
 
     fn render_table_sql(table_ref: TableRef) -> String {
-        //TODO(boyan) pretty output
+        // TODO(boyan) pretty output
         format!(
             "CREATE TABLE `{}` ({}){} ENGINE={}{}",
             table_ref.name(),

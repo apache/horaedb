@@ -15,8 +15,8 @@ CASE_QUERY_RESULT=queries.result
 # Test params
 export RESULT_FILE=${RESULT_FILE:-${DEFAULT_RESULT_FILE}}
 export OUTPUT_DIR=${OUTPUT_DIR:-${CURR_DIR}/output}
-export CERESDB_ADDR=${CERESDB_ADDR:-127.0.0.1:8831}
-export CERESDB_HTTP_ADDR=${CERESDB_HTTP_ADDR:-127.0.0.1:5440}
+export HORAEDB_ADDR=${HORAEDB_ADDR:-127.0.0.1:8831}
+export HORAEDB_HTTP_ADDR=${HORAEDB_HTTP_ADDR:-127.0.0.1:5440}
 export WRITE_WORKER_NUM=${WRITE_WORKER_NUM:-36}
 export WRITE_BATCH_SIZE=${WRITE_BATCH_SIZE:-500}
 ## Where generated data stored
@@ -68,14 +68,14 @@ if [[ ! -d ${DATA_REPO_PATH} ]]; then
 fi
 
 # Clean old table if exist
-curl -XPOST "${CERESDB_HTTP_ADDR}/sql" -d 'DROP TABLE IF EXISTS `cpu`'
+curl -XPOST "${HORAEDB_HTTP_ADDR}/sql" -d 'DROP TABLE IF EXISTS `cpu`'
 
-# Write data to ceresdb
-${CURR_DIR}/tsbs/tsbs_load_ceresdb --ceresdb-addr=${CERESDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATCH_SIZE} --workers ${WRITE_WORKER_NUM}  --access-mode proxy --partition-keys hostname --update-mode APPEND | tee ${OUTPUT_DIR}/${CASE_DIR}-${CASE_DATASOURCE}.log
+# Write data to horaedb
+${CURR_DIR}/tsbs/tsbs_load_ceresdb --ceresdb-addr=${HORAEDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATCH_SIZE} --workers ${WRITE_WORKER_NUM}  --access-mode proxy --partition-keys hostname --update-mode APPEND | tee ${OUTPUT_DIR}/${CASE_DIR}-${CASE_DATASOURCE}.log
 
-# Run queries against ceresdb
+# Run queries against horaedb
 # TODO: support more kinds of queries besides 5-8-1.
-cat ${BULK_DATA_DIR}/${CASE_QUERY} | gunzip | ${CURR_DIR}/tsbs/tsbs_run_queries_ceresdb --ceresdb-addr=${CERESDB_ADDR} --print-responses true --access-mode proxy --responses-file ${QUERY_RESULTS_FILE} | tee ${OUTPUT_DIR}/${CASE_DIR}-${CASE_QUERY}.log
+cat ${BULK_DATA_DIR}/${CASE_QUERY} | gunzip | ${CURR_DIR}/tsbs/tsbs_run_queries_ceresdb --ceresdb-addr=${HORAEDB_ADDR} --print-responses true --access-mode proxy --responses-file ${QUERY_RESULTS_FILE} | tee ${OUTPUT_DIR}/${CASE_DIR}-${CASE_QUERY}.log
 
 # Diff the results
 python3 ${CURR_DIR}/diff.py --expected ${QUERY_EXPECTED_RESULTS_FILE} --actual ${QUERY_RESULTS_FILE}
