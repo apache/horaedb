@@ -964,7 +964,6 @@ impl SpaceStore {
                 .context(ReadSstMeta)?;
 
             let column_stats = collect_column_stats_from_meta_datas(&sst_metas);
-
             let merged_meta = MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema);
             (merged_meta, column_stats)
         };
@@ -1100,6 +1099,8 @@ fn collect_column_stats_from_meta_datas(metas: &[SstMetaData]) -> HashMap<String
 
     // Only the column whose cardinality is low in all the metas is a
     // low-cardinality column.
+    // TODO: shall we merge all the distinct values of the column to check whether
+    // the cardinality is still thought to be low?
     let low_cardinality_cols = low_cardinality_counts
         .into_iter()
         .filter_map(|(col_name, cnt)| {
