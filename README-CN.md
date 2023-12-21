@@ -8,7 +8,7 @@
 HoraeDB 是一款高性能、分布式的云原生时序数据库。
 
 ## RoadMap
-项目 [Roadmap](https://apache.github.io/incubator-horaedb-docs)。
+项目 [Roadmap](https://apache.github.io/incubator-horaedb-docs/dev/roadmap.html)。
 
 ## 快速开始
 ### 获取代码
