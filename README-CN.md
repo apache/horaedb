@@ -141,6 +141,8 @@ mysql -u root -P 3307 -h 127.0.0.1
 ## 如何贡献
 [如何参与 HoraeDB 代码贡献](CONTRIBUTING.md)
 
+[订阅邮箱参与讨论](mailto:dev-subscribe@horaedb.apache.org) ([订阅](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [取消订阅](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [查看邮件历史记录](https://lists.apache.org/list.html?dev@horaedb.apache.org))
+
 [约定式提交](https://apache.github.io/incubator-horaedb-docs/cn/dev/conventional_commit)
 
 ## 架构及技术文档
