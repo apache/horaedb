@@ -156,6 +156,9 @@ pub enum Error {
     #[snafu(display("Reject for too many pending writes, table:{table}"))]
     TooManyPendingWrites { table: String },
 
+    #[snafu(display("Failed to join, err:{source}"))]
+    Join { source: runtime::Error },
+
     #[snafu(display("Failed to do merge write, msg:{}", msg))]
     MergeWrite { msg: String },
 }

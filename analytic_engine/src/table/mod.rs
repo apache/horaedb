@@ -38,9 +38,9 @@ use table_engine::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
     table::{
         AlterOptions, AlterSchema, AlterSchemaRequest, Compact, Flush, FlushRequest, Get,
-        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, MergeWrite, ReadOptions, ReadRequest,
-        Result, Scan, Table, TableId, TableStats, TooManyPendingWrites, WaitForPendingWrites,
-        Write, WriteRequest,
+        GetInvalidPrimaryKey, GetNullPrimaryKey, GetRequest, Join, MergeWrite, ReadOptions,
+        ReadRequest, Result, Scan, Table, TableId, TableStats, TooManyPendingWrites,
+        WaitForPendingWrites, Write, WriteRequest,
     },
     ANALYTIC_ENGINE_TYPE,
 };
@@ -321,17 +321,16 @@ impl TableImpl {
                     .metrics
                     .start_table_write_queue_waiter_timer();
 
-                // We have ever observed that `rx` is closed in production but it is impossible
-                // in theory(especially after warping actual write by
-                // `CancellationSafeFuture`). So we also warp `rx` by
-                // `CancellationSafeFuture` for not just retrying but better observing.
-                match CancellationSafeFuture::new(
-                    rx,
-                    "pending_queue_waiter",
-                    self.instance.write_runtime().clone(),
-                )
-                .await
-                {
+                let io_runtime = self.instance.io_runtime().clone();
+                // We have ever observed that `rx` is closed in production but it is
+                // impossible in theory(especially after warping
+                // actual write by `CancellationSafeFuture`). So we
+                // also warp `rx` by `CancellationSafeFuture` for
+                // not just retrying but better observing.
+                let wait_notify =
+                    CancellationSafeFuture::new(rx, "pending_queue_waiter", io_runtime);
+                let join_res = self.instance.io_runtime().spawn(wait_notify);
+                match join_res.await.context(Join)? {
                     Ok(res) => {
                         res.box_err().context(Write { table: self.name() })?;
                         Ok(num_rows)
