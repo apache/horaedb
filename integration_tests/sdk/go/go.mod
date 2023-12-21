@@ -2,7 +2,7 @@ module go-sdk-test
 
 go 1.21
 
-require github.com/CeresDB/horaedb-client-go v1.2.0
+require github.com/apache/incubator-horaedb-client-go v1.2.0
 
 require (
 	github.com/CeresDB/horaedbproto/golang v0.0.0-20231129131648-5d5d868218c3 // indirect
@@ -21,3 +21,6 @@ require (
 	google.golang.org/grpc v1.56.3 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
+
+// TODO: remove this when a new version is released.
+replace github.com/apache/incubator-horaedb-client-go => github.com/CeresDB/horaedb-client-go v1.2.0
