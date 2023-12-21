@@ -1,9 +1,9 @@
-module github.com/CeresDB/horaemeta
+module github.com/apache/incubator-horaedb-meta
 
 go 1.21
 
 require (
-	github.com/CeresDB/horaedbproto/golang v0.0.0-20231130070551-6f27270143a8
+	github.com/apache/incubator-horaedb-proto/golang v0.0.0-20231220150248-453c403a40cd
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/looplab/fsm v0.3.0

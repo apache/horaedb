@@ -1,17 +1,20 @@
 /*
- * Copyright 2022 The HoraeDB Authors
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ *   http://www.apache.org/licenses/LICENSE-2.0
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 package http
@@ -25,18 +28,18 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/CeresDB/horaemeta/pkg/coderr"
-	"github.com/CeresDB/horaemeta/pkg/log"
-	"github.com/CeresDB/horaemeta/server/cluster"
-	"github.com/CeresDB/horaemeta/server/cluster/metadata"
-	"github.com/CeresDB/horaemeta/server/config"
-	"github.com/CeresDB/horaemeta/server/coordinator"
-	"github.com/CeresDB/horaemeta/server/coordinator/procedure"
-	"github.com/CeresDB/horaemeta/server/coordinator/scheduler"
-	"github.com/CeresDB/horaemeta/server/limiter"
-	"github.com/CeresDB/horaemeta/server/member"
-	"github.com/CeresDB/horaemeta/server/status"
-	"github.com/CeresDB/horaemeta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/server/cluster"
+	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/apache/incubator-horaedb-meta/server/config"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/scheduler"
+	"github.com/apache/incubator-horaedb-meta/server/limiter"
+	"github.com/apache/incubator-horaedb-meta/server/member"
+	"github.com/apache/incubator-horaedb-meta/server/status"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )

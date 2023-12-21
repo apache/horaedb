@@ -12,7 +12,7 @@ install-tools:
 	@mkdir -p $(GO_TOOLS_BIN_PATH)
 	@(which golangci-lint && golangci-lint version | grep '1.54') >/dev/null 2>&1 || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GO_TOOLS_BIN_PATH) v1.54.2
 
-META_PKG := github.com/CeresDB/horaemeta
+META_PKG := github.com/apache/incubator-horaedb-meta
 PACKAGES := $(shell go list ./... | tail -n +2)
 PACKAGE_DIRECTORIES := $(subst $(META_PKG)/,,$(PACKAGES))
 

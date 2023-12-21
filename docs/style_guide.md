@@ -10,12 +10,12 @@ Besides the [CodeReviewComments](https://github.com/golang/go/wiki/CodeReviewCom
 - Global error code:
   - Any error defined in the repo should be assigned an error code,
   - An error code can be used by multiple different errors,
-  - The error codes are defined in the single global package [coderr](https://github.com/CeresDB/horaemeta/tree/main/pkg/coderr).
-- Construct: define leaf errors on package level (often in a separate `error.go` file) by package [coderr](https://github.com/CeresDB/horaemeta/tree/main/pkg/coderr).
+  - The error codes are defined in the single global package [coderr](https://github.com/apache/incubator-horaedb-meta/tree/main/pkg/coderr).
+- Construct: define leaf errors on package level (often in a separate `error.go` file) by package [coderr](https://github.com/apache/incubator-horaedb-meta/tree/main/pkg/coderr).
 - Wrap: wrap errors by `errors.WithMessage` or `errors.WithMessagef`.
 - Check: test the error identity by calling `coderr.Is`.
 - Log: only log the error on the top level package.
-- Respond: respond the `CodeError`(defined in package [coderr](https://github.com/CeresDB/horaemeta/tree/main/pkg/coderr)) unwrapped by `errors.Cause` to client on service level.
+- Respond: respond the `CodeError`(defined in package [coderr](https://github.com/apache/incubator-horaedb-meta/tree/main/pkg/coderr)) unwrapped by `errors.Cause` to client on service level.
 
 ### Example
 `errors.go` in the package `server`:
