@@ -12,6 +12,52 @@ HoraeDB is a high-performance, distributed, cloud native time-series database.
 - [Development Guide](https://apache.github.io/incubator-horaedb-docs/dev/compile_run.html)
 - [Roadmap](https://apache.github.io/incubator-horaedb-docs/dev/roadmap.html)
 
+## Quick Start
+### Run with Docker
+Run HoraeDB standalone Server. 
+```
+docker run -d --name horaedb-server \
+  -p 8831:8831 \
+  -p 3307:3307 \
+  -p 5440:5440 \
+  ghcr.io/horaedb/horaedb-server
+```
+
+Create Table.
+```
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+-d '
+CREATE TABLE `demo` (
+    `name` string TAG,
+    `value` double NOT NULL,
+    `t` timestamp NOT NULL,
+    timestamp KEY (t))
+ENGINE=Analytic
+  with
+(enable_ttl="false")
+'
+```
+
+Write data with SQL.
+```
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+-d '
+INSERT INTO demo (t, name, value)
+    VALUES (1651737067000, "ceresdb", 100)
+'
+```
+
+Read data with SQL.
+```
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+-d '
+SELECT * FROM `demo`
+'
+```
+
+### Run from source code
+See details [here](https://apache.github.io/incubator-horaedb-docs/dev/compile_run.html).
+
 ## Contributing
 Any contribution is welcome!
 
