@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,11 +20,10 @@ use object_store::{ObjectStoreRef, Path};
 use parquet::{data_type::AsBytes, file::metadata::KeyValue};
 use snafu::{ensure, OptionExt, ResultExt};
 
-use super::UnknownMetaVersion;
 use crate::sst::{
     meta_data::{
         DecodeCustomMetaData, FetchAndDecodeSstMeta, FetchFromStore, KvMetaDataNotFound,
-        KvMetaPathEmpty,
+        KvMetaPathEmpty, UnknownMetaVersion,
     },
     parquet::{
         encoding::{self, decode_sst_meta_data_from_bytes, META_VERSION_CURRENT, META_VERSION_V1},
@@ -32,7 +31,7 @@ use crate::sst::{
     },
 };
 
-define_result!(super::Error);
+define_result!(crate::sst::meta_data::Error);
 
 #[async_trait]
 pub trait CustomMetadataReader {

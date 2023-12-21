@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,9 +36,8 @@ use parquet_ext::prune::{
 use snafu::ensure;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use super::meta_data::ColumnValueSet;
 use crate::sst::{
-    parquet::meta_data::ParquetFilter,
+    parquet::meta_data::{ColumnValueSet, ParquetFilter},
     reader::error::{OtherNoCause, Result},
 };
 

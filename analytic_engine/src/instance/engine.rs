@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,10 +26,14 @@ use table_engine::{
 };
 use wal::manager::WalLocation;
 
-use super::open::{TableContext, TablesOfShardContext};
 use crate::{
     engine::build_space_id,
-    instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, Instance},
+    instance::{
+        close::Closer,
+        drop::Dropper,
+        open::{OpenTablesOfShardResult, TableContext, TablesOfShardContext},
+        Instance,
+    },
     space::{MemSizeOptions, Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 

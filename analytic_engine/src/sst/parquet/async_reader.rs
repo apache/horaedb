@@ -12,12 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Copyright 2023 The HoraeDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //! Sst reader implementation based on parquet.
 
 use std::{
     ops::Range,
     pin::Pin,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     task::{Context, Poll},
     time::{Duration, Instant},
 };
@@ -43,7 +57,10 @@ use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
 };
-use parquet_ext::{meta_data::ChunkReader, reader::ObjectStoreReader};
+use parquet_ext::{
+    meta_data::ChunkReader,
+    reader::{MetricsObserver, ObjectStoreReader},
+};
 use runtime::{AbortOnDropMany, JoinHandle, Runtime};
 use snafu::ResultExt;
 use table_engine::predicate::PredicateRef;
@@ -54,7 +71,6 @@ use tokio::sync::{
 };
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use super::meta_data::ColumnValueSet;
 use crate::{
     prefetchable_stream::{NoopPrefetcher, PrefetchableStream},
     sst::{
@@ -65,7 +81,9 @@ use crate::{
         },
         metrics::MaybeTableLevelMetrics,
         parquet::{
-            encoding::ParquetDecoder, meta_data::ParquetFilter, row_group_pruner::RowGroupPruner,
+            encoding::ParquetDecoder,
+            meta_data::{ColumnValueSet, ParquetFilter},
+            row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
     },
@@ -97,7 +115,7 @@ pub struct Reader<'a> {
     metrics: Metrics,
     df_plan_metrics: ExecutionPlanMetricsSet,
 
-    table_level_sst_metrics: Arc<MaybeTableLevelMetrics>,
+    table_level_sst_metrics: Option<Arc<MaybeTableLevelMetrics>>,
 }
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -127,6 +145,9 @@ impl<'a> Reader<'a> {
             ..Default::default()
         };
 
+        let table_level_sst_metrics = matches!(options.frequency, ReadFrequency::Frequent)
+            .then(|| options.maybe_table_level_metrics.clone());
+
         Self {
             path,
             store,
@@ -140,7 +161,7 @@ impl<'a> Reader<'a> {
             row_projector: None,
             metrics,
             df_plan_metrics,
-            table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
+            table_level_sst_metrics,
         }
     }
 
@@ -232,7 +253,6 @@ impl<'a> Reader<'a> {
     }
 
     // TODO: remove it and use the suggested api.
-    #[allow(deprecated)]
     async fn fetch_record_batch_streams(
         &mut self,
         suggested_parallelism: usize,
@@ -258,11 +278,11 @@ impl<'a> Reader<'a> {
         let num_row_group_after_prune = target_row_groups.len();
         // Maybe it is a sub table of partitioned table, try to extract its parent
         // table.
-        if let ReadFrequency::Frequent = self.frequency {
-            self.table_level_sst_metrics
+        if let Some(metrics) = &self.table_level_sst_metrics {
+            metrics
                 .row_group_before_prune_counter
                 .inc_by(num_row_group_before_prune as u64);
-            self.table_level_sst_metrics
+            metrics
                 .row_group_after_prune_counter
                 .inc_by(num_row_group_after_prune as u64);
         }
@@ -304,11 +324,15 @@ impl<'a> Reader<'a> {
         );
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
+        let metrics_collector = ObjectStoreMetricsObserver {
+            table_level_sst_metrics: self.table_level_sst_metrics.clone(),
+        };
         for chunk in target_row_group_chunks {
-            let object_store_reader = ObjectStoreReader::new(
+            let object_store_reader = ObjectStoreReader::with_metrics(
                 self.store.clone(),
                 self.path.clone(),
                 parquet_metadata.clone(),
+                metrics_collector.clone(),
             );
             let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader)
                 .await
@@ -320,7 +344,7 @@ impl<'a> Reader<'a> {
             debug!(
                 "Build row selection for file path:{}, result:{row_selection:?}, page indexes:{}",
                 self.path,
-                parquet_metadata.page_indexes().is_some()
+                parquet_metadata.column_index().is_some()
             );
             if let Some(selection) = row_selection {
                 builder = builder.with_row_selection(selection);
@@ -730,6 +754,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
         );
 
         let channel_cap_per_sub_reader = self.channel_cap / sub_readers.len();
+        let channel_cap_per_sub_reader = channel_cap_per_sub_reader.max(1);
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
             .map(|_| mpsc::channel::<Result<FetchedRecordBatch>>(channel_cap_per_sub_reader))
             .unzip();
@@ -749,6 +774,25 @@ impl<'a> SstReader for ThreadedReader<'a> {
             cur_rx_idx: 0,
             drop_helper: AbortOnDropMany(handles),
         }) as _)
+    }
+}
+
+#[derive(Clone)]
+struct ObjectStoreMetricsObserver {
+    table_level_sst_metrics: Option<Arc<MaybeTableLevelMetrics>>,
+}
+
+impl MetricsObserver for ObjectStoreMetricsObserver {
+    fn elapsed(&self, path: &Path, elapsed: Duration) {
+        debug!("ObjectStoreReader dropped, path:{path}, elapsed:{elapsed:?}");
+    }
+
+    fn num_bytes_fetched(&self, _: &Path, num_bytes: usize) {
+        if let Some(metrics) = &self.table_level_sst_metrics {
+            metrics
+                .num_fetched_sst_bytes
+                .fetch_add(num_bytes as u64, Ordering::Relaxed);
+        }
     }
 }
 

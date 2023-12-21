@@ -12,6 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Copyright 2023 The HoraeDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //! A table engine instance
 //!
 //! The root mod only contains common functions of instance, other logics are
@@ -176,6 +190,8 @@ pub struct Instance {
     pub(crate) replay_batch_size: usize,
     /// Write sst max buffer size
     pub(crate) write_sst_max_buffer_size: usize,
+    /// The min interval between flushes
+    pub(crate) min_flush_interval: ReadableDuration,
     /// Max retry limit to flush memtables
     pub(crate) max_retry_flush_limit: usize,
     /// Max bytes per write batch
@@ -304,6 +320,18 @@ impl Instance {
             // Do flush in write runtime
             runtime: self.runtimes.write_runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: None,
+        }
+    }
+
+    #[inline]
+    fn make_flusher_with_min_interval(&self) -> Flusher {
+        Flusher {
+            space_store: self.space_store.clone(),
+            // Do flush in write runtime
+            runtime: self.runtimes.write_runtime.clone(),
+            write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: Some(self.min_flush_interval.as_millis()),
         }
     }
 

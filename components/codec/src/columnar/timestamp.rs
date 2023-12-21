@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,9 +15,11 @@
 use common_types::time::Timestamp;
 use snafu::{ensure, OptionExt, ResultExt};
 
-use super::{DecodeContext, Overflow, Result, ValuesDecoder, ValuesDecoderImpl, Varint};
 use crate::{
-    columnar::{InvalidVersion, ValuesEncoder, ValuesEncoderImpl},
+    columnar::{
+        DecodeContext, InvalidVersion, Overflow, Result, ValuesDecoder, ValuesDecoderImpl,
+        ValuesEncoder, ValuesEncoderImpl, Varint,
+    },
     consts::MAX_VARINT_BYTES,
     varint,
 };

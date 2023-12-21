@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ use codec::{
 use common_types::{
     row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
+    MIN_SEQUENCE_NUMBER,
 };
 use itertools::Itertools;
 use logger::{debug, error, info, trace, warn};
@@ -519,8 +520,11 @@ impl<'a> Writer<'a> {
                 e
             })?;
 
-        // Failure of writing memtable may cause inconsecutive sequence.
-        if table_data.last_sequence() + 1 != sequence {
+        // When seq is MIN_SEQUENCE_NUMBER, it means the wal used for write is not
+        // normal, ignore check in this case.
+        // NOTE: Currently write wal will only increment seq by one,
+        // this may change in future.
+        if sequence != MIN_SEQUENCE_NUMBER && table_data.last_sequence() + 1 != sequence {
             warn!(
                 "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
                 table_data.name,table_data.id,
@@ -616,7 +620,8 @@ impl<'a> Writer<'a> {
             }
         }
 
-        if self.table_data.should_flush_table(self.serial_exec) {
+        let in_flush = self.serial_exec.flush_scheduler().is_in_flush();
+        if self.table_data.should_flush_table(in_flush) {
             let table_data = self.table_data.clone();
             let _timer = table_data.metrics.start_table_write_flush_wait_timer();
             self.handle_memtable_flush(&table_data).await?;
@@ -669,7 +674,7 @@ impl<'a> Writer<'a> {
             res_sender: None,
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
-        let flusher = self.instance.make_flusher();
+        let flusher = self.instance.make_flusher_with_min_interval();
         if table_data.id == self.table_data.id {
             let flush_scheduler = self.serial_exec.flush_scheduler();
             // Set `block_on_write_thread` to false and let flush do in background.

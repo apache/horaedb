@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -55,6 +55,7 @@ impl Proxy {
                 schema,
                 &req.query,
                 self.sub_table_access_perm.enable_http,
+                false,
             )
             .await;
 

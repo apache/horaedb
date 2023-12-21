@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -306,6 +306,7 @@ impl SchedulerImpl {
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
         write_sst_max_buffer_size: usize,
+        min_flush_interval_ms: u64,
         scan_options: ScanOptions,
     ) -> Self {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
@@ -321,6 +322,7 @@ impl SchedulerImpl {
             max_ongoing_tasks: config.max_ongoing_tasks,
             max_unflushed_duration: config.max_unflushed_duration.0,
             write_sst_max_buffer_size,
+            min_flush_interval_ms,
             scan_options,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
@@ -399,6 +401,7 @@ struct ScheduleWorker {
     picker_manager: PickerManager,
     max_ongoing_tasks: usize,
     write_sst_max_buffer_size: usize,
+    min_flush_interval_ms: u64,
     scan_options: ScanOptions,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
@@ -505,6 +508,7 @@ impl ScheduleWorker {
             num_rows_per_row_group: table_data.table_options().num_rows_per_row_group,
             compression: table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            column_stats: Default::default(),
         };
         let scan_options = self.scan_options.clone();
 
@@ -523,7 +527,7 @@ impl ScheduleWorker {
             }
             let res = space_store
                 .compact_table(
-                    request_id,
+                    request_id.clone(),
                     &table_data,
                     &compaction_task,
                     scan_options,
@@ -664,6 +668,7 @@ impl ScheduleWorker {
             space_store: self.space_store.clone(),
             runtime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: Some(self.min_flush_interval_ms),
         };
 
         for table_data in &tables_buf {

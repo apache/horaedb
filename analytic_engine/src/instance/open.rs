@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,13 +26,13 @@ use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
 
-use super::{engine::OpenTablesOfShard, flush_compaction::Flusher};
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
     engine,
     instance::{
-        engine::{OpenManifest, ReadMetaUpdate, Result},
+        engine::{OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
+        flush_compaction::Flusher,
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
         Instance, SpaceStore,
@@ -44,7 +44,7 @@ use crate::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurger,
     },
-    table::data::TableDataRef,
+    table::data::{TableCatalogInfo, TableDataRef},
     table_meta_set_impl::TableMetaSetImpl,
     RecoverMode,
 };
@@ -110,6 +110,7 @@ impl Instance {
             compaction_runtime,
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            ctx.config.min_flush_interval.as_millis(),
             scan_options_for_compaction,
         ));
 
@@ -137,6 +138,7 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            min_flush_interval: ctx.config.min_flush_interval,
             max_retry_flush_limit: ctx.config.max_retry_flush_limit,
             mem_usage_sampling_interval: ctx.config.mem_usage_sampling_interval,
             max_bytes_per_write_batch: ctx
@@ -448,12 +450,24 @@ impl ShardOpener {
         );
 
         // Load manifest, also create a new snapshot at startup.
-        let table_id = table_def.id;
-        let space_id = engine::build_space_id(table_def.schema_id);
+        let TableDef {
+            catalog_name,
+            schema_name,
+            schema_id,
+            id,
+            name: _,
+        } = table_def.clone();
+
+        let space_id = engine::build_space_id(schema_id);
         let load_req = LoadRequest {
             space_id,
-            table_id,
+            table_id: id,
             shard_id,
+            table_catalog_info: TableCatalogInfo {
+                schema_id,
+                schema_name,
+                catalog_name,
+            },
         };
         manifest.recover(&load_req).await.context(ReadMetaUpdate {
             table_id: table_def.id,

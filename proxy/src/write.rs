@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -102,13 +102,13 @@ impl Proxy {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let request_id = ctx.request_id;
+        let request_id = &ctx.request_id;
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
         })?;
 
-        self.handle_auto_create_table_with_meta(request_id, &write_context.database, &req)
+        self.handle_auto_create_table_with_meta(request_id.clone(), &write_context.database, &req)
             .await?;
 
         let (write_request_to_local, write_requests_to_forward) =
@@ -121,7 +121,7 @@ impl Proxy {
             .await;
 
         // Write to local.
-        self.collect_write_to_local_future(&mut futures, ctx, request_id, write_request_to_local)
+        self.collect_write_to_local_future(&mut futures, ctx, write_request_to_local)
             .await;
 
         self.collect_write_response(futures).await
@@ -136,7 +136,7 @@ impl Proxy {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        let request_id = ctx.request_id;
+        let request_id = &ctx.request_id;
         let write_context = req.context.clone().context(ErrNoCause {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
@@ -152,14 +152,14 @@ impl Proxy {
 
         // Create table.
         self.handle_auto_create_table_without_meta(
-            request_id,
+            request_id.clone(),
             &write_request_to_local,
             &write_context.database,
         )
         .await?;
 
         // Write to local.
-        self.collect_write_to_local_future(&mut futures, ctx, request_id, write_request_to_local)
+        self.collect_write_to_local_future(&mut futures, ctx, write_request_to_local)
             .await;
 
         self.collect_write_response(futures).await
@@ -197,7 +197,7 @@ impl Proxy {
                 continue;
             }
             self.create_table(
-                request_id,
+                request_id.clone(),
                 self.instance.catalog_manager.default_catalog_name(),
                 schema,
                 write_table_req,
@@ -238,7 +238,7 @@ impl Proxy {
                 let table = self.try_get_table(catalog, schema, table_name)?;
                 if table.is_none() {
                     self.create_table(
-                        request_id,
+                        request_id.clone(),
                         catalog,
                         schema,
                         &write_request.table_requests[idx],
@@ -268,7 +268,7 @@ impl Proxy {
             function_registry: &*self.instance.function_registry,
         };
         let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
-        let ctx = FrontendContext::new(request_id, deadline);
+        let ctx = FrontendContext::new(request_id.clone(), deadline);
         let plan = frontend
             .write_req_to_plan(&ctx, schema_config, write_table_req)
             .box_err()
@@ -385,15 +385,13 @@ impl Proxy {
         &'a self,
         futures: &mut WriteResponseFutures<'a>,
         ctx: Context,
-        request_id: RequestId,
         write_request: WriteRequest,
     ) {
         if write_request.table_requests.is_empty() {
             return;
         }
 
-        let local_handle =
-            async move { Ok(self.write_to_local(ctx, request_id, write_request).await) };
+        let local_handle = async move { Ok(self.write_to_local(ctx, write_request).await) };
         futures.push(local_handle.boxed());
     }
 
@@ -473,12 +471,8 @@ impl Proxy {
         }
     }
 
-    async fn write_to_local(
-        &self,
-        ctx: Context,
-        request_id: RequestId,
-        req: WriteRequest,
-    ) -> Result<WriteResponse> {
+    async fn write_to_local(&self, ctx: Context, req: WriteRequest) -> Result<WriteResponse> {
+        let request_id = ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
         let catalog_name = self.instance.catalog_manager.default_catalog_name();
@@ -497,7 +491,7 @@ impl Proxy {
         );
 
         let write_context = WriteContext {
-            request_id,
+            request_id: request_id.clone(),
             deadline,
             catalog: catalog_name.to_string(),
             schema: schema_name.clone(),
@@ -513,7 +507,7 @@ impl Proxy {
             let table = insert_plan.table.clone();
             match self
                 .execute_insert_plan(
-                    request_id,
+                    request_id.clone(),
                     catalog_name,
                     &schema_name,
                     insert_plan,
@@ -580,7 +574,7 @@ impl Proxy {
                 let columns = find_new_columns(&table_schema, &write_table_req)?;
                 if !columns.is_empty() {
                     self.execute_add_columns_plan(
-                        request_id,
+                        request_id.clone(),
                         &catalog,
                         &schema,
                         table.clone(),
@@ -693,7 +687,7 @@ impl Proxy {
             operations: AlterTableOperation::AddColumn(columns),
         });
         let _ = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
+            .execute_plan(request_id.clone(), catalog, schema, plan, deadline)
             .await?;
 
         info!("Add columns success, request_id:{request_id}, table:{table_name}");

@@ -12,6 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Copyright 2023 The HoraeDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //! Analytic table engine implementations
 
 #![feature(option_get_or_insert_default)]
@@ -41,7 +55,7 @@ use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
 use time_ext::ReadableDuration;
-use wal::config::StorageConfig;
+use wal::config::Config as WalConfig;
 
 pub use crate::{
     compaction::scheduler::SchedulerConfig,
@@ -101,6 +115,8 @@ pub struct Config {
     pub write_sst_max_buffer_size: ReadableSize,
     /// Max retry limit After flush failed
     pub max_retry_flush_limit: usize,
+    /// The min interval between two consecutive flushes
+    pub min_flush_interval: ReadableDuration,
     /// Max bytes per write batch.
     ///
     /// If this is set, the atomicity of write request will be broken.
@@ -116,7 +132,7 @@ pub struct Config {
     /// + RocksDB
     /// + OBKV
     /// + Kafka
-    pub wal: StorageConfig,
+    pub wal: WalConfig,
 
     /// Recover mode
     ///
@@ -189,10 +205,11 @@ impl Default for Config {
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
+            min_flush_interval: ReadableDuration::minutes(1),
             max_bytes_per_write_batch: None,
             mem_usage_sampling_interval: ReadableDuration::secs(0),
             wal_encode: WalEncodeConfig::default(),
-            wal: StorageConfig::RocksDB(Box::default()),
+            wal: WalConfig::default(),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
             metrics: MetricsOptions::default(),

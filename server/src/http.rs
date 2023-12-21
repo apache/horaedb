@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -310,7 +310,10 @@ impl Service {
             .and(self.with_proxy())
             .and(self.with_read_runtime())
             .and_then(
-                |req, ctx, proxy: Arc<Proxy>, runtime: RuntimeRef| async move {
+                |req, mut ctx: RequestContext, proxy: Arc<Proxy>, runtime: RuntimeRef| async move {
+                    // We don't timeout http api since it's mainly used for debugging.
+                    ctx.timeout = None;
+
                     let result = runtime
                         .spawn(async move {
                             proxy

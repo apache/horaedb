@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ use crate::{
     },
     manifest::{ManifestRef, SnapshotRequest},
     space::SpaceRef,
+    table::data::TableDataRef,
 };
 
 pub(crate) struct Closer {
@@ -47,33 +48,14 @@ impl Closer {
             }
         };
 
-        // Flush table.
-        let opts = TableFlushOptions::default();
-        let mut serial_exec = table_data.serial_exec.lock().await;
-        let flush_scheduler = serial_exec.flush_scheduler();
-
-        self.flusher
-            .do_flush(flush_scheduler, &table_data, opts)
-            .await
-            .context(FlushTable {
-                space_id: self.space.id,
-                table: &table_data.name,
-                table_id: table_data.id,
-            })?;
-
-        // Force manifest to do snapshot.
-        let snapshot_request = SnapshotRequest {
-            space_id: self.space.id,
-            table_id: table_data.id,
-            shard_id: table_data.shard_info.shard_id,
-        };
-        self.manifest
-            .do_snapshot(snapshot_request)
-            .await
-            .context(DoManifestSnapshot {
-                space_id: self.space.id,
-                table: &table_data.name,
-            })?;
+        // Do flush before close for the fast recovery during the following opening.
+        // And it should not stop closing if flush fails.
+        if let Err(e) = self.flush(&table_data).await {
+            warn!(
+                "Ignore the failure to flush data before close, table:{}, table_id:{}, err:{e}",
+                table_data.name, table_data.id
+            );
+        }
 
         // Table has been closed so remove it from the space.
         let removed_table = self.space.remove_table(&request.table_name);
@@ -88,5 +70,35 @@ impl Closer {
             table_data.name, table_data.id, self.space.id
         );
         Ok(())
+    }
+
+    async fn flush(&self, table_data: &TableDataRef) -> Result<()> {
+        // Flush table.
+        let opts = TableFlushOptions::default();
+        let mut serial_exec = table_data.serial_exec.lock().await;
+        let flush_scheduler = serial_exec.flush_scheduler();
+        self.flusher
+            .do_flush(flush_scheduler, table_data, opts)
+            .await
+            .context(FlushTable {
+                space_id: self.space.id,
+                table: &table_data.name,
+                table_id: table_data.id,
+            })?;
+
+        // Force manifest to do snapshot.
+        let snapshot_request = SnapshotRequest {
+            space_id: self.space.id,
+            table_id: table_data.id,
+            shard_id: table_data.shard_info.shard_id,
+            table_catalog_info: table_data.table_catalog_info.clone(),
+        };
+        self.manifest
+            .do_snapshot(snapshot_request)
+            .await
+            .context(DoManifestSnapshot {
+                space_id: self.space.id,
+                table: &table_data.name,
+            })
     }
 }

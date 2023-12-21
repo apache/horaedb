@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ use common_types::row::RowGroup;
 use itertools::Itertools;
 
 use crate::partition::{
-    rule::{PartitionRule, PartitionedRows},
+    rule::{filter::PartitionFilter, PartitionRule, PartitionedRows},
     Result,
 };
 
@@ -44,10 +44,7 @@ impl PartitionRule for RandomRule {
         })
     }
 
-    fn locate_partitions_for_read(
-        &self,
-        _filters: &[super::filter::PartitionFilter],
-    ) -> Result<Vec<usize>> {
+    fn locate_partitions_for_read(&self, _filters: &[PartitionFilter]) -> Result<Vec<usize>> {
         Ok((0..self.partition_num).collect_vec())
     }
 }

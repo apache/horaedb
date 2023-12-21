@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ impl Context {
     /// Create a new context of query executor
     pub fn new_query_context(&self) -> Result<QueryContextRef> {
         let ctx = QueryContext {
-            request_id: self.request_id,
+            request_id: self.request_id.clone(),
             deadline: self.deadline,
             default_catalog: self.default_catalog.clone(),
             default_schema: self.default_schema.clone(),
@@ -72,7 +72,7 @@ impl Context {
 
     #[inline]
     pub fn request_id(&self) -> RequestId {
-        self.request_id
+        self.request_id.clone()
     }
 
     #[inline]

@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -523,14 +523,6 @@ impl Proxy {
         plan: Plan,
         deadline: Option<Instant>,
     ) -> Result<Output> {
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
-
         let interpreter =
             self.build_interpreter(request_id, catalog, schema, plan, deadline, false)?;
         Self::interpreter_execute_plan(interpreter, deadline).await
@@ -544,14 +536,6 @@ impl Proxy {
         plan: Plan,
         deadline: Option<Instant>,
     ) -> Result<Output> {
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
-
         let interpreter =
             self.build_interpreter(request_id, catalog, schema, plan, deadline, true)?;
         Self::interpreter_execute_plan(interpreter, deadline).await

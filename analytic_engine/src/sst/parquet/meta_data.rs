@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -353,14 +353,14 @@ pub struct ParquetMetaData {
 
 pub type ParquetMetaDataRef = Arc<ParquetMetaData>;
 
-impl From<MetaData> for ParquetMetaData {
-    fn from(meta: MetaData) -> Self {
+impl From<&MetaData> for ParquetMetaData {
+    fn from(meta: &MetaData) -> Self {
         Self {
-            min_key: meta.min_key,
-            max_key: meta.max_key,
+            min_key: meta.min_key.clone(),
+            max_key: meta.max_key.clone(),
             time_range: meta.time_range,
             max_sequence: meta.max_sequence,
-            schema: meta.schema,
+            schema: meta.schema.clone(),
             parquet_filter: None,
             column_values: None,
         }

@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ pub enum Error {
     #[snafu(display("Key value meta path in parquet is empty\nBacktrace\n:{}", backtrace))]
     KvMetaPathEmpty { backtrace: Backtrace },
 
-    #[snafu(display("Unknown mata version, value:{}.\nBacktrace\n:{}", version, backtrace))]
+    #[snafu(display("Unknown meta version, value:{}.\nBacktrace\n:{}", version, backtrace))]
     UnknownMetaVersion {
         version: String,
         backtrace: Backtrace,
@@ -65,9 +65,6 @@ pub enum Error {
 
     #[snafu(display("Metadata in proto struct is not found.\nBacktrace\n:{}", backtrace))]
     MetaDataNotFound { backtrace: Backtrace },
-
-    #[snafu(display("Empty custom metadata in parquet.\nBacktrace\n:{}", backtrace))]
-    EmptyCustomMetaData { backtrace: Backtrace },
 
     #[snafu(display("Failed to decode custom metadata in parquet, err:{}", source))]
     DecodeCustomMetaData { source: encoding::Error },
@@ -80,12 +77,6 @@ pub enum Error {
 
     #[snafu(display("Failed to convert parquet meta data, err:{}", source))]
     ConvertParquetMetaData { source: parquet::meta_data::Error },
-
-    #[snafu(display("Meet a object store error, err:{source}\nBacktrace:\n{backtrace}"))]
-    ObjectStoreError {
-        source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
 
     #[snafu(display(
         "Failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",

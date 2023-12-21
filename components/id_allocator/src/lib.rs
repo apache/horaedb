@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ impl IdAllocator {
 mod test {
     use tokio::runtime::Runtime;
 
-    use super::IdAllocator;
+    use super::*;
 
     #[test]
     fn test_alloc_id() {

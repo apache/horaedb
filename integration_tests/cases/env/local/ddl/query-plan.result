@@ -40,7 +40,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n\n\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n=0]\n"),
 
 
 -- SQLNESS ARG pre_cmd=flush
@@ -59,7 +59,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n\n\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n=0]\n"),
 
 
 -- Table with an 'append' update mode

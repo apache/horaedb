@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ use crate::{
     },
     manifest::meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
-    table::data::{TableDataRef, TableShardInfo},
+    table::data::{TableCatalogInfo, TableDataRef, TableShardInfo},
     table_options, TableOptions,
 };
 
@@ -96,6 +96,11 @@ impl Instance {
             MetaEditRequest {
                 shard_info: TableShardInfo::new(request.shard_id),
                 meta_edit: MetaEdit::Update(meta_update),
+                table_catalog_info: TableCatalogInfo {
+                    schema_id: request.schema_id,
+                    schema_name: request.params.schema_name,
+                    catalog_name: request.params.catalog_name,
+                },
             }
         };
         self.space_store

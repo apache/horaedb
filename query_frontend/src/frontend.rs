@@ -1,4 +1,4 @@
-// Copyright 2023 The CeresDB Authors
+// Copyright 2023 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -144,7 +144,7 @@ impl<P: MetaProvider> Frontend<P> {
     pub fn statement_to_plan(&self, ctx: &Context, stmt: Statement) -> Result<Plan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -160,7 +160,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<(Plan, Arc<ColumnNames>)> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -176,7 +176,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<RemoteQueryPlan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -186,7 +186,7 @@ impl<P: MetaProvider> Frontend<P> {
     pub fn influxql_stmt_to_plan(&self, ctx: &Context, stmt: InfluxqlStatement) -> Result<Plan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -201,7 +201,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<Plan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );

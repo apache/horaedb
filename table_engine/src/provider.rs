@@ -12,6 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Copyright 2023 The HoraeDB Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 //! Datafusion `TableProvider` adapter
 
 use std::{
@@ -51,7 +65,7 @@ const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 
 #[derive(Clone, Debug)]
 pub struct CeresdbOptions {
-    pub request_id: u64,
+    pub request_id: String,
     pub request_timeout: Option<u64>,
     pub default_schema: String,
     pub default_catalog: String,
@@ -76,13 +90,7 @@ impl ExtensionOptions for CeresdbOptions {
 
     fn set(&mut self, key: &str, value: &str) -> Result<()> {
         match key {
-            "request_id" => {
-                self.request_id = value.parse::<u64>().map_err(|e| {
-                    DataFusionError::External(
-                        format!("could not parse request_id, input:{value}, err:{e:?}").into(),
-                    )
-                })?
-            }
+            "request_id" => self.request_id = value.to_string(),
             "request_timeout" => {
                 self.request_timeout = Some(value.parse::<u64>().map_err(|e| {
                     DataFusionError::External(
@@ -183,7 +191,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
         assert!(ceresdb_options.is_some());
         let ceresdb_options = ceresdb_options.unwrap();
-        let request_id = RequestId::from(ceresdb_options.request_id);
+        let request_id = RequestId::from(ceresdb_options.request_id.clone());
         let deadline = ceresdb_options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
@@ -426,7 +434,7 @@ impl ExecutionPlan for ScanTable {
         let pushdown_filters = &self.request.predicate;
         metric_set.push(Arc::new(Metric::new(
             MetricValue::Count {
-                name: format!("\n{metrics_desc}\n\n{pushdown_filters:?}").into(),
+                name: format!("\n{pushdown_filters:?}\n{metrics_desc}").into(),
                 count: Count::new(),
             },
             None,

@@ -1,4 +1,4 @@
-# Copyright 2023 The CeresDB Authors
+# Copyright 2023 The HoraeDB Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,9 @@
 
 [workspace.package]
 version = "1.2.6-alpha"
-authors = ["CeresDB Authors <ceresdbservice@gmail.com>"]
+authors = ["HoraeDB Authors"]
 edition = "2021"
+license = "Apache-2.0"
 
 [workspace]
 resolver = "2"
@@ -93,7 +94,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = "1.0.22"
+ceresdbproto = { git = "https://github.com/CeresDB/horaedbproto.git", rev = "2c60e05" }
 codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"
@@ -182,6 +183,7 @@ tokio = { version = "1.29", features = ["full"] }
 wal = { path = "src/wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
+uuid = "1.6.1"
 regex = "1"
 
 # This profile optimizes for good runtime performance.
