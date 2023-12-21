@@ -79,7 +79,7 @@ def remote_query(ts):
     assert result == []
 
     # uppercase field
-    r = execute_pql(table + '{tag1="v1",__ceresdb_field__="VALUE2"}[5m]')
+    r = execute_pql(table + '{tag1="v1",__horaedb_field__="VALUE2"}[5m]')
     result = r['data']['result']
     assert result == [{'metric': {'__name__': table, 'tag1': 'v1', 'TAG2': 'v2'}, 'values': [[ts-5, '2'], [ts, '22']]}]
 

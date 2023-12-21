@@ -255,7 +255,7 @@ SELECT timestamp, dc, host, value FROM {metric} ORDER BY value desc
     """.strip().replace('{ts}', str(ts))
 
 
-# CeresDB internal error: "Column: value in table: ??? data type is not same, expected: bigint, actual: double"
+# HoraeDB internal error: "Column: value in table: ??? data type is not same, expected: bigint, actual: double"
 def test_put_multi_points_with_different_datatype_in_one_table():
     ts = now()
     table_name = table_prefix + str(ts)

@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! This module contains the types for InfluxDB.
 
@@ -28,7 +31,7 @@ use horaedbproto::storage::{
 use http::Method;
 use influxdb_line_protocol::FieldValue;
 use interpreters::interpreter::Output;
-use query_frontend::influxql::planner::CERESDB_MEASUREMENT_COLUMN_NAME;
+use query_frontend::influxql::planner::HORAEDB_MEASUREMENT_COLUMN_NAME;
 use serde::{Deserialize, Serialize};
 use snafu::{ensure, OptionExt, ResultExt};
 
@@ -72,8 +75,8 @@ pub type WriteResponse = ();
 ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-2
 ///
 /// NOTE:
-///     - `db` is not required and default to `public` in CeresDB.
-///     - `precision`'s default value is `ms` but not `ns` in CeresDB.
+///     - `db` is not required and default to `public` in HoraeDB.
+///     - `precision`'s default value is `ms` but not `ns` in HoraeDB.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct WriteParams {
@@ -200,9 +203,9 @@ impl From<&str> for Precision {
 ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-string-parameters-1
 ///
 /// NOTE:
-///     - `db` is not required and default to `public` in CeresDB.
-///     - `chunked` is not supported in CeresDB.
-///     - `epoch`'s default value is `ms` but not `ns` in CeresDB.
+///     - `db` is not required and default to `public` in HoraeDB.
+///     - `chunked` is not supported in HoraeDB.
+///     - `epoch`'s default value is `ms` but not `ns` in HoraeDB.
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct InfluxqlParams {
@@ -309,7 +312,7 @@ impl InfluxqlResultBuilder {
         // described when introducing `column_schemas`.
         let mut col_iter = column_schemas.iter().enumerate();
         // The first column may be measurement column in normal.
-        ensure!(col_iter.next().unwrap().1.name == CERESDB_MEASUREMENT_COLUMN_NAME, InternalNoCause {
+        ensure!(col_iter.next().unwrap().1.name == HORAEDB_MEASUREMENT_COLUMN_NAME, InternalNoCause {
             msg: format!("invalid schema whose first column is not measurement column, schema:{column_schemas:?}"),
         });
 
@@ -804,7 +807,7 @@ mod tests {
         let arrow_schema = schema.to_arrow_schema_ref();
         let fields = arrow_schema.fields.to_owned();
         let measurement_field = ArrowField::new(
-            CERESDB_MEASUREMENT_COLUMN_NAME.to_string(),
+            HORAEDB_MEASUREMENT_COLUMN_NAME.to_string(),
             schema::DataType::Utf8,
             false,
         );

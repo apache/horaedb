@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Contains common methods used by the write process.
 
@@ -526,7 +529,7 @@ impl Proxy {
                 }
                 Err(e) => {
                     // TODO: remove this logic.
-                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
+                    // Refer to https://github.com/CeresDB/horaedb/issues/1248.
                     if need_evict_partition_table(e.error_message()) {
                         warn!("Evict partition table:{}", table.name());
                         self.evict_partition_table(table, catalog_name, &schema_name)
@@ -595,7 +598,7 @@ impl Proxy {
             let plan = match write_table_request_to_insert_plan(table, write_table_req) {
                 Err(e) => {
                     // TODO: remove this logic.
-                    // Refer to https://github.com/CeresDB/ceresdb/issues/1248.
+                    // Refer to https://github.com/CeresDB/horaedb/issues/1248.
                     if need_evict_partition_table(e.error_message()) {
                         warn!("Evict partition table:{}", table_clone.name());
                         self.evict_partition_table(table_clone, &catalog, &schema)

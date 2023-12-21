@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! The proxy module provides features such as forwarding and authentication,
 //! adapts to different protocols.
@@ -394,10 +397,10 @@ impl Proxy {
                     return Ok(());
                 }
 
-                info!("Drop partition table because the id of the table in ceresdb is different from the one in horaemeta,\
+                info!("Drop partition table because the id of the table in horaedb is different from the one in horaemeta,\
                        catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{table_id}, new_table_id:{}",
                       partition_table_info.id);
-                // Drop partition table because the id of the table in ceresdb is different from
+                // Drop partition table because the id of the table in horaedb is different from
                 // the one in horaemeta.
                 self.drop_partition_table(
                     schema.clone(),
@@ -409,9 +412,9 @@ impl Proxy {
             }
             (Some(table), None) => {
                 // Drop partition table because it does not exist in horaemeta but exists in
-                // ceresdb-server.
+                // horaedb-server.
                 if table.partition_info().is_some() {
-                    info!("Drop partition table because it does not exist in horaemeta but exists in ceresdb-server,\
+                    info!("Drop partition table because it does not exist in horaemeta but exists in horaedb-server,\
                            catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, table_id:{}", table.id());
                     self.drop_partition_table(
                         schema.clone(),

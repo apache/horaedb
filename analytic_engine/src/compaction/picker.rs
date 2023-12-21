@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Compaction picker.
 
@@ -191,13 +194,13 @@ fn trim_to_threshold(
 
 // TODO: Remove this function when pick_by_seq is stable.
 fn prefer_pick_by_seq() -> bool {
-    std::env::var("CERESDB_COMPACT_PICK_BY_SEQ").unwrap_or_else(|_| "true".to_string()) == "true"
+    std::env::var("HORAEDB_COMPACT_PICK_BY_SEQ").unwrap_or_else(|_| "true".to_string()) == "true"
 }
 
 /// Size tiered compaction strategy
 ///
 /// Origin solution[1] will only consider file size, but this will cause data
-/// corrupt, see https://github.com/CeresDB/ceresdb/pull/1041
+/// corrupt, see https://github.com/CeresDB/horaedb/pull/1041
 ///
 /// So we could only compact files with adjacent seq, or ssts without
 /// overlapping key range among them. Currently solution is relative simple,
@@ -257,7 +260,7 @@ impl Bucket {
 
     #[inline]
     fn hotness(f: &FileHandle) -> f64 {
-        //prevent NAN hotness
+        // prevent NAN hotness
         let row_num = f.row_num().max(1);
         f.read_meter().h2_rate() / (row_num as f64)
     }

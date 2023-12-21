@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Datafusion `TableProvider` adapter
 
@@ -50,18 +53,18 @@ use crate::{
 const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 
 #[derive(Clone, Debug)]
-pub struct CeresdbOptions {
+pub struct HoraeDBOptions {
     pub request_id: u64,
     pub request_timeout: Option<u64>,
     pub default_schema: String,
     pub default_catalog: String,
 }
 
-impl ConfigExtension for CeresdbOptions {
-    const PREFIX: &'static str = "ceresdb";
+impl ConfigExtension for HoraeDBOptions {
+    const PREFIX: &'static str = "horaedb";
 }
 
-impl ExtensionOptions for CeresdbOptions {
+impl ExtensionOptions for HoraeDBOptions {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -179,11 +182,11 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         filters: &[Expr],
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
-        let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>();
-        assert!(ceresdb_options.is_some());
-        let ceresdb_options = ceresdb_options.unwrap();
-        let request_id = RequestId::from(ceresdb_options.request_id);
-        let deadline = ceresdb_options
+        let options = state.config_options().extensions.get::<HoraeDBOptions>();
+        assert!(options.is_some());
+        let options = options.unwrap();
+        let request_id = RequestId::from(options.request_id);
+        let deadline = options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
         let read_parallelism = state.config().target_partitions();

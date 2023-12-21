@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 use std::{
     fmt,
@@ -40,7 +43,7 @@ use generic_error::BoxError;
 use prost::Message;
 use snafu::ResultExt;
 use table_engine::{
-    provider::{CeresdbOptions, ScanTable},
+    provider::{HoraeDBOptions, ScanTable},
     remote::{
         model::{
             ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest, TableIdentifier,
@@ -177,19 +180,19 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
-        let ceresdb_options = task_context
+        let options = task_context
             .session_config()
             .options()
             .extensions
-            .get::<CeresdbOptions>();
-        assert!(ceresdb_options.is_some());
-        let ceresdb_options = ceresdb_options.unwrap();
-        let request_id = RequestId::from(ceresdb_options.request_id);
-        let deadline = ceresdb_options
+            .get::<HoraeDBOptions>();
+        assert!(options.is_some());
+        let options = options.unwrap();
+        let request_id = RequestId::from(options.request_id);
+        let deadline = options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
-        let default_catalog = ceresdb_options.default_catalog.clone();
-        let default_schema = ceresdb_options.default_schema.clone();
+        let default_catalog = options.default_catalog.clone();
+        let default_schema = options.default_schema.clone();
 
         let display_plan = DisplayableExecutionPlan::new(plan.as_ref());
         let exec_ctx = ExecContext {

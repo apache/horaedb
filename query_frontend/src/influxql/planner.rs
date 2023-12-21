@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! InfluxQL planner
 
@@ -42,9 +45,9 @@ use crate::{
 };
 
 // Same with iox
-pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
+pub const HORAEDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 
-// Port from https://github.com/ceresdb/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
+// Port from https://github.com/CeresDB/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
     context_provider: ContextProviderAdapter<'a, P>,
     tables_cache: OnceCell<Vec<TableRef>>,
@@ -100,12 +103,12 @@ impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
             }
         };
 
-        let ceresdb_arrow_schema = table_source.schema();
+        let horaedb_arrow_schema = table_source.schema();
         let influxql_schema = match convert_to_influxql_schema(table_source.schema()) {
             Ok(schema) => schema,
             Err(e) => {
                 // Same as above here.
-                error!("Influxql planner failed to convert schema to influxql schema, schema:{ceresdb_arrow_schema}, err:{e}");
+                error!("Influxql planner failed to convert schema to influxql schema, schema:{horaedb_arrow_schema}, err:{e}");
                 return None;
             }
         };
@@ -133,8 +136,8 @@ pub(crate) struct Planner<'a, P: MetaProvider> {
     schema_provider: InfluxQLSchemaProvider<'a, P>,
 }
 
-fn convert_to_influxql_schema(ceresdb_arrow_schema: ArrowSchemaRef) -> Result<Schema> {
-    ceresdb_schema_to_influxdb(ceresdb_arrow_schema)
+fn convert_to_influxql_schema(horaedb_arrow_schema: ArrowSchemaRef) -> Result<Schema> {
+    ceresdb_schema_to_influxdb(horaedb_arrow_schema)
         .box_err()
         .and_then(|s| Schema::try_from(s).box_err())
         .context(BuildPlanWithCause {

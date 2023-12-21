@@ -1,31 +1,34 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! The main entry point to start the server
 
 use std::env;
 
-use ceresdb::{
+use clap::{App, Arg};
+use horaedb::{
     config::{ClusterDeployment, Config},
     setup,
 };
-use clap::{App, Arg};
 use logger::info;
 
 /// By this environment variable, the address of current node can be overridden.
 /// And it could be domain name or ip address, but no port follows it.
-const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
+const NODE_ADDR: &str = "HORAEDB_SERVER_ADDR";
 /// By this environment variable, the cluster name of current node can be
 /// overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
@@ -59,7 +62,7 @@ fn fetch_version() -> String {
 
 fn main() {
     let version = fetch_version();
-    let matches = App::new("CeresDB Server")
+    let matches = App::new("HoraeDB Server")
         .version(version.as_str())
         .arg(
             Arg::with_name("config")
@@ -88,7 +91,7 @@ fn main() {
         }
     }
 
-    println!("CeresDB server tries starting with config:{config:?}");
+    println!("HoraeDB server tries starting with config:{config:?}");
 
     // Setup log.
     let runtime_level = setup::setup_logger(&config);
