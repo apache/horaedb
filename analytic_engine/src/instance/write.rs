@@ -673,7 +673,7 @@ impl<'a> Writer<'a> {
             res_sender: None,
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
-        let flusher = self.instance.make_flusher();
+        let flusher = self.instance.make_flusher_with_min_interval();
         if table_data.id == self.table_data.id {
             let flush_scheduler = self.serial_exec.flush_scheduler();
             // Set `block_on_write_thread` to false and let flush do in background.

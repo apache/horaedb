@@ -213,6 +213,9 @@ pub struct Flusher {
 
     pub runtime: RuntimeRef,
     pub write_sst_max_buffer_size: usize,
+    /// if the interval is set, it will generate a [`FlushTask`] with min flush
+    /// interval check.
+    pub min_flush_interval_ms: Option<u64>,
 }
 
 struct FlushTask {
@@ -220,6 +223,8 @@ struct FlushTask {
     table_data: TableDataRef,
     runtime: RuntimeRef,
     write_sst_max_buffer_size: usize,
+    // If the interval is set, it will be used to check whether flush is too frequent.
+    min_flush_interval_ms: Option<u64>,
 }
 
 impl Flusher {
@@ -268,6 +273,7 @@ impl Flusher {
             space_store: self.space_store.clone(),
             runtime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: self.min_flush_interval_ms,
         };
         let flush_job = async move { flush_task.run().await };
 
@@ -281,6 +287,15 @@ impl FlushTask {
     /// Each table can only have one running flush task at the same time, which
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
+        if self.is_flush_too_frequently() {
+            debug!(
+                "Ignore flush task for too frequent flush, table:{}",
+                self.table_data.name
+            );
+
+            return Ok(());
+        }
+
         let instant = Instant::now();
         let flush_req = self.preprocess_flush(&self.table_data).await?;
 
@@ -318,6 +333,16 @@ impl FlushTask {
         );
 
         Ok(())
+    }
+
+    fn is_flush_too_frequently(&self) -> bool {
+        if let Some(interval_ms) = self.min_flush_interval_ms {
+            let last_flush_time = self.table_data.last_flush_time();
+            let now = time_ext::current_time_millis();
+            last_flush_time + interval_ms < now
+        } else {
+            false
+        }
     }
 
     async fn preprocess_flush(&self, table_data: &TableDataRef) -> Result<TableFlushRequest> {

@@ -306,6 +306,7 @@ impl SchedulerImpl {
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
         write_sst_max_buffer_size: usize,
+        min_flush_interval_ms: u64,
         scan_options: ScanOptions,
     ) -> Self {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
@@ -321,6 +322,7 @@ impl SchedulerImpl {
             max_ongoing_tasks: config.max_ongoing_tasks,
             max_unflushed_duration: config.max_unflushed_duration.0,
             write_sst_max_buffer_size,
+            min_flush_interval_ms,
             scan_options,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
@@ -399,6 +401,7 @@ struct ScheduleWorker {
     picker_manager: PickerManager,
     max_ongoing_tasks: usize,
     write_sst_max_buffer_size: usize,
+    min_flush_interval_ms: u64,
     scan_options: ScanOptions,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
@@ -665,6 +668,7 @@ impl ScheduleWorker {
             space_store: self.space_store.clone(),
             runtime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: Some(self.min_flush_interval_ms),
         };
 
         for table_data in &tables_buf {

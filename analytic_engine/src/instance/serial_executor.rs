@@ -166,11 +166,7 @@ impl TableFlushScheduler {
                         *flush_state = FlushState::Flushing;
                         break;
                     }
-                    FlushState::Flushing => {
-                        if !block_on_write_thread {
-                            return Ok(());
-                        }
-                    }
+                    FlushState::Flushing => {}
                     FlushState::Failed { err_msg } => {
                         if self
                             .schedule_sync
