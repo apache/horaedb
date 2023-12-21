@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/CeresDB/horaedb-client-go/horaedb"
+	"github.com/apache/incubator-horaedb-client-go/horaedb"
 )
 
 const fieldName = "b"
