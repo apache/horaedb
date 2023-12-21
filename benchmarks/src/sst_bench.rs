@@ -25,7 +25,7 @@ use analytic_engine::{
     ScanType, SstReadOptionsBuilder,
 };
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
     schema::Schema,
 };
 use logger::info;
@@ -102,19 +102,19 @@ impl SstBench {
         let sst_factory = FactoryImpl;
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
 
-        let fetching_schema = self.projected_schema.as_ref().unwrap().to_record_schema();
+        let fetched_schema = self.projected_schema.as_ref().unwrap().to_record_schema();
         let table_schema = self
             .projected_schema
             .as_ref()
             .unwrap()
             .table_schema()
             .clone();
-        let record_fetching_ctx_builder =
-            RecordFetchingContextBuilder::new(fetching_schema, table_schema, None);
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema, table_schema, None);
         let sst_read_options = self
             .sst_read_options_builder
             .clone()
-            .build(record_fetching_ctx_builder);
+            .build(row_projector_builder);
         self.runtime.block_on(async {
             let mut sst_reader = sst_factory
                 .create_reader(

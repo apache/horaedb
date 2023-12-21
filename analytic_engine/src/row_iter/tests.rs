@@ -14,7 +14,7 @@
 
 use async_trait::async_trait;
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContext},
+    projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
         contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
@@ -68,26 +68,26 @@ impl FetchedRecordBatchIterator for VectorIterator {
     }
 }
 
-pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchedRecordBatch {
+pub fn build_fetched_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchedRecordBatch {
     assert!(schema.num_columns() > 1);
     let projection: Vec<usize> = (0..schema.num_columns()).collect();
     let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
-    let fetching_schema = projected_schema.to_record_schema_with_key();
-    let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
-    let fetching_schema = fetching_schema.to_record_schema();
+    let fetched_schema = projected_schema.to_record_schema_with_key();
+    let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+    let fetched_schema = fetched_schema.to_record_schema();
     let table_schema = projected_schema.table_schema();
-    let record_fetching_ctx = RecordFetchingContext::new(
-        &fetching_schema,
+    let row_projector = RowProjector::new(
+        &fetched_schema,
         Some(primary_key_indexes),
         table_schema,
         table_schema,
     )
     .unwrap();
-    let primary_key_indexes = record_fetching_ctx
+    let primary_key_indexes = row_projector
         .primary_key_indexes()
         .map(|idxs| idxs.to_vec());
     let mut builder =
-        FetchedRecordBatchBuilder::with_capacity(fetching_schema, primary_key_indexes, 2);
+        FetchedRecordBatchBuilder::with_capacity(fetched_schema, primary_key_indexes, 2);
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 
     let mut buf = Vec::new();
@@ -97,7 +97,7 @@ pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> F
         writer.write_row(&row).unwrap();
 
         let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
-        let projected_row = ProjectedContiguousRow::new(source_row, &record_fetching_ctx);
+        let projected_row = ProjectedContiguousRow::new(source_row, &row_projector);
         builder
             .append_projected_contiguous_row(&projected_row)
             .unwrap();

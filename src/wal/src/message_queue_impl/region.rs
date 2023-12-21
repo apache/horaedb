@@ -810,7 +810,7 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
 
     /// Polling's end point
     ///
-    /// While fetching in slave node, it will be set to `None`, and
+    /// While fetched in slave node, it will be set to `None`, and
     /// reading will not stop.
     /// Otherwise, it will be set to high watermark.
     terminate_offset: Option<Offset>,

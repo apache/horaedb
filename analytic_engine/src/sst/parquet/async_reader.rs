@@ -26,7 +26,7 @@ use arrow::{datatypes::SchemaRef, record_batch::RecordBatch as ArrowRecordBatch}
 use async_trait::async_trait;
 use bytes_ext::Bytes;
 use common_types::{
-    projected_schema::{RecordFetchingContext, RecordFetchingContextBuilder},
+    projected_schema::{RowProjector, RowProjectorBuilder},
     record_batch::FetchedRecordBatch,
 };
 use datafusion::{
@@ -90,8 +90,8 @@ pub struct Reader<'a> {
     /// Init those fields in `init_if_necessary`
     meta_data: Option<MetaData>,
 
-    record_fetching_ctx_builder: RecordFetchingContextBuilder,
-    record_fetching_ctx: Option<RecordFetchingContext>,
+    row_projector_builder: RowProjectorBuilder,
+    row_projector: Option<RowProjector>,
 
     /// Options for `read_parallelly`
     metrics: Metrics,
@@ -136,8 +136,8 @@ impl<'a> Reader<'a> {
             predicate: options.predicate.clone(),
             frequency: options.frequency,
             meta_data: None,
-            record_fetching_ctx_builder: options.record_fetching_ctx_builder.clone(),
-            record_fetching_ctx: None,
+            row_projector_builder: options.row_projector_builder.clone(),
+            row_projector: None,
             metrics,
             df_plan_metrics,
             table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
@@ -156,13 +156,13 @@ impl<'a> Reader<'a> {
             return Ok(Vec::new());
         }
 
-        let record_fetching_ctx = self.record_fetching_ctx.take().unwrap();
+        let row_projector = self.row_projector.take().unwrap();
         let streams: Vec<_> = streams
             .into_iter()
             .map(|stream| {
                 Box::new(RecordBatchProjector::new(
                     stream,
-                    record_fetching_ctx.clone(),
+                    row_projector.clone(),
                     self.metrics.metrics_collector.clone(),
                 )) as _
             })
@@ -240,7 +240,7 @@ impl<'a> Reader<'a> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
-        let record_fetching_ctx = self.record_fetching_ctx.as_ref().unwrap();
+        let row_projector = self.row_projector.as_ref().unwrap();
         let arrow_schema = meta_data.custom().schema.to_arrow_schema_ref();
         // Get target row groups.
         let target_row_groups = {
@@ -296,7 +296,7 @@ impl<'a> Reader<'a> {
         let parquet_metadata = meta_data.parquet();
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
-            record_fetching_ctx
+            row_projector
                 .existed_source_projection()
                 .iter()
                 .copied(),
@@ -355,14 +355,14 @@ impl<'a> Reader<'a> {
             meta_data
         };
 
-        let record_fetching_ctx = self
-            .record_fetching_ctx_builder
+        let row_projector = self
+            .row_projector_builder
             .build(&meta_data.custom().schema)
             .box_err()
             .context(Projection)?;
 
         self.meta_data = Some(meta_data);
-        self.record_fetching_ctx = Some(record_fetching_ctx);
+        self.row_projector = Some(row_projector);
 
         Ok(())
     }
@@ -485,7 +485,7 @@ pub(crate) struct ProjectorMetrics {
 
 struct RecordBatchProjector {
     stream: SendableRecordBatchStream,
-    record_fetching_ctx: RecordFetchingContext,
+    row_projector: RowProjector,
 
     metrics: ProjectorMetrics,
     start_time: Instant,
@@ -494,7 +494,7 @@ struct RecordBatchProjector {
 impl RecordBatchProjector {
     fn new(
         stream: SendableRecordBatchStream,
-        record_fetching_ctx: RecordFetchingContext,
+        row_projector: RowProjector,
         metrics_collector: Option<MetricsCollector>,
     ) -> Self {
         let metrics = ProjectorMetrics {
@@ -504,7 +504,7 @@ impl RecordBatchProjector {
 
         Self {
             stream,
-            record_fetching_ctx,
+            row_projector,
             metrics,
             start_time: Instant::now(),
         }
@@ -534,7 +534,7 @@ impl Stream for RecordBatchProjector {
                         projector.metrics.row_num += record_batch.num_rows();
 
                         let projected_batch = FetchedRecordBatch::try_new(
-                            &projector.record_fetching_ctx,
+                            &projector.row_projector,
                             record_batch,
                         )
                         .box_err()
@@ -594,7 +594,7 @@ impl PrefetchableStream for RecordBatchReceiver {
         // Start the prefetch work in background when first poll is called.
         if let Some(tx) = self.bg_prefetch_tx.take() {
             if tx.send(()).is_err() {
-                error!("The receiver for start prefetching has been closed");
+                error!("The receiver for start prefetched has been closed");
             }
         }
     }
@@ -615,7 +615,7 @@ impl Stream for RecordBatchReceiver {
         // Start the prefetch work in background when first poll is called.
         if let Some(tx) = self.bg_prefetch_tx.take() {
             if tx.send(()).is_err() {
-                error!("The receiver for start prefetching has been closed");
+                error!("The receiver for start prefetched has been closed");
             }
         }
 

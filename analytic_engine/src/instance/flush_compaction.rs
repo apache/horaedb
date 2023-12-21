@@ -17,7 +17,7 @@
 use std::{cmp, collections::Bound, fmt, sync::Arc};
 
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
     record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     request_id::RequestId,
     row::RowViewOnBatch,
@@ -893,12 +893,12 @@ impl SpaceStore {
             self.meta_cache.clone(),
             runtime,
         );
-        let fetching_schema = projected_schema.to_record_schema_with_key();
-        let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
-        let fetching_schema = fetching_schema.into_record_schema();
+        let fetched_schema = projected_schema.to_record_schema_with_key();
+        let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+        let fetched_schema = fetched_schema.into_record_schema();
         let table_schema = projected_schema.table_schema().clone();
-        let record_fetching_ctx_builder = RecordFetchingContextBuilder::new(
-            fetching_schema,
+        let row_projector_builder = RowProjectorBuilder::new(
+            fetched_schema,
             table_schema,
             Some(primary_key_indexes),
         );
@@ -947,7 +947,7 @@ impl SpaceStore {
         };
 
         // TODO: eliminate the duplicated building of `SstReadOptions`.
-        let sst_read_options = sst_read_options_builder.build(record_fetching_ctx_builder);
+        let sst_read_options = sst_read_options_builder.build(row_projector_builder);
         let sst_meta = {
             let meta_reader = SstMetaReader {
                 space_id: table_data.space_id,
@@ -1072,12 +1072,12 @@ fn split_record_batch_with_time_ranges(
     time_ranges: &[TimeRange],
     timestamp_idx: usize,
 ) -> Result<Vec<FetchedRecordBatch>> {
-    let fetching_schema = record_batch.schema();
+    let fetched_schema = record_batch.schema();
     let primary_key_indexes = record_batch.primary_key_indexes();
     let mut builders: Vec<FetchedRecordBatchBuilder> = (0..time_ranges.len())
         .map(|_| {
             let primary_key_indexes = primary_key_indexes.map(|idxs| idxs.to_vec());
-            FetchedRecordBatchBuilder::new(fetching_schema.clone(), primary_key_indexes)
+            FetchedRecordBatchBuilder::new(fetched_schema.clone(), primary_key_indexes)
         })
         .collect();
 
@@ -1120,17 +1120,17 @@ fn build_mem_table_iter(
 ) -> Result<ColumnarIterPtr> {
     let scan_ctx = ScanContext::default();
     let projected_schema = ProjectedSchema::no_projection(table_data.schema());
-    let fetching_schema = projected_schema.to_record_schema_with_key();
-    let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
-    let fetching_schema = fetching_schema.into_record_schema();
+    let fetched_schema = projected_schema.to_record_schema_with_key();
+    let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+    let fetched_schema = fetched_schema.into_record_schema();
     let table_schema = projected_schema.table_schema().clone();
-    let record_fetching_ctx_builder =
-        RecordFetchingContextBuilder::new(fetching_schema, table_schema, Some(primary_key_indexes));
+    let row_projector_builder =
+        RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
         sequence: common_types::MAX_SEQUENCE_NUMBER,
-        record_fetching_ctx_builder,
+        row_projector_builder,
         need_dedup: table_data.dedup(),
         reverse: false,
         metrics_collector: None,
@@ -1145,7 +1145,7 @@ fn build_mem_table_iter(
 mod tests {
     use common_types::{
         tests::{
-            build_fetching_record_batch_by_rows, build_row, build_row_opt,
+            build_fetched_record_batch_by_rows, build_row, build_row_opt,
             check_record_batch_with_key_with_rows,
         },
         time::TimeRange,
@@ -1187,7 +1187,7 @@ mod tests {
             .into_iter()
             .flatten()
             .collect();
-        let record_batch_with_key = build_fetching_record_batch_by_rows(rows);
+        let record_batch_with_key = build_fetched_record_batch_by_rows(rows);
         let column_num = record_batch_with_key.num_columns();
         let time_ranges = vec![
             TimeRange::new_unchecked_for_test(0, 100),

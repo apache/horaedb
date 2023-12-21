@@ -17,7 +17,7 @@
 use std::{fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::projected_schema::RecordFetchingContextBuilder;
+use common_types::projected_schema::RowProjectorBuilder;
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use runtime::Runtime;
@@ -136,7 +136,7 @@ pub struct SstReadOptions {
 
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,
-    pub record_fetching_ctx_builder: RecordFetchingContextBuilder,
+    pub row_projector_builder: RowProjectorBuilder,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub scan_options: ScanOptions,

@@ -26,7 +26,7 @@ use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
     datum::{Datum, DatumKind, DatumView},
-    projected_schema::RecordFetchingContext,
+    projected_schema::RowProjector,
     row::{
         bitset::{BitSet, RoBitSet},
         Row,
@@ -248,20 +248,20 @@ fn datum_view_at<'a>(
 /// schema of source row.
 pub struct ProjectedContiguousRow<'a, T> {
     source_row: T,
-    ctx: &'a RecordFetchingContext,
+    ctx: &'a RowProjector,
 }
 
 impl<'a, T: ContiguousRow> ProjectedContiguousRow<'a, T> {
-    pub fn new(source_row: T, ctx: &'a RecordFetchingContext) -> Self {
+    pub fn new(source_row: T, ctx: &'a RowProjector) -> Self {
         Self { source_row, ctx }
     }
 
     pub fn num_datum_views(&self) -> usize {
-        self.ctx.fetching_source_column_indexes().len()
+        self.ctx.fetched_source_column_indexes().len()
     }
 
     pub fn datum_view_at(&self, index: usize) -> DatumView {
-        let p = self.ctx.fetching_source_column_indexes()[index];
+        let p = self.ctx.fetched_source_column_indexes()[index];
 
         match p {
             Some(index_in_source) => {
@@ -798,7 +798,7 @@ mod tests {
         let projection: Vec<usize> = (0..schema.num_columns() - 1).collect();
         let projected_schema =
             ProjectedSchema::new(schema.clone(), Some(projection.clone())).unwrap();
-        let ctx = RecordFetchingContext::new(
+        let ctx = RowProjector::new(
             &projected_schema.to_record_schema(),
             None,
             projected_schema.table_schema(),

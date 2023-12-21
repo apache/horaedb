@@ -71,9 +71,9 @@ impl<I: FetchedRecordBatchIterator> DedupIterator<I> {
     pub fn new(request_id: RequestId, iter: I, iter_options: IterOptions) -> Self {
         let schema_with_key = iter.schema();
         let primary_key_indexes = schema_with_key.primary_key_idx().to_vec();
-        let fetching_schema = schema_with_key.to_record_schema();
+        let fetched_schema = schema_with_key.to_record_schema();
         let record_batch_builder = FetchedRecordBatchBuilder::with_capacity(
-            fetching_schema,
+            fetched_schema,
             Some(primary_key_indexes),
             iter_options.batch_size,
         );
@@ -215,7 +215,7 @@ mod tests {
 
     use super::*;
     use crate::row_iter::tests::{
-        build_fetching_record_batch_with_key, check_iterator, VectorIterator,
+        build_fetched_record_batch_with_key, check_iterator, VectorIterator,
     };
 
     #[tokio::test]
@@ -225,7 +225,7 @@ mod tests {
         let iter = VectorIterator::new(
             schema.to_record_schema_with_key(),
             vec![
-                build_fetching_record_batch_with_key(
+                build_fetched_record_batch_with_key(
                     schema.clone(),
                     vec![
                         build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -233,7 +233,7 @@ mod tests {
                         build_row(b"a", 2, 10.0, "v2", 2000, 2_000_000),
                     ],
                 ),
-                build_fetching_record_batch_with_key(
+                build_fetched_record_batch_with_key(
                     schema,
                     vec![
                         build_row(b"a", 2, 10.0, "v", 2000, 2_000_000),

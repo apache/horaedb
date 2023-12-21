@@ -19,7 +19,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
     record_batch::FetchedRecordBatch,
     request_id::RequestId,
     schema::RecordSchemaWithKey,
@@ -124,18 +124,18 @@ impl<'a> Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub async fn build(self) -> Result<ChainIterator> {
-        let fetching_schema = self.config.projected_schema.to_record_schema();
+        let fetched_schema = self.config.projected_schema.to_record_schema();
         let table_schema = self.config.projected_schema.table_schema();
-        let record_fetching_ctx_builder =
-            RecordFetchingContextBuilder::new(fetching_schema.clone(), table_schema.clone(), None);
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema.clone(), table_schema.clone(), None);
         let sst_read_options = self
             .config
             .sst_read_options_builder
-            .build(record_fetching_ctx_builder.clone());
+            .build(row_projector_builder.clone());
 
         let memtable_stream_ctx = MemtableStreamContext {
-            record_fetching_ctx_builder,
-            fetching_schema: fetching_schema.clone(),
+            row_projector_builder,
+            fetched_schema: fetched_schema.clone(),
             predicate: self.config.predicate,
             need_dedup: false,
             reverse: false,
@@ -144,7 +144,7 @@ impl<'a> Builder<'a> {
 
         let sst_stream_ctx = SstStreamContext {
             sst_read_options,
-            fetching_schema,
+            fetched_schema,
         };
 
         let total_sst_streams: usize = self.ssts.iter().map(|v| v.len()).sum();

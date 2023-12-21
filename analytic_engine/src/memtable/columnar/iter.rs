@@ -27,7 +27,7 @@ use common_types::{
     column::Column,
     column_schema::ColumnId,
     datum::Datum,
-    projected_schema::RecordFetchingContext,
+    projected_schema::RowProjector,
     record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::Row,
     schema::Schema,
@@ -66,7 +66,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     /// Schema of this memtable, used to decode row
     memtable_schema: Schema,
     /// Projection of schema to read
-    record_fetching_ctx: RecordFetchingContext,
+    row_projector: RowProjector,
 
     // Options related:
     batch_size: usize,
@@ -100,8 +100,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         last_sequence: SequenceNumber,
         skiplist: Skiplist<BytewiseComparator, A>,
     ) -> Result<Self> {
-        let record_fetching_ctx = request
-            .record_fetching_ctx_builder
+        let row_projector = request
+            .row_projector_builder
             .build(&schema)
             .context(ProjectSchema)?;
         let mut columnar_iter = Self {
@@ -109,7 +109,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             row_num,
             current_idx: 0,
             memtable_schema: schema,
-            record_fetching_ctx,
+            row_projector,
             batch_size: ctx.batch_size,
             deadline: ctx.deadline,
             start_user_key: request.start_user_key,
@@ -205,13 +205,13 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 }
             }
 
-            let fetching_schema = self.record_fetching_ctx.fetching_schema().clone();
+            let fetched_schema = self.row_projector.fetched_schema().clone();
             let primary_key_indexes = self
-                .record_fetching_ctx
+                .row_projector
                 .primary_key_indexes()
                 .map(|idxs| idxs.to_vec());
             let mut builder = FetchedRecordBatchBuilder::with_capacity(
-                fetching_schema,
+                fetched_schema,
                 primary_key_indexes,
                 self.batch_size,
             );
@@ -313,8 +313,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             self.batch_size
         ];
         for (col_idx, column_schema_idx) in self
-            .record_fetching_ctx
-            .fetching_source_column_indexes()
+            .row_projector
+            .fetched_source_column_indexes()
             .iter()
             .enumerate()
         {
@@ -337,13 +337,13 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         let mut num_rows = 0;
         let memtable = self.memtable.read().unwrap();
 
-        let record_schema = self.record_fetching_ctx.fetching_schema();
+        let record_schema = self.row_projector.fetched_schema();
         let mut rows =
             vec![Row::from_datums(vec![Datum::Null; record_schema.num_columns()]); self.batch_size];
 
         for (col_idx, column_schema_idx) in self
-            .record_fetching_ctx
-            .fetching_source_column_indexes()
+            .row_projector
+            .fetched_source_column_indexes()
             .iter()
             .enumerate()
         {

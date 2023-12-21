@@ -31,7 +31,7 @@ use analytic_engine::{
 use anyhow::{Context, Result};
 use clap::Parser;
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
     request_id::RequestId,
 };
 use generic_error::BoxError;
@@ -97,10 +97,10 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let scan_options = ScanOptions::default();
     let projected_schema = ProjectedSchema::no_projection(sst_meta.schema.clone());
 
-    let fetching_schema = projected_schema.to_record_schema();
+    let fetched_schema = projected_schema.to_record_schema();
     let table_schema = projected_schema.table_schema().clone();
-    let record_fetching_ctx_builder =
-        RecordFetchingContextBuilder::new(fetching_schema, table_schema, None);
+    let row_projector_builder =
+        RowProjectorBuilder::new(fetched_schema, table_schema, None);
     let reader_opts = SstReadOptions {
         maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("tool")),
         frequency: ReadFrequency::Once,
@@ -109,7 +109,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
         meta_cache: None,
         scan_options,
         runtime,
-        record_fetching_ctx_builder,
+        row_projector_builder,
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let mut reader = factory

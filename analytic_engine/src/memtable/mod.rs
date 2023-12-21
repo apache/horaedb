@@ -24,7 +24,7 @@ use std::{ops::Bound, sync::Arc, time::Instant};
 
 use bytes_ext::{ByteVec, Bytes};
 use common_types::{
-    projected_schema::RecordFetchingContextBuilder,
+    projected_schema::RowProjectorBuilder,
     record_batch::FetchedRecordBatch,
     row::Row,
     schema::{IndexInWriterSchema, Schema},
@@ -203,7 +203,7 @@ pub struct ScanRequest {
     /// visible.
     pub sequence: SequenceNumber,
     /// Schema and projection to read.
-    pub record_fetching_ctx_builder: RecordFetchingContextBuilder,
+    pub row_projector_builder: RowProjectorBuilder,
     pub need_dedup: bool,
     pub reverse: bool,
     /// Collector for scan metrics.

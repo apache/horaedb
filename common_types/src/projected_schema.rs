@@ -61,11 +61,11 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
-pub struct RecordFetchingContext {
-    /// The schema for data fetching
+pub struct RowProjector {
+    /// The schema for data fetched
     /// It is derived from table schema and some columns may not exist in data
     /// source.
-    fetching_schema: RecordSchema,
+    fetched_schema: RecordSchema,
 
     ///
     primary_key_indexes: Option<Vec<usize>>,
@@ -79,50 +79,50 @@ pub struct RecordFetchingContext {
     /// is not in source but required by reader, and need to filled by null.
     /// The length of Vec is the same as the number of columns reader intended
     /// to read.
-    fetching_source_column_indexes: Vec<Option<usize>>,
+    fetched_source_column_indexes: Vec<Option<usize>>,
 
-    /// Similar as `fetching_source_column_indexes`, but storing the projected
+    /// Similar as `fetched_source_column_indexes`, but storing the projected
     /// source column index
     ///
     /// For example:
     ///   source column indexes: 0,1,2,3,4
-    ///   data fetching indexes in source: 2,1,3
+    ///   data fetched indexes in source: 2,1,3
     ///
     /// We can see, only columns:[1,2,3] in source is needed,
     /// and their indexes in pulled projected record bath are: [0,1,2].
     ///
-    /// So the stored data fetching indexes in projected source are: [1,0,2].
-    fetching_projected_source_column_indexes: Vec<Option<usize>>,
+    /// So the stored data fetched indexes in projected source are: [1,0,2].
+    fetched_projected_source_column_indexes: Vec<Option<usize>>,
 }
 
-impl RecordFetchingContext {
+impl RowProjector {
     pub fn new(
-        fetching_schema: &RecordSchema,
+        fetched_schema: &RecordSchema,
         primary_key_indexes: Option<Vec<usize>>,
         table_schema: &Schema,
         source_schema: &Schema,
     ) -> Result<Self> {
-        // Get `fetching_source_column_indexes`.
-        let mut fetching_source_column_indexes = Vec::with_capacity(fetching_schema.num_columns());
-        let mut projected_source_indexes = Vec::with_capacity(fetching_schema.num_columns());
-        for column_schema in fetching_schema.columns() {
+        // Get `fetched_source_column_indexes`.
+        let mut fetched_source_column_indexes = Vec::with_capacity(fetched_schema.num_columns());
+        let mut projected_source_indexes = Vec::with_capacity(fetched_schema.num_columns());
+        for column_schema in fetched_schema.columns() {
             Self::try_project_column(
                 column_schema,
                 table_schema,
                 source_schema,
-                &mut fetching_source_column_indexes,
+                &mut fetched_source_column_indexes,
                 &mut projected_source_indexes,
             )?;
         }
 
-        // Get `fetching_projected_source_column_indexes` from
-        // `fetching_source_column_indexes`.
+        // Get `fetched_projected_source_column_indexes` from
+        // `fetched_source_column_indexes`.
         projected_source_indexes.sort_unstable();
-        let fetching_projected_source_column_indexes = fetching_source_column_indexes
+        let fetched_projected_source_column_indexes = fetched_source_column_indexes
             .iter()
             .map(|source_idx_opt| {
                 source_idx_opt.map(|src_idx| {
-                    // Safe to unwrap, index exists in `fetching_source_column_indexes` is ensured
+                    // Safe to unwrap, index exists in `fetched_source_column_indexes` is ensured
                     // to exist in `projected_source_indexes`.
                     projected_source_indexes
                         .iter()
@@ -132,12 +132,12 @@ impl RecordFetchingContext {
             })
             .collect();
 
-        Ok(RecordFetchingContext {
-            fetching_schema: fetching_schema.clone(),
+        Ok(RowProjector {
+            fetched_schema: fetched_schema.clone(),
             primary_key_indexes,
             source_schema: source_schema.clone(),
-            fetching_source_column_indexes,
-            fetching_projected_source_column_indexes,
+            fetched_source_column_indexes,
+            fetched_projected_source_column_indexes,
         })
     }
 
@@ -145,7 +145,7 @@ impl RecordFetchingContext {
         column: &ColumnSchema,
         table_schema: &Schema,
         source_schema: &Schema,
-        fetching_source_column_indexes: &mut Vec<Option<usize>>,
+        fetched_source_column_indexes: &mut Vec<Option<usize>>,
         projected_source_indexes: &mut Vec<usize>,
     ) -> Result<()> {
         match source_schema.index_of(&column.name) {
@@ -153,7 +153,7 @@ impl RecordFetchingContext {
                 // Column is in source
                 if table_schema.version() == source_schema.version() {
                     // Same version, just use that column in source
-                    fetching_source_column_indexes.push(Some(source_idx));
+                    fetched_source_column_indexes.push(Some(source_idx));
                     projected_source_indexes.push(source_idx);
                 } else {
                     // Different version, need to check column schema
@@ -165,11 +165,11 @@ impl RecordFetchingContext {
                         .context(IncompatReadColumn)?
                     {
                         ReadOp::Exact => {
-                            fetching_source_column_indexes.push(Some(source_idx));
+                            fetched_source_column_indexes.push(Some(source_idx));
                             projected_source_indexes.push(source_idx);
                         }
                         ReadOp::FillNull => {
-                            fetching_source_column_indexes.push(None);
+                            fetched_source_column_indexes.push(None);
                         }
                     }
                 }
@@ -178,7 +178,7 @@ impl RecordFetchingContext {
                 // Column is not in source
                 ensure!(column.is_nullable, MissingReadColumn { name: &column.name });
                 // Column is nullable, fill this column by null
-                fetching_source_column_indexes.push(None);
+                fetched_source_column_indexes.push(None);
             }
         }
 
@@ -189,13 +189,13 @@ impl RecordFetchingContext {
         &self.source_schema
     }
 
-    pub fn fetching_schema(&self) -> &RecordSchema {
-        &self.fetching_schema
+    pub fn fetched_schema(&self) -> &RecordSchema {
+        &self.fetched_schema
     }
 
     /// The projected indexes of existed columns in the source schema.
     pub fn existed_source_projection(&self) -> Vec<usize> {
-        self.fetching_source_column_indexes
+        self.fetched_source_column_indexes
             .iter()
             .filter_map(|index| *index)
             .collect()
@@ -203,14 +203,14 @@ impl RecordFetchingContext {
 
     /// The projected indexes of all columns(existed and not exist) in the
     /// source schema.
-    pub fn fetching_source_column_indexes(&self) -> &[Option<usize>] {
-        &self.fetching_source_column_indexes
+    pub fn fetched_source_column_indexes(&self) -> &[Option<usize>] {
+        &self.fetched_source_column_indexes
     }
 
     /// The projected indexes of all columns(existed and not exist) in the
     /// projected source schema.
-    pub fn fetching_projected_source_column_indexes(&self) -> &[Option<usize>] {
-        &self.fetching_projected_source_column_indexes
+    pub fn fetched_projected_source_column_indexes(&self) -> &[Option<usize>] {
+        &self.fetched_projected_source_column_indexes
     }
 
     pub fn primary_key_indexes(&self) -> Option<&[usize]> {
@@ -223,9 +223,9 @@ impl RecordFetchingContext {
     pub fn project_row(&self, row: &Row, mut datums_buffer: Vec<Datum>) -> Row {
         assert_eq!(self.source_schema.num_columns(), row.num_columns());
 
-        datums_buffer.reserve(self.fetching_schema.num_columns());
+        datums_buffer.reserve(self.fetched_schema.num_columns());
 
-        for p in &self.fetching_source_column_indexes {
+        for p in &self.fetched_source_column_indexes {
             let datum = match p {
                 Some(index_in_source) => row[*index_in_source].clone(),
                 None => Datum::Null,
@@ -247,28 +247,28 @@ impl RecordFetchingContext {
 }
 
 #[derive(Debug, Clone)]
-pub struct RecordFetchingContextBuilder {
-    fetching_schema: RecordSchema,
+pub struct RowProjectorBuilder {
+    fetched_schema: RecordSchema,
     table_schema: Schema,
     primary_key_indexes: Option<Vec<usize>>,
 }
 
-impl RecordFetchingContextBuilder {
+impl RowProjectorBuilder {
     pub fn new(
-        fetching_schema: RecordSchema,
+        fetched_schema: RecordSchema,
         table_schema: Schema,
         primary_key_indexes: Option<Vec<usize>>,
     ) -> Self {
         Self {
-            fetching_schema,
+            fetched_schema,
             table_schema,
             primary_key_indexes,
         }
     }
 
-    pub fn build(&self, source_schema: &Schema) -> Result<RecordFetchingContext> {
-        RecordFetchingContext::new(
-            &self.fetching_schema,
+    pub fn build(&self, source_schema: &Schema) -> Result<RowProjector> {
+        RowProjector::new(
+            &self.fetched_schema,
             self.primary_key_indexes.clone(),
             &self.table_schema,
             source_schema,
@@ -378,10 +378,10 @@ struct ProjectedSchemaInner {
     /// all columns are needed.
     projection: Option<Vec<usize>>,
 
-    /// The fetching record schema from `self.schema` with key columns after
+    /// The fetched record schema from `self.schema` with key columns after
     /// projection.
     record_schema_with_key: RecordSchemaWithKey,
-    /// The fetching record schema from `self.schema` after projection.
+    /// The fetched record schema from `self.schema` after projection.
     target_record_schema: RecordSchema,
 }
 

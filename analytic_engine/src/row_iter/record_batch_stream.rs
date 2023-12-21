@@ -23,7 +23,7 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
 };
 use common_types::{
-    projected_schema::RecordFetchingContextBuilder, record_batch::FetchedRecordBatch,
+    projected_schema::RowProjectorBuilder, record_batch::FetchedRecordBatch,
     schema::RecordSchema, SequenceNumber,
 };
 use datafusion::{
@@ -224,7 +224,7 @@ pub fn filtered_stream_from_memtable(
     stream_from_memtable(memtable, ctx, metrics_collector).and_then(|origin_stream| {
         filter_stream(
             origin_stream,
-            ctx.fetching_schema.to_arrow_schema_ref(),
+            ctx.fetched_schema.to_arrow_schema_ref(),
             &ctx.predicate,
         )
     })
@@ -241,19 +241,19 @@ pub fn stream_from_memtable(
         ..Default::default()
     };
     let max_seq = memtable.last_sequence();
-    let fetching_cols = ctx
-        .fetching_schema
+    let fetched_cols = ctx
+        .fetched_schema
         .columns()
         .iter()
         .format_with(",", |col, f| f(&format_args!("{}", col.name)));
     let scan_memtable_desc =
-        format!("scan_memtable_{max_seq}, fetching_columns:[{fetching_cols}]",);
+        format!("scan_memtable_{max_seq}, fetched_columns:[{fetched_cols}]",);
     let metrics_collector = metrics_collector.map(|v| v.span(scan_memtable_desc));
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
         sequence: max_seq,
-        record_fetching_ctx_builder: ctx.record_fetching_ctx_builder.clone(),
+        row_projector_builder: ctx.row_projector_builder.clone(),
         need_dedup: ctx.need_dedup,
         reverse: ctx.reverse,
         metrics_collector,
@@ -272,8 +272,8 @@ pub fn stream_from_memtable(
 }
 
 pub struct MemtableStreamContext {
-    pub record_fetching_ctx_builder: RecordFetchingContextBuilder,
-    pub fetching_schema: RecordSchema,
+    pub row_projector_builder: RowProjectorBuilder,
+    pub fetched_schema: RecordSchema,
     pub predicate: PredicateRef,
     pub need_dedup: bool,
     pub reverse: bool,
@@ -304,7 +304,7 @@ pub async fn filtered_stream_from_sst_file(
     .and_then(|origin_stream| {
         filter_stream(
             origin_stream,
-            ctx.fetching_schema.to_arrow_schema_ref(),
+            ctx.fetched_schema.to_arrow_schema_ref(),
             &ctx.sst_read_options.predicate,
         )
     })
@@ -327,13 +327,13 @@ pub async fn stream_from_sst_file(
         file_size: Some(sst_file.size() as usize),
         file_format: Some(sst_file.storage_format()),
     };
-    let fetching_cols = ctx
-        .fetching_schema
+    let fetched_cols = ctx
+        .fetched_schema
         .columns()
         .iter()
         .format_with(",", |col, f| f(&format_args!("{}", col.name)));
     let scan_sst_desc = format!(
-        "scan_sst_{}, fetching_columns:[{fetching_cols}]",
+        "scan_sst_{}, fetched_columns:[{fetched_cols}]",
         sst_file.id()
     );
     let metrics_collector = metrics_collector.map(|v| v.span(scan_sst_desc));
@@ -363,7 +363,7 @@ pub async fn stream_from_sst_file(
 
 pub struct SstStreamContext {
     pub sst_read_options: SstReadOptions,
-    pub fetching_schema: RecordSchema,
+    pub fetched_schema: RecordSchema,
 }
 
 #[cfg(test)]
@@ -382,7 +382,7 @@ pub mod tests {
             .into_iter()
             .map(|(seq, rows)| {
                 let batch = SequencedRecordBatch {
-                    record_batch: row_iter::tests::build_fetching_record_batch_with_key(
+                    record_batch: row_iter::tests::build_fetched_record_batch_with_key(
                         schema.clone(),
                         rows,
                     ),

@@ -33,7 +33,7 @@ pub(crate) mod write;
 
 use std::sync::Arc;
 
-use common_types::{projected_schema::RecordFetchingContextBuilder, table::TableId};
+use common_types::{projected_schema::RowProjectorBuilder, table::TableId};
 use generic_error::{BoxError, GenericError};
 use logger::{error, info};
 use macros::define_result;
@@ -347,13 +347,13 @@ impl SstReadOptionsBuilder {
 
     pub fn build(
         self,
-        record_fetching_ctx_builder: RecordFetchingContextBuilder,
+        row_projector_builder: RowProjectorBuilder,
     ) -> SstReadOptions {
         SstReadOptions {
             maybe_table_level_metrics: self.maybe_table_level_metrics,
             num_rows_per_row_group: self.num_rows_per_row_group,
             frequency: self.scan_type.into(),
-            record_fetching_ctx_builder,
+            row_projector_builder,
             predicate: self.predicate,
             meta_cache: self.meta_cache,
             scan_options: self.scan_options,

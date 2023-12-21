@@ -525,7 +525,7 @@ mod tests {
 
     use bytes_ext::Bytes;
     use common_types::{
-        projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+        projected_schema::{ProjectedSchema, RowProjectorBuilder},
         tests::{build_row, build_row_for_dictionary, build_schema, build_schema_with_dictionary},
         time::{TimeRange, Timestamp},
     };
@@ -537,7 +537,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        row_iter::tests::build_fetching_record_batch_with_key,
+        row_iter::tests::build_fetched_record_batch_with_key,
         sst::{
             factory::{
                 Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
@@ -633,7 +633,7 @@ mod tests {
                         "tagv2",
                     ),
                 ];
-                let batch = build_fetching_record_batch_with_key(schema.clone(), rows);
+                let batch = build_fetched_record_batch_with_key(schema.clone(), rows);
                 Poll::Ready(Some(Ok(batch)))
             }));
 
@@ -659,7 +659,7 @@ mod tests {
 
             let scan_options = ScanOptions::default();
             // read sst back to test
-            let record_fetching_ctx_builder = RecordFetchingContextBuilder::new(
+            let row_projector_builder = RowProjectorBuilder::new(
                 reader_projected_schema.to_record_schema(),
                 reader_projected_schema.table_schema().clone(),
                 None,
@@ -672,7 +672,7 @@ mod tests {
                 meta_cache: None,
                 scan_options,
                 runtime: runtime.clone(),
-                record_fetching_ctx_builder,
+                row_projector_builder,
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
@@ -805,7 +805,7 @@ mod tests {
                 .map(|_| build_row(b"a", 100, 10.0, "v4", 1000, 1_000_000))
                 .collect::<Vec<_>>();
 
-            let batch = build_fetching_record_batch_with_key(schema_clone.clone(), rows);
+            let batch = build_fetched_record_batch_with_key(schema_clone.clone(), rows);
             poll_cnt += 1;
 
             Poll::Ready(Some(Ok(batch)))

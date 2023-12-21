@@ -18,7 +18,7 @@ use sqlparser::ast::{BinaryOperator, Expr, Value};
 use crate::{
     column_schema,
     datum::{Datum, DatumKind},
-    projected_schema::{ProjectedSchema, RecordFetchingContext},
+    projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
         contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
@@ -357,17 +357,17 @@ pub fn build_rows() -> Vec<Row> {
     ]
 }
 
-pub fn build_fetching_record_batch_by_rows(rows: Vec<Row>) -> FetchedRecordBatch {
+pub fn build_fetched_record_batch_by_rows(rows: Vec<Row>) -> FetchedRecordBatch {
     let schema = build_schema();
     assert!(schema.num_columns() > 1);
     let projection: Vec<usize> = (0..schema.num_columns() - 1).collect();
     let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
-    let record_fetching_ctx =
-        RecordFetchingContext::new(&projected_schema.to_record_schema(), None, &schema, &schema)
+    let row_projector =
+        RowProjector::new(&projected_schema.to_record_schema(), None, &schema, &schema)
             .unwrap();
 
     let mut builder = FetchedRecordBatchBuilder::with_capacity(
-        record_fetching_ctx.fetching_schema().clone(),
+        row_projector.fetched_schema().clone(),
         None,
         2,
     );
@@ -380,7 +380,7 @@ pub fn build_fetching_record_batch_by_rows(rows: Vec<Row>) -> FetchedRecordBatch
         writer.write_row(&row).unwrap();
 
         let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
-        let projected_row = ProjectedContiguousRow::new(source_row, &record_fetching_ctx);
+        let projected_row = ProjectedContiguousRow::new(source_row, &row_projector);
         builder
             .append_projected_contiguous_row(&projected_row)
             .unwrap();

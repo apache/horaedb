@@ -23,7 +23,7 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
     record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     request_id::RequestId,
     row::RowViewOnBatch,
@@ -175,23 +175,23 @@ impl<'a> MergeBuilder<'a> {
     }
 
     pub async fn build(self) -> Result<MergeIterator> {
-        let fetching_schema = self.config.projected_schema.to_record_schema_with_key();
-        let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
-        let fetching_schema = fetching_schema.into_record_schema();
+        let fetched_schema = self.config.projected_schema.to_record_schema_with_key();
+        let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+        let fetched_schema = fetched_schema.into_record_schema();
         let table_schema = self.config.projected_schema.table_schema();
-        let record_fetching_ctx_builder = RecordFetchingContextBuilder::new(
-            fetching_schema.clone(),
+        let row_projector_builder = RowProjectorBuilder::new(
+            fetched_schema.clone(),
             table_schema.clone(),
             Some(primary_key_indexes),
         );
         let sst_read_options = self
             .config
             .sst_read_options_builder
-            .build(record_fetching_ctx_builder.clone());
+            .build(row_projector_builder.clone());
 
         let memtable_stream_ctx = MemtableStreamContext {
-            record_fetching_ctx_builder,
-            fetching_schema: fetching_schema.clone(),
+            row_projector_builder,
+            fetched_schema: fetched_schema.clone(),
             predicate: self.config.predicate,
             need_dedup: self.config.need_dedup,
             reverse: self.config.reverse,
@@ -200,7 +200,7 @@ impl<'a> MergeBuilder<'a> {
 
         let sst_stream_ctx = SstStreamContext {
             sst_read_options,
-            fetching_schema,
+            fetched_schema,
         };
 
         let sst_streams_num: usize = self
@@ -687,9 +687,9 @@ impl MergeIterator {
     ) -> Self {
         let heap_cap = streams.len();
         let primary_key_indexes = schema.primary_key_idx().to_vec();
-        let fetching_schema = schema.to_record_schema();
+        let fetched_schema = schema.to_record_schema();
         let record_batch_builder = FetchedRecordBatchBuilder::with_capacity(
-            fetching_schema,
+            fetched_schema,
             Some(primary_key_indexes),
             iter_options.batch_size,
         );

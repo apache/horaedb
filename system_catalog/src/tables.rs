@@ -21,7 +21,7 @@ use catalog::{manager::ManagerRef, schema::SchemaRef, CatalogRef};
 use common_types::{
     column_schema,
     datum::{Datum, DatumKind},
-    projected_schema::RecordFetchingContext,
+    projected_schema::RowProjector,
     record_batch::FetchedRecordBatchBuilder,
     row::Row,
     schema,
@@ -154,17 +154,17 @@ impl SystemTable for Tables {
             .all_catalogs()
             .box_err()
             .context(table_engine::table::Scan { table: self.name() })?;
-        let fetching_schema = request.projected_schema.to_record_schema_with_key();
-        let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
-        let fetching_schema = fetching_schema.to_record_schema();
+        let fetched_schema = request.projected_schema.to_record_schema_with_key();
+        let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+        let fetched_schema = fetched_schema.to_record_schema();
         let mut builder = FetchedRecordBatchBuilder::new(
-            fetching_schema.clone(),
+            fetched_schema.clone(),
             Some(primary_key_indexes.clone()),
         );
 
         let table_schema = request.projected_schema.table_schema();
-        let record_fetching_ctx = RecordFetchingContext::new(
-            &fetching_schema,
+        let row_projector = RowProjector::new(
+            &fetched_schema,
             Some(primary_key_indexes),
             table_schema,
             &self.schema,
@@ -182,7 +182,7 @@ impl SystemTable for Tables {
                     .context(table_engine::table::Scan { table: self.name() })?
                 {
                     let row = self.from_table(catalog.clone(), schema.clone(), table.clone());
-                    let projected_row = record_fetching_ctx.project_row(&row, Vec::new());
+                    let projected_row = row_projector.project_row(&row, Vec::new());
                     builder
                         .append_row(projected_row)
                         .box_err()

@@ -41,7 +41,7 @@ use analytic_engine::{
     ScanType, SstReadOptionsBuilder,
 };
 use common_types::{
-    projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
     request_id::RequestId,
 };
 use generic_error::BoxError;
@@ -125,10 +125,10 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         num_streams_to_prefetch: 2,
     };
 
-    let fetching_schema = projected_schema.to_record_schema();
+    let fetched_schema = projected_schema.to_record_schema();
     let table_schema = projected_schema.table_schema().clone();
-    let record_fetching_ctx_builder =
-        RecordFetchingContextBuilder::new(fetching_schema, table_schema, None);
+    let row_projector_builder =
+        RowProjectorBuilder::new(fetched_schema, table_schema, None);
     let sst_read_options = SstReadOptions {
         maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Once,
@@ -137,7 +137,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         meta_cache: None,
         scan_options,
         runtime,
-        record_fetching_ctx_builder,
+        row_projector_builder,
     };
 
     let record_batch_stream =
@@ -253,12 +253,12 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         None,
         runtime.clone(),
     );
-    let fetching_schema = projected_schema.to_record_schema_with_key();
-    let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
-    let fetching_schema = fetching_schema.into_record_schema();
+    let fetched_schema = projected_schema.to_record_schema_with_key();
+    let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+    let fetched_schema = fetched_schema.into_record_schema();
     let table_schema = projected_schema.table_schema().clone();
-    let record_fetching_ctx_builder =
-        RecordFetchingContextBuilder::new(fetching_schema, table_schema, Some(primary_key_indexes));
+    let row_projector_builder =
+        RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
 
     let iter = {
         let space_id = config.space_id;
@@ -295,7 +295,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
         row_iter::record_batch_with_key_iter_to_stream(iter)
     };
 
-    let sst_read_options = sst_read_options_builder.build(record_fetching_ctx_builder);
+    let sst_read_options = sst_read_options_builder.build(row_projector_builder);
     let sst_meta = {
         let meta_reader = SstMetaReader {
             space_id,
