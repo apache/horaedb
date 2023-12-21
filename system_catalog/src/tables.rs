@@ -22,7 +22,7 @@ use common_types::{
     column_schema,
     datum::{Datum, DatumKind},
     projected_schema::RecordFetchingContext,
-    record_batch::FetchingRecordBatchBuilder,
+    record_batch::FetchedRecordBatchBuilder,
     row::Row,
     schema,
     schema::Schema,
@@ -157,7 +157,7 @@ impl SystemTable for Tables {
         let fetching_schema = request.projected_schema.to_record_schema_with_key();
         let primary_key_indexes = fetching_schema.primary_key_idx().to_vec();
         let fetching_schema = fetching_schema.to_record_schema();
-        let mut builder = FetchingRecordBatchBuilder::new(
+        let mut builder = FetchedRecordBatchBuilder::new(
             fetching_schema.clone(),
             Some(primary_key_indexes.clone()),
         );

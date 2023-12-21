@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use bytes_ext::Bytes;
 use common_types::{
     projected_schema::{RecordFetchingContext, RecordFetchingContextBuilder},
-    record_batch::FetchingRecordBatch,
+    record_batch::FetchedRecordBatch,
 };
 use datafusion::{
     common::ToDFSchema,
@@ -73,7 +73,7 @@ use crate::{
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
-type FetchingRecordBatchStream = Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send + Unpin>;
+type FetchedRecordBatchStream = Box<dyn Stream<Item = Result<FetchedRecordBatch>> + Send + Unpin>;
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -147,7 +147,7 @@ impl<'a> Reader<'a> {
     async fn maybe_read_parallelly(
         &mut self,
         read_parallelism: usize,
-    ) -> Result<Vec<FetchingRecordBatchStream>> {
+    ) -> Result<Vec<FetchedRecordBatchStream>> {
         assert!(read_parallelism > 0);
 
         self.init_if_necessary().await?;
@@ -512,7 +512,7 @@ impl RecordBatchProjector {
 }
 
 impl Stream for RecordBatchProjector {
-    type Item = Result<FetchingRecordBatch>;
+    type Item = Result<FetchedRecordBatch>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let projector = self.get_mut();
@@ -533,7 +533,7 @@ impl Stream for RecordBatchProjector {
                         }
                         projector.metrics.row_num += record_batch.num_rows();
 
-                        let projected_batch = FetchingRecordBatch::try_new(
+                        let projected_batch = FetchedRecordBatch::try_new(
                             &projector.record_fetching_ctx,
                             record_batch,
                         )
@@ -569,7 +569,7 @@ impl<'a> SstReader for Reader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<FetchingRecordBatch>>>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<FetchedRecordBatch>>>> {
         let mut streams = self.maybe_read_parallelly(1).await?;
         assert_eq!(streams.len(), 1);
         let stream = streams.pop().expect("impossible to fetch no stream");
@@ -580,7 +580,7 @@ impl<'a> SstReader for Reader<'a> {
 
 struct RecordBatchReceiver {
     bg_prefetch_tx: Option<watch::Sender<()>>,
-    rx_group: Vec<Receiver<Result<FetchingRecordBatch>>>,
+    rx_group: Vec<Receiver<Result<FetchedRecordBatch>>>,
     cur_rx_idx: usize,
     #[allow(dead_code)]
     drop_helper: AbortOnDropMany<()>,
@@ -588,7 +588,7 @@ struct RecordBatchReceiver {
 
 #[async_trait]
 impl PrefetchableStream for RecordBatchReceiver {
-    type Item = Result<FetchingRecordBatch>;
+    type Item = Result<FetchedRecordBatch>;
 
     async fn start_prefetch(&mut self) {
         // Start the prefetch work in background when first poll is called.
@@ -605,7 +605,7 @@ impl PrefetchableStream for RecordBatchReceiver {
 }
 
 impl Stream for RecordBatchReceiver {
-    type Item = Result<FetchingRecordBatch>;
+    type Item = Result<FetchedRecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         if self.rx_group.is_empty() {
@@ -685,8 +685,8 @@ impl<'a> ThreadedReader<'a> {
 
     fn read_record_batches_from_sub_reader(
         &mut self,
-        mut reader: Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send + Unpin>,
-        tx: Sender<Result<FetchingRecordBatch>>,
+        mut reader: Box<dyn Stream<Item = Result<FetchedRecordBatch>> + Send + Unpin>,
+        tx: Sender<Result<FetchedRecordBatch>>,
         mut rx: watch::Receiver<()>,
     ) -> JoinHandle<()> {
         self.runtime.spawn(async move {
@@ -713,7 +713,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<FetchingRecordBatch>>>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item = Result<FetchedRecordBatch>>>> {
         // Get underlying sst readers and channels.
         let sub_readers = self
             .inner
@@ -736,7 +736,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
         let channel_cap_per_sub_reader = self.channel_cap / sub_readers.len();
         let (tx_group, rx_group): (Vec<_>, Vec<_>) = (0..read_parallelism)
-            .map(|_| mpsc::channel::<Result<FetchingRecordBatch>>(channel_cap_per_sub_reader))
+            .map(|_| mpsc::channel::<Result<FetchedRecordBatch>>(channel_cap_per_sub_reader))
             .unzip();
 
         let (bg_prefetch_tx, bg_prefetch_rx) = watch::channel(());

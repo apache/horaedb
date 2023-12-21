@@ -21,7 +21,7 @@ use bytes_ext::{Bytes, BytesMut};
 use codec::row;
 use common_types::{
     projected_schema::RecordFetchingContext,
-    record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::contiguous::{ContiguousRowReader, ProjectedContiguousRow},
     schema::Schema,
     SequenceNumber,
@@ -146,7 +146,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     }
 
     /// Fetch next record batch
-    fn fetch_next_record_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
+    fn fetch_next_record_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batch_size > 0);
 
@@ -155,7 +155,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             .record_fetching_ctx
             .primary_key_indexes()
             .map(|idxs| idxs.to_vec());
-        let mut builder = FetchingRecordBatchBuilder::with_capacity(
+        let mut builder = FetchedRecordBatchBuilder::with_capacity(
             record_schema,
             primary_key_indexes,
             self.batch_size,
@@ -298,7 +298,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> Iterator for ColumnarIterImpl<A> {
-    type Item = Result<FetchingRecordBatch>;
+    type Item = Result<FetchedRecordBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.state != State::Initialized {

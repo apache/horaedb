@@ -275,7 +275,7 @@ mod tests {
     use common_types::{
         datum::Datum,
         projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
-        record_batch::FetchingRecordBatch,
+        record_batch::FetchedRecordBatch,
         row::Row,
         schema::IndexInWriterSchema,
         tests::{build_row, build_schema},
@@ -463,7 +463,7 @@ mod tests {
         test_memtable_scan_for_projection(schema, memtable);
     }
 
-    fn check_iterator<T: Iterator<Item = Result<FetchingRecordBatch>>>(
+    fn check_iterator<T: Iterator<Item = Result<FetchedRecordBatch>>>(
         iter: T,
         expected_rows: Vec<Row>,
     ) {

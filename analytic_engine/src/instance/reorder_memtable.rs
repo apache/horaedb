@@ -26,7 +26,7 @@ pub use arrow::{
 };
 use async_trait::async_trait;
 use common_types::{
-    record_batch::{FetchingRecordBatch, RecordBatchData},
+    record_batch::{FetchedRecordBatch, RecordBatchData},
     schema::Schema,
 };
 use datafusion::{
@@ -71,7 +71,7 @@ define_result!(Error);
 
 pub type DfResult<T> = std::result::Result<T, DataFusionError>;
 type SendableFetchingRecordBatchStream =
-    Pin<Box<dyn Stream<Item = Result<FetchingRecordBatch>> + Send>>;
+    Pin<Box<dyn Stream<Item = Result<FetchedRecordBatch>> + Send>>;
 
 impl From<DataFusionError> for Error {
     fn from(df_err: DataFusionError) -> Self {
@@ -280,7 +280,7 @@ impl Reorder {
             let batch = batch.context(FetchRecordBatch)?;
             let data = RecordBatchData::try_from(batch).context(ConvertRecordBatchData)?;
 
-            Ok(FetchingRecordBatch::new_from_parts(
+            Ok(FetchedRecordBatch::new_from_parts(
                 record_schema.clone(),
                 None,
                 data,

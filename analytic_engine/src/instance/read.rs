@@ -23,7 +23,7 @@ use std::{
 use async_stream::try_stream;
 use common_types::{
     projected_schema::ProjectedSchema,
-    record_batch::{FetchingRecordBatch, RecordBatch},
+    record_batch::{FetchedRecordBatch, RecordBatch},
     schema::RecordSchema,
     time::TimeRange,
 };
@@ -48,7 +48,7 @@ use crate::{
         chain::{ChainConfig, ChainIterator},
         dedup::DedupIterator,
         merge::{MergeBuilder, MergeConfig, MergeIterator},
-        FetchingRecordBatchIterator, IterOptions,
+        FetchedRecordBatchIterator, IterOptions,
     },
     table::{
         data::TableData,
@@ -168,7 +168,7 @@ impl Instance {
     fn build_partitioned_streams(
         &self,
         request: &ReadRequest,
-        partitioned_iters: Vec<impl FetchingRecordBatchIterator + 'static>,
+        partitioned_iters: Vec<impl FetchedRecordBatchIterator + 'static>,
     ) -> Result<PartitionedStreams> {
         let read_parallelism = request.opts.read_parallelism;
 
@@ -365,7 +365,7 @@ struct StreamStateOnMultiIters<I> {
     projected_schema: ProjectedSchema,
 }
 
-impl<I: FetchingRecordBatchIterator + 'static> StreamStateOnMultiIters<I> {
+impl<I: FetchedRecordBatchIterator + 'static> StreamStateOnMultiIters<I> {
     fn is_exhausted(&self) -> bool {
         self.curr_iter_idx >= self.iters.len()
     }
@@ -380,7 +380,7 @@ impl<I: FetchingRecordBatchIterator + 'static> StreamStateOnMultiIters<I> {
 
     async fn fetch_next_batch(
         &mut self,
-    ) -> Option<std::result::Result<FetchingRecordBatch, I::Error>> {
+    ) -> Option<std::result::Result<FetchedRecordBatch, I::Error>> {
         loop {
             if self.is_exhausted() {
                 return None;
@@ -397,7 +397,7 @@ impl<I: FetchingRecordBatchIterator + 'static> StreamStateOnMultiIters<I> {
 }
 
 fn iters_to_stream(
-    iters: Vec<impl FetchingRecordBatchIterator + 'static>,
+    iters: Vec<impl FetchedRecordBatchIterator + 'static>,
     projected_schema: ProjectedSchema,
 ) -> SendableRecordBatchStream {
     let mut state = StreamStateOnMultiIters {

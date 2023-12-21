@@ -19,7 +19,7 @@ use crate::{
     column_schema,
     datum::{Datum, DatumKind},
     projected_schema::{ProjectedSchema, RecordFetchingContext},
-    record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
         contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
         Row,
@@ -357,7 +357,7 @@ pub fn build_rows() -> Vec<Row> {
     ]
 }
 
-pub fn build_fetching_record_batch_by_rows(rows: Vec<Row>) -> FetchingRecordBatch {
+pub fn build_fetching_record_batch_by_rows(rows: Vec<Row>) -> FetchedRecordBatch {
     let schema = build_schema();
     assert!(schema.num_columns() > 1);
     let projection: Vec<usize> = (0..schema.num_columns() - 1).collect();
@@ -366,7 +366,7 @@ pub fn build_fetching_record_batch_by_rows(rows: Vec<Row>) -> FetchingRecordBatc
         RecordFetchingContext::new(&projected_schema.to_record_schema(), None, &schema, &schema)
             .unwrap();
 
-    let mut builder = FetchingRecordBatchBuilder::with_capacity(
+    let mut builder = FetchedRecordBatchBuilder::with_capacity(
         record_fetching_ctx.fetching_schema().clone(),
         None,
         2,
@@ -389,7 +389,7 @@ pub fn build_fetching_record_batch_by_rows(rows: Vec<Row>) -> FetchingRecordBatc
 }
 
 pub fn check_record_batch_with_key_with_rows(
-    record_batch_with_key: &FetchingRecordBatch,
+    record_batch_with_key: &FetchedRecordBatch,
     row_num: usize,
     column_num: usize,
     rows: Vec<Row>,

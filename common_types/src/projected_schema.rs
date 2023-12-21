@@ -371,8 +371,8 @@ impl TryFrom<ceresdbproto::schema::ProjectedSchema> for ProjectedSchema {
 
 /// Schema with projection informations
 struct ProjectedSchemaInner {
-    /// The table schema used to generate plan, possible to differ from recorded
-    /// schema in ssts.
+    /// The table schema used to generate plan, possible to differ from
+    /// schema in ssts/memtable.
     table_schema: Schema,
     /// Index of the projected columns in `self.schema`, `None` if
     /// all columns are needed.

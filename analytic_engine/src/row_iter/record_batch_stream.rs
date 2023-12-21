@@ -23,7 +23,7 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
 };
 use common_types::{
-    projected_schema::RecordFetchingContextBuilder, record_batch::FetchingRecordBatch,
+    projected_schema::RecordFetchingContextBuilder, record_batch::FetchedRecordBatch,
     schema::RecordSchema, SequenceNumber,
 };
 use datafusion::{
@@ -130,11 +130,11 @@ pub enum Error {
 
 define_result!(Error);
 
-// TODO(yingwen): Can we move sequence to FetchingRecordBatch and remove this
+// TODO(yingwen): Can we move sequence to FetchedRecordBatch and remove this
 // struct? But what is the sequence after merge?
 #[derive(Debug)]
 pub struct SequencedRecordBatch {
-    pub record_batch: FetchingRecordBatch,
+    pub record_batch: FetchedRecordBatch,
     pub sequence: SequenceNumber,
 }
 

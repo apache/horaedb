@@ -15,7 +15,7 @@
 use async_trait::async_trait;
 use common_types::{
     projected_schema::{ProjectedSchema, RecordFetchingContext},
-    record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
         contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
         Row,
@@ -25,7 +25,7 @@ use common_types::{
 use macros::define_result;
 use snafu::Snafu;
 
-use crate::row_iter::FetchingRecordBatchIterator;
+use crate::row_iter::FetchedRecordBatchIterator;
 
 #[derive(Debug, Snafu)]
 pub enum Error {}
@@ -34,12 +34,12 @@ define_result!(Error);
 
 pub struct VectorIterator {
     schema: RecordSchemaWithKey,
-    items: Vec<Option<FetchingRecordBatch>>,
+    items: Vec<Option<FetchedRecordBatch>>,
     idx: usize,
 }
 
 impl VectorIterator {
-    pub fn new(schema: RecordSchemaWithKey, items: Vec<FetchingRecordBatch>) -> Self {
+    pub fn new(schema: RecordSchemaWithKey, items: Vec<FetchedRecordBatch>) -> Self {
         Self {
             schema,
             items: items.into_iter().map(Some).collect(),
@@ -49,14 +49,14 @@ impl VectorIterator {
 }
 
 #[async_trait]
-impl FetchingRecordBatchIterator for VectorIterator {
+impl FetchedRecordBatchIterator for VectorIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         if self.idx == self.items.len() {
             return Ok(None);
         }
@@ -68,7 +68,7 @@ impl FetchingRecordBatchIterator for VectorIterator {
     }
 }
 
-pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchingRecordBatch {
+pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchedRecordBatch {
     assert!(schema.num_columns() > 1);
     let projection: Vec<usize> = (0..schema.num_columns()).collect();
     let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
@@ -87,7 +87,7 @@ pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> F
         .primary_key_indexes()
         .map(|idxs| idxs.to_vec());
     let mut builder =
-        FetchingRecordBatchBuilder::with_capacity(fetching_schema, primary_key_indexes, 2);
+        FetchedRecordBatchBuilder::with_capacity(fetching_schema, primary_key_indexes, 2);
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 
     let mut buf = Vec::new();
@@ -105,7 +105,7 @@ pub fn build_fetching_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> F
     builder.build().unwrap()
 }
 
-pub async fn check_iterator<T: FetchingRecordBatchIterator>(iter: &mut T, expected_rows: Vec<Row>) {
+pub async fn check_iterator<T: FetchedRecordBatchIterator>(iter: &mut T, expected_rows: Vec<Row>) {
     let mut visited_rows = 0;
     while let Some(batch) = iter.next_batch().await.unwrap() {
         for row_idx in 0..batch.num_rows() {

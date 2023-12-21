@@ -20,7 +20,7 @@ use std::{
 use async_trait::async_trait;
 use common_types::{
     projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
-    record_batch::FetchingRecordBatch,
+    record_batch::FetchedRecordBatch,
     request_id::RequestId,
     schema::RecordSchemaWithKey,
 };
@@ -37,7 +37,7 @@ use crate::{
         record_batch_stream::{
             self, BoxedPrefetchableRecordBatchStream, MemtableStreamContext, SstStreamContext,
         },
-        FetchingRecordBatchIterator,
+        FetchedRecordBatchIterator,
     },
     space::SpaceId,
     sst::{
@@ -327,7 +327,7 @@ impl ChainIterator {
         }
     }
 
-    async fn next_batch_internal(&mut self) -> Result<Option<FetchingRecordBatch>> {
+    async fn next_batch_internal(&mut self) -> Result<Option<FetchedRecordBatch>> {
         self.init_if_necessary();
         self.maybe_prefetch().await;
 
@@ -377,14 +377,14 @@ impl Drop for ChainIterator {
 }
 
 #[async_trait]
-impl FetchingRecordBatchIterator for ChainIterator {
+impl FetchedRecordBatchIterator for ChainIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         let timer = Instant::now();
         let res = self.next_batch_internal().await;
         self.metrics.scan_duration += timer.elapsed();

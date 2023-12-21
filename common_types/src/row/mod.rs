@@ -24,7 +24,7 @@ use snafu::{ensure, Backtrace, OptionExt, Snafu};
 use crate::{
     column_schema::{ColumnId, ColumnSchema},
     datum::{Datum, DatumKind, DatumView},
-    record_batch::FetchingRecordBatch,
+    record_batch::FetchedRecordBatch,
     schema::{RecordSchemaWithKey, Schema},
     time::Timestamp,
 };
@@ -560,13 +560,13 @@ pub trait RowView {
     fn column_by_idx(&self, column_idx: usize) -> Datum;
 }
 
-// TODO(yingwen): Add a method to get row view on FetchingRecordBatch.
-/// A row view on the [FetchingRecordBatch].
+// TODO(yingwen): Add a method to get row view on FetchedRecordBatch.
+/// A row view on the [FetchedRecordBatch].
 ///
 /// `row_idx < record_batch.num_rows()` is ensured.
 #[derive(Debug)]
 pub struct RowViewOnBatch<'a> {
-    pub record_batch: &'a FetchingRecordBatch,
+    pub record_batch: &'a FetchedRecordBatch,
     pub row_idx: usize,
 }
 
@@ -583,7 +583,7 @@ impl<'a> RowViewOnBatch<'a> {
 pub struct RowViewOnBatchColumnIter<'a> {
     next_column_idx: usize,
     row_idx: usize,
-    record_batch: &'a FetchingRecordBatch,
+    record_batch: &'a FetchedRecordBatch,
 }
 
 impl<'a> RowView for RowViewOnBatch<'a> {

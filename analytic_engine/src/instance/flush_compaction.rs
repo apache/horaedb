@@ -18,7 +18,7 @@ use std::{cmp, collections::Bound, fmt, sync::Arc};
 
 use common_types::{
     projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
-    record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     request_id::RequestId,
     row::RowViewOnBatch,
     time::TimeRange,
@@ -542,7 +542,7 @@ impl FlushTask {
 
         for time_range in &time_ranges {
             let (batch_record_sender, batch_record_receiver) =
-                channel::<Result<FetchingRecordBatch>>(DEFAULT_CHANNEL_SIZE);
+                channel::<Result<FetchedRecordBatch>>(DEFAULT_CHANNEL_SIZE);
             let file_id = self
                 .table_data
                 .alloc_file_id(&self.space_store.manifest)
@@ -1068,16 +1068,16 @@ impl SpaceStore {
 }
 
 fn split_record_batch_with_time_ranges(
-    record_batch: FetchingRecordBatch,
+    record_batch: FetchedRecordBatch,
     time_ranges: &[TimeRange],
     timestamp_idx: usize,
-) -> Result<Vec<FetchingRecordBatch>> {
+) -> Result<Vec<FetchedRecordBatch>> {
     let fetching_schema = record_batch.schema();
     let primary_key_indexes = record_batch.primary_key_indexes();
-    let mut builders: Vec<FetchingRecordBatchBuilder> = (0..time_ranges.len())
+    let mut builders: Vec<FetchedRecordBatchBuilder> = (0..time_ranges.len())
         .map(|_| {
             let primary_key_indexes = primary_key_indexes.map(|idxs| idxs.to_vec());
-            FetchingRecordBatchBuilder::new(fetching_schema.clone(), primary_key_indexes)
+            FetchedRecordBatchBuilder::new(fetching_schema.clone(), primary_key_indexes)
         })
         .collect();
 

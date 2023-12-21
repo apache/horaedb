@@ -24,7 +24,7 @@ use std::{
 use async_trait::async_trait;
 use common_types::{
     projected_schema::{ProjectedSchema, RecordFetchingContextBuilder},
-    record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     request_id::RequestId,
     row::RowViewOnBatch,
     schema::RecordSchemaWithKey,
@@ -45,7 +45,7 @@ use crate::{
             self, BoxedPrefetchableRecordBatchStream, MemtableStreamContext, SequencedRecordBatch,
             SstStreamContext,
         },
-        FetchingRecordBatchIterator, IterOptions,
+        FetchedRecordBatchIterator, IterOptions,
     },
     space::SpaceId,
     sst::{
@@ -349,7 +349,7 @@ impl BufferedStreamState {
     /// Returns number of rows added.
     fn append_rows_to(
         &mut self,
-        builder: &mut FetchingRecordBatchBuilder,
+        builder: &mut FetchedRecordBatchBuilder,
         len: usize,
     ) -> Result<usize> {
         let added = builder
@@ -361,7 +361,7 @@ impl BufferedStreamState {
 
     /// Take record batch slice with at most `len` rows from cursor and advance
     /// the cursor.
-    fn take_record_batch_slice(&mut self, len: usize) -> FetchingRecordBatch {
+    fn take_record_batch_slice(&mut self, len: usize) -> FetchedRecordBatch {
         let len_to_fetch = cmp::min(
             self.buffered_record_batch.record_batch.num_rows() - self.cursor,
             len,
@@ -428,14 +428,14 @@ impl BufferedStream {
     /// REQUIRE: the buffer is not exhausted.
     fn append_rows_to(
         &mut self,
-        builder: &mut FetchingRecordBatchBuilder,
+        builder: &mut FetchedRecordBatchBuilder,
         len: usize,
     ) -> Result<usize> {
         self.state.as_mut().unwrap().append_rows_to(builder, len)
     }
 
     /// REQUIRE: the buffer is not exhausted.
-    fn take_record_batch_slice(&mut self, len: usize) -> FetchingRecordBatch {
+    fn take_record_batch_slice(&mut self, len: usize) -> FetchedRecordBatch {
         self.state.as_mut().unwrap().take_record_batch_slice(len)
     }
 
@@ -659,7 +659,7 @@ pub struct MergeIterator {
     request_id: RequestId,
     inited: bool,
     schema: RecordSchemaWithKey,
-    record_batch_builder: FetchingRecordBatchBuilder,
+    record_batch_builder: FetchedRecordBatchBuilder,
     origin_streams: Vec<BoxedPrefetchableRecordBatchStream>,
     /// ssts are kept here to avoid them from being purged.
     #[allow(dead_code)]
@@ -688,7 +688,7 @@ impl MergeIterator {
         let heap_cap = streams.len();
         let primary_key_indexes = schema.primary_key_idx().to_vec();
         let fetching_schema = schema.to_record_schema();
-        let record_batch_builder = FetchingRecordBatchBuilder::with_capacity(
+        let record_batch_builder = FetchedRecordBatchBuilder::with_capacity(
             fetching_schema,
             Some(primary_key_indexes),
             iter_options.batch_size,
@@ -821,7 +821,7 @@ impl MergeIterator {
     async fn fetch_rows_from_one_stream(
         &mut self,
         num_rows_to_fetch: usize,
-    ) -> Result<Option<FetchingRecordBatch>> {
+    ) -> Result<Option<FetchedRecordBatch>> {
         assert_eq!(self.hot.len(), 1);
         self.metrics.times_fetch_rows_from_one += 1;
 
@@ -865,7 +865,7 @@ impl MergeIterator {
     /// Fetch the next batch from the streams.
     ///
     /// `init_if_necessary` should be finished before this method.
-    async fn fetch_next_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
+    async fn fetch_next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         self.init_if_necessary().await?;
 
         self.record_batch_builder.clear();
@@ -900,14 +900,14 @@ impl MergeIterator {
 }
 
 #[async_trait]
-impl FetchingRecordBatchIterator for MergeIterator {
+impl FetchedRecordBatchIterator for MergeIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         let record_batch = self.fetch_next_batch().await?;
 
         trace!("MergeIterator send next record batch:{:?}", record_batch);

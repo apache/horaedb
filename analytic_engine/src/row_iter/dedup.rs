@@ -16,7 +16,7 @@ use std::cmp::Ordering;
 
 use async_trait::async_trait;
 use common_types::{
-    record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     request_id::RequestId,
     row::{Row, RowViewOnBatch, RowWithMeta},
     schema::RecordSchemaWithKey,
@@ -26,7 +26,7 @@ use logger::{info, trace};
 use macros::define_result;
 use snafu::{ResultExt, Snafu};
 
-use crate::row_iter::{FetchingRecordBatchIterator, IterOptions};
+use crate::row_iter::{FetchedRecordBatchIterator, IterOptions};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -54,7 +54,7 @@ define_result!(Error);
 pub struct DedupIterator<I> {
     request_id: RequestId,
     schema: RecordSchemaWithKey,
-    record_batch_builder: FetchingRecordBatchBuilder,
+    record_batch_builder: FetchedRecordBatchBuilder,
     iter: I,
     /// Previous row returned.
     prev_row: Option<Row>,
@@ -67,12 +67,12 @@ pub struct DedupIterator<I> {
     total_selected_rows: usize,
 }
 
-impl<I: FetchingRecordBatchIterator> DedupIterator<I> {
+impl<I: FetchedRecordBatchIterator> DedupIterator<I> {
     pub fn new(request_id: RequestId, iter: I, iter_options: IterOptions) -> Self {
         let schema_with_key = iter.schema();
         let primary_key_indexes = schema_with_key.primary_key_idx().to_vec();
         let fetching_schema = schema_with_key.to_record_schema();
-        let record_batch_builder = FetchingRecordBatchBuilder::with_capacity(
+        let record_batch_builder = FetchedRecordBatchBuilder::with_capacity(
             fetching_schema,
             Some(primary_key_indexes),
             iter_options.batch_size,
@@ -89,7 +89,7 @@ impl<I: FetchingRecordBatchIterator> DedupIterator<I> {
         }
     }
 
-    fn dedup_batch(&mut self, record_batch: FetchingRecordBatch) -> Result<FetchingRecordBatch> {
+    fn dedup_batch(&mut self, record_batch: FetchedRecordBatch) -> Result<FetchedRecordBatch> {
         self.selected_rows.clear();
         // Ignore all rows by default.
         self.selected_rows.resize(record_batch.num_rows(), false);
@@ -145,9 +145,9 @@ impl<I: FetchingRecordBatchIterator> DedupIterator<I> {
     /// Filter batch by `selected_rows`.
     fn filter_batch(
         &mut self,
-        record_batch: FetchingRecordBatch,
+        record_batch: FetchedRecordBatch,
         selected_num: usize,
-    ) -> Result<FetchingRecordBatch> {
+    ) -> Result<FetchedRecordBatch> {
         self.total_selected_rows += selected_num;
         self.total_duplications += record_batch.num_rows() - selected_num;
 
@@ -173,14 +173,14 @@ impl<I: FetchingRecordBatchIterator> DedupIterator<I> {
 }
 
 #[async_trait]
-impl<I: FetchingRecordBatchIterator> FetchingRecordBatchIterator for DedupIterator<I> {
+impl<I: FetchedRecordBatchIterator> FetchedRecordBatchIterator for DedupIterator<I> {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<FetchingRecordBatch>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         match self
             .iter
             .next_batch()

@@ -18,7 +18,7 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 use common_types::{
-    datum::DatumKind, record_batch::FetchingRecordBatch, request_id::RequestId, time::TimeRange,
+    datum::DatumKind, record_batch::FetchedRecordBatch, request_id::RequestId, time::TimeRange,
 };
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
@@ -155,8 +155,8 @@ impl RecordBatchGroupWriter {
     /// the left rows.
     async fn fetch_next_row_group(
         &mut self,
-        prev_record_batch: &mut Option<FetchingRecordBatch>,
-    ) -> Result<Vec<FetchingRecordBatch>> {
+        prev_record_batch: &mut Option<FetchedRecordBatch>,
+    ) -> Result<Vec<FetchedRecordBatch>> {
         let mut curr_row_group = vec![];
         // Used to record the number of remaining rows to fill `curr_row_group`.
         let mut remaining = self.num_rows_per_row_group;
@@ -213,7 +213,7 @@ impl RecordBatchGroupWriter {
     /// Build the parquet filter for the given `row_group`.
     fn build_row_group_filter(
         &self,
-        row_group_batch: &[FetchingRecordBatch],
+        row_group_batch: &[FetchedRecordBatch],
     ) -> Result<RowGroupFilter> {
         let schema_with_key =
             row_group_batch[0]
@@ -243,7 +243,7 @@ impl RecordBatchGroupWriter {
 
     fn update_column_values(
         column_values: &mut [Option<ColumnValueSet>],
-        record_batch: &FetchingRecordBatch,
+        record_batch: &FetchedRecordBatch,
     ) {
         for (col_idx, col_values) in column_values.iter_mut().enumerate() {
             let mut too_many_values = false;
@@ -310,7 +310,7 @@ impl RecordBatchGroupWriter {
         sink: W,
         meta_path: &Path,
     ) -> Result<(usize, ParquetMetaData)> {
-        let mut prev_record_batch: Option<FetchingRecordBatch> = None;
+        let mut prev_record_batch: Option<FetchedRecordBatch> = None;
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 

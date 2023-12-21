@@ -362,15 +362,15 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
 }
 
 #[derive(Debug)]
-pub struct FetchingRecordBatch {
+pub struct FetchedRecordBatch {
     schema: RecordSchema,
-    // TODO: remove it later, `FetchingRecordBatch` is unnecessary to know anything about primary
+    // TODO: remove it later, `FetchedRecordBatch` is unnecessary to know anything about primary
     // keys.
     primary_key_indexes: Option<Vec<usize>>,
     data: RecordBatchData,
 }
 
-impl FetchingRecordBatch {
+impl FetchedRecordBatch {
     pub fn try_new(
         ctx: &RecordFetchingContext,
         arrow_record_batch: ArrowRecordBatch,
@@ -414,7 +414,7 @@ impl FetchingRecordBatch {
 
         let data = RecordBatchData::new(schema.to_arrow_schema_ref(), column_blocks)?;
 
-        Ok(FetchingRecordBatch {
+        Ok(FetchedRecordBatch {
             schema,
             primary_key_indexes: ctx.primary_key_indexes().map(|idxs| idxs.to_vec()),
             data,
@@ -456,7 +456,7 @@ impl FetchingRecordBatch {
         Row::from_datums(datums)
     }
 
-    /// Project the [FetchingRecordBatch] into a [RecordBatch] according to
+    /// Project the [FetchedRecordBatch] into a [RecordBatch] according to
     /// [ProjectedSchema].
     // TODO: how do we ensure `ProjectedSchema` passed here is same as the source
     // `ProjectedSchema` of `RecordSchema` here?
@@ -571,13 +571,13 @@ impl FetchingRecordBatch {
     }
 }
 
-pub struct FetchingRecordBatchBuilder {
+pub struct FetchedRecordBatchBuilder {
     fetching_schema: RecordSchema,
     primary_key_indexes: Option<Vec<usize>>,
     builders: Vec<ColumnBlockBuilder>,
 }
 
-impl FetchingRecordBatchBuilder {
+impl FetchedRecordBatchBuilder {
     pub fn new(fetching_schema: RecordSchema, primary_key_indexes: Option<Vec<usize>>) -> Self {
         let builders = fetching_schema
             .columns()
@@ -670,7 +670,7 @@ impl FetchingRecordBatchBuilder {
     /// - The `record_batch` and the builder must have the same schema.
     pub fn append_batch_range(
         &mut self,
-        record_batch: &FetchingRecordBatch,
+        record_batch: &FetchedRecordBatch,
         start: usize,
         len: usize,
     ) -> Result<usize> {
@@ -710,8 +710,8 @@ impl FetchingRecordBatchBuilder {
         }
     }
 
-    /// Build [FetchingRecordBatch] and reset the builder.
-    pub fn build(&mut self) -> Result<FetchingRecordBatch> {
+    /// Build [FetchedRecordBatch] and reset the builder.
+    pub fn build(&mut self) -> Result<FetchedRecordBatch> {
         let column_blocks: Vec<_> = self
             .builders
             .iter_mut()
@@ -719,7 +719,7 @@ impl FetchingRecordBatchBuilder {
             .collect();
         let arrow_schema = self.fetching_schema.to_arrow_schema_ref();
 
-        Ok(FetchingRecordBatch {
+        Ok(FetchedRecordBatch {
             schema: self.fetching_schema.clone(),
             primary_key_indexes: self.primary_key_indexes.clone(),
             data: RecordBatchData::new(arrow_schema, column_blocks)?,
@@ -730,7 +730,7 @@ impl FetchingRecordBatchBuilder {
 #[cfg(test)]
 mod tests {
     use crate::{
-        record_batch::{FetchingRecordBatch, FetchingRecordBatchBuilder},
+        record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
         row::RowViewOnBatch,
         tests::{
             build_fetching_record_batch_by_rows, build_projected_schema, build_rows,
@@ -738,13 +738,13 @@ mod tests {
         },
     };
 
-    fn build_fetching_record_batch() -> FetchingRecordBatch {
+    fn build_fetching_record_batch() -> FetchedRecordBatch {
         let rows = build_rows();
         build_fetching_record_batch_by_rows(rows)
     }
 
     fn check_record_batch_with_key(
-        record_batch_with_key: FetchingRecordBatch,
+        record_batch_with_key: FetchedRecordBatch,
         row_num: usize,
         column_num: usize,
     ) -> bool {
@@ -766,7 +766,7 @@ mod tests {
         let projected_schema = build_projected_schema();
         let fetching_record_batch = build_fetching_record_batch();
         let mut builder =
-            FetchingRecordBatchBuilder::with_capacity(projected_schema.to_record_schema(), None, 2);
+            FetchedRecordBatchBuilder::with_capacity(projected_schema.to_record_schema(), None, 2);
         let view = RowViewOnBatch {
             record_batch: &fetching_record_batch,
             row_idx: 1,
@@ -785,7 +785,7 @@ mod tests {
         let record_batch_with_key = build_fetching_record_batch();
 
         let mut builder =
-            FetchingRecordBatchBuilder::with_capacity(projected_schema.to_record_schema(), None, 2);
+            FetchedRecordBatchBuilder::with_capacity(projected_schema.to_record_schema(), None, 2);
         builder
             .append_batch_range(&record_batch_with_key, 0, 2)
             .unwrap();

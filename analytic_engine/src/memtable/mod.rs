@@ -25,7 +25,7 @@ use std::{ops::Bound, sync::Arc, time::Instant};
 use bytes_ext::{ByteVec, Bytes};
 use common_types::{
     projected_schema::RecordFetchingContextBuilder,
-    record_batch::FetchingRecordBatch,
+    record_batch::FetchedRecordBatch,
     row::Row,
     schema::{IndexInWriterSchema, Schema},
     time::TimeRange,
@@ -291,4 +291,4 @@ pub struct Metrics {
 pub type MemTableRef = Arc<dyn MemTable + Send + Sync>;
 
 /// A pointer to columnar iterator
-pub type ColumnarIterPtr = Box<dyn Iterator<Item = Result<FetchingRecordBatch>> + Send + Sync>;
+pub type ColumnarIterPtr = Box<dyn Iterator<Item = Result<FetchedRecordBatch>> + Send + Sync>;
