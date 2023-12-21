@@ -227,6 +227,20 @@ struct FlushTask {
     min_flush_interval_ms: Option<u64>,
 }
 
+/// The checker to determine whether a flush is frequent.
+struct FrequentFlushChecker {
+    min_flush_interval_ms: u64,
+    last_flush_time_ms: u64,
+}
+
+impl FrequentFlushChecker {
+    #[inline]
+    fn is_frequent_flush(&self) -> bool {
+        let now = time_ext::current_time_millis();
+        self.last_flush_time_ms + self.min_flush_interval_ms > now
+    }
+}
+
 impl Flusher {
     /// Schedule a flush request.
     pub async fn schedule_flush(
@@ -287,7 +301,7 @@ impl FlushTask {
     /// Each table can only have one running flush task at the same time, which
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
-        if self.is_flush_too_frequently() {
+        if self.is_frequent_flush() {
             debug!(
                 "Ignore flush task for too frequent flush, table:{}",
                 self.table_data.name
@@ -335,11 +349,13 @@ impl FlushTask {
         Ok(())
     }
 
-    fn is_flush_too_frequently(&self) -> bool {
-        if let Some(interval_ms) = self.min_flush_interval_ms {
-            let last_flush_time = self.table_data.last_flush_time();
-            let now = time_ext::current_time_millis();
-            last_flush_time + interval_ms < now
+    fn is_frequent_flush(&self) -> bool {
+        if let Some(min_flush_interval_ms) = self.min_flush_interval_ms {
+            let checker = FrequentFlushChecker {
+                min_flush_interval_ms,
+                last_flush_time_ms: self.table_data.last_flush_time(),
+            };
+            checker.is_frequent_flush()
         } else {
             false
         }
@@ -1215,7 +1231,7 @@ mod tests {
         time::TimeRange,
     };
 
-    use super::collect_column_stats_from_meta_datas;
+    use super::{collect_column_stats_from_meta_datas, FrequentFlushChecker};
     use crate::{
         instance::flush_compaction::split_record_batch_with_time_ranges,
         sst::{
@@ -1341,5 +1357,25 @@ mod tests {
             build_meta_data(vec![1, 3, 5]),
         ];
         check_collect_column_stats(&schema, vec![3, 5], meta_datas);
+    }
+
+    #[test]
+    fn test_frequent_flush() {
+        let now = time_ext::current_time_millis();
+        let cases = vec![
+            (now - 1000, 100, false),
+            (now - 1000, 2000, true),
+            (now - 10000, 200, false),
+            (now - 2000, 2000, false),
+            (now + 2000, 1000, true),
+        ];
+        for (last_flush_time_ms, min_flush_interval_ms, expect) in cases {
+            let checker = FrequentFlushChecker {
+                min_flush_interval_ms,
+                last_flush_time_ms,
+            };
+
+            assert_eq!(expect, checker.is_frequent_flush());
+        }
     }
 }
