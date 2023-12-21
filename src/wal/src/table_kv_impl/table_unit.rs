@@ -820,7 +820,7 @@ impl<T: TableKv> SyncLogIterator for TableLogIterator<T> {
             .context(manager::Encoding)?;
 
         // To unblock pr#119, we use the following to simple resolve borrow-check error.
-        // detail info: https://github.com/CeresDB/horaedb/issues/120
+        // detail info: https://github.com/apache/incubator-horaedb/issues/120
         self.previous_value = payload.to_owned();
 
         // Step current iterator, if it becomes invalid, reset `current_iter` to None

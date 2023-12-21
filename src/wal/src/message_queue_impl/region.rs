@@ -827,7 +827,7 @@ pub struct MessageQueueLogIterator<C: ConsumeIterator> {
     /// Used to encode/decode the logs
     log_encoding: CommonLogEncoding,
 
-    /// See the same problem in https://github.com/CeresDB/horaedb/issues/120
+    /// See the same problem in https://github.com/apache/incubator-horaedb/issues/120
     previous_value: Vec<u8>,
     // TODO: timeout
 }

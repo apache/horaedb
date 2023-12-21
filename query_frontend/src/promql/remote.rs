@@ -41,7 +41,7 @@ use crate::{
 
 pub const NAME_LABEL: &str = "__name__";
 pub const DEFAULT_FIELD_COLUMN: &str = "value";
-// FIXME: perhaps make it configurable https://github.com/CeresDB/horaedb/issues/1329
+// FIXME: perhaps make it configurable https://github.com/apache/incubator-horaedb/issues/1329
 const FIELD_LABEL: &str = "__horaedb_field__";
 
 pub struct RemoteQueryPlan {
