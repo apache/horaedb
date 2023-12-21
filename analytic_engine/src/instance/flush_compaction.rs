@@ -213,7 +213,7 @@ pub struct Flusher {
 
     pub runtime: RuntimeRef,
     pub write_sst_max_buffer_size: usize,
-    /// if the interval is set, it will generate a [`FlushTask`] with min flush
+    /// If the interval is set, it will generate a [`FlushTask`] with min flush
     /// interval check.
     pub min_flush_interval_ms: Option<u64>,
 }
@@ -301,9 +301,10 @@ impl FlushTask {
     /// Each table can only have one running flush task at the same time, which
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
-        if self.is_frequent_flush() {
+        let large_enough = self.table_data.should_flush_table(false);
+        if !large_enough && self.is_frequent_flush() {
             debug!(
-                "Ignore flush task for too frequent flush, table:{}",
+                "Ignore flush task for too frequent flush of small memtable, table:{}",
                 self.table_data.name
             );
 
