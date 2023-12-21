@@ -65,9 +65,11 @@ pub struct RowProjector {
     /// The schema for data fetched
     /// It is derived from table schema and some columns may not exist in data
     /// source.
-    fetched_schema: RecordSchema,
+    target_record_schema: RecordSchema,
 
-    ///
+    /// Primary key indexes in `fetched_schema`.
+    /// It will be `None` if update mode of table is `append`,
+    /// and will be `Some` if the mode is `overwrite`.
     primary_key_indexes: Option<Vec<usize>>,
 
     /// Schema in data source
@@ -75,24 +77,37 @@ pub struct RowProjector {
     /// schema caused by table schema altering.
     source_schema: Schema,
 
-    /// The Vec stores the column index in source, and `None` means this column
-    /// is not in source but required by reader, and need to filled by null.
-    /// The length of Vec is the same as the number of columns reader intended
-    /// to read.
-    fetched_source_column_indexes: Vec<Option<usize>>,
+    /// The Vec stores the column index in data source, and `None` means this
+    /// column is not in source but required by reader, and need to filled
+    /// by null. The length of Vec is the same as the number of columns
+    /// reader intended to read.
+    source_projection_indexes: Vec<Option<usize>>,
 
-    /// Similar as `fetched_source_column_indexes`, but storing the projected
-    /// source column index
+    /// Used to reorder columns in arrow record batch fetched from sst to the
+    /// needed projection order.
+    /// Actually, It stores the record column indexes in
+    /// projected order similar as `source_projection_indexes`.
+    ///
+    /// Why we need it?
+    /// Because in current rust parquet impl, we can just define which columns
+    /// we wanted to fetch without their order.
     ///
     /// For example:
-    ///   source column indexes: 0,1,2,3,4
-    ///   data fetched indexes in source: 2,1,3
+    ///     wanted columns in order: 2,1,3
+    ///     actual fetched columns: 1,2,3
     ///
-    /// We can see, only columns:[1,2,3] in source is needed,
-    /// and their indexes in pulled projected record bath are: [0,1,2].
+    /// However, projection is not only wanted columns but with wanted order, so
+    /// we need this remapping to reorder the fetched record.
     ///
-    /// So the stored data fetched indexes in projected source are: [1,0,2].
-    fetched_projected_source_column_indexes: Vec<Option<usize>>,
+    /// For example:
+    ///   source columns in sst: 0,1,2,3,4
+    ///   target projection columns: 2,1,3
+    ///   
+    ///   the actual columns in fetched record: 1,2,3
+    ///   relative columns indexes in fetched record: 0,1,2
+    ///
+    ///   finally, the remapping to the relative indexes: 1,0,2
+    target_record_projection_remapping: Vec<Option<usize>>,
 }
 
 impl RowProjector {
@@ -133,11 +148,11 @@ impl RowProjector {
             .collect();
 
         Ok(RowProjector {
-            fetched_schema: fetched_schema.clone(),
+            target_record_schema: fetched_schema.clone(),
             primary_key_indexes,
             source_schema: source_schema.clone(),
-            fetched_source_column_indexes,
-            fetched_projected_source_column_indexes,
+            source_projection_indexes: fetched_source_column_indexes,
+            target_record_projection_remapping: fetched_projected_source_column_indexes,
         })
     }
 
@@ -190,12 +205,12 @@ impl RowProjector {
     }
 
     pub fn fetched_schema(&self) -> &RecordSchema {
-        &self.fetched_schema
+        &self.target_record_schema
     }
 
     /// The projected indexes of existed columns in the source schema.
     pub fn existed_source_projection(&self) -> Vec<usize> {
-        self.fetched_source_column_indexes
+        self.source_projection_indexes
             .iter()
             .filter_map(|index| *index)
             .collect()
@@ -204,13 +219,13 @@ impl RowProjector {
     /// The projected indexes of all columns(existed and not exist) in the
     /// source schema.
     pub fn fetched_source_column_indexes(&self) -> &[Option<usize>] {
-        &self.fetched_source_column_indexes
+        &self.source_projection_indexes
     }
 
     /// The projected indexes of all columns(existed and not exist) in the
     /// projected source schema.
     pub fn fetched_projected_source_column_indexes(&self) -> &[Option<usize>] {
-        &self.fetched_projected_source_column_indexes
+        &self.target_record_projection_remapping
     }
 
     pub fn primary_key_indexes(&self) -> Option<&[usize]> {
@@ -223,9 +238,9 @@ impl RowProjector {
     pub fn project_row(&self, row: &Row, mut datums_buffer: Vec<Datum>) -> Row {
         assert_eq!(self.source_schema.num_columns(), row.num_columns());
 
-        datums_buffer.reserve(self.fetched_schema.num_columns());
+        datums_buffer.reserve(self.target_record_schema.num_columns());
 
-        for p in &self.fetched_source_column_indexes {
+        for p in &self.source_projection_indexes {
             let datum = match p {
                 Some(index_in_source) => row[*index_in_source].clone(),
                 None => Datum::Null,

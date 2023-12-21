@@ -205,7 +205,7 @@ impl Instance {
         let version = table_data.current_version();
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
         let iter_options = self.make_iter_options(table_options.num_rows_per_row_group);
-        // generate builder
+
         let mut iters = Vec::with_capacity(read_views.len());
         for (idx, read_view) in read_views.into_iter().enumerate() {
             let metrics_collector = request

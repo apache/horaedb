@@ -345,10 +345,7 @@ impl SstReadOptionsBuilder {
         }
     }
 
-    pub fn build(
-        self,
-        row_projector_builder: RowProjectorBuilder,
-    ) -> SstReadOptions {
+    pub fn build(self, row_projector_builder: RowProjectorBuilder) -> SstReadOptions {
         SstReadOptions {
             maybe_table_level_metrics: self.maybe_table_level_metrics,
             num_rows_per_row_group: self.num_rows_per_row_group,

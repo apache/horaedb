@@ -109,8 +109,7 @@ impl SstBench {
             .unwrap()
             .table_schema()
             .clone();
-        let row_projector_builder =
-            RowProjectorBuilder::new(fetched_schema, table_schema, None);
+        let row_projector_builder = RowProjectorBuilder::new(fetched_schema, table_schema, None);
         let sst_read_options = self
             .sst_read_options_builder
             .clone()

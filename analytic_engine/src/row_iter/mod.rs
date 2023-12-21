@@ -43,8 +43,7 @@ pub trait FetchedRecordBatchIterator: Send {
 
     fn schema(&self) -> &RecordSchemaWithKey;
 
-    async fn next_batch(&mut self)
-        -> std::result::Result<Option<FetchedRecordBatch>, Self::Error>;
+    async fn next_batch(&mut self) -> std::result::Result<Option<FetchedRecordBatch>, Self::Error>;
 }
 
 pub fn record_batch_with_key_iter_to_stream<I: FetchedRecordBatchIterator + Unpin + 'static>(

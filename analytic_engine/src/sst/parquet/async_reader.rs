@@ -296,10 +296,7 @@ impl<'a> Reader<'a> {
         let parquet_metadata = meta_data.parquet();
         let proj_mask = ProjectionMask::leaves(
             meta_data.parquet().file_metadata().schema_descr(),
-            row_projector
-                .existed_source_projection()
-                .iter()
-                .copied(),
+            row_projector.existed_source_projection().iter().copied(),
         );
         debug!(
             "Reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",
@@ -533,12 +530,10 @@ impl Stream for RecordBatchProjector {
                         }
                         projector.metrics.row_num += record_batch.num_rows();
 
-                        let projected_batch = FetchedRecordBatch::try_new(
-                            &projector.row_projector,
-                            record_batch,
-                        )
-                        .box_err()
-                        .context(DecodeRecordBatch {});
+                        let projected_batch =
+                            FetchedRecordBatch::try_new(&projector.row_projector, record_batch)
+                                .box_err()
+                                .context(DecodeRecordBatch {});
 
                         Poll::Ready(Some(projected_batch))
                     }

@@ -165,8 +165,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             if let Some(row) = self.fetch_next_row()? {
                 let row_reader = ContiguousRowReader::try_new(&row, &self.memtable_schema)
                     .context(DecodeContinuousRow)?;
-                let projected_row =
-                    ProjectedContiguousRow::new(row_reader, &self.row_projector);
+                let projected_row = ProjectedContiguousRow::new(row_reader, &self.row_projector);
 
                 trace!("Column iterator fetch next row, row:{:?}", projected_row);
 

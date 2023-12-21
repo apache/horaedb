@@ -897,11 +897,8 @@ impl SpaceStore {
         let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
         let fetched_schema = fetched_schema.into_record_schema();
         let table_schema = projected_schema.table_schema().clone();
-        let row_projector_builder = RowProjectorBuilder::new(
-            fetched_schema,
-            table_schema,
-            Some(primary_key_indexes),
-        );
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
 
         let iter_options = IterOptions {
             batch_size: table_options.num_rows_per_row_group,

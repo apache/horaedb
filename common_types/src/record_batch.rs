@@ -371,10 +371,7 @@ pub struct FetchedRecordBatch {
 }
 
 impl FetchedRecordBatch {
-    pub fn try_new(
-        ctx: &RowProjector,
-        arrow_record_batch: ArrowRecordBatch,
-    ) -> Result<Self> {
+    pub fn try_new(ctx: &RowProjector, arrow_record_batch: ArrowRecordBatch) -> Result<Self> {
         let column_indexes = ctx.fetched_projected_source_column_indexes();
         let schema = ctx.fetched_schema().clone();
         let mut column_blocks = Vec::with_capacity(schema.num_columns());

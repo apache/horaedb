@@ -23,8 +23,8 @@ use arrow::{
     datatypes::{DataType as ArrowDataType, SchemaRef as ArrowSchemaRef},
 };
 use common_types::{
-    projected_schema::RowProjectorBuilder, record_batch::FetchedRecordBatch,
-    schema::RecordSchema, SequenceNumber,
+    projected_schema::RowProjectorBuilder, record_batch::FetchedRecordBatch, schema::RecordSchema,
+    SequenceNumber,
 };
 use datafusion::{
     common::ToDFSchema,
@@ -246,8 +246,7 @@ pub fn stream_from_memtable(
         .columns()
         .iter()
         .format_with(",", |col, f| f(&format_args!("{}", col.name)));
-    let scan_memtable_desc =
-        format!("scan_memtable_{max_seq}, fetched_columns:[{fetched_cols}]",);
+    let scan_memtable_desc = format!("scan_memtable_{max_seq}, fetched_columns:[{fetched_cols}]",);
     let metrics_collector = metrics_collector.map(|v| v.span(scan_memtable_desc));
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,

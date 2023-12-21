@@ -363,14 +363,10 @@ pub fn build_fetched_record_batch_by_rows(rows: Vec<Row>) -> FetchedRecordBatch 
     let projection: Vec<usize> = (0..schema.num_columns() - 1).collect();
     let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
     let row_projector =
-        RowProjector::new(&projected_schema.to_record_schema(), None, &schema, &schema)
-            .unwrap();
+        RowProjector::new(&projected_schema.to_record_schema(), None, &schema, &schema).unwrap();
 
-    let mut builder = FetchedRecordBatchBuilder::with_capacity(
-        row_projector.fetched_schema().clone(),
-        None,
-        2,
-    );
+    let mut builder =
+        FetchedRecordBatchBuilder::with_capacity(row_projector.fetched_schema().clone(), None, 2);
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 
     let mut buf = Vec::new();
