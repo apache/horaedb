@@ -200,7 +200,7 @@ fn prefer_pick_by_seq() -> bool {
 /// Size tiered compaction strategy
 ///
 /// Origin solution[1] will only consider file size, but this will cause data
-/// corrupt, see https://github.com/CeresDB/horaedb/pull/1041
+/// corrupt, see https://github.com/apache/incubator-horaedb/pull/1041
 ///
 /// So we could only compact files with adjacent seq, or ssts without
 /// overlapping key range among them. Currently solution is relative simple,

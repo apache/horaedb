@@ -8,7 +8,7 @@ META_BIN_PATH=${META_BIN_PATH:-""}
 
 if [[ -z "${META_BIN_PATH}" ]]; then
     echo "Fetch and install horaemeta-server..."
-    go install -a github.com/CeresDB/horaemeta/cmd/horaemeta-server@main
+    go install -a github.com/apache/incubator-horaedb-meta/cmd/horaemeta-server@main
     META_BIN_PATH="$(go env GOPATH)/bin/horaemeta-server"
 fi
 

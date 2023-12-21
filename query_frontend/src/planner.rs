@@ -1619,7 +1619,7 @@ mod tests {
     fn test_create_table_failed() {
         // HoraeDB can reference other columns in default value expr, but it is mysql
         // style, which only allow it reference columns defined before it.
-        // issue: https://github.com/CeresDB/horaedb/issues/250
+        // issue: https://github.com/apache/incubator-horaedb/issues/250
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
                                                       ts timestamp not null,
                                                       c3 uint32 Default c4,

@@ -1,6 +1,6 @@
 
 
-[CeresDB](https://github.com/CeresDB/horaedb) is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
+[HoraeDB](https://github.com/apache/incubator-horaedb) is a high-performance, distributed, schema-less, cloud native time-series database that can handle both time-series and analytics workloads.
 
 # How to use this image
 
@@ -35,4 +35,4 @@ docker run -d --name horaedb-server \
 
 # Documentation
 
-- https://ceresdb.github.io/docs
+- https://apache.github.io/incubator-horaedb-docs/
