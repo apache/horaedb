@@ -24,18 +24,18 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: horaedb/horaedb-server
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   docker:
-    if: github.repository_owner == 'apache'
+    if: github.repository == 'apache/incubator-horaedb'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Login to Container Registry
