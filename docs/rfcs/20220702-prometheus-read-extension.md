@@ -2,7 +2,7 @@ Prometheus read extension for HoraeDB
 ---------------------------
 
 - Feature Name: prometheus-read-extension
-- Tracking Issue: https://github.com/CeresDB/horaedb/issues/90
+- Tracking Issue: https://github.com/apache/incubator-horaedb/issues/90
 
 # Summary
 Drop-in and full-featured Prometheus read extension for HoraeDB

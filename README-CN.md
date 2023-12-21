@@ -1,15 +1,14 @@
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
-[![CI](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/CeresDB/horaedb/actions/workflows/ci.yml)
-[![OpenIssue](https://img.shields.io/github/issues/CeresDB/horaedb)](https://github.com/CeresDB/horaedb/issues)
-[![Slack](https://badgen.net/badge/Slack/Join%20CeresDB/0abd59?icon=slack)](https://join.slack.com/t/ceresdbcommunity/shared_invite/zt-1dcbv8yq8-Fv8aVUb6ODTL7kxbzs9fnA)
-[![Docker](https://img.shields.io/docker/v/ceresdb/horaedb-server?logo=docker)](https://hub.docker.com/r/ceresdb/horaedb-server)
+[![CI](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml)
+[![OpenIssue](https://img.shields.io/github/issues/apache/horaedb)](https://github.com/apache/horaedb/issues)
+<!-- [![Docker](https://img.shields.io/docker/v/apache/horaedb-server?logo=docker)](https://hub.docker.com/r/apache/horaedb-server) TODO need to wait for first apache version release. --> 
 
 [English](./README.md)
 
 HoraeDB 是一款高性能、分布式的云原生时序数据库。
 
 ## RoadMap
-项目 [Roadmap](https://ceresdb.github.io/docs/dev/roadmap.html)。
+项目 [Roadmap](https://apache.github.io/incubator-horaedb-docs)。
 
 ## 快速开始
 ### 获取代码
@@ -18,8 +17,8 @@ HoraeDB 是一款高性能、分布式的云原生时序数据库。
 git clone git@github.com:apache/incubator-horaedb.git horaedb
 cd horaedb
 ```
-
-### 通过 Docker 运行
+<!-- TODO need to wait for first apache version release. -->
+<!-- ### 通过 Docker 运行
 确保开发环境安装了 docker，通过仓库中的提供的 Dockerfile 进行镜像的构建：
 ```shell
 docker build -t horaedb .
@@ -28,7 +27,7 @@ docker build -t horaedb .
 使用编译好的镜像，启动服务：
 ```shell
 docker run -d -t --name horaedb -p 5440:5440 -p 8831:8831 horaedb
-```
+``` -->
 
 ### 通过源码编译运行
 #### 安装依赖
@@ -136,16 +135,16 @@ mysql -u root -P 3307 -h 127.0.0.1
 | x86_64-unknown-linux-gnu |    kernel 4.9+    |       构建及运行        |
 |    x86_64-apple-darwin   | 10.15+, Catalina+ |          构建          |
 |    aarch64-apple-darwin  |   11+, Big Sur+   |          构建          |
-| aarch64-unknown-linux-gnu|        TBD        | 详见 [#63](https://github.com/CeresDB/horaedb/issues/63)|
+| aarch64-unknown-linux-gnu|        TBD        | 详见 [#63](https://github.com/apache/incubator-horaedb/issues/63)|
 |         windows          |         *         |         未支持         |
 
 ## 如何贡献
 [如何参与 HoraeDB 代码贡献](CONTRIBUTING.md)
 
-[约定式提交](https://ceresdb.github.io/docs/cn/dev/conventional_commit)
+[约定式提交](https://apache.github.io/incubator-horaedb-docs/cn/dev/conventional_commit)
 
 ## 架构及技术文档
-相关技术文档请参考[docs](https://ceresdb.github.io/docs)。
+相关技术文档请参考[docs](https://apache.github.io/incubator-horaedb-docs/)。
 
 ## 致谢
 在开发 HoraeDB 的过程中， 我们受到很多开源项目的影响和启发，例如  [influxdb_iox](https://github.com/influxdata/influxdb/tree/main/influxdb_iox), [tikv](https://github.com/tikv/tikv) 等等。感谢这些杰出的项目。
