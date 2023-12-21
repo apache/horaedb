@@ -213,6 +213,9 @@ pub struct Flusher {
 
     pub runtime: RuntimeRef,
     pub write_sst_max_buffer_size: usize,
+    /// If the interval is set, it will generate a [`FlushTask`] with min flush
+    /// interval check.
+    pub min_flush_interval_ms: Option<u64>,
 }
 
 struct FlushTask {
@@ -220,6 +223,22 @@ struct FlushTask {
     table_data: TableDataRef,
     runtime: RuntimeRef,
     write_sst_max_buffer_size: usize,
+    // If the interval is set, it will be used to check whether flush is too frequent.
+    min_flush_interval_ms: Option<u64>,
+}
+
+/// The checker to determine whether a flush is frequent.
+struct FrequentFlushChecker {
+    min_flush_interval_ms: u64,
+    last_flush_time_ms: u64,
+}
+
+impl FrequentFlushChecker {
+    #[inline]
+    fn is_frequent_flush(&self) -> bool {
+        let now = time_ext::current_time_millis();
+        self.last_flush_time_ms + self.min_flush_interval_ms > now
+    }
 }
 
 impl Flusher {
@@ -268,6 +287,7 @@ impl Flusher {
             space_store: self.space_store.clone(),
             runtime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: self.min_flush_interval_ms,
         };
         let flush_job = async move { flush_task.run().await };
 
@@ -281,6 +301,16 @@ impl FlushTask {
     /// Each table can only have one running flush task at the same time, which
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
+        let large_enough = self.table_data.should_flush_table(false);
+        if !large_enough && self.is_frequent_flush() {
+            debug!(
+                "Ignore flush task for too frequent flush of small memtable, table:{}",
+                self.table_data.name
+            );
+
+            return Ok(());
+        }
+
         let instant = Instant::now();
         let flush_req = self.preprocess_flush(&self.table_data).await?;
 
@@ -318,6 +348,18 @@ impl FlushTask {
         );
 
         Ok(())
+    }
+
+    fn is_frequent_flush(&self) -> bool {
+        if let Some(min_flush_interval_ms) = self.min_flush_interval_ms {
+            let checker = FrequentFlushChecker {
+                min_flush_interval_ms,
+                last_flush_time_ms: self.table_data.last_flush_time(),
+            };
+            checker.is_frequent_flush()
+        } else {
+            false
+        }
     }
 
     async fn preprocess_flush(&self, table_data: &TableDataRef) -> Result<TableFlushRequest> {
@@ -1190,7 +1232,7 @@ mod tests {
         time::TimeRange,
     };
 
-    use super::collect_column_stats_from_meta_datas;
+    use super::{collect_column_stats_from_meta_datas, FrequentFlushChecker};
     use crate::{
         instance::flush_compaction::split_record_batch_with_time_ranges,
         sst::{
@@ -1316,5 +1358,25 @@ mod tests {
             build_meta_data(vec![1, 3, 5]),
         ];
         check_collect_column_stats(&schema, vec![3, 5], meta_datas);
+    }
+
+    #[test]
+    fn test_frequent_flush() {
+        let now = time_ext::current_time_millis();
+        let cases = vec![
+            (now - 1000, 100, false),
+            (now - 1000, 2000, true),
+            (now - 10000, 200, false),
+            (now - 2000, 2000, false),
+            (now + 2000, 1000, true),
+        ];
+        for (last_flush_time_ms, min_flush_interval_ms, expect) in cases {
+            let checker = FrequentFlushChecker {
+                min_flush_interval_ms,
+                last_flush_time_ms,
+            };
+
+            assert_eq!(expect, checker.is_frequent_flush());
+        }
     }
 }

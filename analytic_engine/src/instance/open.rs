@@ -110,6 +110,7 @@ impl Instance {
             compaction_runtime,
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            ctx.config.min_flush_interval.as_millis(),
             scan_options_for_compaction,
         ));
 
@@ -137,6 +138,7 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            min_flush_interval: ctx.config.min_flush_interval,
             max_retry_flush_limit: ctx.config.max_retry_flush_limit,
             mem_usage_sampling_interval: ctx.config.mem_usage_sampling_interval,
             max_bytes_per_write_batch: ctx
