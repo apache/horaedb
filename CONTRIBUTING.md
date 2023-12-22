@@ -38,7 +38,7 @@ PR title.
 
 For PRs that you consider ready for review, verify the following locally before you submit it:
 
-* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://github.com/apache/incubator-horaedb-docs/blob/029e993f359907b7502b969a1cffeb8e43cb17fb/docs/src/en/dev/conventional_commit.md) specification;
+* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://ceresdb.github.io/docs/dev/conventional_commit.html) specification;
 * all the tests and/or benchmarks pass, including documentation tests;
 * the code is correctly formatted and all `clippy` checks pass; and
 * you haven't left any "code cruft" (commented out code blocks etc).
