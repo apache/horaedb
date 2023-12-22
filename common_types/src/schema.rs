@@ -539,6 +539,13 @@ pub struct RecordSchemaWithKey {
 }
 
 impl RecordSchemaWithKey {
+    pub fn new(record_schema: RecordSchema, primary_key_indexes: Vec<usize>) -> Self {
+        Self {
+            record_schema,
+            primary_key_indexes,
+        }
+    }
+
     pub fn num_columns(&self) -> usize {
         self.record_schema.num_columns()
     }
@@ -578,7 +585,11 @@ impl RecordSchemaWithKey {
             .collect::<Vec<_>>()
     }
 
-    pub(crate) fn into_record_schema(self) -> RecordSchema {
+    pub fn to_record_schema(&self) -> RecordSchema {
+        self.record_schema.clone()
+    }
+
+    pub fn into_record_schema(self) -> RecordSchema {
         self.record_schema
     }
 

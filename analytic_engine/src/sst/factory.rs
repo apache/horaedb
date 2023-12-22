@@ -17,7 +17,7 @@
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::projected_schema::ProjectedSchema;
+use common_types::projected_schema::RowProjectorBuilder;
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use runtime::Runtime;
@@ -140,7 +140,7 @@ pub struct SstReadOptions {
 
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,
-    pub projected_schema: ProjectedSchema,
+    pub row_projector_builder: RowProjectorBuilder,
     pub predicate: PredicateRef,
     pub meta_cache: Option<MetaCacheRef>,
     pub scan_options: ScanOptions,

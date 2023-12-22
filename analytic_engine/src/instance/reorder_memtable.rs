@@ -26,7 +26,7 @@ pub use arrow::{
 };
 use async_trait::async_trait;
 use common_types::{
-    record_batch::{RecordBatchData, RecordBatchWithKey},
+    record_batch::{FetchedRecordBatch, RecordBatchData},
     schema::Schema,
 };
 use datafusion::{
@@ -70,8 +70,8 @@ pub enum Error {
 define_result!(Error);
 
 pub type DfResult<T> = std::result::Result<T, DataFusionError>;
-type SendableRecordBatchWithkeyStream =
-    Pin<Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send>>;
+type SendableFetchingRecordBatchStream =
+    Pin<Box<dyn Stream<Item = Result<FetchedRecordBatch>> + Send>>;
 
 impl From<DataFusionError> for Error {
     fn from(df_err: DataFusionError) -> Self {
@@ -253,7 +253,7 @@ impl Reorder {
 
     // TODO: In theory we can construct a physical plan directly, here we choose
     // logical because it has a convenient builder API for use.
-    pub async fn into_stream(self) -> Result<SendableRecordBatchWithkeyStream> {
+    pub async fn into_stream(self) -> Result<SendableFetchingRecordBatchStream> {
         // 1. Init datafusion context
         let runtime = Arc::new(RuntimeEnv::default());
         let state = SessionState::with_config_rt(SessionConfig::new(), runtime);
@@ -275,12 +275,16 @@ impl Reorder {
 
         // 3. Execute plan and transform stream
         let stream = execute_stream(physical_plan, ctx.task_ctx())?;
-        let schema_with_key = self.schema.to_record_schema_with_key();
+        let record_schema = self.schema.to_record_schema();
         let stream = stream.map(move |batch| {
             let batch = batch.context(FetchRecordBatch)?;
             let data = RecordBatchData::try_from(batch).context(ConvertRecordBatchData)?;
 
-            Ok(RecordBatchWithKey::new(schema_with_key.clone(), data))
+            Ok(FetchedRecordBatch::new_from_parts(
+                record_schema.clone(),
+                None,
+                data,
+            ))
         });
 
         Ok(Box::pin(stream))

@@ -26,6 +26,8 @@ use table_engine::{
     table::{SchemaId, TableId, TableRef},
 };
 
+// FIXME: `CreateExistTable` can lead to `segmentation fault` if including
+// backtrace.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
@@ -118,12 +120,8 @@ pub enum Error {
     #[snafu(display("Failed to close table, source:{}", source))]
     CloseTableWithCause { source: GenericError },
 
-    #[snafu(display(
-        "Failed to create table, table already exists, table:{}.\nBacktrace:\n{}",
-        table,
-        backtrace
-    ))]
-    CreateExistTable { table: String, backtrace: Backtrace },
+    #[snafu(display("Failed to create table, table already exists, table:{table}."))]
+    CreateExistTable { table: String },
 
     #[snafu(display(
         "Failed to create table, cannot persist meta, table:{}, err:{}",

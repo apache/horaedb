@@ -16,7 +16,7 @@ use std::cmp::Ordering;
 
 use async_trait::async_trait;
 use common_types::{
-    record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     request_id::RequestId,
     row::{Row, RowViewOnBatch, RowWithMeta},
     schema::RecordSchemaWithKey,
@@ -26,7 +26,7 @@ use logger::{info, trace};
 use macros::define_result;
 use snafu::{ResultExt, Snafu};
 
-use crate::row_iter::{IterOptions, RecordBatchWithKeyIterator};
+use crate::row_iter::{FetchedRecordBatchIterator, IterOptions};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -54,7 +54,7 @@ define_result!(Error);
 pub struct DedupIterator<I> {
     request_id: RequestId,
     schema: RecordSchemaWithKey,
-    record_batch_builder: RecordBatchWithKeyBuilder,
+    record_batch_builder: FetchedRecordBatchBuilder,
     iter: I,
     /// Previous row returned.
     prev_row: Option<Row>,
@@ -67,15 +67,19 @@ pub struct DedupIterator<I> {
     total_selected_rows: usize,
 }
 
-impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
+impl<I: FetchedRecordBatchIterator> DedupIterator<I> {
     pub fn new(request_id: RequestId, iter: I, iter_options: IterOptions) -> Self {
-        let schema = iter.schema();
-
-        let record_batch_builder =
-            RecordBatchWithKeyBuilder::with_capacity(schema.clone(), iter_options.batch_size);
+        let schema_with_key = iter.schema();
+        let primary_key_indexes = schema_with_key.primary_key_idx().to_vec();
+        let fetched_schema = schema_with_key.to_record_schema();
+        let record_batch_builder = FetchedRecordBatchBuilder::with_capacity(
+            fetched_schema,
+            Some(primary_key_indexes),
+            iter_options.batch_size,
+        );
         Self {
             request_id,
-            schema: schema.clone(),
+            schema: schema_with_key.clone(),
             record_batch_builder,
             iter,
             prev_row: None,
@@ -85,7 +89,7 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
         }
     }
 
-    fn dedup_batch(&mut self, record_batch: RecordBatchWithKey) -> Result<RecordBatchWithKey> {
+    fn dedup_batch(&mut self, record_batch: FetchedRecordBatch) -> Result<FetchedRecordBatch> {
         self.selected_rows.clear();
         // Ignore all rows by default.
         self.selected_rows.resize(record_batch.num_rows(), false);
@@ -141,9 +145,9 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
     /// Filter batch by `selected_rows`.
     fn filter_batch(
         &mut self,
-        record_batch: RecordBatchWithKey,
+        record_batch: FetchedRecordBatch,
         selected_num: usize,
-    ) -> Result<RecordBatchWithKey> {
+    ) -> Result<FetchedRecordBatch> {
         self.total_selected_rows += selected_num;
         self.total_duplications += record_batch.num_rows() - selected_num;
 
@@ -169,14 +173,14 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
 }
 
 #[async_trait]
-impl<I: RecordBatchWithKeyIterator> RecordBatchWithKeyIterator for DedupIterator<I> {
+impl<I: FetchedRecordBatchIterator> FetchedRecordBatchIterator for DedupIterator<I> {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         match self
             .iter
             .next_batch()
@@ -210,7 +214,9 @@ mod tests {
     use common_types::tests::{build_row, build_schema};
 
     use super::*;
-    use crate::row_iter::tests::{build_record_batch_with_key, check_iterator, VectorIterator};
+    use crate::row_iter::tests::{
+        build_fetched_record_batch_with_key, check_iterator, VectorIterator,
+    };
 
     #[tokio::test]
     async fn test_dedup_iterator() {
@@ -219,7 +225,7 @@ mod tests {
         let iter = VectorIterator::new(
             schema.to_record_schema_with_key(),
             vec![
-                build_record_batch_with_key(
+                build_fetched_record_batch_with_key(
                     schema.clone(),
                     vec![
                         build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -227,7 +233,7 @@ mod tests {
                         build_row(b"a", 2, 10.0, "v2", 2000, 2_000_000),
                     ],
                 ),
-                build_record_batch_with_key(
+                build_fetched_record_batch_with_key(
                     schema,
                     vec![
                         build_row(b"a", 2, 10.0, "v", 2000, 2_000_000),

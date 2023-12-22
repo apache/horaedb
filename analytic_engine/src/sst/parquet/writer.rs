@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use common_types::{
-    datum::DatumKind, record_batch::RecordBatchWithKey, request_id::RequestId, time::TimeRange,
+    datum::DatumKind, record_batch::FetchedRecordBatch, request_id::RequestId, time::TimeRange,
 };
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
@@ -41,8 +41,9 @@ use crate::{
             },
         },
         writer::{
-            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
-            MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
+            self, BuildParquetFilter, BuildParquetFilterNoCause, EncodePbData, EncodeRecordBatch,
+            ExpectTimestampColumn, Io, MetaData, PollRecordBatch, RecordBatchStream, Result,
+            SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
@@ -160,8 +161,8 @@ impl<'a> RecordBatchGroupWriter<'a> {
     /// the left rows.
     async fn fetch_next_row_group(
         &mut self,
-        prev_record_batch: &mut Option<RecordBatchWithKey>,
-    ) -> Result<Vec<RecordBatchWithKey>> {
+        prev_record_batch: &mut Option<FetchedRecordBatch>,
+    ) -> Result<Vec<FetchedRecordBatch>> {
         let mut curr_row_group = vec![];
         // Used to record the number of remaining rows to fill `curr_row_group`.
         let mut remaining = self.options.num_rows_per_row_group;
@@ -217,7 +218,7 @@ impl<'a> RecordBatchGroupWriter<'a> {
 
     fn build_column_encodings(
         &self,
-        sample_row_groups: &[RecordBatchWithKey],
+        sample_row_groups: &[FetchedRecordBatch],
         column_encodings: &mut HashMap<String, ColumnEncoding>,
     ) -> Result<()> {
         let mut sampler = ColumnEncodingSampler {
@@ -233,9 +234,15 @@ impl<'a> RecordBatchGroupWriter<'a> {
     /// Build the parquet filter for the given `row_group`.
     fn build_row_group_filter(
         &self,
-        row_group_batch: &[RecordBatchWithKey],
+        row_group_batch: &[FetchedRecordBatch],
     ) -> Result<RowGroupFilter> {
-        let mut builder = RowGroupFilterBuilder::new(row_group_batch[0].schema_with_key());
+        let schema_with_key =
+            row_group_batch[0]
+                .schema_with_key()
+                .with_context(|| BuildParquetFilterNoCause {
+                    msg: "primary key indexes not exist",
+                })?;
+        let mut builder = RowGroupFilterBuilder::new(&schema_with_key);
 
         for partial_batch in row_group_batch {
             for (col_idx, column) in partial_batch.columns().iter().enumerate() {
@@ -253,7 +260,7 @@ impl<'a> RecordBatchGroupWriter<'a> {
 
     fn update_column_values(
         column_values: &mut [Option<ColumnValueSet>],
-        record_batch: &RecordBatchWithKey,
+        record_batch: &FetchedRecordBatch,
     ) {
         for (col_idx, col_values) in column_values.iter_mut().enumerate() {
             let mut too_many_values = false;
@@ -320,7 +327,7 @@ impl<'a> RecordBatchGroupWriter<'a> {
         sink: W,
         meta_path: &Path,
     ) -> Result<(usize, ParquetMetaData)> {
-        let mut prev_record_batch: Option<RecordBatchWithKey> = None;
+        let mut prev_record_batch: Option<FetchedRecordBatch> = None;
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
 
@@ -531,7 +538,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 /// A sampler to decide the column encoding options (whether to do dictionary
 /// encoding) with a bunch of sample row groups.
 struct ColumnEncodingSampler<'a> {
-    sample_row_groups: &'a [RecordBatchWithKey],
+    sample_row_groups: &'a [FetchedRecordBatch],
     meta_data: &'a MetaData,
     min_num_sample_rows: usize,
     max_unique_value_ratio: f64,
@@ -613,7 +620,7 @@ mod tests {
 
     use bytes_ext::Bytes;
     use common_types::{
-        projected_schema::ProjectedSchema,
+        projected_schema::{ProjectedSchema, RowProjectorBuilder},
         tests::{build_row, build_row_for_dictionary, build_schema, build_schema_with_dictionary},
         time::{TimeRange, Timestamp},
     };
@@ -625,7 +632,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        row_iter::tests::build_record_batch_with_key,
+        row_iter::tests::build_fetched_record_batch_with_key,
         sst::{
             factory::{
                 Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
@@ -722,7 +729,7 @@ mod tests {
                         "tagv2",
                     ),
                 ];
-                let batch = build_record_batch_with_key(schema.clone(), rows);
+                let batch = build_fetched_record_batch_with_key(schema.clone(), rows);
                 Poll::Ready(Some(Ok(batch)))
             }));
 
@@ -748,15 +755,20 @@ mod tests {
 
             let scan_options = ScanOptions::default();
             // read sst back to test
+            let row_projector_builder = RowProjectorBuilder::new(
+                reader_projected_schema.to_record_schema(),
+                reader_projected_schema.table_schema().clone(),
+                None,
+            );
             let sst_read_options = SstReadOptions {
                 maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new("test")),
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
-                projected_schema: reader_projected_schema,
                 predicate: Arc::new(Predicate::empty()),
                 meta_cache: None,
                 scan_options,
                 runtime: runtime.clone(),
+                row_projector_builder,
             };
 
             let mut reader: Box<dyn SstReader + Send> = {
@@ -889,7 +901,7 @@ mod tests {
                 .map(|_| build_row(b"a", 100, 10.0, "v4", 1000, 1_000_000))
                 .collect::<Vec<_>>();
 
-            let batch = build_record_batch_with_key(schema_clone.clone(), rows);
+            let batch = build_fetched_record_batch_with_key(schema_clone.clone(), rows);
             poll_cnt += 1;
 
             Poll::Ready(Some(Ok(batch)))
@@ -964,8 +976,9 @@ mod tests {
             .into_iter()
             .map(|v| build_row(v.0, v.1, v.2, v.3, v.4, v.5))
             .collect();
-        let record_batch_with_key0 = build_record_batch_with_key(schema.clone(), rows.clone());
-        let record_batch_with_key1 = build_record_batch_with_key(schema.clone(), rows);
+        let record_batch_with_key0 =
+            build_fetched_record_batch_with_key(schema.clone(), rows.clone());
+        let record_batch_with_key1 = build_fetched_record_batch_with_key(schema.clone(), rows);
         let meta_data = MetaData {
             min_key: Bytes::from_static(b""),
             max_key: Bytes::from_static(b""),
