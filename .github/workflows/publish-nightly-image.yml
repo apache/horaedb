@@ -24,7 +24,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: horaedb/horaedb-server
+  IMAGE_NAME: apache/horaedb-server
 
 jobs:
   docker:
