@@ -327,7 +327,13 @@ impl ShardOpener {
                                 space,
                             })
                         }
-                        Ok(None) => *state = TableOpenStage::Success(None),
+                        Ok(None) => {
+                            error!(
+                                "ShardOpener trie to open a dropped table, table:{:?}, shard_id:{}",
+                                ctx.table_def, self.shard_id
+                            );
+                            *state = TableOpenStage::Success(None);
+                        }
                         Err(e) => *state = TableOpenStage::Failed(e),
                     }
                 }
