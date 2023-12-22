@@ -24,7 +24,7 @@ For features, we don't plan to support we will close the feature request ticket 
 
 ## Contributing Changes
 
-HoraeDB is written mostly in idiomatic Rust—please see the [Style Guide](https://horaedb.apache.org/docs/dev/style_guide.html) for more details.
+HoraeDB is written mostly in idiomatic Rust—please see the [Style Guide](https://github.com/apache/incubator-horaedb-docs/blob/main/docs/src/en/dev/style_guide.md) for more details.
 All code must adhere to the `rustfmt` format, and pass all of the `clippy` checks we run in CI (there are more details further down this README).
 
 ### Making a PR
