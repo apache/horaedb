@@ -294,39 +294,35 @@ impl ShardOpener {
 
     /// Recover table meta data from manifest based on shard.
     async fn recover_table_metas(&mut self) -> Result<()> {
-        info!(
-            "ShardOpener recover table metas begin, shard_id:{}",
-            self.shard_id
-        );
+        let shard_id = self.shard_id;
+        let table_num = self.stages.len();
+        info!("ShardOpener recover table metas begin, shard_id:{shard_id}, table_num:{table_num}");
 
         for (table_id, state) in self.stages.iter_mut() {
             match state {
                 // Only do the meta recovery work in `RecoverTableMeta` state.
-                TableOpenStage::RecoverTableMeta(ctx) => {
+                TableOpenStage::RecoverTableMeta(RecoverTableMetaContext { table_def, space }) => {
                     match Self::recover_single_table_meta(
                         self.manifest.as_ref(),
-                        self.shard_id,
-                        &ctx.table_def,
+                        shard_id,
+                        table_def,
                     )
                     .await
-                    .map(|_| ctx.space.find_table_by_id(*table_id))
+                    .map(|_| space.find_table_by_id(*table_id))
                     {
                         Ok(Some(table_data)) => {
                             *state = TableOpenStage::RecoverTableData(RecoverTableDataContext {
                                 table_data,
-                                space: ctx.space.clone(),
+                                space: space.clone(),
                             });
                         }
                         Ok(None) => {
-                            error!(
-                                "ShardOpener tried to open a dropped table, id:{}, table:{:?}, shard_id:{}",
-                                table_id, ctx.table_def, self.shard_id
-                            );
+                            error!("ShardOpener tried to open a dropped table, table:{table_def:?}, shard_id:{shard_id}");
                             // TODO: is this an error?
                             *state = TableOpenStage::Success(None);
                         }
                         Err(e) => {
-                            error!("ShardOpener recover single table meta failed, table:{:?}, shard_id:{}, err:{e}", ctx.table_def, self.shard_id);
+                            error!("ShardOpener recover single table meta failed, table:{table_def:?}, shard_id:{shard_id}, err:{e}");
                             *state = TableOpenStage::Failed(e)
                         }
                     };
@@ -342,10 +338,7 @@ impl ShardOpener {
             }
         }
 
-        info!(
-            "ShardOpener recover table metas finish, shard_id:{}",
-            self.shard_id
-        );
+        info!("ShardOpener recover table metas finish, shard_id:{shard_id}, table_num:{table_num}",);
         Ok(())
     }
 
