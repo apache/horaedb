@@ -20,7 +20,7 @@ docker run -d --name horaedb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
-  ghcr.io/horaedb/horaedb-server
+  ghcr.io/apache/horaedb-server:nightly-20231222-f57b3827
 ```
 
 Create Table.
@@ -43,7 +43,7 @@ Write data with SQL.
 curl --location --request POST 'http://127.0.0.1:5440/sql' \
 -d '
 INSERT INTO demo (t, name, value)
-    VALUES (1651737067000, "ceresdb", 100)
+    VALUES (1702224000000, "horaedb", 100)
 '
 ```
 
