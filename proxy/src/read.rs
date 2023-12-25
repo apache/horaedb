@@ -58,6 +58,7 @@ impl Proxy {
         schema: &str,
         sql: &str,
         enable_partition_table_access: bool,
+        enable_block_query: bool, // true for grpc, false for http
     ) -> Result<SqlResponse> {
         if let Some(resp) = self
             .maybe_forward_sql_query(ctx.clone(), schema, sql)
@@ -70,7 +71,13 @@ impl Proxy {
         };
 
         let output = self
-            .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+            .fetch_sql_query_output(
+                ctx,
+                schema,
+                sql,
+                enable_partition_table_access,
+                enable_block_query,
+            )
             .await?;
 
         Ok(SqlResponse::Local(output))
@@ -129,7 +136,7 @@ impl Proxy {
         };
 
         let result = self
-            .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access)
+            .fetch_sql_query_output(ctx, schema, sql, enable_partition_table_access, true)
             .await;
 
         guard.cancel();
@@ -161,6 +168,7 @@ impl Proxy {
         schema: &str,
         sql: &str,
         enable_partition_table_access: bool,
+        enable_block_query: bool,
     ) -> Result<Output> {
         let request_id = &ctx.request_id;
         let slow_threshold_secs = self
@@ -225,6 +233,17 @@ impl Proxy {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
                 msg: "Failed to create plan",
             })?;
+
+        if enable_block_query {
+            self.instance
+                .limiter
+                .try_limit(&plan)
+                .box_err()
+                .context(Internal {
+                    msg: "Request is blocked",
+                })?;
+        }
+
         if let Plan::Query(plan) = &plan {
             if let Some(priority) = plan.decide_query_priority(self.expensive_query_threshold) {
                 slow_timer.priority(priority);

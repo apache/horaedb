@@ -16,7 +16,7 @@ use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
 use generic_error::BoxError;
-use logger::info;
+use logger::debug;
 use snafu::ResultExt;
 use table_engine::stream::SendableRecordBatchStream;
 use time_ext::InstantExt;
@@ -70,8 +70,8 @@ impl Executor for DatafusionExecutorImpl {
         ctx: &Context,
         physical_plan: PhysicalPlanPtr,
     ) -> Result<SendableRecordBatchStream> {
-        info!(
-            "DatafusionExecutorImpl begin to execute plan, request_id:{}, physical_plan: {:?}",
+        debug!(
+            "DatafusionExecutorImpl begin to execute plan, request_id:{}, physical_plan:{:?}",
             ctx.request_id, physical_plan
         );
 
@@ -87,8 +87,8 @@ impl Executor for DatafusionExecutorImpl {
                 msg: Some("failed to execute physical plan".to_string()),
             })?;
 
-        info!(
-            "DatafusionExecutorImpl finish to execute plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
+        debug!(
+            "DatafusionExecutorImpl finish to execute plan, request_id:{}, cost:{}ms, plan_and_metrics:{}",
             ctx.request_id,
             begin_instant.saturating_elapsed().as_millis(),
             physical_plan.metrics_to_string()

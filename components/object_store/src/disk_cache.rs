@@ -825,7 +825,7 @@ impl ObjectStore for DiskCacheStore {
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
-        // In sst module, we only use get_range, fetching a whole file is not used, and
+        // In sst module, we only use get_range, fetched a whole file is not used, and
         // it is not good for disk cache.
         self.underlying_store.get(location).await
     }

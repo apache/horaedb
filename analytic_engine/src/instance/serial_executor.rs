@@ -30,9 +30,8 @@ use tokio::sync::{
     watch::{self, Receiver, Sender},
 };
 
-use super::flush_compaction::{BackgroundFlushFailed, TableFlushOptions};
 use crate::{
-    instance::flush_compaction::{Other, Result},
+    instance::flush_compaction::{BackgroundFlushFailed, Other, Result, TableFlushOptions},
     table::data::TableData,
 };
 
@@ -167,11 +166,7 @@ impl TableFlushScheduler {
                         *flush_state = FlushState::Flushing;
                         break;
                     }
-                    FlushState::Flushing => {
-                        if !block_on_write_thread {
-                            return Ok(());
-                        }
-                    }
+                    FlushState::Flushing => {}
                     FlushState::Failed { err_msg } => {
                         if self
                             .schedule_sync

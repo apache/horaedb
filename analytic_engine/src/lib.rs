@@ -43,7 +43,11 @@ use size_ext::ReadableSize;
 use time_ext::ReadableDuration;
 use wal::config::Config as WalConfig;
 
-pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
+pub use crate::{
+    compaction::scheduler::SchedulerConfig,
+    instance::{ScanType, SstReadOptionsBuilder},
+    table_options::TableOptions,
+};
 
 /// Config of analytic engine
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -97,6 +101,8 @@ pub struct Config {
     pub write_sst_max_buffer_size: ReadableSize,
     /// Max retry limit After flush failed
     pub max_retry_flush_limit: usize,
+    /// The min interval between two consecutive flushes
+    pub min_flush_interval: ReadableDuration,
     /// Max bytes per write batch.
     ///
     /// If this is set, the atomicity of write request will be broken.
@@ -185,6 +191,7 @@ impl Default for Config {
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
+            min_flush_interval: ReadableDuration::minutes(1),
             max_bytes_per_write_batch: None,
             mem_usage_sampling_interval: ReadableDuration::secs(0),
             wal_encode: WalEncodeConfig::default(),

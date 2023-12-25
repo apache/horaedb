@@ -104,6 +104,7 @@ dependencies = [
  "future_ext",
  "futures 0.3.28",
  "generic_error",
+ "hash_ext",
  "hex",
  "hyperloglog",
  "id_allocator",

@@ -14,8 +14,8 @@
 
 use async_trait::async_trait;
 use common_types::{
-    projected_schema::ProjectedSchema,
-    record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+    projected_schema::{ProjectedSchema, RowProjector},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
         contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
         Row,
@@ -25,7 +25,7 @@ use common_types::{
 use macros::define_result;
 use snafu::Snafu;
 
-use crate::row_iter::RecordBatchWithKeyIterator;
+use crate::row_iter::FetchedRecordBatchIterator;
 
 #[derive(Debug, Snafu)]
 pub enum Error {}
@@ -34,12 +34,12 @@ define_result!(Error);
 
 pub struct VectorIterator {
     schema: RecordSchemaWithKey,
-    items: Vec<Option<RecordBatchWithKey>>,
+    items: Vec<Option<FetchedRecordBatch>>,
     idx: usize,
 }
 
 impl VectorIterator {
-    pub fn new(schema: RecordSchemaWithKey, items: Vec<RecordBatchWithKey>) -> Self {
+    pub fn new(schema: RecordSchemaWithKey, items: Vec<FetchedRecordBatch>) -> Self {
         Self {
             schema,
             items: items.into_iter().map(Some).collect(),
@@ -49,14 +49,14 @@ impl VectorIterator {
 }
 
 #[async_trait]
-impl RecordBatchWithKeyIterator for VectorIterator {
+impl FetchedRecordBatchIterator for VectorIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         if self.idx == self.items.len() {
             return Ok(None);
         }
@@ -68,13 +68,26 @@ impl RecordBatchWithKeyIterator for VectorIterator {
     }
 }
 
-pub fn build_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> RecordBatchWithKey {
+pub fn build_fetched_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> FetchedRecordBatch {
     assert!(schema.num_columns() > 1);
     let projection: Vec<usize> = (0..schema.num_columns()).collect();
     let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
-    let row_projected_schema = projected_schema.try_project_with_key(&schema).unwrap();
+    let fetched_schema = projected_schema.to_record_schema_with_key();
+    let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+    let fetched_schema = fetched_schema.to_record_schema();
+    let table_schema = projected_schema.table_schema();
+    let row_projector = RowProjector::new(
+        &fetched_schema,
+        Some(primary_key_indexes),
+        table_schema,
+        table_schema,
+    )
+    .unwrap();
+    let primary_key_indexes = row_projector
+        .primary_key_indexes()
+        .map(|idxs| idxs.to_vec());
     let mut builder =
-        RecordBatchWithKeyBuilder::with_capacity(projected_schema.to_record_schema_with_key(), 2);
+        FetchedRecordBatchBuilder::with_capacity(fetched_schema, primary_key_indexes, 2);
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 
     let mut buf = Vec::new();
@@ -84,7 +97,7 @@ pub fn build_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> RecordBatc
         writer.write_row(&row).unwrap();
 
         let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
-        let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
+        let projected_row = ProjectedContiguousRow::new(source_row, &row_projector);
         builder
             .append_projected_contiguous_row(&projected_row)
             .unwrap();
@@ -92,7 +105,7 @@ pub fn build_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> RecordBatc
     builder.build().unwrap()
 }
 
-pub async fn check_iterator<T: RecordBatchWithKeyIterator>(iter: &mut T, expected_rows: Vec<Row>) {
+pub async fn check_iterator<T: FetchedRecordBatchIterator>(iter: &mut T, expected_rows: Vec<Row>) {
     let mut visited_rows = 0;
     while let Some(batch) = iter.next_batch().await.unwrap() {
         for row_idx in 0..batch.num_rows() {

@@ -86,7 +86,7 @@ impl IdAllocator {
 mod test {
     use tokio::runtime::Runtime;
 
-    use super::IdAllocator;
+    use super::*;
 
     #[test]
     fn test_alloc_id() {

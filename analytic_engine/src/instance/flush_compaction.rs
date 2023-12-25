@@ -14,11 +14,16 @@
 
 // Flush and compaction logic of instance
 
-use std::{cmp, collections::Bound, fmt, sync::Arc};
+use std::{
+    cmp,
+    collections::{Bound, HashMap},
+    fmt,
+    sync::Arc,
+};
 
 use common_types::{
-    projected_schema::ProjectedSchema,
-    record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     request_id::RequestId,
     row::RowViewOnBatch,
     time::TimeRange,
@@ -41,8 +46,8 @@ use wal::manager::WalLocation;
 use crate::{
     compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
     instance::{
-        self, create_sst_read_option, reorder_memtable::Reorder,
-        serial_executor::TableFlushScheduler, ScanType, SpaceStore, SpaceStoreRef,
+        self, reorder_memtable::Reorder, serial_executor::TableFlushScheduler, ScanType,
+        SpaceStore, SpaceStoreRef, SstReadOptionsBuilder,
     },
     manifest::meta_edit::{
         AlterOptionsMeta, AlterSchemaMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
@@ -55,9 +60,9 @@ use crate::{
         IterOptions,
     },
     sst::{
-        factory::{self, ScanOptions, SstWriteOptions},
+        factory::{self, ColumnStats, ScanOptions, SstWriteOptions},
         file::{FileMeta, Level},
-        meta_data::SstMetaReader,
+        meta_data::{SstMetaData, SstMetaReader},
         writer::{MetaData, RecordBatchStream},
     },
     table::{
@@ -208,6 +213,9 @@ pub struct Flusher {
 
     pub runtime: RuntimeRef,
     pub write_sst_max_buffer_size: usize,
+    /// If the interval is set, it will generate a [`FlushTask`] with min flush
+    /// interval check.
+    pub min_flush_interval_ms: Option<u64>,
 }
 
 struct FlushTask {
@@ -215,6 +223,22 @@ struct FlushTask {
     table_data: TableDataRef,
     runtime: RuntimeRef,
     write_sst_max_buffer_size: usize,
+    // If the interval is set, it will be used to check whether flush is too frequent.
+    min_flush_interval_ms: Option<u64>,
+}
+
+/// The checker to determine whether a flush is frequent.
+struct FrequentFlushChecker {
+    min_flush_interval_ms: u64,
+    last_flush_time_ms: u64,
+}
+
+impl FrequentFlushChecker {
+    #[inline]
+    fn is_frequent_flush(&self) -> bool {
+        let now = time_ext::current_time_millis();
+        self.last_flush_time_ms + self.min_flush_interval_ms > now
+    }
 }
 
 impl Flusher {
@@ -263,6 +287,7 @@ impl Flusher {
             space_store: self.space_store.clone(),
             runtime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: self.min_flush_interval_ms,
         };
         let flush_job = async move { flush_task.run().await };
 
@@ -276,6 +301,16 @@ impl FlushTask {
     /// Each table can only have one running flush task at the same time, which
     /// should be ensured by the caller.
     async fn run(&self) -> Result<()> {
+        let large_enough = self.table_data.should_flush_table(false);
+        if !large_enough && self.is_frequent_flush() {
+            debug!(
+                "Ignore flush task for too frequent flush of small memtable, table:{}",
+                self.table_data.name
+            );
+
+            return Ok(());
+        }
+
         let instant = Instant::now();
         let flush_req = self.preprocess_flush(&self.table_data).await?;
 
@@ -313,6 +348,18 @@ impl FlushTask {
         );
 
         Ok(())
+    }
+
+    fn is_frequent_flush(&self) -> bool {
+        if let Some(min_flush_interval_ms) = self.min_flush_interval_ms {
+            let checker = FrequentFlushChecker {
+                min_flush_interval_ms,
+                last_flush_time_ms: self.table_data.last_flush_time(),
+            };
+            checker.is_frequent_flush()
+        } else {
+            false
+        }
     }
 
     async fn preprocess_flush(&self, table_data: &TableDataRef) -> Result<TableFlushRequest> {
@@ -541,11 +588,12 @@ impl FlushTask {
             num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
             compression: self.table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            column_stats: Default::default(),
         };
 
         for time_range in &time_ranges {
             let (batch_record_sender, batch_record_receiver) =
-                channel::<Result<RecordBatchWithKey>>(DEFAULT_CHANNEL_SIZE);
+                channel::<Result<FetchedRecordBatch>>(DEFAULT_CHANNEL_SIZE);
             let file_id = self
                 .table_data
                 .alloc_file_id(&self.space_store.manifest)
@@ -712,6 +760,7 @@ impl FlushTask {
             num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
             compression: self.table_data.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
+            column_stats: Default::default(),
         };
         let mut writer = self
             .space_store
@@ -884,20 +933,26 @@ impl SpaceStore {
         let table_options = table_data.table_options();
         let projected_schema = ProjectedSchema::no_projection(schema.clone());
         let predicate = Arc::new(Predicate::empty());
-        let sst_read_options = create_sst_read_option(
+        let maybe_table_level_metrics = table_data
+            .metrics
+            .maybe_table_level_metrics()
+            .sst_metrics
+            .clone();
+        let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Compaction,
             scan_options,
-            table_data
-                .metrics
-                .maybe_table_level_metrics()
-                .sst_metrics
-                .clone(),
+            maybe_table_level_metrics,
             table_options.num_rows_per_row_group,
-            projected_schema.clone(),
             predicate,
             self.meta_cache.clone(),
             runtime,
         );
+        let fetched_schema = projected_schema.to_record_schema_with_key();
+        let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+        let fetched_schema = fetched_schema.into_record_schema();
+        let table_schema = projected_schema.table_schema().clone();
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
 
         let iter_options = IterOptions {
             batch_size: table_options.num_rows_per_row_group,
@@ -917,8 +972,8 @@ impl SpaceStore {
                 sequence,
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
+                sst_read_options_builder: sst_read_options_builder.clone(),
                 sst_factory: &self.sst_factory,
-                sst_read_options: sst_read_options.clone(),
                 store_picker: self.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
@@ -943,7 +998,9 @@ impl SpaceStore {
             row_iter::record_batch_with_key_iter_to_stream(merge_iter)
         };
 
-        let sst_meta = {
+        // TODO: eliminate the duplicated building of `SstReadOptions`.
+        let sst_read_options = sst_read_options_builder.build(row_projector_builder);
+        let (sst_meta, column_stats) = {
             let meta_reader = SstMetaReader {
                 space_id: table_data.space_id,
                 table_id: table_data.id,
@@ -956,7 +1013,9 @@ impl SpaceStore {
                 .await
                 .context(ReadSstMeta)?;
 
-            MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
+            let column_stats = collect_column_stats_from_meta_datas(&sst_metas);
+            let merged_meta = MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema);
+            (merged_meta, column_stats)
         };
 
         // Alloc file id for the merged sst.
@@ -966,10 +1025,17 @@ impl SpaceStore {
             .context(AllocFileId)?;
 
         let sst_file_path = table_data.set_sst_file_path(file_id);
+        let write_options = SstWriteOptions {
+            storage_format_hint: sst_write_options.storage_format_hint,
+            num_rows_per_row_group: sst_write_options.num_rows_per_row_group,
+            compression: sst_write_options.compression,
+            max_buffer_size: sst_write_options.max_buffer_size,
+            column_stats,
+        };
         let mut sst_writer = self
             .sst_factory
             .create_writer(
-                sst_write_options,
+                &write_options,
                 &sst_file_path,
                 self.store_picker(),
                 input.output_level,
@@ -1062,13 +1128,54 @@ impl SpaceStore {
     }
 }
 
+/// Collect the column stats from a batch of sst meta data.
+fn collect_column_stats_from_meta_datas(metas: &[SstMetaData]) -> HashMap<String, ColumnStats> {
+    let mut low_cardinality_counts: HashMap<String, usize> = HashMap::new();
+    for meta_data in metas {
+        let SstMetaData::Parquet(meta_data) = meta_data;
+        if let Some(column_values) = &meta_data.column_values {
+            for (col_idx, val_set) in column_values.iter().enumerate() {
+                let low_cardinality = val_set.is_some();
+                if low_cardinality {
+                    let col_name = meta_data.schema.column(col_idx).name.clone();
+                    low_cardinality_counts
+                        .entry(col_name)
+                        .and_modify(|v| *v += 1)
+                        .or_insert(1);
+                }
+            }
+        }
+    }
+
+    // Only the column whose cardinality is low in all the metas is a
+    // low-cardinality column.
+    // TODO: shall we merge all the distinct values of the column to check whether
+    // the cardinality is still thought to be low?
+    let low_cardinality_cols = low_cardinality_counts
+        .into_iter()
+        .filter_map(|(col_name, cnt)| {
+            (cnt == metas.len()).then_some((
+                col_name,
+                ColumnStats {
+                    low_cardinality: true,
+                },
+            ))
+        });
+    HashMap::from_iter(low_cardinality_cols)
+}
+
 fn split_record_batch_with_time_ranges(
-    record_batch: RecordBatchWithKey,
+    record_batch: FetchedRecordBatch,
     time_ranges: &[TimeRange],
     timestamp_idx: usize,
-) -> Result<Vec<RecordBatchWithKey>> {
-    let mut builders: Vec<RecordBatchWithKeyBuilder> = (0..time_ranges.len())
-        .map(|_| RecordBatchWithKeyBuilder::new(record_batch.schema_with_key().clone()))
+) -> Result<Vec<FetchedRecordBatch>> {
+    let fetched_schema = record_batch.schema();
+    let primary_key_indexes = record_batch.primary_key_indexes();
+    let mut builders: Vec<FetchedRecordBatchBuilder> = (0..time_ranges.len())
+        .map(|_| {
+            let primary_key_indexes = primary_key_indexes.map(|idxs| idxs.to_vec());
+            FetchedRecordBatchBuilder::new(fetched_schema.clone(), primary_key_indexes)
+        })
         .collect();
 
     for row_idx in 0..record_batch.num_rows() {
@@ -1109,11 +1216,18 @@ fn build_mem_table_iter(
     table_data: &TableDataRef,
 ) -> Result<ColumnarIterPtr> {
     let scan_ctx = ScanContext::default();
+    let projected_schema = ProjectedSchema::no_projection(table_data.schema());
+    let fetched_schema = projected_schema.to_record_schema_with_key();
+    let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+    let fetched_schema = fetched_schema.into_record_schema();
+    let table_schema = projected_schema.table_schema().clone();
+    let row_projector_builder =
+        RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
         sequence: common_types::MAX_SEQUENCE_NUMBER,
-        projected_schema: ProjectedSchema::no_projection(table_data.schema()),
+        row_projector_builder,
         need_dedup: table_data.dedup(),
         reverse: false,
         metrics_collector: None,
@@ -1126,15 +1240,26 @@ fn build_mem_table_iter(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use bytes_ext::Bytes;
     use common_types::{
+        schema::Schema,
         tests::{
-            build_record_batch_with_key_by_rows, build_row, build_row_opt,
+            build_fetched_record_batch_by_rows, build_row, build_row_opt, build_schema,
             check_record_batch_with_key_with_rows,
         },
         time::TimeRange,
     };
 
-    use crate::instance::flush_compaction::split_record_batch_with_time_ranges;
+    use super::{collect_column_stats_from_meta_datas, FrequentFlushChecker};
+    use crate::{
+        instance::flush_compaction::split_record_batch_with_time_ranges,
+        sst::{
+            meta_data::SstMetaData,
+            parquet::meta_data::{ColumnValueSet, ParquetMetaData},
+        },
+    };
 
     #[test]
     fn test_split_record_batch_with_time_ranges() {
@@ -1170,7 +1295,7 @@ mod tests {
             .into_iter()
             .flatten()
             .collect();
-        let record_batch_with_key = build_record_batch_with_key_by_rows(rows);
+        let record_batch_with_key = build_fetched_record_batch_by_rows(rows);
         let column_num = record_batch_with_key.num_columns();
         let time_ranges = vec![
             TimeRange::new_unchecked_for_test(0, 100),
@@ -1186,5 +1311,92 @@ mod tests {
         check_record_batch_with_key_with_rows(&rets[0], rows0.len(), column_num, rows0);
         check_record_batch_with_key_with_rows(&rets[1], rows1.len(), column_num, rows1);
         check_record_batch_with_key_with_rows(&rets[2], rows2.len(), column_num, rows2);
+    }
+
+    fn check_collect_column_stats(
+        schema: &Schema,
+        expected_low_cardinality_col_indexes: Vec<usize>,
+        meta_datas: Vec<SstMetaData>,
+    ) {
+        let column_stats = collect_column_stats_from_meta_datas(&meta_datas);
+        assert_eq!(
+            column_stats.len(),
+            expected_low_cardinality_col_indexes.len()
+        );
+
+        for col_idx in expected_low_cardinality_col_indexes {
+            let col_schema = schema.column(col_idx);
+            assert!(column_stats.contains_key(&col_schema.name));
+        }
+    }
+
+    #[test]
+    fn test_collect_column_stats_from_metadata() {
+        let schema = build_schema();
+        let build_meta_data = |low_cardinality_col_indexes: Vec<usize>| {
+            let mut column_values = vec![None; 6];
+            for idx in low_cardinality_col_indexes {
+                column_values[idx] = Some(ColumnValueSet::StringValue(Default::default()));
+            }
+            let parquet_meta_data = ParquetMetaData {
+                min_key: Bytes::new(),
+                max_key: Bytes::new(),
+                time_range: TimeRange::empty(),
+                max_sequence: 0,
+                schema: schema.clone(),
+                parquet_filter: None,
+                column_values: Some(column_values),
+            };
+            SstMetaData::Parquet(Arc::new(parquet_meta_data))
+        };
+
+        // Normal case 0
+        let meta_datas = vec![
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0, 1]),
+            build_meta_data(vec![0, 2]),
+            build_meta_data(vec![0, 3]),
+        ];
+        check_collect_column_stats(&schema, vec![0], meta_datas);
+
+        // Normal case 1
+        let meta_datas = vec![
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0]),
+            build_meta_data(vec![]),
+            build_meta_data(vec![1]),
+            build_meta_data(vec![3]),
+        ];
+        check_collect_column_stats(&schema, vec![], meta_datas);
+
+        // Normal case 2
+        let meta_datas = vec![
+            build_meta_data(vec![3, 5]),
+            build_meta_data(vec![0, 3, 5]),
+            build_meta_data(vec![0, 1, 2, 3, 5]),
+            build_meta_data(vec![1, 3, 5]),
+        ];
+        check_collect_column_stats(&schema, vec![3, 5], meta_datas);
+    }
+
+    #[test]
+    fn test_frequent_flush() {
+        let now = time_ext::current_time_millis();
+        let cases = vec![
+            (now - 1000, 100, false),
+            (now - 1000, 2000, true),
+            (now - 10000, 200, false),
+            (now - 2000, 2000, false),
+            (now + 2000, 1000, true),
+        ];
+        for (last_flush_time_ms, min_flush_interval_ms, expect) in cases {
+            let checker = FrequentFlushChecker {
+                min_flush_interval_ms,
+                last_flush_time_ms,
+            };
+
+            assert_eq!(expect, checker.is_frequent_flush());
+        }
     }
 }

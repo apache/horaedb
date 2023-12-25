@@ -16,7 +16,7 @@
 
 use async_stream::try_stream;
 use async_trait::async_trait;
-use common_types::{record_batch::RecordBatchWithKey, schema::RecordSchemaWithKey};
+use common_types::{record_batch::FetchedRecordBatch, schema::RecordSchemaWithKey};
 use generic_error::BoxError;
 
 use crate::sst::writer::RecordBatchStream;
@@ -38,15 +38,15 @@ pub struct IterOptions {
 /// The `schema()` should be the same as the RecordBatch from `read()`.
 /// The reader is exhausted if the `read()` returns the `Ok(None)`.
 #[async_trait]
-pub trait RecordBatchWithKeyIterator: Send {
+pub trait FetchedRecordBatchIterator: Send {
     type Error: std::error::Error + Send + Sync + 'static;
 
     fn schema(&self) -> &RecordSchemaWithKey;
 
-    async fn next_batch(&mut self) -> std::result::Result<Option<RecordBatchWithKey>, Self::Error>;
+    async fn next_batch(&mut self) -> std::result::Result<Option<FetchedRecordBatch>, Self::Error>;
 }
 
-pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + Unpin + 'static>(
+pub fn record_batch_with_key_iter_to_stream<I: FetchedRecordBatchIterator + Unpin + 'static>(
     mut iter: I,
 ) -> RecordBatchStream {
     let record_batch_stream = try_stream! {

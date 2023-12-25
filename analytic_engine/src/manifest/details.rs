@@ -540,7 +540,7 @@ impl Manifest for ManifestImpl {
             snapshot_store,
         };
         let meta_snapshot_opt = recover.recover().await?.and_then(|v| v.data);
-
+        let meta_snapshot_exists = meta_snapshot_opt.is_some();
         // Apply it to table.
         if let Some(snapshot) = meta_snapshot_opt {
             let meta_edit = MetaEdit::Snapshot(snapshot);
@@ -552,7 +552,7 @@ impl Manifest for ManifestImpl {
             self.table_meta_set.apply_edit_to_table(request)?;
         }
 
-        info!("Manifest recover finish, request:{load_req:?}");
+        info!("Manifest recover finish, request:{load_req:?}, meta_snapshot_exist:{meta_snapshot_exists}");
 
         Ok(())
     }
