@@ -189,6 +189,7 @@ pub struct Instance {
     pub(crate) iter_options: Option<IterOptions>,
     pub(crate) recover_mode: RecoverMode,
     pub(crate) wal_encode: WalEncodeConfig,
+    pub(crate) disable_wal: bool,
 }
 
 impl Instance {

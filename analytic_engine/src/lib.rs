@@ -110,6 +110,7 @@ pub struct Config {
     /// The interval for sampling the memory usage
     pub mem_usage_sampling_interval: ReadableDuration,
     /// The config for log in the wal.
+    // TODO: move this in WalConfig.
     pub wal_encode: WalEncodeConfig,
 
     /// Wal storage config
