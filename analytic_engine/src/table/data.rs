@@ -446,6 +446,11 @@ impl TableData {
         self.last_sequence.store(seq, Ordering::Release);
     }
 
+    #[inline]
+    pub fn next_sequence(&self) -> SequenceNumber {
+        self.last_sequence.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
     /// Get last flush time
     #[inline]
     pub fn last_flush_time(&self) -> u64 {

@@ -422,8 +422,10 @@ impl<'a> Writer<'a> {
 
         self.preprocess_write(&mut encode_ctx).await?;
 
+        let table_data = self.table_data.clone();
         let seq = if self.instance.disable_wal {
-            MIN_SEQUENCE_NUMBER
+            // When wal is disabled, just update the last_seq one by one.
+            table_data.next_sequence()
         } else {
             let encoded_payload = {
                 let _timer = self.table_data.metrics.start_table_write_encode_timer();
@@ -442,7 +444,6 @@ impl<'a> Writer<'a> {
         };
 
         // Write the row group to the memtable and update the state in the mem.
-        let table_data = self.table_data.clone();
         let EncodeContext {
             row_group,
             index_in_writer,
