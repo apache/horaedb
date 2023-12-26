@@ -33,6 +33,7 @@ use datafusion::{
         coalesce_batches::CoalesceBatchesExec,
         coalesce_partitions::CoalescePartitionsExec,
         displayable,
+        expressions::{ApproxPercentileCont, ApproxPercentileContWithWeight},
         filter::FilterExec,
         metrics::{Count, MetricValue, MetricsSet},
         projection::ProjectionExec,
@@ -621,6 +622,21 @@ pub enum PushDownEvent {
 impl PushDownEvent {
     pub fn new(plan: Arc<dyn ExecutionPlan>) -> Self {
         if let Some(aggr) = plan.as_any().downcast_ref::<AggregateExec>() {
+            // Those aggregate functions can't be pushed down to `ResolvedPartitionedScan`
+            // https://github.com/apache/incubator-horaedb/issues/1405
+            for aggr_expr in aggr.aggr_expr() {
+                if aggr_expr
+                    .as_any()
+                    .downcast_ref::<ApproxPercentileCont>()
+                    .is_some()
+                    || aggr_expr
+                        .as_any()
+                        .downcast_ref::<ApproxPercentileContWithWeight>()
+                        .is_some()
+                {
+                    return Self::Unable;
+                }
+            }
             if *aggr.mode() == AggregateMode::Partial {
                 Self::Terminated(plan)
             } else {
