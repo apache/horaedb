@@ -507,8 +507,8 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             msg: "missing exec ctx",
         })?;
         let priority = match pb_exec_ctx.priority() {
-            QueryPriority::Low => Priority::Lower,
-            QueryPriority::High => Priority::Higher,
+            QueryPriority::Low => Priority::Low,
+            QueryPriority::High => Priority::High,
         };
         let ceresdbproto::remote_engine::ExecContext {
             request_id_str,

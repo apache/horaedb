@@ -21,8 +21,8 @@ use crate::{JoinHandle, RuntimeRef};
 #[repr(u8)]
 pub enum Priority {
     #[default]
-    Higher = 0,
-    Lower = 1,
+    High = 0,
+    Low = 1,
 }
 
 impl Priority {
@@ -32,8 +32,8 @@ impl Priority {
 
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Higher => "higher",
-            Self::Lower => "lower",
+            Self::High => "high",
+            Self::Low => "low",
         }
     }
 }
@@ -43,8 +43,8 @@ impl TryFrom<u8> for Priority {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(Priority::Higher),
-            1 => Ok(Priority::Lower),
+            0 => Ok(Priority::High),
+            1 => Ok(Priority::Low),
             _ => Err(format!("Unknown priority, value:{value}")),
         }
     }
@@ -52,27 +52,27 @@ impl TryFrom<u8> for Priority {
 
 #[derive(Clone, Debug)]
 pub struct PriorityRuntime {
-    lower: RuntimeRef,
-    higher: RuntimeRef,
+    low: RuntimeRef,
+    high: RuntimeRef,
 }
 
 impl PriorityRuntime {
-    pub fn new(lower: RuntimeRef, higher: RuntimeRef) -> Self {
-        Self { lower, higher }
+    pub fn new(low: RuntimeRef, high: RuntimeRef) -> Self {
+        Self { low, high }
     }
 
     pub fn lower(&self) -> &RuntimeRef {
-        &self.lower
+        &self.low
     }
 
     pub fn higher(&self) -> &RuntimeRef {
-        &self.higher
+        &self.high
     }
 
     pub fn choose_runtime(&self, priority: &Priority) -> &RuntimeRef {
         match priority {
-            Priority::Lower => &self.lower,
-            Priority::Higher => &self.higher,
+            Priority::Low => &self.low,
+            Priority::High => &self.high,
         }
     }
 
@@ -82,7 +82,7 @@ impl PriorityRuntime {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        self.higher.spawn(future)
+        self.high.spawn(future)
     }
 
     pub fn spawn_with_priority<F>(&self, future: F, priority: Priority) -> JoinHandle<F::Output>
@@ -91,8 +91,8 @@ impl PriorityRuntime {
         F::Output: Send + 'static,
     {
         match priority {
-            Priority::Lower => self.lower.spawn(future),
-            Priority::Higher => self.higher.spawn(future),
+            Priority::Low => self.low.spawn(future),
+            Priority::High => self.high.spawn(future),
         }
     }
 }

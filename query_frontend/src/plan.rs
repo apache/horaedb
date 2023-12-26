@@ -189,9 +189,9 @@ impl QueryPlan {
         };
 
         let priority = if is_expensive {
-            Priority::Lower
+            Priority::Low
         } else {
-            Priority::Higher
+            Priority::High
         };
 
         Some(priority)

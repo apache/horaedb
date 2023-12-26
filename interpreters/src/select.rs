@@ -115,7 +115,7 @@ impl Interpreter for SelectInterpreter {
             })
             .context(Select)?;
 
-        if matches!(priority, Priority::Lower) {
+        if matches!(priority, Priority::Low) {
             let executor = self.executor;
             return self
                 .query_runtime
@@ -125,7 +125,7 @@ impl Interpreter for SelectInterpreter {
                             .await
                             .context(Select)
                     },
-                    Priority::Lower,
+                    Priority::Low,
                 )
                 .await
                 .context(Spawn)

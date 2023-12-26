@@ -1147,8 +1147,8 @@ fn create_query_ctx(
         None
     };
     let priority = match priority {
-        QueryPriority::Low => Priority::Lower,
-        QueryPriority::High => Priority::Higher,
+        QueryPriority::Low => Priority::Low,
+        QueryPriority::High => Priority::High,
     };
 
     QueryContext {
