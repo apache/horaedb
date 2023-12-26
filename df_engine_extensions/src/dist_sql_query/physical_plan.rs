@@ -620,23 +620,20 @@ pub enum PushDownEvent {
 }
 
 impl PushDownEvent {
+    // Those aggregate functions can't be pushed down.
+    // https://github.com/apache/incubator-horaedb/issues/1405
+    fn blacklist_expr(expr: &dyn Any) -> bool {
+        expr.is::<ApproxPercentileCont>() || expr.is::<ApproxPercentileContWithWeight>()
+    }
+
     pub fn new(plan: Arc<dyn ExecutionPlan>) -> Self {
         if let Some(aggr) = plan.as_any().downcast_ref::<AggregateExec>() {
-            // Those aggregate functions can't be pushed down to `ResolvedPartitionedScan`
-            // https://github.com/apache/incubator-horaedb/issues/1405
             for aggr_expr in aggr.aggr_expr() {
-                if aggr_expr
-                    .as_any()
-                    .downcast_ref::<ApproxPercentileCont>()
-                    .is_some()
-                    || aggr_expr
-                        .as_any()
-                        .downcast_ref::<ApproxPercentileContWithWeight>()
-                        .is_some()
-                {
+                if Self::blacklist_expr(aggr_expr.as_any()) {
                     return Self::Unable;
                 }
             }
+
             if *aggr.mode() == AggregateMode::Partial {
                 Self::Terminated(plan)
             } else {
