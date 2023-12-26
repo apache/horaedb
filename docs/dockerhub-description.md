@@ -35,4 +35,4 @@ docker run -d --name horaedb-server \
 
 # Documentation
 
-- https://apache.github.io/incubator-horaedb-docs/
+- https://horaedb.apache.org/

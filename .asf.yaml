@@ -20,7 +20,7 @@
 github:
   description: >-
     HoraeDB is a high-performance, distributed, cloud native time-series database.
-  homepage: https://apache.github.io/incubator-horaedb-docs # TODO: after website is ready, set to https://horaedb.apache.org/
+  homepage: https://horaedb.apache.org
   labels:
     - rust
     - sql
