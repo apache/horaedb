@@ -82,6 +82,14 @@ SELECT * from random_partition_table_t where name = "ceresdb0";
 
 SELECT * from random_partition_table_t where name = "ceresdb5";
 
+SELECT
+    time_bucket (t, "PT1M") AS ts,
+    approx_percentile_cont (value, 0.9) AS value
+FROM
+    random_partition_table_t
+GROUP BY
+    time_bucket (t, "PT1M");
+
 DROP TABLE IF EXISTS `random_partition_table_t`;
 
 SHOW CREATE TABLE random_partition_table_t;

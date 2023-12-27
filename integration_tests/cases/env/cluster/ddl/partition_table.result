@@ -169,6 +169,18 @@ tsid,t,name,id,value,
 UInt64(12677620772014847982),Timestamp(1651737067000),String("ceresdb5"),Int32(0),Double(105.0),
 
 
+SELECT
+    time_bucket (t, "PT1M") AS ts,
+    approx_percentile_cont (value, 0.9) AS value
+FROM
+    random_partition_table_t
+GROUP BY
+    time_bucket (t, "PT1M");
+
+ts,value,
+Timestamp(1651737060000),Double(109.4),
+
+
 DROP TABLE IF EXISTS `random_partition_table_t`;
 
 affected_rows: 0
