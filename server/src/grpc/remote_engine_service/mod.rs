@@ -281,7 +281,10 @@ impl RemoteEngineServiceImpl {
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
             let read_request = request.into_inner();
-            handle_stream_read(ctx, read_request).await
+            handle_stream_read(ctx, read_request).await.map_err(|e| {
+                error!("Handle stream read failed, err:{e}");
+                e
+            })
         });
         let streams = handle.await.box_err().context(ErrWithCause {
             code: StatusCode::Internal,
@@ -493,7 +496,10 @@ impl RemoteEngineServiceImpl {
         let ctx = self.handler_ctx();
         let handle = self.runtimes.write_runtime.spawn(async move {
             let request = request.into_inner();
-            handle_write(ctx, request).await
+            handle_write(ctx, request).await.map_err(|e| {
+                error!("Handle write failed, err:{e}");
+                e
+            })
         });
 
         let res = handle.await.box_err().context(ErrWithCause {
@@ -526,7 +532,10 @@ impl RemoteEngineServiceImpl {
         let ctx = self.handler_ctx();
         let handle = self.runtimes.read_runtime.spawn(async move {
             let request = request.into_inner();
-            handle_get_table_info(ctx, request).await
+            handle_get_table_info(ctx, request).await.map_err(|e| {
+                error!("Handle get table info failed, err:{e}");
+                e
+            })
         });
 
         let res = handle.await.box_err().context(ErrWithCause {
@@ -720,7 +729,10 @@ impl RemoteEngineServiceImpl {
         let ctx = self.handler_ctx();
         let handle = self.runtimes.read_runtime.spawn(async move {
             let request = request.into_inner();
-            handle_alter_table_schema(ctx, request).await
+            handle_alter_table_schema(ctx, request).await.map_err(|e| {
+                error!("Handle alter table schema failed, err:{e}");
+                e
+            })
         });
 
         let res = handle.await.box_err().context(ErrWithCause {
@@ -853,11 +865,20 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
         }
 
         let record_stream_result = match self.query_dedup.clone() {
-            Some(query_dedup) => {
-                self.dedup_execute_physical_plan_internal(query_dedup, request)
-                    .await
-            }
-            None => self.execute_physical_plan_internal(request).await,
+            Some(query_dedup) => self
+                .dedup_execute_physical_plan_internal(query_dedup, request)
+                .await
+                .map_err(|e| {
+                    error!("Dedup execute physical plan failed, err:{e}");
+                    e
+                }),
+            None => self
+                .execute_physical_plan_internal(request)
+                .await
+                .map_err(|e| {
+                    error!("Execute physical plan failed, err:{e}");
+                    e
+                }),
         };
 
         record_stream_to_response_stream!(record_stream_result, ExecutePhysicalPlanStream)
