@@ -24,7 +24,7 @@ use query_engine::{
     executor::ExecutorRef,
     physical_planner::{PhysicalPlanPtr, PhysicalPlannerRef},
 };
-use query_frontend::plan::QueryPlan;
+use query_frontend::plan::{PriorityContext, QueryPlan};
 use runtime::{Priority, PriorityRuntime};
 use snafu::{ResultExt, Snafu};
 
@@ -80,7 +80,9 @@ impl Interpreter for SelectInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
         let plan = self.plan;
-        let priority = match plan.decide_query_priority(self.ctx.expensive_query_threshold()) {
+        let priority = match plan.decide_query_priority(PriorityContext {
+            time_range_threshold: self.ctx.expensive_query_threshold(),
+        }) {
             Some(v) => v,
             None => {
                 debug!(

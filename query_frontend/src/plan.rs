@@ -77,6 +77,10 @@ pub enum Plan {
     Exists(ExistsTablePlan),
 }
 
+pub struct PriorityContext {
+    pub time_range_threshold: u64,
+}
+
 pub struct QueryPlan {
     pub df_plan: DataFusionLogicalPlan,
     pub table_name: Option<String>,
@@ -175,7 +179,8 @@ impl QueryPlan {
     /// When query contains invalid time range, it will return None.
     // TODO: Currently we only consider the time range, consider other factors, such
     // as the number of series, or slow log metrics.
-    pub fn decide_query_priority(&self, threshold: u64) -> Option<Priority> {
+    pub fn decide_query_priority(&self, ctx: PriorityContext) -> Option<Priority> {
+        let threshold = ctx.time_range_threshold;
         let time_range = self.extract_time_range()?;
         let is_expensive = if let Some(v) = time_range
             .exclusive_end()

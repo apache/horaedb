@@ -28,7 +28,7 @@ use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
-    plan::Plan,
+    plan::{Plan, PriorityContext},
     provider::CatalogMetaProvider,
 };
 use router::endpoint::Endpoint;
@@ -245,7 +245,9 @@ impl Proxy {
         }
 
         if let Plan::Query(plan) = &plan {
-            if let Some(priority) = plan.decide_query_priority(self.expensive_query_threshold) {
+            if let Some(priority) = plan.decide_query_priority(PriorityContext {
+                time_range_threshold: self.expensive_query_threshold,
+            }) {
                 slow_timer.priority(priority);
             }
         }
