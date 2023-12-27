@@ -46,6 +46,7 @@ pub struct Resolver {
     remote_executor: RemotePhysicalPlanExecutorRef,
     catalog_manager: CatalogManagerRef,
     scan_builder: ExecutableScanBuilderRef,
+    priority: Priority,
 }
 
 impl Resolver {
@@ -53,11 +54,13 @@ impl Resolver {
         remote_executor: RemotePhysicalPlanExecutorRef,
         catalog_manager: CatalogManagerRef,
         scan_builder: ExecutableScanBuilderRef,
+        priority: Priority,
     ) -> Self {
         Self {
             remote_executor,
             catalog_manager,
             scan_builder,
+            priority,
         }
     }
 
@@ -197,7 +200,6 @@ impl Resolver {
     pub async fn resolve_sub_scan(
         &self,
         plan: Arc<dyn ExecutionPlan>,
-        priority: Priority,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         let build_scan_opt =
@@ -213,7 +215,7 @@ impl Resolver {
         if let Some((table, table_scan_ctx)) = build_scan_opt {
             return self
                 .scan_builder
-                .build(table, table_scan_ctx, priority)
+                .build(table, table_scan_ctx, self.priority)
                 .await;
         }
 
@@ -226,7 +228,7 @@ impl Resolver {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_sub_scan(child, priority).await?;
+            let child = self.resolve_sub_scan(child).await?;
 
             new_children.push(child);
         }
@@ -276,15 +278,9 @@ mod test {
         let ctx = TestContext::new();
         let plan = ctx.build_basic_sub_table_plan();
         let resolver = ctx.resolver();
-        let new_plan = displayable(
-            resolver
-                .resolve_sub_scan(plan, Default::default())
-                .await
-                .unwrap()
-                .as_ref(),
-        )
-        .indent(true)
-        .to_string();
+        let new_plan = displayable(resolver.resolve_sub_scan(plan).await.unwrap().as_ref())
+            .indent(true)
+            .to_string();
         insta::assert_snapshot!(new_plan);
     }
 
@@ -304,10 +300,7 @@ mod test {
         assert_eq!(original_plan_display, new_plan_display);
 
         // It should not be processed by `resolve_sub_scan_internal`.
-        let new_plan = resolver
-            .resolve_sub_scan(plan.clone(), Default::default())
-            .await
-            .unwrap();
+        let new_plan = resolver.resolve_sub_scan(plan.clone()).await.unwrap();
 
         let new_plan_display = displayable(new_plan.as_ref()).indent(true).to_string();
 

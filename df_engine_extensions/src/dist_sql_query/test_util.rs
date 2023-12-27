@@ -240,6 +240,7 @@ impl TestContext {
             Arc::new(MockRemotePhysicalPlanExecutor),
             self.catalog_manager.clone(),
             Box::new(MockScanBuilder),
+            Priority::High,
         )
     }
 

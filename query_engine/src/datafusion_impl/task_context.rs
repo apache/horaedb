@@ -131,7 +131,7 @@ impl Preprocessor {
 
         let resolver = self.dist_query_resolver_builder.build(ctx);
         resolver
-            .resolve_sub_scan(plan, ctx.priority)
+            .resolve_sub_scan(plan)
             .await
             .box_err()
             .with_context(|| ExecutorWithCause {
@@ -262,6 +262,7 @@ impl DistQueryResolverBuilder {
             self.remote_executor.clone(),
             self.catalog_manager.clone(),
             scan_builder,
+            ctx.priority,
         )
     }
 }

@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
+use datafusion::execution::context::QueryPlanner;
 use generic_error::BoxError;
 use query_frontend::plan::QueryPlan;
 use snafu::ResultExt;
@@ -30,14 +31,29 @@ use crate::{
 };
 
 /// Physical planner based on datafusion
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DatafusionPhysicalPlannerImpl {
     df_ctx_builder: Arc<DfContextBuilder>,
+    physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
+}
+
+impl fmt::Debug for DatafusionPhysicalPlannerImpl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DfContextBuilder")
+            .field("df_ctx_builder", &self.df_ctx_builder)
+            .finish()
+    }
 }
 
 impl DatafusionPhysicalPlannerImpl {
-    pub fn new(df_ctx_builder: Arc<DfContextBuilder>) -> Self {
-        Self { df_ctx_builder }
+    pub fn new(
+        df_ctx_builder: Arc<DfContextBuilder>,
+        physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
+    ) -> Self {
+        Self {
+            df_ctx_builder,
+            physical_planner,
+        }
     }
 
     fn has_partitioned_table(logical_plan: &QueryPlan) -> bool {
@@ -67,7 +83,6 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
         let state = df_ctx.state();
 
         let exec_plan = self
-            .df_ctx_builder
             .physical_planner
             .create_physical_plan(&logical_plan.df_plan, &state)
             .await

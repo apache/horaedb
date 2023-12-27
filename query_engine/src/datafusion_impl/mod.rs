@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt, sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use catalog::manager::ManagerRef as CatalogManager;
 use datafusion::{
     execution::{
-        context::{QueryPlanner, SessionState},
+        context::SessionState,
         runtime_env::{RuntimeConfig, RuntimeEnv},
         FunctionRegistry,
     },
@@ -63,14 +63,11 @@ impl DatafusionQueryEngineImpl {
     ) -> Result<Self> {
         let runtime_env = Arc::new(RuntimeEnv::new(runtime_config).unwrap());
         let df_physical_planner = Arc::new(QueryPlannerAdapter);
-        let df_ctx_builder = Arc::new(DfContextBuilder::new(
-            config,
-            runtime_env.clone(),
+        let df_ctx_builder = Arc::new(DfContextBuilder::new(config, runtime_env.clone()));
+        let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(
+            df_ctx_builder.clone(),
             df_physical_planner,
         ));
-
-        // Physical planner
-        let physical_planner = Arc::new(DatafusionPhysicalPlannerImpl::new(df_ctx_builder.clone()));
 
         // Executor
         let extension_codec = Arc::new(PhysicalExtensionCodecImpl::new());
@@ -101,33 +98,17 @@ impl QueryEngine for DatafusionQueryEngineImpl {
 }
 
 /// Datafusion context builder
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DfContextBuilder {
     config: Config,
     runtime_env: Arc<RuntimeEnv>,
-    pub physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
-}
-
-impl fmt::Debug for DfContextBuilder {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DfContextBuilder")
-            .field("config", &self.config)
-            .field("runtime_env", &self.runtime_env)
-            .field("physical_planner", &"QueryPlannerAdapter")
-            .finish()
-    }
 }
 
 impl DfContextBuilder {
-    pub fn new(
-        config: Config,
-        runtime_env: Arc<RuntimeEnv>,
-        physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
-    ) -> Self {
+    pub fn new(config: Config, runtime_env: Arc<RuntimeEnv>) -> Self {
         Self {
             config,
             runtime_env,
-            physical_planner,
         }
     }
 
@@ -156,8 +137,7 @@ impl DfContextBuilder {
 
         // Using default logcial optimizer, if want to add more custom rule, using
         // `add_optimizer_rule` to add.
-        let state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone())
-            .with_query_planner(self.physical_planner.clone());
+        let state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone());
         SessionContext::with_state(state)
     }
 }
