@@ -125,7 +125,7 @@ impl<T: WalsOpener> TestContext<T> {
                 .open_wals(
                     &self.config.wal,
                     WalRuntimes {
-                        read_runtime: self.runtimes.read_runtime.higher().clone(),
+                        read_runtime: self.runtimes.read_runtime.high().clone(),
                         write_runtime: self.runtimes.write_runtime.clone(),
                         default_runtime: self.runtimes.default_runtime.clone(),
                     },

@@ -61,11 +61,11 @@ impl PriorityRuntime {
         Self { low, high }
     }
 
-    pub fn lower(&self) -> &RuntimeRef {
+    pub fn low(&self) -> &RuntimeRef {
         &self.low
     }
 
-    pub fn higher(&self) -> &RuntimeRef {
+    pub fn high(&self) -> &RuntimeRef {
         &self.high
     }
 

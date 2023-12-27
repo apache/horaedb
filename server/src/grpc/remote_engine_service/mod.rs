@@ -376,7 +376,7 @@ impl RemoteEngineServiceImpl {
                     request_notifiers.clone(),
                     config.notify_timeout.0,
                     // TODO: decide runtime from request priority.
-                    self.runtimes.read_runtime.higher(),
+                    self.runtimes.read_runtime.high(),
                 )
                 .await?;
             }

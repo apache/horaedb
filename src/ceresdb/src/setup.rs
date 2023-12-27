@@ -276,7 +276,7 @@ fn make_wal_runtime(runtimes: Arc<EngineRuntimes>) -> WalRuntimes {
     WalRuntimes {
         write_runtime: runtimes.write_runtime.clone(),
         // TODO: remove read_runtime from WalRuntimes
-        read_runtime: runtimes.read_runtime.higher().clone(),
+        read_runtime: runtimes.read_runtime.high().clone(),
         default_runtime: runtimes.default_runtime.clone(),
     }
 }
