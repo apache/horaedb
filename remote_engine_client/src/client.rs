@@ -17,7 +17,7 @@
 use std::{
     collections::HashMap,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 
@@ -26,8 +26,12 @@ use arrow_ext::{
     ipc::{CompressOptions, CompressionMethod},
 };
 use ceresdbproto::{
-    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
-    storage::arrow_payload,
+    remote_engine::{
+        self,
+        read_response::Output::{Arrow, Metric},
+        remote_engine_service_client::*,
+    },
+    storage::{arrow_payload, ArrowPayload},
 };
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
@@ -115,8 +119,12 @@ impl Client {
         // When success to get the stream, table has been found in remote, not need to
         // evict cache entry.
         let response = response.into_inner();
-        let remote_read_record_batch_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, record_schema);
+        let remote_read_record_batch_stream = ClientReadRecordBatchStream::new(
+            table_ident,
+            response,
+            record_schema,
+            Default::default(),
+        );
 
         Ok(remote_read_record_batch_stream)
     }
@@ -481,8 +489,12 @@ impl Client {
         // When success to get the stream, table has been found in remote, not need to
         // evict cache entry.
         let response = response.into_inner();
-        let remote_execute_plan_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, plan_schema);
+        let remote_execute_plan_stream = ClientReadRecordBatchStream::new(
+            table_ident,
+            response,
+            plan_schema,
+            request.remote_metrics,
+        );
 
         Ok(remote_execute_plan_stream)
     }
@@ -500,6 +512,7 @@ pub struct ClientReadRecordBatchStream {
     pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub record_schema: RecordSchema,
+    pub remote_metrics: Arc<Mutex<Option<String>>>,
 }
 
 impl ClientReadRecordBatchStream {
@@ -507,11 +520,13 @@ impl ClientReadRecordBatchStream {
         table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
         record_schema: RecordSchema,
+        remote_metrics: Arc<Mutex<Option<String>>>,
     ) -> Self {
         Self {
             table_ident,
             response_stream,
             record_schema,
+            remote_metrics,
         }
     }
 }
@@ -534,52 +549,14 @@ impl Stream for ClientReadRecordBatchStream {
 
                 match response.output {
                     None => Poll::Ready(None),
-                    Some(v) => {
-                        let record_batch = match v {
-                            Arrow(mut v) => {
-                                if v.record_batches.len() != 1 {
-                                    return Poll::Ready(Some(
-                                        InvalidRecordBatchNumber {
-                                            batch_num: v.record_batches.len(),
-                                        }
-                                        .fail(),
-                                    ));
-                                }
-
-                                let compression = match v.compression() {
-                                    arrow_payload::Compression::None => CompressionMethod::None,
-                                    arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
-                                };
-
-                                ipc::decode_record_batches(
-                                    v.record_batches.swap_remove(0),
-                                    compression,
-                                )
-                                .map_err(|e| Box::new(e) as _)
-                                .context(Convert {
-                                    msg: "decode read record batch",
-                                })
-                                .and_then(
-                                    |mut record_batch_vec| {
-                                        ensure!(
-                                            record_batch_vec.len() == 1,
-                                            InvalidRecordBatchNumber {
-                                                batch_num: record_batch_vec.len()
-                                            }
-                                        );
-                                        record_batch_vec
-                                            .swap_remove(0)
-                                            .try_into()
-                                            .map_err(|e| Box::new(e) as _)
-                                            .context(Convert {
-                                                msg: "convert read record batch",
-                                            })
-                                    },
-                                )
-                            }
-                        };
-                        Poll::Ready(Some(record_batch))
-                    }
+                    Some(v) => match v {
+                        Arrow(v) => Poll::Ready(Some(convert_arrow_payload(v))),
+                        Metric(v) => {
+                            let mut remote_metrics = this.remote_metrics.lock().unwrap();
+                            *remote_metrics = Some(v.metric);
+                            Poll::Ready(None)
+                        }
+                    },
                 }
             }
 
@@ -593,4 +570,38 @@ impl Stream for ClientReadRecordBatchStream {
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+fn convert_arrow_payload(mut v: ArrowPayload) -> Result<RecordBatch> {
+    if v.record_batches.len() != 1 {
+        return InvalidRecordBatchNumber {
+            batch_num: v.record_batches.len(),
+        }
+        .fail();
+    }
+    let compression = match v.compression() {
+        arrow_payload::Compression::None => CompressionMethod::None,
+        arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
+    };
+
+    ipc::decode_record_batches(v.record_batches.swap_remove(0), compression)
+        .map_err(|e| Box::new(e) as _)
+        .context(Convert {
+            msg: "decode read record batch",
+        })
+        .and_then(|mut record_batch_vec| {
+            ensure!(
+                record_batch_vec.len() == 1,
+                InvalidRecordBatchNumber {
+                    batch_num: record_batch_vec.len()
+                }
+            );
+            record_batch_vec
+                .swap_remove(0)
+                .try_into()
+                .map_err(|e| Box::new(e) as _)
+                .context(Convert {
+                    msg: "convert read record batch",
+                })
+        })
 }

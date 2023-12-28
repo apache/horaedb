@@ -18,7 +18,7 @@ use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    physical_plan::ExecutionPlan,
+    physical_plan::{analyze::AnalyzeExec, ExecutionPlan},
 };
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
@@ -99,7 +99,10 @@ impl Resolver {
         &self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
-        let resolved_plan = self.resolve_partitioned_scan_internal(plan)?;
+        // Check if this plan is `AnalyzeExec`, if it is, we should collect metrics.
+        let is_analyze = plan.as_any().is::<AnalyzeExec>();
+
+        let resolved_plan = self.resolve_partitioned_scan_internal(plan, is_analyze)?;
         PUSH_DOWN_PLAN_COUNTER
             .with_label_values(&["remote_scan"])
             .inc();
@@ -117,6 +120,7 @@ impl Resolver {
     pub fn resolve_partitioned_scan_internal(
         &self,
         plan: Arc<dyn ExecutionPlan>,
+        is_analyze: bool,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
@@ -139,6 +143,7 @@ impl Resolver {
                 self.remote_executor.clone(),
                 remote_plans,
                 metrics_collector,
+                is_analyze,
             )));
         }
 
@@ -151,7 +156,7 @@ impl Resolver {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_partitioned_scan_internal(child)?;
+            let child = self.resolve_partitioned_scan_internal(child, is_analyze)?;
 
             new_children.push(child);
         }

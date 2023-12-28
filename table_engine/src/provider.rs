@@ -47,7 +47,7 @@ use crate::{
     table::{ReadOptions, ReadRequest, TableRef},
 };
 
-const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
+pub const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 
 #[derive(Clone, Debug)]
 pub struct CeresdbOptions {

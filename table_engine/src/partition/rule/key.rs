@@ -14,7 +14,7 @@
 
 //! Key partition rule
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 
 use common_types::{
     datum::{Datum, DatumView},
@@ -136,8 +136,8 @@ impl KeyRule {
         &self,
         group: &[usize],
         filters: &[PartitionFilter],
-    ) -> Result<HashSet<usize>> {
-        let mut partitions = HashSet::new();
+    ) -> Result<BTreeSet<usize>> {
+        let mut partitions = BTreeSet::new();
         let expanded_group = expand_partition_keys_group(group, filters)?;
         for partition_keys in expanded_group {
             let partition = compute_partition(partition_keys.into_iter(), self.partition_num);
@@ -219,7 +219,7 @@ impl PartitionRule for KeyRule {
             target_partitions = target_partitions
                 .intersection(&partitions)
                 .copied()
-                .collect::<HashSet<_>>();
+                .collect::<BTreeSet<_>>();
         }
 
         Ok(target_partitions.into_iter().collect())
