@@ -422,19 +422,28 @@ impl<'a> Writer<'a> {
 
         self.preprocess_write(&mut encode_ctx).await?;
 
-        let encoded_payload = {
-            let _timer = self.table_data.metrics.start_table_write_encode_timer();
-            let schema = self.table_data.schema();
-            encode_ctx.encode(&self.instance.wal_encode, &schema)?
-        };
+        let table_data = self.table_data.clone();
+        let seq = if self.instance.disable_wal {
+            // When wal is disabled, just update the last_seq one by one.
+            table_data.next_sequence()
+        } else {
+            let encoded_payload = {
+                let _timer = self.table_data.metrics.start_table_write_encode_timer();
+                let schema = self.table_data.schema();
+                encode_ctx.encode(&self.instance.wal_encode, &schema)?
+            };
 
-        let seq = match encoded_payload {
-            EncodedPayload::Rows(encoded_rows) => self.write_to_wal_in_rows(encoded_rows).await?,
-            EncodedPayload::Cols(encoded_cols) => self.write_to_wal_in_cols(encoded_cols).await?,
+            match encoded_payload {
+                EncodedPayload::Rows(encoded_rows) => {
+                    self.write_to_wal_in_rows(encoded_rows).await?
+                }
+                EncodedPayload::Cols(encoded_cols) => {
+                    self.write_to_wal_in_cols(encoded_cols).await?
+                }
+            }
         };
 
         // Write the row group to the memtable and update the state in the mem.
-        let table_data = self.table_data.clone();
         let EncodeContext {
             row_group,
             index_in_writer,

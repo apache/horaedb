@@ -27,7 +27,7 @@ use crate::{
         DfContextBuilder,
     },
     error::*,
-    physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
+    physical_planner::{PhysicalPlanRef, PhysicalPlanner},
 };
 
 /// Physical planner based on datafusion
@@ -74,7 +74,7 @@ impl DatafusionPhysicalPlannerImpl {
 #[async_trait]
 impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
     // TODO: we should modify `QueryPlan` to support create remote plan here.
-    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
+    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanRef> {
         // TODO: maybe we should not build `SessionContext` in each physical plan's
         // building. We need to do so because we place some dynamic
         // information(such as `timeout`) in `SessionConfig`, maybe it is better
@@ -99,6 +99,6 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
         };
         let physical_plan = DataFusionPhysicalPlanAdapter::new(typed_plan);
 
-        Ok(Box::new(physical_plan))
+        Ok(Arc::new(physical_plan))
     }
 }

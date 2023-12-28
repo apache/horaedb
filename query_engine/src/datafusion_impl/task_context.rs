@@ -33,7 +33,7 @@ use datafusion_proto::{
 };
 use df_engine_extensions::dist_sql_query::{
     resolver::Resolver, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
-    RemotePhysicalPlanExecutorRef, TableScanContext,
+    RemotePhysicalPlanExecutorRef, RemoteTaskContext, TableScanContext,
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
@@ -41,7 +41,7 @@ use prost::Message;
 use runtime::Priority;
 use snafu::ResultExt;
 use table_engine::{
-    provider::{CeresdbOptions, ScanTable},
+    provider::{CeresdbOptions, ScanTable, SCAN_TABLE_METRICS_COLLECTOR_NAME},
     remote::{
         model::{
             ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest, TableIdentifier,
@@ -173,12 +173,13 @@ struct RemotePhysicalPlanExecutorImpl {
 impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
     fn execute(
         &self,
+        task_context: RemoteTaskContext,
         table: TableIdentifier,
-        task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let ceresdb_options = task_context
+            .task_ctx
             .session_config()
             .options()
             .extensions
@@ -226,6 +227,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             let request = ExecutePlanRequest {
                 plan_schema,
                 remote_request,
+                remote_metrics: task_context.remote_metrics,
             };
 
             // Remote execute.
@@ -293,7 +295,7 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
             opts: read_opts,
             projected_schema: ctx.projected_schema,
             predicate: ctx.predicate,
-            metrics_collector: MetricsCollector::default(),
+            metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
             priority,
         };
 

@@ -27,11 +27,13 @@ use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
 use ceresdbproto::{
     remote_engine::{
-        execute_plan_request, read_response::Output::Arrow,
-        remote_engine_service_server::RemoteEngineService, row_group, AlterTableOptionsRequest,
-        AlterTableOptionsResponse, AlterTableSchemaRequest, AlterTableSchemaResponse, ExecContext,
-        ExecutePlanRequest, GetTableInfoRequest, GetTableInfoResponse, QueryPriority, ReadRequest,
-        ReadResponse, WriteBatchRequest, WriteRequest, WriteResponse,
+        execute_plan_request,
+        read_response::Output::{Arrow, Metric},
+        remote_engine_service_server::RemoteEngineService,
+        row_group, AlterTableOptionsRequest, AlterTableOptionsResponse, AlterTableSchemaRequest,
+        AlterTableSchemaResponse, ExecContext, ExecutePlanRequest, GetTableInfoRequest,
+        GetTableInfoResponse, MetricPayload, QueryPriority, ReadRequest, ReadResponse,
+        WriteBatchRequest, WriteRequest, WriteResponse,
     },
     storage::{arrow_payload, ArrowPayload},
 };
@@ -50,6 +52,7 @@ use proxy::{
 use query_engine::{
     context::Context as QueryContext,
     datafusion_impl::physical_plan::{DataFusionPhysicalPlanAdapter, TypedPlan},
+    physical_planner::PhysicalPlanRef,
     QueryEngineRef, QueryEngineType,
 };
 use runtime::{Priority, RuntimeRef};
@@ -86,6 +89,12 @@ mod metrics;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 200;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
+
+#[derive(Debug, Clone)]
+pub enum RecordBatchWithMetric {
+    RecordBatch(RecordBatch),
+    Metric(String),
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StreamReadReqKey {
@@ -209,46 +218,94 @@ impl<M: MetricCollector> Drop for StreamWithMetric<M> {
     }
 }
 
+struct RemoteExecStream {
+    inner: BoxStream<'static, Result<RecordBatch>>,
+    physical_plan: Option<PhysicalPlanRef>,
+}
+
+impl RemoteExecStream {
+    fn new(
+        inner: BoxStream<'static, Result<RecordBatch>>,
+        physical_plan: Option<PhysicalPlanRef>,
+    ) -> Self {
+        Self {
+            inner,
+            physical_plan,
+        }
+    }
+}
+
+impl Stream for RemoteExecStream {
+    type Item = Result<RecordBatchWithMetric>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match this.inner.poll_next_unpin(cx) {
+            Poll::Ready(Some(res)) => {
+                Poll::Ready(Some(res.map(RecordBatchWithMetric::RecordBatch)))
+            }
+            Poll::Ready(None) => match &this.physical_plan {
+                Some(physical_plan) => {
+                    let metrics = physical_plan.metrics_to_string();
+                    this.physical_plan = None;
+                    Poll::Ready(Some(Ok(RecordBatchWithMetric::Metric(metrics))))
+                }
+                None => Poll::Ready(None),
+            },
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
 macro_rules! record_stream_to_response_stream {
     ($record_stream_result:ident, $StreamType:ident) => {
         match $record_stream_result {
             Ok(stream) => {
                 let new_stream: Self::$StreamType = Box::pin(stream.map(|res| match res {
-                    Ok(record_batch) => {
-                        let resp = match ipc::encode_record_batch(
-                            &record_batch.into_arrow_record_batch(),
-                            CompressOptions {
-                                compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
-                                method: CompressionMethod::Zstd,
-                            },
-                        )
-                        .box_err()
-                        .context(ErrWithCause {
-                            code: StatusCode::Internal,
-                            msg: "encode record batch failed",
-                        }) {
-                            Err(e) => ReadResponse {
-                                header: Some(error::build_err_header(e)),
-                                ..Default::default()
-                            },
-                            Ok(CompressOutput { payload, method }) => {
-                                let compression = match method {
-                                    CompressionMethod::None => arrow_payload::Compression::None,
-                                    CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
-                                };
+                    Ok(res) => match res {
+                        RecordBatchWithMetric::Metric(metric) => {
+                            let resp = ReadResponse {
+                                header: Some(error::build_ok_header()),
+                                output: Some(Metric(MetricPayload { metric })),
+                            };
+                            Ok(resp)
+                        }
+                        RecordBatchWithMetric::RecordBatch(record_batch) => {
+                            let resp = match ipc::encode_record_batch(
+                                &record_batch.into_arrow_record_batch(),
+                                CompressOptions {
+                                    compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
+                                    method: CompressionMethod::Zstd,
+                                },
+                            )
+                            .box_err()
+                            .context(ErrWithCause {
+                                code: StatusCode::Internal,
+                                msg: "encode record batch failed",
+                            }) {
+                                Err(e) => ReadResponse {
+                                    header: Some(error::build_err_header(e)),
+                                    ..Default::default()
+                                },
+                                Ok(CompressOutput { payload, method }) => {
+                                    let compression = match method {
+                                        CompressionMethod::None => arrow_payload::Compression::None,
+                                        CompressionMethod::Zstd => arrow_payload::Compression::Zstd,
+                                    };
 
-                                ReadResponse {
-                                    header: Some(error::build_ok_header()),
-                                    output: Some(Arrow(ArrowPayload {
-                                        record_batches: vec![payload],
-                                        compression: compression as i32,
-                                    })),
+                                    ReadResponse {
+                                        header: Some(error::build_ok_header()),
+                                        output: Some(Arrow(ArrowPayload {
+                                            record_batches: vec![payload],
+                                            compression: compression as i32,
+                                        })),
+                                    }
                                 }
-                            }
-                        };
+                            };
 
-                        Ok(resp)
-                    }
+                            Ok(resp)
+                        }
+                    },
                     Err(e) => {
                         let resp = ReadResponse {
                             header: Some(error::build_err_header(e)),
@@ -257,7 +314,6 @@ macro_rules! record_stream_to_response_stream {
                         Ok(resp)
                     }
                 }));
-
                 Ok(Response::new(new_stream))
             }
             Err(e) => {
@@ -291,14 +347,17 @@ impl RemoteEngineServiceImpl {
     async fn stream_read_internal(
         &self,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+    ) -> Result<RemoteExecStream> {
         let metric = StreamReadMetricCollector(Instant::now());
 
         let ctx = self.handler_ctx();
         let (tx, rx) = mpsc::channel(STREAM_QUERY_CHANNEL_LEN);
         let handle = self.runtimes.read_runtime.spawn(async move {
             let read_request = request.into_inner();
-            handle_stream_read(ctx, read_request).await
+            handle_stream_read(ctx, read_request).await.map_err(|e| {
+                error!("Handle stream read failed, err:{e}");
+                e
+            })
         });
         let streams = handle.await.box_err().context(ErrWithCause {
             code: StatusCode::Internal,
@@ -330,17 +389,15 @@ impl RemoteEngineServiceImpl {
             });
         }
 
-        Ok(StreamWithMetric::new(
-            Box::pin(ReceiverStream::new(rx)),
-            metric,
-        ))
+        let stream = StreamWithMetric::new(Box::pin(ReceiverStream::new(rx)), metric);
+        Ok(RemoteExecStream::new(Box::pin(stream), None))
     }
 
     async fn dedup_stream_read_internal(
         &self,
         query_dedup: QueryDedup,
         request: Request<ReadRequest>,
-    ) -> Result<StreamWithMetric<StreamReadMetricCollector>> {
+    ) -> Result<RemoteExecStream> {
         let metric = StreamReadMetricCollector(Instant::now());
 
         let request = request.into_inner();
@@ -387,10 +444,8 @@ impl RemoteEngineServiceImpl {
             }
         }
 
-        Ok(StreamWithMetric::new(
-            Box::pin(ReceiverStream::new(rx)),
-            metric,
-        ))
+        let stream = StreamWithMetric::new(Box::pin(ReceiverStream::new(rx)), metric);
+        Ok(RemoteExecStream::new(Box::pin(stream), None))
     }
 
     async fn read_and_send_dedupped_resps<K, F>(
@@ -513,7 +568,10 @@ impl RemoteEngineServiceImpl {
         let ctx = self.handler_ctx();
         let handle = self.runtimes.write_runtime.spawn(async move {
             let request = request.into_inner();
-            handle_write(ctx, request).await
+            handle_write(ctx, request).await.map_err(|e| {
+                error!("Handle write failed, err:{e}");
+                e
+            })
         });
 
         let res = handle.await.box_err().context(ErrWithCause {
@@ -546,7 +604,10 @@ impl RemoteEngineServiceImpl {
         let ctx = self.handler_ctx();
         let handle = self.runtimes.read_runtime.spawn(async move {
             let request = request.into_inner();
-            handle_get_table_info(ctx, request).await
+            handle_get_table_info(ctx, request).await.map_err(|e| {
+                error!("Handle get table info failed, err:{e}");
+                e
+            })
         });
 
         let res = handle.await.box_err().context(ErrWithCause {
@@ -625,7 +686,7 @@ impl RemoteEngineServiceImpl {
     async fn execute_physical_plan_internal(
         &self,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+    ) -> Result<RemoteExecStream> {
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
         let (ctx, encoded_plan) = extract_plan_from_req(request)?;
@@ -654,13 +715,18 @@ impl RemoteEngineServiceImpl {
             slow_threshold_secs,
             query_ctx.priority,
         );
+        let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
+            encoded_plan,
+        )));
 
         let rt = self
             .runtimes
             .read_runtime
             .choose_runtime(&query_ctx.priority);
+        let physical_plan_clone = physical_plan.clone();
+
         let stream = rt
-            .spawn(async move { handle_execute_plan(query_ctx, encoded_plan, query_engine).await })
+            .spawn(async move { handle_execute_plan(query_ctx, physical_plan, query_engine).await })
             .await
             .box_err()
             .with_context(|| ErrWithCause {
@@ -674,14 +740,18 @@ impl RemoteEngineServiceImpl {
                 })
             });
 
-        Ok(StreamWithMetric::new(Box::pin(stream), metric))
+        let stream = StreamWithMetric::new(Box::pin(stream), metric);
+        Ok(RemoteExecStream::new(
+            Box::pin(stream),
+            Some(physical_plan_clone),
+        ))
     }
 
     async fn dedup_execute_physical_plan_internal(
         &self,
         query_dedup: QueryDedup,
         request: Request<ExecutePlanRequest>,
-    ) -> Result<StreamWithMetric<ExecutePlanMetricCollector>> {
+    ) -> Result<RemoteExecStream> {
         let request = request.into_inner();
         let query_engine = self.instance.query_engine.clone();
         let (ctx, encoded_plan) = extract_plan_from_req(request)?;
@@ -708,6 +778,12 @@ impl RemoteEngineServiceImpl {
             encoded_plan: encoded_plan.clone(),
         };
 
+        let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
+            encoded_plan,
+        )));
+
+        let physical_plan_clone = physical_plan.clone();
+
         let QueryDedup {
             config,
             physical_plan_notifiers,
@@ -723,7 +799,7 @@ impl RemoteEngineServiceImpl {
             // The first request, need to handle it, and then notify the other requests.
             RequestResult::First => {
                 let query = async move {
-                    handle_execute_plan(query_ctx, encoded_plan, query_engine)
+                    handle_execute_plan(query_ctx, physical_plan, query_engine)
                         .await
                         .map(PartitionedStreams::one_stream)
                 };
@@ -743,9 +819,10 @@ impl RemoteEngineServiceImpl {
             }
         }
 
-        Ok(StreamWithMetric::new(
-            Box::pin(ReceiverStream::new(rx)),
-            metric,
+        let stream = StreamWithMetric::new(Box::pin(ReceiverStream::new(rx)), metric);
+        Ok(RemoteExecStream::new(
+            Box::pin(stream),
+            Some(physical_plan_clone),
         ))
     }
 
@@ -757,7 +834,10 @@ impl RemoteEngineServiceImpl {
         let ctx = self.handler_ctx();
         let handle = self.runtimes.read_runtime.spawn(async move {
             let request = request.into_inner();
-            handle_alter_table_schema(ctx, request).await
+            handle_alter_table_schema(ctx, request).await.map_err(|e| {
+                error!("Handle alter table schema failed, err:{e}");
+                e
+            })
         });
 
         let res = handle.await.box_err().context(ErrWithCause {
@@ -890,11 +970,20 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
         }
 
         let record_stream_result = match self.query_dedup.clone() {
-            Some(query_dedup) => {
-                self.dedup_execute_physical_plan_internal(query_dedup, request)
-                    .await
-            }
-            None => self.execute_physical_plan_internal(request).await,
+            Some(query_dedup) => self
+                .dedup_execute_physical_plan_internal(query_dedup, request)
+                .await
+                .map_err(|e| {
+                    error!("Dedup execute physical plan failed, err:{e}");
+                    e
+                }),
+            None => self
+                .execute_physical_plan_internal(request)
+                .await
+                .map_err(|e| {
+                    error!("Execute physical plan failed, err:{e}");
+                    e
+                }),
         };
 
         record_stream_to_response_stream!(record_stream_result, ExecutePhysicalPlanStream)
@@ -1162,14 +1251,9 @@ fn create_query_ctx(
 
 async fn handle_execute_plan(
     ctx: QueryContext,
-    encoded_plan: Vec<u8>,
+    physical_plan: PhysicalPlanRef,
     query_engine: QueryEngineRef,
 ) -> Result<SendableRecordBatchStream> {
-    // TODO: Build remote plan in physical planner.
-    let physical_plan = Box::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
-        encoded_plan,
-    )));
-
     // Execute plan.
     let executor = query_engine.executor();
     executor

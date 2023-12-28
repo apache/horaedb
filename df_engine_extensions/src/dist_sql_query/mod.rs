@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
@@ -36,8 +39,8 @@ pub mod test_util;
 pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
     fn execute(
         &self,
+        task_context: RemoteTaskContext,
         table: TableIdentifier,
-        task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
 }
@@ -59,6 +62,20 @@ pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
 }
 
 type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;
+
+pub struct RemoteTaskContext {
+    pub task_ctx: Arc<TaskContext>,
+    pub remote_metrics: Arc<Mutex<Option<String>>>,
+}
+
+impl RemoteTaskContext {
+    pub fn new(task_ctx: Arc<TaskContext>, remote_metrics: Arc<Mutex<Option<String>>>) -> Self {
+        Self {
+            task_ctx,
+            remote_metrics,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct TableScanContext {

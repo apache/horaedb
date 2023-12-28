@@ -22,7 +22,7 @@ use macros::define_result;
 use query_engine::{
     context::ContextRef as QueryContextRef,
     executor::ExecutorRef,
-    physical_planner::{PhysicalPlanPtr, PhysicalPlannerRef},
+    physical_planner::{PhysicalPlanRef, PhysicalPlannerRef},
 };
 use query_frontend::plan::{PriorityContext, QueryPlan};
 use runtime::{Priority, PriorityRuntime};
@@ -143,7 +143,7 @@ impl Interpreter for SelectInterpreter {
 async fn execute_and_collect(
     query_ctx: QueryContextRef,
     executor: ExecutorRef,
-    physical_plan: PhysicalPlanPtr,
+    physical_plan: PhysicalPlanRef,
 ) -> Result<Output> {
     let record_batch_stream = executor
         .execute(&query_ctx, physical_plan)
