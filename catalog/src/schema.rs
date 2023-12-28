@@ -181,6 +181,9 @@ pub enum Error {
         table: String,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Invalid table status, status:{}", status))]
+    InvalidTableStatus { status: String },
 }
 
 define_result!(Error);

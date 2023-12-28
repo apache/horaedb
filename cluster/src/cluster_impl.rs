@@ -44,7 +44,7 @@ use crate::{
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause,
     InitEtcdClientConfig, InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause,
-    Result, ShardNotFound,
+    Result, ShardNotFound, TableStatus,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -311,6 +311,23 @@ impl Inner {
         self.shard_set.get(shard_id)
     }
 
+    /// Get shard by table name.
+    ///
+    /// This method is similar to `route_tables`, but it will not send request
+    /// to meta server, it only load data from local cache.
+    /// If target table is not found in any shards in this cluster, return None.
+    /// Otherwise, return the shard where this table is exists.
+    fn get_shard_by_table_name(&self, schema_name: &str, table_name: &str) -> Option<ShardRef> {
+        let shards = self.shard_set.all_shards();
+        for shard in shards {
+            match shard.find_table(schema_name, table_name) {
+                None => {}
+                Some(_) => return Some(shard),
+            }
+        }
+        None
+    }
+
     fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
         info!("Remove shard from shard_set, id:{shard_id}");
         self.shard_set
@@ -366,6 +383,13 @@ impl Cluster for ClusterImpl {
 
     fn shard(&self, shard_id: ShardId) -> Option<ShardRef> {
         self.inner.shard(shard_id)
+    }
+
+    fn get_table_status(&self, schema_name: &str, table_name: &str) -> Option<TableStatus> {
+        match self.inner.get_shard_by_table_name(schema_name, table_name) {
+            None => None,
+            Some(shard) => TableStatus::from(shard.get_status()).into(),
+        }
     }
 
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {

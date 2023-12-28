@@ -201,6 +201,7 @@ mod tests {
     use ceresdbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
+        TableStatus,
     };
     use common_types::table::ShardId;
     use meta_client::types::{
@@ -228,6 +229,10 @@ mod tests {
 
         fn shard(&self, _: ShardId) -> Option<ShardRef> {
             unimplemented!();
+        }
+
+        fn get_table_status(&self, _: &str, _: &str) -> Option<TableStatus> {
+            unimplemented!()
         }
 
         async fn close_shard(&self, _: ShardId) -> cluster::Result<ShardRef> {

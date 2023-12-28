@@ -334,8 +334,11 @@ async fn build_with_meta<T: WalsOpener>(
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
-    let meta_based_manager_ref =
-        Arc::new(volatile::ManagerImpl::new(shard_set, meta_client.clone()));
+    let meta_based_manager_ref = Arc::new(volatile::ManagerImpl::new(
+        shard_set,
+        meta_client.clone(),
+        cluster.clone(),
+    ));
 
     // Build catalog manager.
     let catalog_manager = Arc::new(CatalogManagerImpl::new(meta_based_manager_ref));
