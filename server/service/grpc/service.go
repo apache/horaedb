@@ -42,7 +42,7 @@ import (
 )
 
 type Service struct {
-	metaservicepb.UnimplementedCeresmetaRpcServiceServer
+	metaservicepb.UnimplementedMetaRpcServiceServer
 	opTimeout time.Duration
 	h         Handler
 
@@ -53,10 +53,10 @@ type Service struct {
 
 func NewService(opTimeout time.Duration, h Handler) *Service {
 	return &Service{
-		UnimplementedCeresmetaRpcServiceServer: metaservicepb.UnimplementedCeresmetaRpcServiceServer{},
-		opTimeout:                              opTimeout,
-		h:                                      h,
-		conns:                                  sync.Map{},
+		UnimplementedMetaRpcServiceServer: metaservicepb.UnimplementedMetaRpcServiceServer{},
+		opTimeout:                         opTimeout,
+		h:                                 h,
+		conns:                             sync.Map{},
 	}
 }
 

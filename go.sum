@@ -23,8 +23,8 @@ github.com/alecthomas/units v0.0.0-20151022065526-2efee857e7cf/go.mod h1:ybxpYRF
 github.com/alecthomas/units v0.0.0-20190717042225-c3de453c63f4/go.mod h1:ybxpYRFXyAe+OPACYpWeL0wqObRcbAqCMya13uyzqw0=
 github.com/alecthomas/units v0.0.0-20190924025748-f65c72e2690d/go.mod h1:rBZYJk541a8SKzHPHnH3zbiI+7dagKZ0cgpgrD7Fyho=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
-github.com/apache/incubator-horaedb-proto/golang v0.0.0-20231220150248-453c403a40cd h1:VoK1Blopwy9KTOgpPRrbnmc34cD1x2gpeml8944Hqmk=
-github.com/apache/incubator-horaedb-proto/golang v0.0.0-20231220150248-453c403a40cd/go.mod h1:Ch92HPIAoGbrgFCtpSgxcYSRgWdpNsIcPG1lfv24Ufs=
+github.com/apache/incubator-horaedb-proto/golang v0.0.0-20231228071726-92152841fc8a h1:lQVr4wkixN4N5dOKRUBU1lnqkiHTFg6Im+tqJ8Y7XOE=
+github.com/apache/incubator-horaedb-proto/golang v0.0.0-20231228071726-92152841fc8a/go.mod h1:Ch92HPIAoGbrgFCtpSgxcYSRgWdpNsIcPG1lfv24Ufs=
 github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e/go.mod h1:3U/XgcO3hCbHZ8TKRvWD2dDTCfh9M9ya+I9JpbB7O8o=
 github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da/go.mod h1:Q73ZrmVTwzkszR9V5SSuryQ31EELlFMUz1kKyl939pY=
 github.com/armon/go-radix v0.0.0-20180808171621-7fddfc383310/go.mod h1:ufUuZ+zHj4x4TnLV4JWEpy2hxWSpsRywHrMgIH9cCH8=

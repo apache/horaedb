@@ -31,7 +31,7 @@ import (
 )
 
 // getForwardedMetaClient get forwarded horaemeta client. When current node is the leader, this func will return (nil,nil).
-func (s *Service) getForwardedMetaClient(ctx context.Context) (metaservicepb.CeresmetaRpcServiceClient, error) {
+func (s *Service) getForwardedMetaClient(ctx context.Context) (metaservicepb.MetaRpcServiceClient, error) {
 	forwardedAddr, _, err := s.getForwardedAddr(ctx)
 	if err != nil {
 		return nil, errors.WithMessage(err, "get forwarded horaemeta client")
@@ -47,12 +47,12 @@ func (s *Service) getForwardedMetaClient(ctx context.Context) (metaservicepb.Cer
 	return nil, nil
 }
 
-func (s *Service) getMetaClient(ctx context.Context, addr string) (metaservicepb.CeresmetaRpcServiceClient, error) {
+func (s *Service) getMetaClient(ctx context.Context, addr string) (metaservicepb.MetaRpcServiceClient, error) {
 	client, err := s.getForwardedGrpcClient(ctx, addr)
 	if err != nil {
 		return nil, errors.WithMessagef(err, "get horaemeta client, addr:%s", addr)
 	}
-	return metaservicepb.NewCeresmetaRpcServiceClient(client), nil
+	return metaservicepb.NewMetaRpcServiceClient(client), nil
 }
 
 func (s *Service) getForwardedGrpcClient(ctx context.Context, forwardedAddr string) (*grpc.ClientConn, error) {
