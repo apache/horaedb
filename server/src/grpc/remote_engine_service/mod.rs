@@ -718,12 +718,13 @@ impl RemoteEngineServiceImpl {
         let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
             encoded_plan,
         )));
+        // TODO: Use in handle_execute_plan fn to build stream with metrics
+        let physical_plan_clone = physical_plan.clone();
 
         let rt = self
             .runtimes
             .read_runtime
             .choose_runtime(&query_ctx.priority);
-        let physical_plan_clone = physical_plan.clone();
 
         let stream = rt
             .spawn(async move { handle_execute_plan(query_ctx, physical_plan, query_engine).await })
@@ -743,7 +744,7 @@ impl RemoteEngineServiceImpl {
         let stream = StreamWithMetric::new(Box::pin(stream), metric);
         Ok(RemoteExecStream::new(
             Box::pin(stream),
-            Some(physical_plan_clone),
+            ctx.is_analyze.then_some(physical_plan_clone),
         ))
     }
 
@@ -781,7 +782,7 @@ impl RemoteEngineServiceImpl {
         let physical_plan = Arc::new(DataFusionPhysicalPlanAdapter::new(TypedPlan::Remote(
             encoded_plan,
         )));
-
+        // TODO: Use in handle_execute_plan fn to build stream with metrics
         let physical_plan_clone = physical_plan.clone();
 
         let QueryDedup {
@@ -822,7 +823,7 @@ impl RemoteEngineServiceImpl {
         let stream = StreamWithMetric::new(Box::pin(ReceiverStream::new(rx)), metric);
         Ok(RemoteExecStream::new(
             Box::pin(stream),
-            Some(physical_plan_clone),
+            ctx.is_analyze.then_some(physical_plan_clone),
         ))
     }
 

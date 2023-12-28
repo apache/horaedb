@@ -349,7 +349,8 @@ impl ExecutionPlan for ResolvedPartitionedScan {
             remote_metrics,
         } = &self.remote_exec_ctx.plan_ctxs[partition];
 
-        let remote_task_ctx = RemoteTaskContext::new(context, remote_metrics.clone());
+        let remote_task_ctx =
+            RemoteTaskContext::new(context, remote_metrics.clone(), self.is_analyze);
 
         // Send plan for remote execution.
         let stream_future = self.remote_exec_ctx.executor.execute(

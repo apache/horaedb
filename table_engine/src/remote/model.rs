@@ -456,6 +456,7 @@ pub struct ExecContext {
     pub default_schema: String,
     pub query: String,
     pub priority: Priority,
+    pub is_analyze: bool,
 }
 
 pub enum PhysicalPlan {
@@ -478,6 +479,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             timeout_ms: rest_duration_ms,
             priority: value.context.priority.as_u8() as i32,
             displayable_query: value.context.query,
+            is_analyze: value.context.is_analyze,
         };
 
         let pb_plan = match value.physical_plan {
@@ -522,6 +524,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_schema,
             timeout_ms,
             displayable_query,
+            is_analyze,
             ..
         } = pb_exec_ctx;
 
@@ -539,6 +542,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_schema,
             query: displayable_query,
             priority,
+            is_analyze,
         };
 
         // Plan
