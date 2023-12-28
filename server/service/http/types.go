@@ -119,6 +119,11 @@ type NodeShardsRequest struct {
 	ClusterName string `json:"clusterName"`
 }
 
+type DropNodeShardsRequest struct {
+	ClusterName string   `json:"clusterName"`
+	ShardIDs    []uint32 `json:"shardIDs"`
+}
+
 type DropTableRequest struct {
 	ClusterName string `json:"clusterName"`
 	SchemaName  string `json:"schemaName"`

@@ -64,6 +64,7 @@ func (a *API) NewAPIRouter() *Router {
 	router.Post("/route", wrap(a.route, true, a.forwardClient))
 	router.Del("/table", wrap(a.dropTable, true, a.forwardClient))
 	router.Post("/getNodeShards", wrap(a.getNodeShards, true, a.forwardClient))
+	router.Del("/nodeShards", wrap(a.dropNodeShards, true, a.forwardClient))
 	router.Get("/flowLimiter", wrap(a.getFlowLimiter, true, a.forwardClient))
 	router.Put("/flowLimiter", wrap(a.updateFlowLimiter, true, a.forwardClient))
 	router.Get("/health", wrap(a.health, false, a.forwardClient))
@@ -204,6 +205,37 @@ func (a *API) getNodeShards(req *http.Request) apiFuncResult {
 	}
 
 	return okResult(result)
+}
+
+func (a *API) dropNodeShards(req *http.Request) apiFuncResult {
+	var dropNodeShardsRequest DropNodeShardsRequest
+	err := json.NewDecoder(req.Body).Decode(&dropNodeShardsRequest)
+	if err != nil {
+		return errResult(ErrParseRequest, err.Error())
+	}
+
+	c, err := a.clusterManager.GetCluster(req.Context(), dropNodeShardsRequest.ClusterName)
+	if err != nil {
+		log.Error("get cluster failed", zap.String("clusterName", dropNodeShardsRequest.ClusterName), zap.Error(err))
+		return errResult(ErrGetCluster, fmt.Sprintf("clusterName: %s, err: %s", dropNodeShardsRequest.ClusterName, err.Error()))
+	}
+
+	targetShardNodes := make([]storage.ShardNode, 0, len(dropNodeShardsRequest.ShardIDs))
+	getShardNodeResult := c.GetMetadata().GetShardNodes()
+	for _, shardNode := range getShardNodeResult.ShardNodes {
+		for _, shardID := range dropNodeShardsRequest.ShardIDs {
+			if shardNode.ID == storage.ShardID(shardID) {
+				targetShardNodes = append(targetShardNodes, shardNode)
+			}
+		}
+	}
+
+	if err := c.GetMetadata().DropShardNode(req.Context(), targetShardNodes); err != nil {
+		log.Error("drop node shards failed", zap.Error(err))
+		return errResult(ErrDropNodeShards, err.Error())
+	}
+
+	return okResult(targetShardNodes)
 }
 
 func (a *API) dropTable(req *http.Request) apiFuncResult {

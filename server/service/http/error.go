@@ -27,6 +27,7 @@ var (
 	ErrTable                         = coderr.NewCodeError(coderr.Internal, "table")
 	ErrRoute                         = coderr.NewCodeError(coderr.Internal, "route table")
 	ErrGetNodeShards                 = coderr.NewCodeError(coderr.Internal, "get node shards")
+	ErrDropNodeShards                = coderr.NewCodeError(coderr.Internal, "drop node shards")
 	ErrCreateProcedure               = coderr.NewCodeError(coderr.Internal, "create procedure")
 	ErrSubmitProcedure               = coderr.NewCodeError(coderr.Internal, "submit procedure")
 	ErrGetCluster                    = coderr.NewCodeError(coderr.Internal, "get cluster")
