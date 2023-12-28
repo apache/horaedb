@@ -9,9 +9,9 @@ HoraeDB is a high-performance, distributed, cloud native time-series database.
 
 ## Documentation
 
-- [User Guide](https://apache.github.io/incubator-horaedb-docs)
-- [Development Guide](https://apache.github.io/incubator-horaedb-docs/dev/compile_run.html)
-- [Roadmap](https://apache.github.io/incubator-horaedb-docs/dev/roadmap.html)
+- [User Guide](https://horaedb.apache.org)
+- [Development Guide](https://horaedb.apache.org/dev/compile_run.html)
+- [Roadmap](https://horaedb.apache.org/dev/roadmap.html)
 
 ## Quick Start
 
@@ -64,7 +64,7 @@ SELECT * FROM `demo`
 
 ### Run from source code
 
-See details [here](https://apache.github.io/incubator-horaedb-docs/dev/compile_run.html).
+See details [here](https://horaedb.apache.org/dev/compile_run.html).
 
 ## Contributing
 

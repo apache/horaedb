@@ -8,9 +8,9 @@
 HoraeDB 是一款高性能、分布式的云原生时序数据库。
 
 ## 文档
-- [用户文档](https://apache.github.io/incubator-horaedb-docs)
-- [研发文档](https://apache.github.io/incubator-horaedb-docs/dev/compile_run.html)
-- [Roadmap](https://apache.github.io/incubator-horaedb-docs/dev/roadmap.html)
+- [用户文档](https://horaedb.apache.org)
+- [研发文档](https://horaedb.apache.org/dev/compile_run.html)
+- [Roadmap](https://horaedb.apache.org/dev/roadmap.html)
 
 ## 快速开始
 ### 通过 Docker 运行
@@ -56,7 +56,7 @@ SELECT * FROM `demo`
 ```
 
 ### 通过源码编译运行
-详见[文档](https://apache.github.io/incubator-horaedb-docs/dev/compile_run.html)。
+详见[文档](https://horaedb.apache.org/dev/compile_run.html)。
 
 ## 如何贡献
 
