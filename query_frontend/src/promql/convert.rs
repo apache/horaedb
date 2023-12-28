@@ -154,7 +154,7 @@ impl Expr {
         meta_provider: ContextProviderAdapter<'_, P>,
         read_parallelism: usize,
     ) -> Result<(Plan, Arc<ColumnNames>)> {
-        let (logic_plan, column_name, _) =
+        let (logic_plan, column_name, table_name) =
             self.build_plan_iter(&meta_provider, INIT_LEVEL, read_parallelism)?;
         let tables = Arc::new(
             meta_provider
@@ -167,6 +167,7 @@ impl Expr {
             Plan::Query(QueryPlan {
                 df_plan: logic_plan,
                 tables,
+                table_name: Some(table_name),
             }),
             column_name,
         ))

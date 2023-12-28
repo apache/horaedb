@@ -22,7 +22,7 @@ use std::{
 
 use bytes_ext::{ByteVec, Bytes};
 use ceresdbproto::remote_engine::{
-    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
+    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc, QueryPriority,
 };
 use common_types::{
     request_id::RequestId,
@@ -35,6 +35,7 @@ use common_types::{
 use generic_error::{BoxError, GenericError, GenericResult};
 use itertools::Itertools;
 use macros::define_result;
+use runtime::Priority;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -454,6 +455,7 @@ pub struct ExecContext {
     pub default_catalog: String,
     pub default_schema: String,
     pub query: String,
+    pub priority: Priority,
 }
 
 pub enum PhysicalPlan {
@@ -474,7 +476,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             default_catalog: value.context.default_catalog,
             default_schema: value.context.default_schema,
             timeout_ms: rest_duration_ms,
-            priority: 0, // not used now
+            priority: value.context.priority.as_u8() as i32,
             displayable_query: value.context.query,
         };
 
@@ -510,6 +512,10 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
         let pb_exec_ctx = value.context.context(ConvertRemoteExecuteRequest {
             msg: "missing exec ctx",
         })?;
+        let priority = match pb_exec_ctx.priority() {
+            QueryPriority::Low => Priority::Low,
+            QueryPriority::High => Priority::High,
+        };
         let ceresdbproto::remote_engine::ExecContext {
             request_id_str,
             default_catalog,
@@ -532,6 +538,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_catalog,
             default_schema,
             query: displayable_query,
+            priority,
         };
 
         // Plan

@@ -28,6 +28,7 @@ use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use query_frontend::{
     frontend,
     frontend::{Context as SqlContext, Frontend},
+    plan::{Plan, PriorityContext},
     provider::CatalogMetaProvider,
 };
 use router::endpoint::Endpoint;
@@ -176,7 +177,7 @@ impl Proxy {
             .slow_threshold
             .load(std::sync::atomic::Ordering::Relaxed);
         let slow_threshold = Duration::from_secs(slow_threshold_secs);
-        let slow_timer = SlowTimer::new(request_id.as_str(), sql, slow_threshold);
+        let mut slow_timer = SlowTimer::new(request_id.as_str(), sql, slow_threshold);
         let deadline = ctx.timeout.map(|t| slow_timer.start_time() + t);
         let catalog = self.instance.catalog_manager.default_catalog_name();
 
@@ -243,13 +244,11 @@ impl Proxy {
                 })?;
         }
 
-        let mut plan_maybe_expired = false;
-        if let Some(table_name) = &table_name {
-            match self.is_plan_expired(&plan, catalog, schema, table_name) {
-                Ok(v) => plan_maybe_expired = v,
-                Err(err) => {
-                    warn!("Plan expire check failed, err:{err}");
-                }
+        if let Plan::Query(plan) = &plan {
+            if let Some(priority) = plan.decide_query_priority(PriorityContext {
+                time_range_threshold: self.expensive_query_threshold,
+            }) {
+                slow_timer.priority(priority);
             }
         }
 
@@ -276,27 +275,7 @@ impl Proxy {
             "Handle sql query finished, sql:{sql}, elapsed:{cost:?}, catalog:{catalog}, schema:{schema}, ctx:{ctx:?}",
         );
 
-        match &output {
-            Output::AffectedRows(_) => Ok(output),
-            Output::Records(v) => {
-                if plan_maybe_expired {
-                    let num_rows = v
-                        .iter()
-                        .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
-                    if num_rows == 0 {
-                        warn!("Query time range maybe exceed TTL, sql:{sql}");
-
-                        // TODO: Cannot return this error directly, empty query
-                        // should return 200, not 4xx/5xx
-                        // All protocols should recognize this error.
-                        // return Err(Error::QueryMaybeExceedTTL {
-                        //     msg: format!("Query time range maybe exceed TTL,
-                        // sql:{sql}"), });
-                    }
-                }
-                Ok(output)
-            }
-        }
+        Ok(output)
     }
 
     async fn maybe_forward_sql_query(

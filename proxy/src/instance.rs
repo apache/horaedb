@@ -21,6 +21,7 @@ use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
 use query_engine::QueryEngineRef;
 use query_frontend::config::DynamicConfig as FrontendDynamicConfig;
+use runtime::PriorityRuntime;
 use table_engine::{engine::TableEngineRef, remote::RemoteEngineRef};
 
 use crate::limiter::Limiter;
@@ -29,6 +30,7 @@ use crate::limiter::Limiter;
 pub struct Instance {
     pub catalog_manager: ManagerRef,
     pub query_engine: QueryEngineRef,
+    pub query_runtime: PriorityRuntime,
     pub table_engine: TableEngineRef,
     pub partition_table_engine: TableEngineRef,
     // User defined functions registry.

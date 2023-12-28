@@ -28,6 +28,7 @@ pub use log::{
     debug as log_debug, error as log_error, info as log_info, max_level, trace as log_trace,
     warn as log_warn, SetLoggerError,
 };
+use runtime::Priority;
 use serde::{Deserialize, Serialize};
 pub use slog::Level;
 use slog::{slog_o, Drain, Key, OwnedKVList, Record, KV};
@@ -471,6 +472,7 @@ pub struct SlowTimer<'a> {
     sql: &'a str,
     slow_threshold: Duration,
     start_time: Instant,
+    priority: Option<Priority>,
 }
 
 impl<'a> Drop for SlowTimer<'a> {
@@ -478,9 +480,10 @@ impl<'a> Drop for SlowTimer<'a> {
         let cost = self.elapsed();
         if cost > self.slow_threshold {
             slow_query!(
-                "Normal query elapsed:{:?}, id:{}, query:{}",
+                "Normal query elapsed:{:?}, id:{}, priority:{:?}, query:{}",
                 cost,
                 self.request_id,
+                self.priority,
                 self.sql,
             );
         }
@@ -494,6 +497,7 @@ impl<'a> SlowTimer<'a> {
             sql,
             slow_threshold: threshold,
             start_time: Instant::now(),
+            priority: None,
         }
     }
 
@@ -503,6 +507,10 @@ impl<'a> SlowTimer<'a> {
 
     pub fn start_time(&self) -> Instant {
         self.start_time
+    }
+
+    pub fn priority(&mut self, priority: Priority) {
+        self.priority = Some(priority);
     }
 }
 

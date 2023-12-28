@@ -122,6 +122,10 @@ impl Instance {
             None,
         ));
 
+        let runtime = self
+            .read_runtime()
+            .choose_runtime(&request.priority)
+            .clone();
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Query,
             self.scan_options.clone(),
@@ -129,7 +133,7 @@ impl Instance {
             table_options.num_rows_per_row_group,
             request.predicate.clone(),
             self.meta_cache.clone(),
-            self.read_runtime().clone(),
+            runtime,
         );
 
         if need_merge_sort {

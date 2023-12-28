@@ -12,21 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Query context
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
 
-use std::{sync::Arc, time::Instant};
-
-use common_types::request_id::RequestId;
-use runtime::Priority;
-
-pub type ContextRef = Arc<Context>;
-
-/// Query context
-#[derive(Debug, Clone)]
-pub struct Context {
-    pub request_id: RequestId,
-    pub deadline: Option<Instant>,
-    pub default_catalog: String,
-    pub default_schema: String,
-    pub priority: Priority,
+lazy_static! {
+    pub static ref REMOTE_ENGINE_QUERY_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "remote_engine_query_counter",
+        "remote_engine_query_counter",
+        &["priority"]
+    )
+    .unwrap();
 }

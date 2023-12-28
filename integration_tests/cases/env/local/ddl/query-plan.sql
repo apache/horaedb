@@ -21,6 +21,11 @@ INSERT INTO `03_dml_select_real_time_range` (t, name, value)
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
+-- This query should have higher priority
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+explain analyze select t from `03_dml_select_real_time_range`
+where t >= 1695348001000 and t < 1695348002000;
+
 -- This query should not include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 explain analyze select t from `03_dml_select_real_time_range`

@@ -38,6 +38,7 @@ use df_engine_extensions::dist_sql_query::{
 use futures::future::BoxFuture;
 use generic_error::BoxError;
 use prost::Message;
+use runtime::Priority;
 use snafu::ResultExt;
 use table_engine::{
     provider::{CeresdbOptions, ScanTable, SCAN_TABLE_METRICS_COLLECTOR_NAME},
@@ -191,6 +192,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             .map(|n| Instant::now() + Duration::from_millis(n));
         let default_catalog = ceresdb_options.default_catalog.clone();
         let default_schema = ceresdb_options.default_schema.clone();
+        let priority = ceresdb_options.priority;
 
         let display_plan = DisplayableExecutionPlan::new(plan.as_ref());
         let exec_ctx = ExecContext {
@@ -199,6 +201,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             default_catalog,
             default_schema,
             query: display_plan.indent(true).to_string(),
+            priority,
         };
 
         // Encode plan and schema
@@ -261,6 +264,7 @@ impl DistQueryResolverBuilder {
             self.remote_executor.clone(),
             self.catalog_manager.clone(),
             scan_builder,
+            ctx.priority,
         )
     }
 }
@@ -278,6 +282,7 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
         &self,
         table: TableRef,
         ctx: TableScanContext,
+        priority: Priority,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         let read_opts = ReadOptions {
             batch_size: ctx.batch_size,
@@ -291,6 +296,7 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
             projected_schema: ctx.projected_schema,
             predicate: ctx.predicate,
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
+            priority,
         };
 
         let mut scan = ScanTable::new(table, read_request);

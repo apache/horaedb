@@ -67,6 +67,8 @@ use crate::{
     },
     config::DynamicConfig,
     container::TableReference,
+    frontend::parse_table_name_with_standard,
+    logical_optimizer::optimize_plan,
     parser,
     partition::PartitionParser,
     plan::{
@@ -613,18 +615,20 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
     fn sql_statement_to_datafusion_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
         let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
+        let table_name = parse_table_name_with_standard(&sql_stmt);
 
         let df_plan = df_planner
             .sql_statement_to_plan(sql_stmt)
             .context(DatafusionPlan)?;
+        let df_plan = optimize_plan(&df_plan).context(DatafusionPlan)?;
 
         debug!("Sql statement to datafusion plan, df_plan:\n{:#?}", df_plan);
 
         // Get all tables needed in the plan
         let tables = self.meta_provider.try_into_container().context(FindMeta)?;
-
         Ok(Plan::Query(QueryPlan {
             df_plan,
+            table_name,
             tables: Arc::new(tables),
         }))
     }
@@ -1389,7 +1393,7 @@ pub fn get_table_ref(table_name: &str) -> TableReference {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
 
     use ceresdbproto::storage::{
         value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
@@ -1416,7 +1420,7 @@ mod tests {
         Ok(())
     }
 
-    fn sql_to_logical_plan(sql: &str) -> Result<Plan> {
+    pub fn sql_to_logical_plan(sql: &str) -> Result<Plan> {
         let dyn_config = DynamicConfig::default();
         sql_to_logical_plan_with_config(sql, &dyn_config)
     }
@@ -1644,10 +1648,9 @@ mod tests {
         let sql = "select * from test_table;";
         quick_test(
             sql,
-            "Query(
+            r"Query(
     QueryPlan {
-        df_plan: Projection: test_table.key1, test_table.key2, test_table.field1, test_table.field2, test_table.field3, test_table.field4
-          TableScan: test_table,
+        df_plan: TableScan: test_table projection=[key1, key2, field1, field2, field3, field4],
     },
 )",
         )

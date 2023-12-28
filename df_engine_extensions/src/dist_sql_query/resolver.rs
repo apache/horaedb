@@ -20,6 +20,7 @@ use datafusion::{
     error::{DataFusionError, Result as DfResult},
     physical_plan::{analyze::AnalyzeExec, ExecutionPlan},
 };
+use runtime::Priority;
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
 use crate::{
@@ -45,6 +46,7 @@ pub struct Resolver {
     remote_executor: RemotePhysicalPlanExecutorRef,
     catalog_manager: CatalogManagerRef,
     scan_builder: ExecutableScanBuilderRef,
+    priority: Priority,
 }
 
 impl Resolver {
@@ -52,11 +54,13 @@ impl Resolver {
         remote_executor: RemotePhysicalPlanExecutorRef,
         catalog_manager: CatalogManagerRef,
         scan_builder: ExecutableScanBuilderRef,
+        priority: Priority,
     ) -> Self {
         Self {
             remote_executor,
             catalog_manager,
             scan_builder,
+            priority,
         }
     }
 
@@ -214,7 +218,10 @@ impl Resolver {
             };
 
         if let Some((table, table_scan_ctx)) = build_scan_opt {
-            return self.scan_builder.build(table, table_scan_ctx).await;
+            return self
+                .scan_builder
+                .build(table, table_scan_ctx, self.priority)
+                .await;
         }
 
         let children = plan.children().clone();

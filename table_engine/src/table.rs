@@ -36,6 +36,7 @@ use common_types::{
 };
 use generic_error::{BoxError, GenericError};
 use macros::define_result;
+use runtime::Priority;
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use trace_metric::MetricsCollector;
@@ -387,6 +388,7 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Collector for metrics of this read request.
     pub metrics_collector: MetricsCollector,
+    pub priority: Priority,
 }
 
 impl fmt::Debug for ReadRequest {
@@ -415,6 +417,7 @@ impl fmt::Debug for ReadRequest {
             .field("opts", &self.opts)
             .field("projected", &projected)
             .field("predicate", &predicate)
+            .field("priority", &self.priority)
             .finish()
     }
 }
@@ -470,6 +473,8 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::default(),
+            // TODO: pass priority from request.
+            priority: Default::default(),
         })
     }
 }

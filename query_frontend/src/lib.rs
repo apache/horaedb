@@ -23,6 +23,7 @@ pub mod config;
 pub mod container;
 pub mod frontend;
 pub mod influxql;
+mod logical_optimizer;
 pub mod parser;
 mod partition;
 pub mod plan;
