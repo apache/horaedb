@@ -232,6 +232,9 @@ pub struct TableData {
     /// Whether enable primary key sampling
     enable_primary_key_sampling: bool,
 
+    /// Whether enable layered memtable
+    pub enable_layered_memtable: bool,
+
     /// Metrics of this table
     pub metrics: Metrics,
 
@@ -320,7 +323,8 @@ impl TableData {
         };
 
         // Wrap it by `LayeredMemtable`.
-        let memtable_factory = if mutable_segment_switch_threshold > 0 {
+        let enable_layered_memtable = mutable_segment_switch_threshold > 0;
+        let memtable_factory = if enable_layered_memtable {
             Arc::new(LayeredMemtableFactory::new(
                 memtable_factory,
                 mutable_segment_switch_threshold,
@@ -366,6 +370,7 @@ impl TableData {
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
             enable_primary_key_sampling,
+            enable_layered_memtable,
         })
     }
 
@@ -394,7 +399,8 @@ impl TableData {
             MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
         };
         // Maybe wrap it by `LayeredMemtable`.
-        let memtable_factory = if mutable_segment_switch_threshold > 0 {
+        let enable_layered_memtable = mutable_segment_switch_threshold > 0;
+        let memtable_factory = if enable_layered_memtable {
             Arc::new(LayeredMemtableFactory::new(
                 memtable_factory,
                 mutable_segment_switch_threshold,
@@ -436,6 +442,7 @@ impl TableData {
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
             enable_primary_key_sampling,
+            enable_layered_memtable,
         })
     }
 
