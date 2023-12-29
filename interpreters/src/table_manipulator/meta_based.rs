@@ -126,7 +126,7 @@ impl TableManipulator for TableManipulatorImpl {
             .await
             .box_err()
             .context(DropWithCause {
-                msg: format!("failed to create table by meta client, req:{req:?}"),
+                msg: format!("failed to drop table by meta client, req:{req:?}"),
             })?;
 
         info!(
