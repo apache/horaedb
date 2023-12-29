@@ -220,17 +220,17 @@ impl<M: MetricCollector> Drop for StreamWithMetric<M> {
 
 struct RemoteExecStream {
     inner: BoxStream<'static, Result<RecordBatch>>,
-    physical_plan: Option<PhysicalPlanRef>,
+    physical_plan_for_explain: Option<PhysicalPlanRef>,
 }
 
 impl RemoteExecStream {
     fn new(
         inner: BoxStream<'static, Result<RecordBatch>>,
-        physical_plan: Option<PhysicalPlanRef>,
+        physical_plan_for_explain: Option<PhysicalPlanRef>,
     ) -> Self {
         Self {
             inner,
-            physical_plan,
+            physical_plan_for_explain,
         }
     }
 }
@@ -240,19 +240,25 @@ impl Stream for RemoteExecStream {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        match this.inner.poll_next_unpin(cx) {
-            Poll::Ready(Some(res)) => {
-                Poll::Ready(Some(res.map(RecordBatchWithMetric::RecordBatch)))
-            }
-            Poll::Ready(None) => match &this.physical_plan {
-                Some(physical_plan) => {
-                    let metrics = physical_plan.metrics_to_string();
-                    this.physical_plan = None;
-                    Poll::Ready(Some(Ok(RecordBatchWithMetric::Metric(metrics))))
+        let is_explain = this.physical_plan_for_explain.is_some();
+        loop {
+            match this.inner.poll_next_unpin(cx) {
+                Poll::Ready(Some(res)) => {
+                    // If the request is explain, we try drain the stream to get the metrics.
+                    if !is_explain {
+                        return Poll::Ready(Some(res.map(RecordBatchWithMetric::RecordBatch)));
+                    }
                 }
-                None => Poll::Ready(None),
-            },
-            Poll::Pending => Poll::Pending,
+                Poll::Ready(None) => match &this.physical_plan_for_explain {
+                    Some(physical_plan) => {
+                        let metrics = physical_plan.metrics_to_string();
+                        this.physical_plan_for_explain = None;
+                        return Poll::Ready(Some(Ok(RecordBatchWithMetric::Metric(metrics))));
+                    }
+                    None => return Poll::Ready(None),
+                },
+                Poll::Pending => return Poll::Pending,
+            }
         }
     }
 }
