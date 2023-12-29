@@ -21,7 +21,7 @@ use async_trait::async_trait;
 use generic_error::BoxError;
 use horaedbproto::{
     common::ResponseHeader,
-    meta_service::{self, ceresmeta_rpc_service_client::CeresmetaRpcServiceClient},
+    meta_service::{self, meta_rpc_service_client::MetaRpcServiceClient},
 };
 use logger::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -39,7 +39,7 @@ use crate::{
     FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
 };
 
-type MetaServiceGrpcClient = CeresmetaRpcServiceClient<tonic::transport::Channel>;
+type MetaServiceGrpcClient = MetaRpcServiceClient<tonic::transport::Channel>;
 
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
