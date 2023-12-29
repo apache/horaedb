@@ -866,6 +866,7 @@ mod tests {
                     manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
                     metrics_opt: MetricsOptions::default(),
                     enable_primary_key_sampling: false,
+                    mutable_segment_switch_threshold: 0,
                 },
                 &purger,
                 mem_size_options,

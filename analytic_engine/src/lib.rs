@@ -83,6 +83,11 @@ pub struct Config {
     /// The ratio of table's write buffer size to trigger preflush, and it
     /// should be in the range (0, 1].
     pub preflush_write_buffer_size_ratio: f32,
+
+    /// Mutable segment switch threshold for memtable
+    /// If it is zero, disable the layered memtable.
+    pub mutable_segment_switch_threshold: ReadableSize,
+
     pub enable_primary_key_sampling: bool,
 
     // Iterator scanning options
@@ -200,6 +205,7 @@ impl Default for Config {
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
             metrics: MetricsOptions::default(),
+            mutable_segment_switch_threshold: ReadableSize::mb(3),
         }
     }
 }

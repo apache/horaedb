@@ -79,6 +79,8 @@ impl Instance {
             manifest_snapshot_every_n_updates: ctx.config.manifest.snapshot_every_n_updates,
             enable_primary_key_sampling: ctx.config.enable_primary_key_sampling,
             metrics_opt: ctx.config.metrics.clone(),
+            mutable_segment_switch_threshold: ctx.config.mutable_segment_switch_threshold.as_byte()
+                as usize,
         });
         let manifest = ManifestImpl::open(
             ctx.config.manifest.clone(),

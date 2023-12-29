@@ -56,6 +56,7 @@ pub(crate) struct TableMetaSetImpl {
     pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,
     pub(crate) enable_primary_key_sampling: bool,
     pub(crate) metrics_opt: MetricsOptions,
+    pub(crate) mutable_segment_switch_threshold: usize,
 }
 
 impl fmt::Debug for TableMetaSetImpl {
@@ -153,6 +154,7 @@ impl TableMetaSetImpl {
                                 .manifest_snapshot_every_n_updates,
                             metrics_opt: self.metrics_opt.clone(),
                             enable_primary_key_sampling: self.enable_primary_key_sampling,
+                            mutable_segment_switch_threshold: self.mutable_segment_switch_threshold,
                         },
                         &self.file_purger,
                         mem_size_options,
@@ -289,6 +291,7 @@ impl TableMetaSetImpl {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: self.metrics_opt.clone(),
                     enable_primary_key_sampling: self.enable_primary_key_sampling,
+                    mutable_segment_switch_threshold: self.mutable_segment_switch_threshold,
                 },
                 mem_size_options,
                 allocator,

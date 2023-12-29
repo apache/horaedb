@@ -149,6 +149,7 @@ pub struct TableConfig {
     pub manifest_snapshot_every_n_updates: NonZeroUsize,
     pub metrics_opt: MetricsOptions,
     pub enable_primary_key_sampling: bool,
+    pub mutable_segment_switch_threshold: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -280,21 +281,6 @@ pub struct MemSizeOptions {
     pub size_sampling_interval: ReadableDuration,
 }
 
-#[inline]
-fn compute_mutable_switch_threshold(
-    write_buffer_size: u32,
-    mutable_limit_write_buffer_size_ratio: f32,
-    mutable_switch_threshold_ratio: f32,
-) -> u32 {
-    assert!((0.0..=1.0).contains(&mutable_switch_threshold_ratio));
-    let mutable_limit =
-        compute_mutable_limit(write_buffer_size, mutable_limit_write_buffer_size_ratio);
-
-    let threshold = mutable_limit as f32 * mutable_switch_threshold_ratio;
-
-    threshold as u32
-}
-
 impl TableData {
     /// Create a new TableData
     ///
@@ -325,6 +311,7 @@ impl TableData {
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
+            mutable_segment_switch_threshold,
         } = config;
 
         let memtable_factory: MemTableFactoryRef = match opts.memtable_type {
@@ -333,15 +320,14 @@ impl TableData {
         };
 
         // Wrap it by `LayeredMemtable`.
-        let mutable_switch_threshold = compute_mutable_switch_threshold(
-            opts.write_buffer_size,
-            preflush_write_buffer_size_ratio,
-            0.125,
-        );
-        let memtable_factory = Arc::new(LayeredMemtableFactory::new(
-            memtable_factory,
-            mutable_switch_threshold as usize,
-        ));
+        let memtable_factory = if mutable_segment_switch_threshold > 0 {
+            Arc::new(LayeredMemtableFactory::new(
+                memtable_factory,
+                mutable_segment_switch_threshold,
+            ))
+        } else {
+            memtable_factory
+        };
 
         let purge_queue = purger.create_purge_queue(space_id, id);
         let current_version =
@@ -400,8 +386,23 @@ impl TableData {
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
+            mutable_segment_switch_threshold,
         } = config;
-        let memtable_factory = Arc::new(SkiplistMemTableFactory);
+
+        let memtable_factory: MemTableFactoryRef = match add_meta.opts.memtable_type {
+            MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
+            MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
+        };
+        // Maybe wrap it by `LayeredMemtable`.
+        let memtable_factory = if mutable_segment_switch_threshold > 0 {
+            Arc::new(LayeredMemtableFactory::new(
+                memtable_factory,
+                mutable_segment_switch_threshold,
+            )) as _
+        } else {
+            memtable_factory as _
+        };
+
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version =
             TableVersion::new(mem_size_options.size_sampling_interval, purge_queue);
@@ -980,6 +981,7 @@ pub mod tests {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: MetricsOptions::default(),
                     enable_primary_key_sampling: false,
+                    mutable_segment_switch_threshold: 0,
                 },
                 &purger,
                 mem_size_options,
