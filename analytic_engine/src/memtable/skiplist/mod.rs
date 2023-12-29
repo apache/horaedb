@@ -270,7 +270,6 @@ mod tests {
     use std::{ops::Bound, sync::Arc};
 
     use arena::NoopCollector;
-    use async_trait::async_trait;
     use bytes_ext::ByteVec;
     use codec::memcomparable::MemComparable;
     use common_types::{

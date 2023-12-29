@@ -21,7 +21,7 @@ use std::{
     mem,
     ops::{Bound, Deref},
     sync::{
-        atomic::{self, AtomicU64, AtomicUsize},
+        atomic::{self, AtomicU64},
         RwLock,
     },
 };
@@ -30,10 +30,7 @@ use arena::CollectorRef;
 use arrow::record_batch::RecordBatch as ArrowRecordBatch;
 use bytes_ext::Bytes;
 use common_types::{
-    projected_schema::{ProjectedSchema, RowProjectorBuilder},
-    row::Row,
-    schema::Schema,
-    time::TimeRange,
+    projected_schema::RowProjectorBuilder, row::Row, schema::Schema, time::TimeRange,
     SequenceNumber,
 };
 use generic_error::BoxError;
@@ -42,19 +39,12 @@ use skiplist::{BytewiseComparator, KeyComparator};
 use snafu::{OptionExt, ResultExt};
 
 use crate::memtable::{
-    factory::{Factory, FactoryRef, Options},
+    factory::{FactoryRef, Options},
     key::KeySequence,
     layered::iter::ColumnarIterImpl,
     ColumnarIterPtr, Internal, InternalNoCause, MemTable, MemTableRef, Metrics as MemtableMetrics,
     PutContext, Result, ScanContext, ScanRequest,
 };
-
-#[derive(Default, Debug)]
-struct Metrics {
-    row_raw_size: AtomicUsize,
-    row_encoded_size: AtomicUsize,
-    row_count: AtomicUsize,
-}
 
 /// MemTable implementation based on skiplist
 pub(crate) struct LayeredMemTable {
@@ -87,6 +77,7 @@ impl LayeredMemTable {
     }
 
     // Used for testing only
+    #[cfg(test)]
     fn force_switch_mutable_segment(&self) -> Result<()> {
         let inner = &mut *self.inner.write().unwrap();
         inner.switch_mutable_segment(self.schema.clone())
@@ -176,11 +167,7 @@ impl Inner {
             arena_block_size: opts.arena_block_size,
             collector: opts.collector.clone(),
         };
-
-        let mutable_segment_builder = MutableSegmentBuilder {
-            memtable_factory,
-            opts: builder_opts,
-        };
+        let mutable_segment_builder = MutableSegmentBuilder::new(memtable_factory, builder_opts);
 
         // Build the first mutable batch.
         let init_mutable_segment = mutable_segment_builder.build()?;
@@ -482,10 +469,9 @@ impl ImmutableSegment {
 #[cfg(test)]
 mod tests {
 
-    use std::{clone, ops::Bound, sync::Arc};
+    use std::{ops::Bound, sync::Arc};
 
     use arena::NoopCollector;
-    use async_trait::async_trait;
     use bytes_ext::ByteVec;
     use codec::{memcomparable::MemComparable, Encoder};
     use common_types::{
@@ -495,13 +481,11 @@ mod tests {
         row::Row,
         schema::IndexInWriterSchema,
         tests::{build_row, build_schema},
-        time::Timestamp,
     };
-    use itertools::Itertools;
 
     use super::*;
     use crate::memtable::{
-        factory::{Factory, Options},
+        factory::Options,
         skiplist::factory::SkiplistMemTableFactory,
         test_util::{TestMemtableBuilder, TestUtil},
         MemTableRef,
@@ -526,17 +510,16 @@ mod tests {
             let partitioned_data = data.chunks(3).collect::<Vec<_>>();
             let chunk_num = partitioned_data.len();
 
-            for chunk_idx in 0..(chunk_num - 1) {
-                let chunk = partitioned_data[chunk_idx];
-                for (seq, row) in chunk {
-                    memtable.put(&mut ctx, *seq, &row, &schema).unwrap();
+            for chunk in partitioned_data.iter().take(chunk_num - 1) {
+                for (seq, row) in *chunk {
+                    memtable.put(&mut ctx, *seq, row, &schema).unwrap();
                 }
                 memtable.force_switch_mutable_segment().unwrap();
             }
 
             let last_chunk = partitioned_data[chunk_num - 1];
             for (seq, row) in last_chunk {
-                memtable.put(&mut ctx, *seq, &row, &schema).unwrap();
+                memtable.put(&mut ctx, *seq, row, &schema).unwrap();
             }
 
             Arc::new(memtable)
@@ -585,7 +568,7 @@ mod tests {
         let schema = memtable.schema().clone();
 
         // No projection.
-        let projection = (0..schema.num_columns()).into_iter().collect::<Vec<_>>();
+        let projection = (0..schema.num_columns()).collect::<Vec<_>>();
         let expected = test_util.data();
         test_memtable_scan_internal(schema.clone(), projection, memtable.clone(), expected);
 
@@ -666,10 +649,5 @@ mod tests {
         encoder.encode(&mut buf, &Datum::from(c2)).unwrap();
 
         Bytes::from(buf)
-    }
-
-    #[inline]
-    fn build_row_from_datums(datums: Vec<Datum>) -> Row {
-        Row::from_datums(datums)
     }
 }

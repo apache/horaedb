@@ -14,12 +14,7 @@
 
 //! Skiplist memtable iterator
 
-use arrow::ipc::RecordBatchBuilder;
-use common_types::{
-    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
-    schema::Schema,
-    time::TimeRange,
-};
+use common_types::{record_batch::FetchedRecordBatch, schema::Schema, time::TimeRange};
 use generic_error::BoxError;
 use snafu::ResultExt;
 

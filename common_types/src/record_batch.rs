@@ -29,7 +29,7 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use crate::{
     column_block::{cast_nanosecond_to_mills, ColumnBlock, ColumnBlockBuilder},
     datum::DatumKind,
-    projected_schema::{ProjectedSchema, RowProjector},
+    projected_schema::ProjectedSchema,
     row::{
         contiguous::{ContiguousRow, ProjectedContiguousRow},
         Row, RowViewOnBatch,

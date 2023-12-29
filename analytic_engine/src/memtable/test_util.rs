@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use async_trait::async_trait;
-use common_types::{row::Row, tests::build_row};
+use common_types::row::Row;
 
 use super::*;
 
