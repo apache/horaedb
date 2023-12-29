@@ -64,6 +64,11 @@ SELECT * FROM `demo`
 
 [订阅邮箱参与讨论](mailto:dev-subscribe@horaedb.apache.org) ([订阅](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [取消订阅](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [查看邮件历史记录](https://lists.apache.org/list.html?dev@horaedb.apache.org))
 
+
+发送 [请求](mailto:dev@horaedb.apache.org?subject=(Request%to%20join%20HoraeDB%20slack)) 至 `dev@horaedb.apache.org` 加入HoraedDB Slack
+
+[约定式提交](https://apache.github.io/incubator-horaedb-docs/cn/dev/conventional_commit)
+
 [如何参与 HoraeDB 代码贡献](CONTRIBUTING.md)
 
 
