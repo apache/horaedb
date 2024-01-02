@@ -1,4 +1,4 @@
-// Copyright 2023 The HoraeDB Authors
+// Copyright 2023-2024 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -264,9 +264,9 @@ impl Inner {
             let mut imm_iter = self.immutable_segments.iter();
             let _ = imm_iter.next();
             for imm in imm_iter {
-                match comparator.compare_key(&min_key, &imm.min_key) {
-                    std::cmp::Ordering::Greater => min_key = imm.min_key(),
-                    std::cmp::Ordering::Less | std::cmp::Ordering::Equal => (),
+                if let std::cmp::Ordering::Greater = comparator.compare_key(&min_key, &imm.min_key)
+                {
+                    min_key = imm.min_key();
                 }
             }
 
@@ -295,9 +295,8 @@ impl Inner {
             let mut imm_iter = self.immutable_segments.iter();
             let _ = imm_iter.next();
             for imm in imm_iter {
-                match comparator.compare_key(&max_key, &imm.max_key) {
-                    std::cmp::Ordering::Less => max_key = imm.max_key(),
-                    std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => (),
+                if let std::cmp::Ordering::Less = comparator.compare_key(&max_key, &imm.max_key) {
+                    max_key = imm.max_key();
                 }
             }
 
@@ -570,7 +569,7 @@ mod tests {
         // No projection.
         let projection = (0..schema.num_columns()).collect::<Vec<_>>();
         let expected = test_util.data();
-        test_memtable_scan_internal(schema.clone(), projection, memtable.clone(), expected);
+        test_memtable_scan_internal(schema.clone(), projection, TimeRange::min_to_max(), memtable.clone(), expected);
 
         // Projection to first three.
         let projection = vec![0, 1, 3];
@@ -582,17 +581,40 @@ mod tests {
                 Row::from_datums(datums)
             })
             .collect();
-        test_memtable_scan_internal(schema.clone(), projection, memtable.clone(), expected);
+        test_memtable_scan_internal(schema.clone(), projection, TimeRange::min_to_max(), memtable.clone(), expected);
+    
+        // No projection.
+        let projection = (0..schema.num_columns()).collect::<Vec<_>>();
+        let time_range =  TimeRange::new(2.into(), 7.into()).unwrap();
+        // Memtable data after switching may be like(just showing timestamp column using to filter):     
+        //  [1, 2, 3], [4, 5, 6], [7]
+        // 
+        // And the target time range is: [2, 7)
+        //
+        // So the filter result should be: [1, 2, 3], [4, 5, 6]
+        let expected = test_util
+        .data()
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, row)| {
+            if idx < 6 {
+                Some(row.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+        test_memtable_scan_internal(schema.clone(), projection, time_range, memtable.clone(), expected);
     }
 
     fn test_memtable_scan_internal(
         schema: Schema,
         projection: Vec<usize>,
+        time_range: TimeRange,
         memtable: Arc<dyn MemTable + Send + Sync>,
         expected: Vec<Row>,
     ) {
         let projected_schema = ProjectedSchema::new(schema, Some(projection)).unwrap();
-        // let projected_schema = ProjectedSchema::no_projection(schema);
         let fetched_schema = projected_schema.to_record_schema();
         let table_schema = projected_schema.table_schema();
         let row_projector_builder =
@@ -607,7 +629,7 @@ mod tests {
             need_dedup: false,
             reverse: false,
             metrics_collector: None,
-            time_range: TimeRange::min_to_max(),
+            time_range,
         };
         let scan_ctx = ScanContext::default();
         let iter = memtable.scan(scan_ctx, scan_request).unwrap();
