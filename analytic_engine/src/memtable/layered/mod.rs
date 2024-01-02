@@ -485,6 +485,7 @@ mod tests {
     use super::*;
     use crate::memtable::{
         factory::Options,
+        key::ComparableInternalKey,
         skiplist::factory::SkiplistMemTableFactory,
         test_util::{TestMemtableBuilder, TestUtil},
         MemTableRef,
@@ -569,7 +570,13 @@ mod tests {
         // No projection.
         let projection = (0..schema.num_columns()).collect::<Vec<_>>();
         let expected = test_util.data();
-        test_memtable_scan_internal(schema.clone(), projection, TimeRange::min_to_max(), memtable.clone(), expected);
+        test_memtable_scan_internal(
+            schema.clone(),
+            projection,
+            TimeRange::min_to_max(),
+            memtable.clone(),
+            expected,
+        );
 
         // Projection to first three.
         let projection = vec![0, 1, 3];
@@ -581,30 +588,78 @@ mod tests {
                 Row::from_datums(datums)
             })
             .collect();
-        test_memtable_scan_internal(schema.clone(), projection, TimeRange::min_to_max(), memtable.clone(), expected);
-    
+        test_memtable_scan_internal(
+            schema.clone(),
+            projection,
+            TimeRange::min_to_max(),
+            memtable.clone(),
+            expected,
+        );
+
         // No projection.
         let projection = (0..schema.num_columns()).collect::<Vec<_>>();
-        let time_range =  TimeRange::new(2.into(), 7.into()).unwrap();
-        // Memtable data after switching may be like(just showing timestamp column using to filter):     
-        //  [1, 2, 3], [4, 5, 6], [7]
-        // 
+        let time_range = TimeRange::new(2.into(), 7.into()).unwrap();
+        // Memtable data after switching may be like(just showing timestamp column using
+        // to filter):  [1, 2, 3], [4, 5, 6], [7]
+        //
         // And the target time range is: [2, 7)
         //
         // So the filter result should be: [1, 2, 3], [4, 5, 6]
         let expected = test_util
-        .data()
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, row)| {
-            if idx < 6 {
-                Some(row.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
-        test_memtable_scan_internal(schema.clone(), projection, time_range, memtable.clone(), expected);
+            .data()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, row)| if idx < 6 { Some(row.clone()) } else { None })
+            .collect();
+        test_memtable_scan_internal(
+            schema.clone(),
+            projection,
+            time_range,
+            memtable.clone(),
+            expected,
+        );
+    }
+
+    #[test]
+    fn test_time_range() {
+        let builder = TestMemtableBuilderImpl;
+        let data = test_data();
+        let test_util = TestUtil::new(builder, data);
+        let memtable = test_util.memtable();
+
+        assert_eq!(TimeRange::new(1.into(), 8.into()), memtable.time_range());
+    }
+
+    #[test]
+    fn test_min_max_key() {
+        let builder = TestMemtableBuilderImpl;
+        let data = test_data();
+        let test_util = TestUtil::new(builder, data.clone());
+        let memtable = test_util.memtable();
+        let schema = memtable.schema();
+
+        // Min key
+        let key_encoder = ComparableInternalKey::new(data[0].0.clone(), schema);
+        let mut min_key = Vec::new();
+        min_key.reserve(key_encoder.estimate_encoded_size(&data[0].1));
+        key_encoder.encode(&mut min_key, &data[0].1).unwrap();
+        let key_encoder = ComparableInternalKey::new(data[0].0.clone(), schema);
+        let mut min_key = Vec::new();
+        min_key.reserve(key_encoder.estimate_encoded_size(&data[0].1));
+        key_encoder.encode(&mut min_key, &data[0].1).unwrap();
+
+        // Max key
+        let key_encoder = ComparableInternalKey::new(data[6].0.clone(), schema);
+        let mut max_key = Vec::new();
+        max_key.reserve(key_encoder.estimate_encoded_size(&data[6].1));
+        key_encoder.encode(&mut max_key, &data[6].1).unwrap();
+        let key_encoder = ComparableInternalKey::new(data[6].0.clone(), schema);
+        let mut max_key = Vec::new();
+        max_key.reserve(key_encoder.estimate_encoded_size(&data[6].1));
+        key_encoder.encode(&mut max_key, &data[6].1).unwrap();
+
+        assert_eq!(min_key, memtable.min_key().unwrap().to_vec());
+        assert_eq!(max_key, memtable.max_key().unwrap().to_vec());
     }
 
     fn test_memtable_scan_internal(
