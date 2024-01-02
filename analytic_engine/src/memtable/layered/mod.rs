@@ -639,21 +639,21 @@ mod tests {
         let schema = memtable.schema();
 
         // Min key
-        let key_encoder = ComparableInternalKey::new(data[0].0.clone(), schema);
+        let key_encoder = ComparableInternalKey::new(data[0].0, schema);
         let mut min_key = Vec::new();
         min_key.reserve(key_encoder.estimate_encoded_size(&data[0].1));
         key_encoder.encode(&mut min_key, &data[0].1).unwrap();
-        let key_encoder = ComparableInternalKey::new(data[0].0.clone(), schema);
+        let key_encoder = ComparableInternalKey::new(data[0].0, schema);
         let mut min_key = Vec::new();
         min_key.reserve(key_encoder.estimate_encoded_size(&data[0].1));
         key_encoder.encode(&mut min_key, &data[0].1).unwrap();
 
         // Max key
-        let key_encoder = ComparableInternalKey::new(data[6].0.clone(), schema);
+        let key_encoder = ComparableInternalKey::new(data[6].0, schema);
         let mut max_key = Vec::new();
         max_key.reserve(key_encoder.estimate_encoded_size(&data[6].1));
         key_encoder.encode(&mut max_key, &data[6].1).unwrap();
-        let key_encoder = ComparableInternalKey::new(data[6].0.clone(), schema);
+        let key_encoder = ComparableInternalKey::new(data[6].0, schema);
         let mut max_key = Vec::new();
         max_key.reserve(key_encoder.estimate_encoded_size(&data[6].1));
         key_encoder.encode(&mut max_key, &data[6].1).unwrap();
