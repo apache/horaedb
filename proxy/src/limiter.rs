@@ -62,10 +62,9 @@ impl BlockRule {
                             return true;
                         }
                     }
-                    false
-                } else {
-                    false
                 }
+
+                false
             }
             BlockRule::AnyInsert => matches!(plan, Plan::Insert(_)),
         }
