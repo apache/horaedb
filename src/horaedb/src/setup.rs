@@ -91,15 +91,15 @@ fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
 fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
     EngineRuntimes {
         read_runtime: Arc::new(build_runtime_with_stack_size(
-            "ceres-read",
+            "horae-read",
             config.read_thread_num,
             Some(config.read_thread_stack_size.as_byte() as usize),
         )),
-        write_runtime: Arc::new(build_runtime("ceres-write", config.write_thread_num)),
-        compact_runtime: Arc::new(build_runtime("ceres-compact", config.compact_thread_num)),
-        meta_runtime: Arc::new(build_runtime("ceres-meta", config.meta_thread_num)),
-        default_runtime: Arc::new(build_runtime("ceres-default", config.default_thread_num)),
-        io_runtime: Arc::new(build_runtime("ceres-io", config.io_thread_num)),
+        write_runtime: Arc::new(build_runtime("horae-write", config.write_thread_num)),
+        compact_runtime: Arc::new(build_runtime("horae-compact", config.compact_thread_num)),
+        meta_runtime: Arc::new(build_runtime("horae-meta", config.meta_thread_num)),
+        default_runtime: Arc::new(build_runtime("horae-default", config.default_thread_num)),
+        io_runtime: Arc::new(build_runtime("horae-io", config.io_thread_num)),
     }
 }
 
