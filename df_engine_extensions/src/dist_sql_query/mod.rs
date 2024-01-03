@@ -66,13 +66,19 @@ type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;
 pub struct RemoteTaskContext {
     pub task_ctx: Arc<TaskContext>,
     pub remote_metrics: Arc<Mutex<Option<String>>>,
+    pub is_analyze: bool,
 }
 
 impl RemoteTaskContext {
-    pub fn new(task_ctx: Arc<TaskContext>, remote_metrics: Arc<Mutex<Option<String>>>) -> Self {
+    pub fn new(
+        task_ctx: Arc<TaskContext>,
+        remote_metrics: Arc<Mutex<Option<String>>>,
+        is_analyze: bool,
+    ) -> Self {
         Self {
             task_ctx,
             remote_metrics,
+            is_analyze,
         }
     }
 }

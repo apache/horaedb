@@ -202,6 +202,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             default_schema,
             query: display_plan.indent(true).to_string(),
             priority,
+            is_analyze: task_context.is_analyze,
         };
 
         // Encode plan and schema

@@ -456,6 +456,9 @@ pub struct ExecContext {
     pub default_schema: String,
     pub query: String,
     pub priority: Priority,
+    // TOOO: there are many explain types, we need to support them all.
+    // A proper way is to define a enum for all explain types.
+    pub is_analyze: bool,
 }
 
 pub enum PhysicalPlan {
@@ -470,6 +473,11 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             NO_TIMEOUT
         };
 
+        let explain = if value.context.is_analyze {
+            Some(ceresdbproto::remote_engine::Explain::Analyze)
+        } else {
+            None
+        };
         let pb_context = ceresdbproto::remote_engine::ExecContext {
             request_id: 0, // not used any more
             request_id_str: value.context.request_id.to_string(),
@@ -478,6 +486,7 @@ impl From<RemoteExecuteRequest> for ceresdbproto::remote_engine::ExecutePlanRequ
             timeout_ms: rest_duration_ms,
             priority: value.context.priority.as_u8() as i32,
             displayable_query: value.context.query,
+            explain: explain.map(|v| v as i32),
         };
 
         let pb_plan = match value.physical_plan {
@@ -522,8 +531,10 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_schema,
             timeout_ms,
             displayable_query,
+            explain,
             ..
         } = pb_exec_ctx;
+        let is_analyze = explain == Some(ceresdbproto::remote_engine::Explain::Analyze as i32);
 
         let request_id = RequestId::from(request_id_str);
         let deadline = if timeout_ms >= 0 {
@@ -539,6 +550,7 @@ impl TryFrom<ceresdbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_schema,
             query: displayable_query,
             priority,
+            is_analyze,
         };
 
         // Plan
