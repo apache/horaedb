@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashSet, sync::RwLock};
+use std::{collections::HashSet, str::FromStr, sync::RwLock};
 
 use datafusion::logical_expr::logical_plan::LogicalPlan;
 use macros::define_result;
 use query_frontend::plan::Plan;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
+use time_ext::ReadableDuration;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
@@ -37,9 +38,20 @@ define_result!(Error);
 pub enum BlockRule {
     QueryWithoutPredicate,
     /// Max time range a query can scan.
+    #[serde(deserialize_with = "deserialize_readable_duration")]
     QueryRange(i64),
     AnyQuery,
     AnyInsert,
+}
+
+fn deserialize_readable_duration<'de, D>(deserializer: D) -> std::result::Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    ReadableDuration::from_str(s)
+        .map(|d| d.0.as_millis() as i64)
+        .map_err(serde::de::Error::custom)
 }
 
 #[derive(Default, Clone, Deserialize, Debug, Serialize)]
