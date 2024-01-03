@@ -36,6 +36,8 @@ github:
     squash:  true
     merge:   false
     rebase:  true
+  ghp_branch: gh-pages
+  ghp_path: ~
   protected_branches:
     main:
       required_pull_request_reviews:
