@@ -3,7 +3,7 @@
 set -exo pipefail
 
 ## init varibles
-USER="ceres"
+USER="horae"
 DATA_DIR="/home/${USER}/data"
 DATA_PATH="${DATA_DIR}/horaedb"
 CONFIG_FILE="/etc/horaedb/horaedb.toml"
