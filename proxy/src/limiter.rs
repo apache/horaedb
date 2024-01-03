@@ -33,8 +33,11 @@ pub enum Error {
 define_result!(Error);
 
 #[derive(Clone, Copy, Deserialize, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
+#[serde(tag = "type", content = "content")]
 pub enum BlockRule {
     QueryWithoutPredicate,
+    /// Max time range a query can scan.
+    QueryRange(i64),
     AnyQuery,
     AnyInsert,
 }
@@ -52,6 +55,18 @@ impl BlockRule {
         match self {
             BlockRule::QueryWithoutPredicate => self.is_query_without_predicate(plan),
             BlockRule::AnyQuery => matches!(plan, Plan::Query(_)),
+            BlockRule::QueryRange(threshold) => {
+                if let Plan::Query(plan) = plan {
+                    if let Some(range) = plan.query_range() {
+                        if range > *threshold {
+                            return true;
+                        }
+                    }
+                    false
+                } else {
+                    false
+                }
+            }
             BlockRule::AnyInsert => matches!(plan, Plan::Insert(_)),
         }
     }

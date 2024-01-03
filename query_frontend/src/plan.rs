@@ -201,6 +201,18 @@ impl QueryPlan {
 
         Some(priority)
     }
+
+    /// When query contains invalid time range such as `[200, 100]`, it will
+    /// return None.
+    pub fn query_range(&self) -> Option<i64> {
+        self.extract_time_range().map(|time_range| {
+            time_range
+                .exclusive_end()
+                .as_i64()
+                .checked_sub(time_range.inclusive_start().as_i64())
+                .unwrap_or(i64::MAX)
+        })
+    }
 }
 
 impl Debug for QueryPlan {
