@@ -20,7 +20,7 @@
 github:
   description: >-
     Meta service of HoraeDB cluster.
-  homepage: https://apache.github.io/incubator-horaedb-docs # TODO: after website is ready, set to https://horaedb.apache.org/
+  homepage: https://horaedb.apache.org
   labels:
     - golang
     - sql
