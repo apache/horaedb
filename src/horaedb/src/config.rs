@@ -76,6 +76,28 @@ pub struct Config {
     pub limiter: LimiterConfig,
 }
 
+impl Config {
+    pub fn set_meta_addr(&mut self, meta_addr: String) {
+        match &mut self.cluster_deployment {
+            Some(ClusterDeployment::WithMeta(mut v)) => {
+                v.meta_client.meta_addr = meta_addr;
+            }
+            _ => {}
+        }
+    }
+
+    // etcd_addrs: should be a string split by ",".
+    // Example: "etcd1:2379,etcd2:2379,etcd3:2379"
+    pub fn set_etcd_addrs(&mut self, etcd_addrs: String) {
+        match &mut self.cluster_deployment {
+            Some(ClusterDeployment::WithMeta(mut v)) => {
+                v.etcd_client.server_addrs = etcd_addrs.split(",").map(|s| s.to_string()).collect();
+            }
+            _ => {}
+        }
+    }
+}
+
 /// The cluster deployment decides how to deploy the HoraeDB cluster.
 ///
 /// [ClusterDeployment::NoMeta] means to start one or multiple HoraeDB
