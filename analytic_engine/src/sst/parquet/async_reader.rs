@@ -37,7 +37,7 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use generic_error::{BoxError, GenericResult};
-use logger::{debug, error};
+use logger::{debug, error, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
@@ -397,7 +397,28 @@ impl<'a> Reader<'a> {
                     file_path: self.path.to_string(),
                 })?;
 
-        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
+        let mut parquet_meta_data = Arc::new(parquet_meta_data);
+        let object_store_reader = parquet_ext::reader::ObjectStoreReader::new(
+            self.store.clone(),
+            self.path.clone(),
+            parquet_meta_data.clone(),
+        );
+
+        if let Ok(page_indexes) =
+            parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
+                .await
+                .map_err(|e| {
+                    // When loading page indexes failed, we just log the error and continue querying
+                    // TODO: Fix this in stream. https://github.com/CeresDB/ceresdb/issues/1040
+                    warn!(
+                        "Fail to load page indexes, path:{}, err:{:?}.",
+                        self.path, e
+                    );
+                    e
+                })
+        {
+            parquet_meta_data = page_indexes;
+        }
 
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter, self.store.clone())
             .await
