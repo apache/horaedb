@@ -65,7 +65,7 @@ impl Schema for SchemaWithCluster {
                 // Table not found in schema but shard contains this table.
                 // Check the status of the shard.
                 Some(table_status) => InvalidTableStatus {
-                    status: table_status.to_string(),
+                    status: format!("{:?}", table_status),
                 }
                 .fail()?,
             };

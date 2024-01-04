@@ -142,11 +142,6 @@ impl Shard {
         data.is_opened()
     }
 
-    pub fn is_ready(&self) -> bool {
-        let data = self.data.read().unwrap();
-        data.is_ready()
-    }
-
     pub fn is_frozen(&self) -> bool {
         let data = self.data.read().unwrap();
         data.is_frozen()
@@ -229,11 +224,6 @@ impl ShardData {
     #[inline]
     pub fn is_opened(&self) -> bool {
         self.shard_info.is_opened()
-    }
-
-    #[inline]
-    pub fn is_ready(&self) -> bool {
-        self.shard_info.is_ready()
     }
 
     #[inline]

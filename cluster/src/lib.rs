@@ -22,10 +22,7 @@
 
 #![feature(trait_alias)]
 
-use std::{
-    fmt::{Display, Formatter},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_types::schema::SchemaName;
@@ -165,20 +162,11 @@ pub enum Error {
 
 define_result!(Error);
 
+#[derive(Debug)]
 pub enum TableStatus {
     Ready,
     Recovering,
     Frozen,
-}
-
-impl Display for TableStatus {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            TableStatus::Ready => write!(f, "Ready"),
-            TableStatus::Recovering => write!(f, "Recovering"),
-            TableStatus::Frozen => write!(f, "Frozen"),
-        }
-    }
 }
 
 impl From<ShardStatus> for TableStatus {

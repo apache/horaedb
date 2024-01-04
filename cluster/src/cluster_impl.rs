@@ -319,13 +319,9 @@ impl Inner {
     /// Otherwise, return the shard where this table is exists.
     fn get_shard_by_table_name(&self, schema_name: &str, table_name: &str) -> Option<ShardRef> {
         let shards = self.shard_set.all_shards();
-        for shard in shards {
-            match shard.find_table(schema_name, table_name) {
-                None => {}
-                Some(_) => return Some(shard),
-            }
-        }
-        None
+        shards
+            .into_iter()
+            .find(|shard| shard.find_table(schema_name, table_name).is_some())
     }
 
     fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
@@ -386,10 +382,9 @@ impl Cluster for ClusterImpl {
     }
 
     fn get_table_status(&self, schema_name: &str, table_name: &str) -> Option<TableStatus> {
-        match self.inner.get_shard_by_table_name(schema_name, table_name) {
-            None => None,
-            Some(shard) => TableStatus::from(shard.get_status()).into(),
-        }
+        self.inner
+            .get_shard_by_table_name(schema_name, table_name)
+            .map(|shard| TableStatus::from(shard.get_status()))
     }
 
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
