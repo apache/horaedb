@@ -190,7 +190,7 @@ impl Client {
         }
 
         // Merge according to endpoint.
-        let mut remote_writes = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
+        let mut write_handles = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
         let mut written_tables = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
         for (endpoint, context) in write_batch_contexts_by_endpoint {
             // Write to remote.
@@ -211,12 +211,12 @@ impl Client {
                     .box_err()
             });
 
-            remote_writes.push(handle);
+            write_handles.push(handle);
             written_tables.push(table_idents);
         }
 
-        let mut results = Vec::with_capacity(remote_writes.len());
-        for (table_idents, handle) in written_tables.into_iter().zip(remote_writes) {
+        let mut results = Vec::with_capacity(write_handles.len());
+        for (table_idents, handle) in written_tables.into_iter().zip(write_handles) {
             // If it's runtime error, don't evict entires from route cache.
             let batch_result = match handle.await.box_err() {
                 Ok(result) => result,
