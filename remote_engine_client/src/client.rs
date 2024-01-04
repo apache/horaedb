@@ -192,7 +192,7 @@ impl Client {
         // Merge according to endpoint.
         let mut remote_writes = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
         let mut written_tables = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
-        for (_, context) in write_batch_contexts_by_endpoint {
+        for (endpoint, context) in write_batch_contexts_by_endpoint {
             // Write to remote.
             let WriteBatchContext {
                 table_idents,
@@ -207,6 +207,7 @@ impl Client {
                 rpc_client
                     .write_batch(Request::new(batch_request_pb))
                     .await
+                    .map(|v| (v, endpoint.clone()))
                     .box_err()
             });
 
@@ -215,10 +216,9 @@ impl Client {
         }
 
         let mut results = Vec::with_capacity(remote_writes.len());
-        for (table_idents, remote_write) in written_tables.into_iter().zip(remote_writes) {
-            let batch_result = remote_write.await;
+        for (table_idents, handle) in written_tables.into_iter().zip(remote_writes) {
             // If it's runtime error, don't evict entires from route cache.
-            let batch_result = match batch_result.box_err() {
+            let batch_result = match handle.await.box_err() {
                 Ok(result) => result,
                 Err(e) => {
                     results.push(WriteBatchResult {
@@ -230,11 +230,12 @@ impl Client {
             };
 
             // Check remote write result then.
-            let result = batch_result.and_then(|response| {
+            let result = batch_result.and_then(|result| {
+                let (response, endpoint) = result;
                 let response = response.into_inner();
                 if let Some(header) = &response.header && !status_code::is_ok(header.code) {
                     Server {
-                        endpoint: Endpoint::new("".to_string(), 1),
+                        endpoint,
                         table_idents: table_idents.clone(),
                         code: header.code,
                         msg: header.error.clone(),
