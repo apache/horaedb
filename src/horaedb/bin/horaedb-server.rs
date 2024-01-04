@@ -28,7 +28,11 @@ use logger::info;
 
 /// By this environment variable, the address of current node can be overridden.
 /// And it could be domain name or ip address, but no port follows it.
-const NODE_ADDR: &str = "HORAEDB_SERVER_ADDR";
+const HORAEDB_SERVER_ADDR: &str = "HORAEDB_SERVER_ADDR";
+/// By this environment variable, the address of horaemeta can be overridden.
+const HORAEMETA_SERVER_ADDR: &str = "HORAEMETA_SERVER_ADDR";
+/// By this environment variable, the etcd addresses can be overridden.
+const ETCD_ADDRS: &str = "ETCD_ADDRS";
 /// By this environment variable, the cluster name of current node can be
 /// overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
@@ -82,8 +86,14 @@ fn main() {
         None => Config::default(),
     };
 
-    if let Ok(node_addr) = env::var(NODE_ADDR) {
+    if let Ok(node_addr) = env::var(HORAEDB_SERVER_ADDR) {
         config.node.addr = node_addr;
+    }
+    if let Ok(meta_addr) = env::var(HORAEMETA_SERVER_ADDR) {
+        config.set_meta_addr(meta_addr);
+    }
+    if let Ok(etcd_addrs) = env::var(ETCD_ADDRS) {
+        config.set_etcd_addrs(etcd_addrs);
     }
     if let Ok(cluster) = env::var(CLUSTER_NAME) {
         if let Some(ClusterDeployment::WithMeta(v)) = &mut config.cluster_deployment {
