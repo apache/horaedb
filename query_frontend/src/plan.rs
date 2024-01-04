@@ -77,6 +77,21 @@ pub enum Plan {
     Exists(ExistsTablePlan),
 }
 
+impl Plan {
+    pub fn plan_type(&self) -> &str {
+        match self {
+            Self::Query(_) => "query",
+            Self::Insert(_) => "insert",
+            Self::Create(_)
+            | Self::Drop(_)
+            | Self::Describe(_)
+            | Self::AlterTable(_)
+            | Self::Show(_)
+            | Self::Exists(_) => "other",
+        }
+    }
+}
+
 pub struct PriorityContext {
     pub time_range_threshold: u64,
 }
