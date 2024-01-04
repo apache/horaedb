@@ -404,20 +404,19 @@ impl<'a> Reader<'a> {
             parquet_meta_data.clone(),
         );
 
-        if let Ok(page_indexes) =
-            parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
-                .await
-                .map_err(|e| {
-                    // When loading page indexes failed, we just log the error and continue querying
-                    // TODO: Fix this in stream. https://github.com/apache/incubator-horaedb/issues/1040
-                    warn!(
-                        "Fail to load page indexes, path:{}, err:{:?}.",
-                        self.path, e
-                    );
-                    e
-                })
+        if let Ok(meta_data) = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
+            .await
+            .map_err(|e| {
+                // When loading page indexes failed, we just log the error and continue querying
+                // TODO: Fix this in stream. https://github.com/apache/incubator-horaedb/issues/1040
+                warn!(
+                    "Fail to load page indexes, path:{}, err:{:?}.",
+                    self.path, e
+                );
+                e
+            })
         {
-            parquet_meta_data = page_indexes;
+            parquet_meta_data = meta_data;
         }
 
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter, self.store.clone())
