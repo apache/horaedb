@@ -182,8 +182,8 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid table status, status:{}", status))]
-    InvalidTableStatus { status: String },
+    #[snafu(display("Table is not exists in schema, err:{}", source))]
+    TableNotExistsInSchema { source: GenericError },
 }
 
 define_result!(Error);

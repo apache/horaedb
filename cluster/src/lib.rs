@@ -172,8 +172,7 @@ pub enum TableStatus {
 impl From<ShardStatus> for TableStatus {
     fn from(value: ShardStatus) -> Self {
         match value {
-            ShardStatus::Init => TableStatus::Recovering,
-            ShardStatus::Opening => TableStatus::Recovering,
+            ShardStatus::Init | ShardStatus::Opening => TableStatus::Recovering,
             ShardStatus::Ready => TableStatus::Ready,
             ShardStatus::Frozen => TableStatus::Frozen,
         }

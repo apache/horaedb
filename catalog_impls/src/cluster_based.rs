@@ -16,12 +16,21 @@ use async_trait::async_trait;
 use catalog::{
     schema,
     schema::{
-        CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, InvalidTableStatus,
-        NameRef, Schema, SchemaRef,
+        CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, Schema,
+        SchemaRef, TableNotExistsInSchema,
     },
 };
 use cluster::{ClusterRef, TableStatus};
+use generic_error::BoxError;
+use snafu::{ResultExt, Snafu};
 use table_engine::table::{SchemaId, TableRef};
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility(pub))]
+pub enum Error {
+    #[snafu(display("Invalid table status, status:{:?}", status))]
+    InvalidTableStatus { status: TableStatus },
+}
 
 /// A cluster-based implementation for [`schema`].
 
@@ -65,9 +74,11 @@ impl Schema for SchemaWithCluster {
                 // Table not found in schema but shard contains this table.
                 // Check the status of the shard.
                 Some(table_status) => InvalidTableStatus {
-                    status: format!("{:?}", table_status),
+                    status: table_status,
                 }
-                .fail()?,
+                .fail()
+                .box_err()
+                .with_context(|| TableNotExistsInSchema {})?,
             };
         }
 
