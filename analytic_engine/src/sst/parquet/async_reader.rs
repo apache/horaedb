@@ -409,7 +409,7 @@ impl<'a> Reader<'a> {
                 .await
                 .map_err(|e| {
                     // When loading page indexes failed, we just log the error and continue querying
-                    // TODO: Fix this in stream. https://github.com/CeresDB/ceresdb/issues/1040
+                    // TODO: Fix this in stream. https://github.com/apache/incubator-horaedb/issues/1040
                     warn!(
                         "Fail to load page indexes, path:{}, err:{:?}.",
                         self.path, e
