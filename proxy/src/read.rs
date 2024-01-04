@@ -240,7 +240,7 @@ impl Proxy {
                 .try_limit(&plan)
                 .box_err()
                 .context(Internal {
-                    msg: "Request is blocked",
+                    msg: format!("Request is blocked, table_name:{table_name:?}"),
                 })?;
         }
 

@@ -61,6 +61,12 @@ lazy_static! {
     pub static ref HTTP_HANDLER_COUNTER_VEC_GLOBAL: IntCounterVec =
         register_int_counter_vec!("http_handler_counter", "Http handler counter", &["type"])
             .unwrap();
+    pub static ref BLOCKED_REQUEST_COUNTER_VEC_GLOBAL: IntCounterVec = register_int_counter_vec!(
+        "blocked_request_counter",
+        "Blocked request counter",
+        &["type"]
+    )
+    .unwrap();
 }
 
 lazy_static! {
