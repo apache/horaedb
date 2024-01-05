@@ -327,6 +327,7 @@ impl TableData {
             .0 as usize;
         let enable_layered_memtable = mutable_segment_switch_threshold > 0;
         let memtable_factory = if enable_layered_memtable {
+            debug!("Enable layered memtable, mutable_segment_type:{}, mutable_segment_switch_threshold:{mutable_segment_switch_threshold}", opts.memtable_type.to_string());
             Arc::new(LayeredMemtableFactory::new(
                 memtable_factory,
                 mutable_segment_switch_threshold,

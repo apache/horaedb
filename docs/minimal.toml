@@ -19,7 +19,7 @@ grpc_port = 8831
 postgresql_port = 5433
 
 [logger]
-level = "info"
+level = "debug"
 
 [tracing]
 dir = "/tmp/ceresdb"
@@ -33,5 +33,4 @@ type = "RocksDB"
 data_dir = "/tmp/ceresdb"
 
 [analytic]
-enable_primary_key_sampling = false
-mutable_segment_switch_threshold = 0
+enable_primary_key_sampling = true
