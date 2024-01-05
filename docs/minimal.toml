@@ -19,7 +19,7 @@ grpc_port = 8831
 postgresql_port = 5433
 
 [logger]
-level = "debug"
+level = "info"
 
 [tracing]
 dir = "/tmp/ceresdb"
