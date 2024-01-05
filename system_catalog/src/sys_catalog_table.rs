@@ -1,4 +1,4 @@
-// Copyright 2023 The HoraeDB Authors
+// Copyright 2023-2024 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -308,6 +308,11 @@ impl SysCatalogTable {
         options.insert(
             common_types::OPTION_KEY_ENABLE_TTL.to_string(),
             DEFAULT_ENABLE_TTL.to_string(),
+        );
+        // Disable layered memtable for system catalog table.
+        options.insert(
+            common_types::MUTABLE_SEGMENT_SWITCH_THRESHOLD.to_string(),
+            0.to_string(),
         );
         let params = CreateTableParams {
             catalog_name: consts::SYSTEM_CATALOG.to_string(),

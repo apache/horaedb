@@ -33,4 +33,5 @@ type = "RocksDB"
 data_dir = "/tmp/ceresdb"
 
 [analytic]
-enable_primary_key_sampling = true
+enable_primary_key_sampling = false
+mutable_segment_switch_threshold = 0

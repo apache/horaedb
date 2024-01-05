@@ -1,4 +1,4 @@
-// Copyright 2023 The HoraeDB Authors
+// Copyright 2023-2024 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,21 +22,23 @@ mod reversed_iter;
 pub mod skiplist;
 pub mod test_util;
 
-use std::{ops::Bound, sync::Arc, time::Instant};
+use std::{collections::HashMap, ops::Bound, sync::Arc, time::Instant};
 
 use bytes_ext::{ByteVec, Bytes};
+use ceresdbproto::manifest;
 use common_types::{
     projected_schema::RowProjectorBuilder,
     record_batch::FetchedRecordBatch,
     row::Row,
     schema::{IndexInWriterSchema, Schema},
     time::TimeRange,
-    SequenceNumber,
+    SequenceNumber, MUTABLE_SEGMENT_SWITCH_THRESHOLD,
 };
-use generic_error::GenericError;
+use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use serde::{Deserialize, Serialize};
-use snafu::{Backtrace, Snafu};
+use size_ext::ReadableSize;
+use snafu::{Backtrace, ResultExt, Snafu};
 use trace_metric::MetricsCollector;
 
 use crate::memtable::key::KeySequence;
@@ -48,13 +50,13 @@ const MEMTABLE_TYPE_COLUMNAR: &str = "columnar";
 #[derive(Debug, Clone, Deserialize, Eq, PartialEq, Serialize)]
 pub enum MemtableType {
     SkipList,
-    Columnar,
+    Column,
 }
 
 impl MemtableType {
     pub fn parse_from(s: &str) -> Self {
         if s.eq_ignore_ascii_case(MEMTABLE_TYPE_COLUMNAR) {
-            MemtableType::Columnar
+            MemtableType::Column
         } else {
             MemtableType::SkipList
         }
@@ -65,7 +67,54 @@ impl ToString for MemtableType {
     fn to_string(&self) -> String {
         match self {
             MemtableType::SkipList => MEMTABLE_TYPE_SKIPLIST.to_string(),
-            MemtableType::Columnar => MEMTABLE_TYPE_COLUMNAR.to_string(),
+            MemtableType::Column => MEMTABLE_TYPE_COLUMNAR.to_string(),
+        }
+    }
+}
+
+/// Layered memtable options
+/// If `mutable_segment_switch_threshold` is set zero, layered memtable will be
+/// disable.
+#[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
+#[serde(default)]
+pub struct LayeredMemtableOptions {
+    pub mutable_segment_switch_threshold: ReadableSize,
+}
+
+impl Default for LayeredMemtableOptions {
+    fn default() -> Self {
+        Self {
+            mutable_segment_switch_threshold: ReadableSize::mb(3),
+        }
+    }
+}
+
+impl LayeredMemtableOptions {
+    pub fn parse_from(opts: &HashMap<String, String>) -> Result<Self> {
+        let mut options = LayeredMemtableOptions::default();
+        if let Some(v) = opts.get(MUTABLE_SEGMENT_SWITCH_THRESHOLD) {
+            let threshold = v.parse::<u64>().box_err().context(Internal {
+                msg: format!("invalid mutable segment switch threshold:{v}"),
+            })?;
+            options.mutable_segment_switch_threshold = ReadableSize(threshold);
+        }
+
+        Ok(options)
+    }
+}
+
+impl From<manifest::LayeredMemtableOptions> for LayeredMemtableOptions {
+    fn from(value: manifest::LayeredMemtableOptions) -> Self {
+        Self {
+            mutable_segment_switch_threshold: ReadableSize(value.mutable_segment_switch_threshold),
+        }
+    }
+}
+
+impl From<LayeredMemtableOptions> for manifest::LayeredMemtableOptions {
+    fn from(value: LayeredMemtableOptions) -> Self {
+        Self {
+            mutable_segment_switch_threshold: value.mutable_segment_switch_threshold.0,
         }
     }
 }

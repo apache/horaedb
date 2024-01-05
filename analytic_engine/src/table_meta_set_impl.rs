@@ -1,4 +1,4 @@
-// Copyright 2023 The HoraeDB Authors
+// Copyright 2023-2024 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -56,7 +56,6 @@ pub(crate) struct TableMetaSetImpl {
     pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,
     pub(crate) enable_primary_key_sampling: bool,
     pub(crate) metrics_opt: MetricsOptions,
-    pub(crate) mutable_segment_switch_threshold: usize,
 }
 
 impl fmt::Debug for TableMetaSetImpl {
@@ -135,6 +134,7 @@ impl TableMetaSetImpl {
                     collector: space.mem_usage_collector.clone(),
                     size_sampling_interval: space.mem_usage_sampling_interval,
                 };
+
                 let table_data = Arc::new(
                     TableData::new(
                         TableDesc {
@@ -154,7 +154,6 @@ impl TableMetaSetImpl {
                                 .manifest_snapshot_every_n_updates,
                             metrics_opt: self.metrics_opt.clone(),
                             enable_primary_key_sampling: self.enable_primary_key_sampling,
-                            mutable_segment_switch_threshold: self.mutable_segment_switch_threshold,
                         },
                         &self.file_purger,
                         mem_size_options,
@@ -291,7 +290,6 @@ impl TableMetaSetImpl {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: self.metrics_opt.clone(),
                     enable_primary_key_sampling: self.enable_primary_key_sampling,
-                    mutable_segment_switch_threshold: self.mutable_segment_switch_threshold,
                 },
                 mem_size_options,
                 allocator,

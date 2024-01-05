@@ -94,7 +94,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-ceresdbproto = { git = "https://github.com/CeresDB/horaedbproto.git", rev = "cfdaccc" }
+ceresdbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "948e2443caa13f557340bc30e2e0e55e824ab1fb" }
 codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"

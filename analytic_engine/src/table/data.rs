@@ -1,4 +1,4 @@
-// Copyright 2023 The HoraeDB Authors
+// Copyright 2023-2024 The HoraeDB Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -149,7 +149,6 @@ pub struct TableConfig {
     pub manifest_snapshot_every_n_updates: NonZeroUsize,
     pub metrics_opt: MetricsOptions,
     pub enable_primary_key_sampling: bool,
-    pub mutable_segment_switch_threshold: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -314,15 +313,18 @@ impl TableData {
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
-            mutable_segment_switch_threshold,
         } = config;
 
         let memtable_factory: MemTableFactoryRef = match opts.memtable_type {
             MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
-            MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
+            MemtableType::Column => Arc::new(ColumnarMemTableFactory),
         };
 
         // Wrap it by `LayeredMemtable`.
+        let mutable_segment_switch_threshold = opts
+            .layered_memtable_opts
+            .mutable_segment_switch_threshold
+            .0 as usize;
         let enable_layered_memtable = mutable_segment_switch_threshold > 0;
         let memtable_factory = if enable_layered_memtable {
             Arc::new(LayeredMemtableFactory::new(
@@ -391,14 +393,18 @@ impl TableData {
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
-            mutable_segment_switch_threshold,
         } = config;
 
         let memtable_factory: MemTableFactoryRef = match add_meta.opts.memtable_type {
             MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
-            MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
+            MemtableType::Column => Arc::new(ColumnarMemTableFactory),
         };
         // Maybe wrap it by `LayeredMemtable`.
+        let mutable_segment_switch_threshold = add_meta
+            .opts
+            .layered_memtable_opts
+            .mutable_segment_switch_threshold
+            .0 as usize;
         let enable_layered_memtable = mutable_segment_switch_threshold > 0;
         let memtable_factory = if enable_layered_memtable {
             Arc::new(LayeredMemtableFactory::new(
@@ -988,7 +994,6 @@ pub mod tests {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: MetricsOptions::default(),
                     enable_primary_key_sampling: false,
-                    mutable_segment_switch_threshold: 0,
                 },
                 &purger,
                 mem_size_options,
