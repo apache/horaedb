@@ -17,7 +17,7 @@ use catalog::{
     schema,
     schema::{
         CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, NameRef, Schema,
-        SchemaRef, TableNotExistsInSchema,
+        SchemaRef, TableNotReady,
     },
 };
 use cluster::{ClusterRef, TableStatus};
@@ -78,7 +78,7 @@ impl Schema for SchemaWithCluster {
                 }
                 .fail()
                 .box_err()
-                .with_context(|| TableNotExistsInSchema {})?,
+                .with_context(|| TableNotReady {})?,
             };
         }
 
