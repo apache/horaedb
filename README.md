@@ -19,7 +19,7 @@ HoraeDB is a high-performance, distributed, cloud native time-series database.
 
 ### Run with Docker
 
-#### Run HoraeDB standalone Server.
+#### Run HoraeDB standalone Server
 
 ```
 docker run -d --name horaedb-server \
