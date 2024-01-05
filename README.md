@@ -29,7 +29,7 @@ docker run -d --name horaedb-server \
   ghcr.io/apache/horaedb-server:nightly-20231222-f57b3827
 ```
 
-#### Run HoraeDB cluster with two horaedb-server and one horaemeta-server.
+#### Run HoraeDB cluster with two horaedb-server node and one horaemeta-server node.
 
 ```
 docker compose -f docker/docker-compose.yaml up
