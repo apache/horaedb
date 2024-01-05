@@ -1,0 +1,47 @@
+version: '2'
+
+services:
+  horaemeta:
+    image: ghcr.io/apache/horaemeta-server:nightly-20240103-24322bc7
+    ports:
+      - "2379:2379"
+    volumes:
+      - ../docs/example-standalone.toml:/etc/horaemeta/horaemeta.toml
+    healthcheck:
+      test: [ "CMD-SHELL", "curl 0:2379" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  horaedb0:
+    image: ghcr.io/apache/horaedb-server:nightly-20240105-bd737b24
+    restart: always
+    ports:
+      - "8831:8831"
+      - "5440:5440"
+    volumes:
+      - ../docs/example-cluster-0.toml:/etc/horaedb/horaedb.toml
+    environment:
+      - HORAEDB_SERVER_ADDR=horaedb0
+      - HORAEMETA_SERVER_ADDR=http://horaemeta:2379
+      - ETCD_ADDRS=http://horaemeta:2379
+    depends_on:
+      horaemeta:
+          condition: service_healthy
+
+
+  horaedb1:
+    image: ghcr.io/apache/horaedb-server:nightly-20240105-bd737b24
+    restart: always
+    ports:
+      - "8832:8832"
+      - "5441:5441"
+    volumes:
+      - ../docs/example-cluster-1.toml:/etc/horaedb/horaedb.toml
+    environment:
+      - HORAEDB_SERVER_ADDR=horaedb1
+      - HORAEMETA_SERVER_ADDR=http://horaemeta:2379
+      - ETCD_ADDRS=http://horaemeta:2379
+    depends_on:
+      horaemeta:
+        condition: service_healthy

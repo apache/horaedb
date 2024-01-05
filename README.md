@@ -19,7 +19,7 @@ HoraeDB is a high-performance, distributed, cloud native time-series database.
 
 ### Run with Docker
 
-Run HoraeDB standalone Server.
+#### Run HoraeDB standalone Server.
 
 ```
 docker run -d --name horaedb-server \
@@ -29,6 +29,17 @@ docker run -d --name horaedb-server \
   ghcr.io/apache/horaedb-server:nightly-20231222-f57b3827
 ```
 
+#### Run HoraeDB cluster with two horaedb-server and one horaemeta-server.
+
+```
+docker compose -f docker/docker-compose.yaml up
+```
+
+### Run from source code
+
+See details [here](https://horaedb.apache.org/dev/compile_run.html).
+
+### Create Table and Write/Read data
 Create Table.
 
 ```
@@ -64,9 +75,15 @@ SELECT * FROM `demo`
 '
 ```
 
-### Run from source code
+Drop table.
 
-See details [here](https://horaedb.apache.org/dev/compile_run.html).
+```
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+-d '
+Drop TABLE `demo`
+'
+```
+
 
 ## Contributing
 
