@@ -29,7 +29,6 @@ services:
       horaemeta:
           condition: service_healthy
 
-
   horaedb1:
     image: ghcr.io/apache/horaedb-server:nightly-20240105-bd737b24
     restart: always
