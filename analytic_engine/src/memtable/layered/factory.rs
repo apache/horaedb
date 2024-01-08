@@ -14,31 +14,38 @@
 
 //! Skiplist memtable factory
 
-use std::sync::{atomic::AtomicU64, Arc};
-
-use arena::MonoIncArena;
-use skiplist::{BytewiseComparator, Skiplist};
+use std::sync::Arc;
 
 use crate::memtable::{
-    factory::{Factory, Options},
-    skiplist::SkiplistMemTable,
+    factory::{Factory, FactoryRef, Options},
+    layered::LayeredMemTable,
     MemTableRef, Result,
 };
 
 /// Factory to create memtable
 #[derive(Debug)]
-pub struct SkiplistMemTableFactory;
+pub struct LayeredMemtableFactory {
+    inner_memtable_factory: FactoryRef,
+    mutable_switch_threshold: usize,
+}
 
-impl Factory for SkiplistMemTableFactory {
+impl LayeredMemtableFactory {
+    pub fn new(inner_memtable_factory: FactoryRef, mutable_switch_threshold: usize) -> Self {
+        Self {
+            inner_memtable_factory,
+            mutable_switch_threshold,
+        }
+    }
+}
+
+impl Factory for LayeredMemtableFactory {
     fn create_memtable(&self, opts: Options) -> Result<MemTableRef> {
-        let arena = MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector);
-        let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
-        let memtable = Arc::new(SkiplistMemTable::new(
-            opts.schema,
-            skiplist,
-            AtomicU64::new(opts.creation_sequence),
-        ));
+        let memtable = LayeredMemTable::new(
+            &opts,
+            self.inner_memtable_factory.clone(),
+            self.mutable_switch_threshold,
+        )?;
 
-        Ok(memtable)
+        Ok(Arc::new(memtable))
     }
 }

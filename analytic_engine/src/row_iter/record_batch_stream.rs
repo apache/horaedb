@@ -256,6 +256,7 @@ pub fn stream_from_memtable(
         need_dedup: ctx.need_dedup,
         reverse: ctx.reverse,
         metrics_collector,
+        time_range: ctx.predicate.time_range(),
     };
 
     let iter = memtable.scan(scan_ctx, scan_req).context(ScanMemtable)?;

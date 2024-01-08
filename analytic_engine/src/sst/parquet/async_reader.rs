@@ -560,10 +560,21 @@ impl Stream for RecordBatchProjector {
                         }
                         projector.metrics.row_num += record_batch.num_rows();
 
-                        let projected_batch =
-                            FetchedRecordBatch::try_new(&projector.row_projector, record_batch)
-                                .box_err()
-                                .context(DecodeRecordBatch {});
+                        let fetched_schema = projector.row_projector.fetched_schema().clone();
+                        let primary_key_indexes = projector
+                            .row_projector
+                            .primary_key_indexes()
+                            .map(|idxs| idxs.to_vec());
+                        let fetching_column_indexes =
+                            projector.row_projector.target_record_projection_remapping();
+                        let projected_batch = FetchedRecordBatch::try_new(
+                            fetched_schema,
+                            primary_key_indexes,
+                            fetching_column_indexes,
+                            record_batch,
+                        )
+                        .box_err()
+                        .context(DecodeRecordBatch {});
 
                         Poll::Ready(Some(projected_batch))
                     }
