@@ -132,9 +132,19 @@ impl Shard {
         ret
     }
 
+    pub fn get_status(&self) -> ShardStatus {
+        let data = self.data.read().unwrap();
+        data.shard_info.status.clone()
+    }
+
     pub fn is_opened(&self) -> bool {
         let data = self.data.read().unwrap();
         data.is_opened()
+    }
+
+    pub fn is_frozen(&self) -> bool {
+        let data = self.data.read().unwrap();
+        data.is_frozen()
     }
 
     pub async fn close(&self, ctx: CloseContext) -> Result<()> {
