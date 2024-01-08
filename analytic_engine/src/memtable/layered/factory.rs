@@ -21,6 +21,7 @@ use crate::memtable::{
     layered::LayeredMemTable,
     MemTableRef, Result,
 };
+
 /// Factory to create memtable
 #[derive(Debug)]
 pub struct LayeredMemtableFactory {

@@ -14,7 +14,7 @@
 
 use common_types::row::Row;
 
-use super::*;
+use crate::memtable::*;
 
 pub trait TestMemtableBuilder {
     fn build(&self, data: &[(KeySequence, Row)]) -> MemTableRef;

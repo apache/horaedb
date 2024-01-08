@@ -84,7 +84,7 @@ pub struct Config {
     /// should be in the range (0, 1].
     pub preflush_write_buffer_size_ratio: f32,
 
-    /// Mutable segment switch threshold for memtable
+    /// The threshold to trigger switching mutable segment of memtable.
     /// If it is zero, disable the layered memtable.
     pub mutable_segment_switch_threshold: ReadableSize,
 

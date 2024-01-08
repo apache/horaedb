@@ -123,7 +123,6 @@ impl MemTable for LayeredMemTable {
     }
 
     fn scan(&self, ctx: ScanContext, request: ScanRequest) -> Result<ColumnarIterPtr> {
-        debug!("LayeredMemTable scan");
         let inner = self.inner.read().unwrap();
         inner.scan(&self.schema, ctx, request)
     }
@@ -240,10 +239,10 @@ impl Inner {
             msg: "failed to get time range from mutable segment",
         })?;
         let max_key = current_mutable.max_key().context(InternalNoCause {
-            msg: "failed to get time range from mutable segment",
+            msg: "failed to get max key from mutable segment",
         })?;
         let min_key = current_mutable.min_key().context(InternalNoCause {
-            msg: "failed to get time range from mutable segment",
+            msg: "failed to get min key from mutable segment",
         })?;
         let immutable = ImmutableSegment::new(immutable_batches, time_range, min_key, max_key);
 
