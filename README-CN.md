@@ -16,7 +16,7 @@ HoraeDB 是一款高性能、分布式的云原生时序数据库。
 
 ## 快速开始
 ### 通过 Docker 运行
-使用 Docker 运行单机版 HoraeDB
+#### 使用 Docker 运行单机版 HoraeDB
 ```
 docker run -d --name horaedb-server \
   -p 8831:8831 \
@@ -24,6 +24,17 @@ docker run -d --name horaedb-server \
   -p 5440:5440 \
   ghcr.io/apache/horaedb-server:nightly-20231222-f57b3827
 ```
+
+#### 使用 docker compose 运行集群，包含两个 horaedb 节点和一个 horaemeta 节点
+
+```
+docker compose -f docker/docker-compose.yaml up
+```
+
+### 通过源码编译运行
+详见[文档](https://horaedb.apache.org/dev/compile_run.html)。
+
+### 基本操作
 
 创建表
 ```
@@ -57,8 +68,14 @@ SELECT * FROM `demo`
 '
 ```
 
-### 通过源码编译运行
-详见[文档](https://horaedb.apache.org/dev/compile_run.html)。
+删除表
+
+```
+curl --location --request POST 'http://127.0.0.1:5440/sql' \
+-d '
+Drop TABLE `demo`
+'
+```
 
 ## 如何贡献
 
