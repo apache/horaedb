@@ -241,6 +241,7 @@ fn open_storage(
                     opts.disk_cache_page_size.as_byte() as usize,
                     store,
                     opts.disk_cache_partition_bits,
+                    engine_runtimes.io_runtime.clone(),
                 )
                 .await
                 .context(OpenObjectStore)?,
