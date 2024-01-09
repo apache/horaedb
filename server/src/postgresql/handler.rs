@@ -42,7 +42,11 @@ pub struct PostgresqlHandler {
 
 #[async_trait]
 impl SimpleQueryHandler for PostgresqlHandler {
-    async fn do_query<'a, C>(&self, _client: &C, sql: &'a str) -> PgWireResult<Vec<Response<'a>>>
+    async fn do_query<'a, C>(
+        &self,
+        _client: &mut C,
+        sql: &'a str,
+    ) -> PgWireResult<Vec<Response<'a>>>
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
@@ -93,9 +97,7 @@ impl PostgresqlHandler {
 fn into_pg_reponse<'a>(out: Output) -> PgWireResult<Response<'a>> {
     match out {
         Output::AffectedRows(0) => Ok(Response::EmptyQuery),
-        Output::AffectedRows(count) => {
-            Ok(Response::Execution(Tag::new_for_execution("", Some(count))))
-        }
+        Output::AffectedRows(count) => Ok(Response::Execution(Tag::new("OK").with_rows(count))),
         Output::Records(rows) => {
             if rows.is_empty() {
                 return Ok(Response::EmptyQuery);
