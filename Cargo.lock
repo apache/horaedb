@@ -2227,7 +2227,16 @@ version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d07adf7be193b71cc36b193d0f5fe60b918a3a9db4dad0449f57bcfd519704a3"
 dependencies = [
- "derive_builder_macro",
+ "derive_builder_macro 0.11.2",
+]
+
+[[package]]
+name = "derive_builder"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d67778784b508018359cbc8696edb3db78160bab2c2a28ba7f56ef6932997f8"
+dependencies = [
+ "derive_builder_macro 0.12.0",
 ]
 
 [[package]]
@@ -2243,12 +2252,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "derive_builder_core"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c11bdc11a0c47bc7d37d582b5285da6849c96681023680b906673c5707af7b0f"
+dependencies = [
+ "darling 0.14.4",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "derive_builder_macro"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f0314b72bed045f3a68671b3c86328386762c93f82d98c65c3cb5e5f573dd68"
 dependencies = [
- "derive_builder_core",
+ "derive_builder_core 0.11.2",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "derive_builder_macro"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebcda35c7a396850a55ffeac740804b40ffec779b98fffbb1738f4033f0ee79e"
+dependencies = [
+ "derive_builder_core 0.12.0",
  "syn 1.0.109",
 ]
 
@@ -4523,9 +4554,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.17.1"
+version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
+checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 dependencies = [
  "parking_lot_core 0.9.7",
 ]
@@ -6264,6 +6295,7 @@ name = "server"
 version = "1.2.6-alpha"
 dependencies = [
  "analytic_engine",
+ "arc-swap 1.6.0",
  "arrow 43.0.0",
  "arrow_ext",
  "async-trait",
@@ -6273,6 +6305,7 @@ dependencies = [
  "cluster",
  "common_types",
  "datafusion",
+ "derive_builder 0.12.0",
  "df_operator",
  "flate2",
  "future_ext",
@@ -6287,6 +6320,7 @@ dependencies = [
  "macros",
  "meta_client",
  "notifier",
+ "once_cell",
  "opensrv-mysql",
  "partition_table_engine",
  "paste 1.0.12",
@@ -6299,6 +6333,7 @@ dependencies = [
  "proxy",
  "query_engine",
  "query_frontend",
+ "regex",
  "remote_engine_client",
  "router",
  "runtime",
@@ -6615,7 +6650,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0860f149718809371602b42573693e1ed2b1d0aed35fe69e04e4e4e9918d81f7"
 dependencies = [
  "async-trait",
- "derive_builder",
+ "derive_builder 0.11.2",
  "prettydiff",
  "regex",
  "thiserror",

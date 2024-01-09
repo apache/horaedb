@@ -55,6 +55,7 @@ logger = { workspace = true }
 macros = { workspace = true }
 meta_client = { workspace = true }
 notifier = { workspace = true }
+once_cell= { workspace = true }
 opensrv-mysql = "0.1.0"
 partition_table_engine = { workspace = true }
 paste = { workspace = true }
@@ -67,6 +68,7 @@ prost = { workspace = true }
 proxy = { workspace = true }
 query_engine = { workspace = true }
 query_frontend = { workspace = true }
+regex = { workspace = true }
 remote_engine_client = { workspace = true }
 router = { workspace = true }
 runtime = { workspace = true }
@@ -84,6 +86,8 @@ tonic = { workspace = true }
 wal = { workspace = true }
 warp = "0.3"
 zstd = { workspace = true }
+arc-swap = "1.5"
+derive_builder.workspace = true
 
 [dev-dependencies]
 query_frontend = { workspace = true, features = ["test"] }

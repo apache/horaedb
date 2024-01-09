@@ -26,6 +26,7 @@ use snafu::ResultExt;
 
 use crate::mysql::{
     error::{CreateContext, HandleSql, Result},
+    federated,
     writer::MysqlQueryResultWriter,
 };
 
@@ -113,6 +114,10 @@ where
         let req = Request {
             query: sql.to_string(),
         };
+        // if let Some(output) = federated::check(sql, query_ctx.clone(),
+        // self.session.clone()).await? {
+        //     return Ok(output);
+        // }
         self.proxy
             .handle_http_sql_query(&ctx, req)
             .await

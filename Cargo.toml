@@ -135,6 +135,7 @@ meta_client = { path = "meta_client" }
 metric_ext = { path = "components/metric_ext" }
 notifier = { path = "components/notifier" }
 object_store = { path = "components/object_store" }
+once_cell = "1.18"
 panic_ext = { path = "components/panic_ext" }
 partitioned_lock = { path = "components/partitioned_lock" }
 partition_table_engine = { path = "partition_table_engine" }
@@ -189,6 +190,7 @@ xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
 uuid = "1.6.1"
 regex = "1"
+derive_builder = "0.12"
 
 # This profile optimizes for good runtime performance.
 [profile.release]

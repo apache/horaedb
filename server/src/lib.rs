@@ -30,3 +30,4 @@ mod metrics;
 mod mysql;
 mod postgresql;
 pub mod server;
+mod session;
