@@ -677,10 +677,14 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
         };
 
         let storage_format_hint = opts.storage_format_hint.context(MissingStorageFormatHint)?;
-        let layered_memtable_opts = opts
-            .layered_memtable_options
-            .context(MissingLayeredMemtableOptions)?
-            .into();
+        // For compatible with old `table_options`, `layered_memtable_options` is
+        // allowed to be `None`, and when found `None`, we disable `layered_memtable`.
+        let layered_memtable_opts = match opts.layered_memtable_options {
+            Some(v) => v.into(),
+            None => LayeredMemtableOptions {
+                mutable_segment_switch_threshold: ReadableSize(0),
+            },
+        };
 
         let table_opts = Self {
             segment_duration,
