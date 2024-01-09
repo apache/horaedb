@@ -36,12 +36,12 @@ pub(crate) mod write;
 
 use std::sync::Arc;
 
-use common_types::{projected_schema::ProjectedSchema, table::TableId};
+use common_types::{projected_schema::RowProjectorBuilder, table::TableId};
 use generic_error::{BoxError, GenericError};
 use logger::{error, info};
 use macros::define_result;
 use mem_collector::MemUsageCollector;
-use runtime::Runtime;
+use runtime::{PriorityRuntime, Runtime};
 use snafu::{ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, predicate::PredicateRef, table::FlushRequest};
 use time_ext::ReadableDuration;
@@ -179,6 +179,8 @@ pub struct Instance {
     pub(crate) replay_batch_size: usize,
     /// Write sst max buffer size
     pub(crate) write_sst_max_buffer_size: usize,
+    /// The min interval between flushes
+    pub(crate) min_flush_interval: ReadableDuration,
     /// Max retry limit to flush memtables
     pub(crate) max_retry_flush_limit: usize,
     /// Max bytes per write batch
@@ -190,6 +192,7 @@ pub struct Instance {
     pub(crate) iter_options: Option<IterOptions>,
     pub(crate) recover_mode: RecoverMode,
     pub(crate) wal_encode: WalEncodeConfig,
+    pub(crate) disable_wal: bool,
 }
 
 impl Instance {
@@ -291,7 +294,7 @@ impl Instance {
     }
 
     #[inline]
-    fn read_runtime(&self) -> &Arc<Runtime> {
+    fn read_runtime(&self) -> &PriorityRuntime {
         &self.runtimes.read_runtime
     }
 
@@ -307,6 +310,18 @@ impl Instance {
             // Do flush in write runtime
             runtime: self.runtimes.write_runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: None,
+        }
+    }
+
+    #[inline]
+    fn make_flusher_with_min_interval(&self) -> Flusher {
+        Flusher {
+            space_store: self.space_store.clone(),
+            // Do flush in write runtime
+            runtime: self.runtimes.write_runtime.clone(),
+            write_sst_max_buffer_size: self.write_sst_max_buffer_size,
+            min_flush_interval_ms: Some(self.min_flush_interval.as_millis()),
         }
     }
 
@@ -316,32 +331,55 @@ impl Instance {
     }
 }
 
-// TODO: make it a builder
-#[allow(clippy::too_many_arguments)]
-fn create_sst_read_option(
+#[derive(Debug, Clone)]
+pub struct SstReadOptionsBuilder {
     scan_type: ScanType,
     scan_options: ScanOptions,
     maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
     num_rows_per_row_group: usize,
-    projected_schema: ProjectedSchema,
     predicate: PredicateRef,
     meta_cache: Option<MetaCacheRef>,
     runtime: Arc<Runtime>,
-) -> SstReadOptions {
-    SstReadOptions {
-        maybe_table_level_metrics,
-        num_rows_per_row_group,
-        frequency: scan_type.into(),
-        projected_schema,
-        predicate,
-        meta_cache,
-        scan_options,
-        runtime,
+}
+
+impl SstReadOptionsBuilder {
+    pub fn new(
+        scan_type: ScanType,
+        scan_options: ScanOptions,
+        maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
+        num_rows_per_row_group: usize,
+        predicate: PredicateRef,
+        meta_cache: Option<MetaCacheRef>,
+        runtime: Arc<Runtime>,
+    ) -> Self {
+        Self {
+            scan_type,
+            scan_options,
+            maybe_table_level_metrics,
+            num_rows_per_row_group,
+            predicate,
+            meta_cache,
+            runtime,
+        }
+    }
+
+    pub fn build(self, row_projector_builder: RowProjectorBuilder) -> SstReadOptions {
+        SstReadOptions {
+            maybe_table_level_metrics: self.maybe_table_level_metrics,
+            num_rows_per_row_group: self.num_rows_per_row_group,
+            frequency: self.scan_type.into(),
+            row_projector_builder,
+            predicate: self.predicate,
+            meta_cache: self.meta_cache,
+            scan_options: self.scan_options,
+            runtime: self.runtime,
+        }
     }
 }
 
 /// Scan type which mapped to the low level `ReadFrequency` in sst reader.
-enum ScanType {
+#[derive(Debug, Clone, Copy)]
+pub enum ScanType {
     Query,
     Compaction,
 }

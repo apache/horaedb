@@ -27,7 +27,6 @@ use codec::{
 use common_types::{
     row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
-    MIN_SEQUENCE_NUMBER,
 };
 use horaedbproto::{schema as schema_pb, table_requests};
 use itertools::Itertools;
@@ -425,19 +424,28 @@ impl<'a> Writer<'a> {
 
         self.preprocess_write(&mut encode_ctx).await?;
 
-        let encoded_payload = {
-            let _timer = self.table_data.metrics.start_table_write_encode_timer();
-            let schema = self.table_data.schema();
-            encode_ctx.encode(&self.instance.wal_encode, &schema)?
-        };
+        let table_data = self.table_data.clone();
+        let seq = if self.instance.disable_wal {
+            // When wal is disabled, just update the last_seq one by one.
+            table_data.next_sequence()
+        } else {
+            let encoded_payload = {
+                let _timer = self.table_data.metrics.start_table_write_encode_timer();
+                let schema = self.table_data.schema();
+                encode_ctx.encode(&self.instance.wal_encode, &schema)?
+            };
 
-        let seq = match encoded_payload {
-            EncodedPayload::Rows(encoded_rows) => self.write_to_wal_in_rows(encoded_rows).await?,
-            EncodedPayload::Cols(encoded_cols) => self.write_to_wal_in_cols(encoded_cols).await?,
+            match encoded_payload {
+                EncodedPayload::Rows(encoded_rows) => {
+                    self.write_to_wal_in_rows(encoded_rows).await?
+                }
+                EncodedPayload::Cols(encoded_cols) => {
+                    self.write_to_wal_in_cols(encoded_cols).await?
+                }
+            }
         };
 
         // Write the row group to the memtable and update the state in the mem.
-        let table_data = self.table_data.clone();
         let EncodeContext {
             row_group,
             index_in_writer,
@@ -523,17 +531,19 @@ impl<'a> Writer<'a> {
                 e
             })?;
 
-        // When seq is MIN_SEQUENCE_NUMBER, it means the wal used for write is not
-        // normal, ignore check in this case.
-        // NOTE: Currently write wal will only increment seq by one,
-        // this may change in future.
-        if sequence != MIN_SEQUENCE_NUMBER && table_data.last_sequence() + 1 != sequence {
-            warn!(
-                "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
-                table_data.name,table_data.id,
-                table_data.last_sequence(),
-                sequence
-            );
+        // When wal is disabled, there is no need to do this check.
+        if !self.instance.disable_wal {
+            // NOTE: Currently write wal will only increment seq by one,
+            // this may change in future.
+            let last_seq = table_data.last_sequence();
+            if sequence != last_seq + 1 {
+                warn!(
+                    "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
+                    table_data.name,table_data.id,
+                    table_data.last_sequence(),
+                    sequence
+                );
+            }
         }
 
         debug!(
@@ -623,7 +633,8 @@ impl<'a> Writer<'a> {
             }
         }
 
-        if self.table_data.should_flush_table(self.serial_exec) {
+        let in_flush = self.serial_exec.flush_scheduler().is_in_flush();
+        if self.table_data.should_flush_table(in_flush) {
             let table_data = self.table_data.clone();
             let _timer = table_data.metrics.start_table_write_flush_wait_timer();
             self.handle_memtable_flush(&table_data).await?;
@@ -676,7 +687,7 @@ impl<'a> Writer<'a> {
             res_sender: None,
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
-        let flusher = self.instance.make_flusher();
+        let flusher = self.instance.make_flusher_with_min_interval();
         if table_data.id == self.table_data.id {
             let flush_scheduler = self.serial_exec.flush_scheduler();
             // Set `block_on_write_thread` to false and let flush do in background.

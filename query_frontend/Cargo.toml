@@ -38,6 +38,7 @@ test = []
 arrow = { workspace = true }
 async-trait = { workspace = true }
 catalog = { workspace = true }
+chrono = { workspace = true }
 cluster = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
@@ -49,6 +50,7 @@ hash_ext = { workspace = true }
 horaedbproto = { workspace = true }
 influxql-logical-planner = { workspace = true }
 influxql-parser = { workspace = true }
+influxql-query = { workspace = true }
 influxql-schema = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
@@ -59,6 +61,7 @@ paste = { workspace = true }
 prom-remote-api = { workspace = true }
 regex = { workspace = true }
 regex-syntax = "0.6.28"
+runtime = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }
 table_engine = { workspace = true }

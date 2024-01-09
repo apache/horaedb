@@ -27,14 +27,11 @@ use analytic_engine::{
     row_iter::{
         dedup::DedupIterator,
         merge::{MergeBuilder, MergeConfig},
-        IterOptions, RecordBatchWithKeyIterator,
+        FetchedRecordBatchIterator, IterOptions,
     },
     space::SpaceId,
     sst::{
-        factory::{
-            FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ReadFrequency,
-            ScanOptions, SstReadOptions,
-        },
+        factory::{FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         meta_data::cache::MetaCacheRef,
         metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
@@ -42,6 +39,7 @@ use analytic_engine::{
         sst_util,
         version::{MemTableState, MemTableVec},
     },
+    ScanType, SstReadOptionsBuilder,
 };
 use arena::NoopCollector;
 use common_types::{
@@ -64,7 +62,8 @@ pub struct MergeMemTableBench {
     space_id: SpaceId,
     table_id: TableId,
     dedup: bool,
-    sst_read_options: SstReadOptions,
+    sst_read_options_builder: SstReadOptionsBuilder,
+    num_rows_per_row_group: usize,
 }
 
 impl MergeMemTableBench {
@@ -116,7 +115,8 @@ impl MergeMemTableBench {
                 id: *id,
             });
         }
-        let sst_read_options = mock_sst_read_options(projected_schema.clone(), runtime.clone());
+        let sst_read_options_builder =
+            mock_sst_read_options_builder(projected_schema.clone(), runtime.clone());
 
         MergeMemTableBench {
             store,
@@ -128,7 +128,8 @@ impl MergeMemTableBench {
             space_id,
             table_id,
             dedup: true,
-            sst_read_options,
+            sst_read_options_builder,
+            num_rows_per_row_group: 500,
         }
     }
 
@@ -152,13 +153,13 @@ impl MergeMemTableBench {
         let projected_schema = self.projected_schema.clone();
         let sst_factory: SstFactoryRef = Arc::new(FactoryImpl);
         let iter_options = IterOptions {
-            batch_size: self.sst_read_options.num_rows_per_row_group,
+            batch_size: self.num_rows_per_row_group,
         };
 
         let request_id = RequestId::next_id();
         let store_picker: ObjectStorePickerRef = Arc::new(self.store.clone());
         let mut builder = MergeBuilder::new(MergeConfig {
-            request_id,
+            request_id: request_id.clone(),
             metrics_collector: None,
             deadline: None,
             space_id,
@@ -167,7 +168,7 @@ impl MergeMemTableBench {
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
-            sst_read_options: self.sst_read_options.clone(),
+            sst_read_options_builder: self.sst_read_options_builder.clone(),
             store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
@@ -184,7 +185,8 @@ impl MergeMemTableBench {
             let mut batch_num = 0;
 
             if self.dedup {
-                let mut dedup_iter = DedupIterator::new(request_id, merge_iter, iter_options);
+                let mut dedup_iter =
+                    DedupIterator::new(request_id.clone(), merge_iter, iter_options);
                 while let Some(batch) = dedup_iter.next_batch().await.unwrap() {
                     let num_rows = batch.num_rows();
                     total_rows += num_rows;
@@ -208,23 +210,24 @@ impl MergeMemTableBench {
     }
 }
 
-fn mock_sst_read_options(
-    projected_schema: ProjectedSchema,
+fn mock_sst_read_options_builder(
+    _projected_schema: ProjectedSchema,
     runtime: Arc<Runtime>,
-) -> SstReadOptions {
+) -> SstReadOptionsBuilder {
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
         num_streams_to_prefetch: 0,
     };
-    SstReadOptions {
-        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
-        frequency: ReadFrequency::Frequent,
-        num_rows_per_row_group: 500,
-        projected_schema,
-        predicate: Arc::new(Predicate::empty()),
-        meta_cache: None,
+    let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench"));
+
+    SstReadOptionsBuilder::new(
+        ScanType::Query,
         scan_options,
+        maybe_table_level_metrics,
+        500,
+        Arc::new(Predicate::empty()),
+        None,
         runtime,
-    }
+    )
 }

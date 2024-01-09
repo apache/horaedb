@@ -96,7 +96,7 @@ impl Proxy {
         };
         let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
 
-        let mut sql_ctx = SqlContext::new(request_id, deadline);
+        let mut sql_ctx = SqlContext::new(request_id.clone(), deadline);
         let expr = frontend
             .parse_promql(&mut sql_ctx, req.expr)
             .box_err()
@@ -128,7 +128,7 @@ impl Proxy {
             })?;
 
         let output = self
-            .execute_plan(request_id, catalog, &schema, plan, deadline)
+            .execute_plan(request_id.clone(), catalog, &schema, plan, deadline)
             .await
             .box_err()
             .with_context(|| ErrWithCause {

@@ -277,8 +277,8 @@ mod tests {
     use codec::memcomparable::MemComparable;
     use common_types::{
         datum::Datum,
-        projected_schema::ProjectedSchema,
-        record_batch::RecordBatchWithKey,
+        projected_schema::{ProjectedSchema, RowProjectorBuilder},
+        record_batch::FetchedRecordBatch,
         row::Row,
         schema::IndexInWriterSchema,
         tests::{build_row, build_schema},
@@ -289,7 +289,34 @@ mod tests {
     use crate::memtable::{
         factory::{Factory, Options},
         skiplist::factory::SkiplistMemTableFactory,
+        test_util::{TestMemtableBuilder, TestUtil},
+        MemTableRef,
     };
+
+    struct TestMemtableBuilderImpl;
+
+    impl TestMemtableBuilder for TestMemtableBuilderImpl {
+        fn build(&self, data: &[(KeySequence, Row)]) -> MemTableRef {
+            let schema = build_schema();
+            let factory = SkiplistMemTableFactory;
+            let memtable = factory
+                .create_memtable(Options {
+                    schema: schema.clone(),
+                    arena_block_size: 512,
+                    creation_sequence: 1,
+                    collector: Arc::new(NoopCollector {}),
+                })
+                .unwrap();
+
+            let mut ctx =
+                PutContext::new(IndexInWriterSchema::for_same_schema(schema.num_columns()));
+            for (seq, row) in data {
+                memtable.put(&mut ctx, *seq, row, &schema).unwrap();
+            }
+
+            memtable
+        }
+    }
 
     fn test_memtable_scan_for_scan_request(
         schema: Schema,
@@ -297,7 +324,10 @@ mod tests {
     ) {
         let projection: Vec<usize> = (0..schema.num_columns()).collect();
         let projected_schema = ProjectedSchema::new(schema, Some(projection)).unwrap();
-
+        let fetched_schema = projected_schema.to_record_schema();
+        let table_schema = projected_schema.table_schema();
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema, table_schema.clone(), None);
         let testcases = vec![
             (
                 // limited by sequence
@@ -305,10 +335,11 @@ mod tests {
                     start_user_key: Bound::Unbounded,
                     end_user_key: Bound::Unbounded,
                     sequence: 2,
-                    projected_schema: projected_schema.clone(),
+                    row_projector_builder: row_projector_builder.clone(),
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -325,10 +356,11 @@ mod tests {
                     start_user_key: Bound::Included(build_scan_key("a", 1)),
                     end_user_key: Bound::Excluded(build_scan_key("e", 5)),
                     sequence: 2,
-                    projected_schema: projected_schema.clone(),
+                    row_projector_builder: row_projector_builder.clone(),
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -344,10 +376,11 @@ mod tests {
                     start_user_key: Bound::Included(build_scan_key("a", 1)),
                     end_user_key: Bound::Excluded(build_scan_key("e", 5)),
                     sequence: 1,
-                    projected_schema,
+                    row_projector_builder,
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -370,16 +403,20 @@ mod tests {
     ) {
         let projection: Vec<usize> = (0..2).collect();
         let projected_schema = ProjectedSchema::new(schema, Some(projection)).unwrap();
-
+        let fetched_schema = projected_schema.to_record_schema();
+        let table_schema = projected_schema.table_schema();
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema, table_schema.clone(), None);
         let testcases = vec![(
             ScanRequest {
                 start_user_key: Bound::Included(build_scan_key("a", 1)),
                 end_user_key: Bound::Excluded(build_scan_key("e", 5)),
                 sequence: 2,
-                projected_schema,
+                row_projector_builder,
                 need_dedup: true,
                 reverse: false,
                 metrics_collector: None,
+                time_range: TimeRange::min_to_max(),
             },
             vec![
                 build_row_for_two_column(b"a", 1),
@@ -398,19 +435,52 @@ mod tests {
 
     #[test]
     fn test_memtable_scan() {
-        let schema = build_schema();
-        let factory = SkiplistMemTableFactory;
-        let memtable = factory
-            .create_memtable(Options {
-                schema: schema.clone(),
-                arena_block_size: 512,
-                creation_sequence: 1,
-                collector: Arc::new(NoopCollector {}),
-            })
-            .unwrap();
+        let data = test_data();
+        let builder = TestMemtableBuilderImpl;
+        let test_util = TestUtil::new(builder, data);
+        let memtable = test_util.memtable();
+        let schema = memtable.schema().clone();
 
-        let mut ctx = PutContext::new(IndexInWriterSchema::for_same_schema(schema.num_columns()));
-        let input = vec![
+        test_memtable_scan_for_scan_request(schema.clone(), memtable.clone());
+        test_memtable_scan_for_projection(schema, memtable);
+    }
+
+    fn check_iterator<T: Iterator<Item = Result<FetchedRecordBatch>>>(
+        iter: T,
+        expected_rows: Vec<Row>,
+    ) {
+        let mut visited_rows = 0;
+        for batch in iter {
+            let batch = batch.unwrap();
+            for row_idx in 0..batch.num_rows() {
+                assert_eq!(batch.clone_row_at(row_idx), expected_rows[visited_rows]);
+                visited_rows += 1;
+            }
+        }
+
+        assert_eq!(visited_rows, expected_rows.len());
+    }
+
+    fn build_scan_key(c1: &str, c2: i64) -> Bytes {
+        let mut buf = ByteVec::new();
+        let encoder = MemComparable;
+        encoder.encode(&mut buf, &Datum::from(c1)).unwrap();
+        encoder.encode(&mut buf, &Datum::from(c2)).unwrap();
+
+        Bytes::from(buf)
+    }
+
+    pub fn build_row_for_two_column(key1: &[u8], key2: i64) -> Row {
+        let datums = vec![
+            Datum::Varbinary(Bytes::copy_from_slice(key1)),
+            Datum::Timestamp(Timestamp::new(key2)),
+        ];
+
+        Row::from_datums(datums)
+    }
+
+    fn test_data() -> Vec<(KeySequence, Row)> {
+        vec![
             (
                 KeySequence::new(1, 1),
                 build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -450,47 +520,6 @@ mod tests {
                 KeySequence::new(3, 4),
                 build_row(b"g", 7, 10.0, "v7", 7000, 7_000_000),
             ),
-        ];
-
-        for (seq, row) in input {
-            memtable.put(&mut ctx, seq, &row, &schema).unwrap();
-        }
-
-        test_memtable_scan_for_scan_request(schema.clone(), memtable.clone());
-        test_memtable_scan_for_projection(schema, memtable);
-    }
-
-    fn check_iterator<T: Iterator<Item = Result<RecordBatchWithKey>>>(
-        iter: T,
-        expected_rows: Vec<Row>,
-    ) {
-        let mut visited_rows = 0;
-        for batch in iter {
-            let batch = batch.unwrap();
-            for row_idx in 0..batch.num_rows() {
-                assert_eq!(batch.clone_row_at(row_idx), expected_rows[visited_rows]);
-                visited_rows += 1;
-            }
-        }
-
-        assert_eq!(visited_rows, expected_rows.len());
-    }
-
-    fn build_scan_key(c1: &str, c2: i64) -> Bytes {
-        let mut buf = ByteVec::new();
-        let encoder = MemComparable;
-        encoder.encode(&mut buf, &Datum::from(c1)).unwrap();
-        encoder.encode(&mut buf, &Datum::from(c2)).unwrap();
-
-        Bytes::from(buf)
-    }
-
-    pub fn build_row_for_two_column(key1: &[u8], key2: i64) -> Row {
-        let datums = vec![
-            Datum::Varbinary(Bytes::copy_from_slice(key1)),
-            Datum::Timestamp(Timestamp::new(key2)),
-        ];
-
-        Row::from_datums(datums)
+        ]
     }
 }

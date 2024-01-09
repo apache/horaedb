@@ -29,13 +29,13 @@ use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
 
-use super::{engine::OpenTablesOfShard, flush_compaction::Flusher};
 use crate::{
     compaction::scheduler::SchedulerImpl,
     context::OpenContext,
     engine,
     instance::{
-        engine::{OpenManifest, ReadMetaUpdate, Result},
+        engine::{OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
+        flush_compaction::Flusher,
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
         Instance, SpaceStore,
@@ -113,6 +113,7 @@ impl Instance {
             compaction_runtime,
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            ctx.config.min_flush_interval.as_millis(),
             scan_options_for_compaction,
         ));
 
@@ -140,6 +141,7 @@ impl Instance {
             space_write_buffer_size: ctx.config.space_write_buffer_size,
             replay_batch_size: ctx.config.replay_batch_size,
             write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            min_flush_interval: ctx.config.min_flush_interval,
             max_retry_flush_limit: ctx.config.max_retry_flush_limit,
             mem_usage_sampling_interval: ctx.config.mem_usage_sampling_interval,
             max_bytes_per_write_batch: ctx
@@ -150,6 +152,7 @@ impl Instance {
             scan_options,
             recover_mode: ctx.config.recover_mode,
             wal_encode: ctx.config.wal_encode,
+            disable_wal: ctx.config.wal.disable_data,
         });
 
         Ok(instance)
@@ -295,42 +298,38 @@ impl ShardOpener {
 
     /// Recover table meta data from manifest based on shard.
     async fn recover_table_metas(&mut self) -> Result<()> {
-        info!(
-            "ShardOpener recover table metas begin, shard_id:{}",
-            self.shard_id
-        );
+        let shard_id = self.shard_id;
+        let table_num = self.stages.len();
+        info!("ShardOpener recover table metas begin, shard_id:{shard_id}, table_num:{table_num}");
 
         for (table_id, state) in self.stages.iter_mut() {
             match state {
                 // Only do the meta recovery work in `RecoverTableMeta` state.
-                TableOpenStage::RecoverTableMeta(ctx) => {
-                    let result = match Self::recover_single_table_meta(
+                TableOpenStage::RecoverTableMeta(RecoverTableMetaContext { table_def, space }) => {
+                    match Self::recover_single_table_meta(
                         self.manifest.as_ref(),
-                        self.shard_id,
-                        &ctx.table_def,
+                        shard_id,
+                        table_def,
                     )
                     .await
+                    .map(|_| space.find_table_by_id(*table_id))
                     {
-                        Ok(()) => {
-                            let table_data = ctx.space.find_table_by_id(*table_id);
-                            Ok(table_data.map(|data| (data, ctx.space.clone())))
-                        }
-                        Err(e) => {
-                            error!("ShardOpener recover single table meta failed, table:{:?}, shard_id:{}, err:{e}", ctx.table_def, self.shard_id);
-                            Err(e)
-                        }
-                    };
-
-                    match result {
-                        Ok(Some((table_data, space))) => {
+                        Ok(Some(table_data)) => {
                             *state = TableOpenStage::RecoverTableData(RecoverTableDataContext {
                                 table_data,
-                                space,
-                            })
+                                space: space.clone(),
+                            });
                         }
-                        Ok(None) => *state = TableOpenStage::Success(None),
-                        Err(e) => *state = TableOpenStage::Failed(e),
-                    }
+                        Ok(None) => {
+                            error!("ShardOpener tried to open a dropped table, table:{table_def:?}, shard_id:{shard_id}");
+                            // TODO: is this an error?
+                            *state = TableOpenStage::Success(None);
+                        }
+                        Err(e) => {
+                            error!("ShardOpener recover single table meta failed, table:{table_def:?}, shard_id:{shard_id}, err:{e}");
+                            *state = TableOpenStage::Failed(e)
+                        }
+                    };
                 }
                 // Table was found to be opened in init stage.
                 TableOpenStage::Success(_) => {}
@@ -343,10 +342,7 @@ impl ShardOpener {
             }
         }
 
-        info!(
-            "ShardOpener recover table metas finish, shard_id:{}",
-            self.shard_id
-        );
+        info!("ShardOpener recover table metas finish, shard_id:{shard_id}, table_num:{table_num}",);
         Ok(())
     }
 

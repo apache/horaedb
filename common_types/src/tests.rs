@@ -21,8 +21,8 @@ use sqlparser::ast::{BinaryOperator, Expr, Value};
 use crate::{
     column_schema,
     datum::{Datum, DatumKind},
-    projected_schema::ProjectedSchema,
-    record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+    projected_schema::{ProjectedSchema, RowProjector},
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
         contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
         Row,
@@ -360,15 +360,16 @@ pub fn build_rows() -> Vec<Row> {
     ]
 }
 
-pub fn build_record_batch_with_key_by_rows(rows: Vec<Row>) -> RecordBatchWithKey {
+pub fn build_fetched_record_batch_by_rows(rows: Vec<Row>) -> FetchedRecordBatch {
     let schema = build_schema();
     assert!(schema.num_columns() > 1);
     let projection: Vec<usize> = (0..schema.num_columns() - 1).collect();
     let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
-    let row_projected_schema = projected_schema.try_project_with_key(&schema).unwrap();
+    let row_projector =
+        RowProjector::new(&projected_schema.to_record_schema(), None, &schema, &schema).unwrap();
 
     let mut builder =
-        RecordBatchWithKeyBuilder::with_capacity(projected_schema.to_record_schema_with_key(), 2);
+        FetchedRecordBatchBuilder::with_capacity(row_projector.fetched_schema().clone(), None, 2);
     let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
 
     let mut buf = Vec::new();
@@ -378,7 +379,7 @@ pub fn build_record_batch_with_key_by_rows(rows: Vec<Row>) -> RecordBatchWithKey
         writer.write_row(&row).unwrap();
 
         let source_row = ContiguousRowReader::try_new(&buf, &schema).unwrap();
-        let projected_row = ProjectedContiguousRow::new(source_row, &row_projected_schema);
+        let projected_row = ProjectedContiguousRow::new(source_row, &row_projector);
         builder
             .append_projected_contiguous_row(&projected_row)
             .unwrap();
@@ -387,7 +388,7 @@ pub fn build_record_batch_with_key_by_rows(rows: Vec<Row>) -> RecordBatchWithKey
 }
 
 pub fn check_record_batch_with_key_with_rows(
-    record_batch_with_key: &RecordBatchWithKey,
+    record_batch_with_key: &FetchedRecordBatch,
     row_num: usize,
     column_num: usize,
     rows: Vec<Row>,

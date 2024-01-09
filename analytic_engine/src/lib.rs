@@ -46,7 +46,11 @@ use size_ext::ReadableSize;
 use time_ext::ReadableDuration;
 use wal::config::Config as WalConfig;
 
-pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
+pub use crate::{
+    compaction::scheduler::SchedulerConfig,
+    instance::{ScanType, SstReadOptionsBuilder},
+    table_options::TableOptions,
+};
 
 /// Config of analytic engine
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -82,6 +86,11 @@ pub struct Config {
     /// The ratio of table's write buffer size to trigger preflush, and it
     /// should be in the range (0, 1].
     pub preflush_write_buffer_size_ratio: f32,
+
+    /// The threshold to trigger switching mutable segment of memtable.
+    /// If it is zero, disable the layered memtable.
+    pub mutable_segment_switch_threshold: ReadableSize,
+
     pub enable_primary_key_sampling: bool,
 
     // Iterator scanning options
@@ -100,6 +109,8 @@ pub struct Config {
     pub write_sst_max_buffer_size: ReadableSize,
     /// Max retry limit After flush failed
     pub max_retry_flush_limit: usize,
+    /// The min interval between two consecutive flushes
+    pub min_flush_interval: ReadableDuration,
     /// Max bytes per write batch.
     ///
     /// If this is set, the atomicity of write request will be broken.
@@ -107,6 +118,7 @@ pub struct Config {
     /// The interval for sampling the memory usage
     pub mem_usage_sampling_interval: ReadableDuration,
     /// The config for log in the wal.
+    // TODO: move this to WalConfig.
     pub wal_encode: WalEncodeConfig,
 
     /// Wal storage config
@@ -188,6 +200,7 @@ impl Default for Config {
             scan_max_record_batches_in_flight: 1024,
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
+            min_flush_interval: ReadableDuration::minutes(1),
             max_bytes_per_write_batch: None,
             mem_usage_sampling_interval: ReadableDuration::secs(0),
             wal_encode: WalEncodeConfig::default(),
@@ -195,6 +208,7 @@ impl Default for Config {
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
             metrics: MetricsOptions::default(),
+            mutable_segment_switch_threshold: ReadableSize::mb(3),
         }
     }
 }

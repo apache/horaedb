@@ -23,8 +23,8 @@ use arena::{Arena, BasicStats};
 use bytes_ext::{Bytes, BytesMut};
 use codec::row;
 use common_types::{
-    projected_schema::{ProjectedSchema, RowProjector},
-    record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+    projected_schema::RowProjector,
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::contiguous::{ContiguousRowReader, ProjectedContiguousRow},
     schema::Schema,
     SequenceNumber,
@@ -60,8 +60,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     /// Schema of this memtable, used to decode row
     memtable_schema: Schema,
     /// Projection of schema to read
-    projected_schema: ProjectedSchema,
-    projector: RowProjector,
+    row_projector: RowProjector,
 
     // Options related:
     batch_size: usize,
@@ -89,17 +88,16 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         request: ScanRequest,
     ) -> Result<Self> {
         // Create projection for the memtable schema
-        let projector = request
-            .projected_schema
-            .try_project_with_key(&memtable.schema)
+        let row_projector = request
+            .row_projector_builder
+            .build(&memtable.schema)
             .context(ProjectSchema)?;
 
         let iter = memtable.skiplist.iter();
         let mut columnar_iter = Self {
             iter,
             memtable_schema: memtable.schema.clone(),
-            projected_schema: request.projected_schema,
-            projector,
+            row_projector,
             batch_size: ctx.batch_size,
             deadline: ctx.deadline,
             start_user_key: request.start_user_key,
@@ -151,12 +149,18 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     }
 
     /// Fetch next record batch
-    fn fetch_next_record_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    fn fetch_next_record_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batch_size > 0);
 
-        let mut builder = RecordBatchWithKeyBuilder::with_capacity(
-            self.projected_schema.to_record_schema_with_key(),
+        let record_schema = self.row_projector.fetched_schema().clone();
+        let primary_key_indexes = self
+            .row_projector
+            .primary_key_indexes()
+            .map(|idxs| idxs.to_vec());
+        let mut builder = FetchedRecordBatchBuilder::with_capacity(
+            record_schema,
+            primary_key_indexes,
             self.batch_size,
         );
         let mut num_rows = 0;
@@ -164,7 +168,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             if let Some(row) = self.fetch_next_row()? {
                 let row_reader = ContiguousRowReader::try_new(&row, &self.memtable_schema)
                     .context(DecodeContinuousRow)?;
-                let projected_row = ProjectedContiguousRow::new(row_reader, &self.projector);
+                let projected_row = ProjectedContiguousRow::new(row_reader, &self.row_projector);
 
                 trace!("Column iterator fetch next row, row:{:?}", projected_row);
 
@@ -296,7 +300,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 }
 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> Iterator for ColumnarIterImpl<A> {
-    type Item = Result<RecordBatchWithKey>;
+    type Item = Result<FetchedRecordBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.state != State::Initialized {

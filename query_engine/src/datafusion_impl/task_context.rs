@@ -36,14 +36,15 @@ use datafusion_proto::{
 };
 use df_engine_extensions::dist_sql_query::{
     resolver::Resolver, ExecutableScanBuilder, RemotePhysicalPlanExecutor,
-    RemotePhysicalPlanExecutorRef, TableScanContext,
+    RemotePhysicalPlanExecutorRef, RemoteTaskContext, TableScanContext,
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
 use prost::Message;
+use runtime::Priority;
 use snafu::ResultExt;
 use table_engine::{
-    provider::{HoraeDBOptions, ScanTable},
+    provider::{HoraeDBOptions, ScanTable, SCAN_TABLE_METRICS_COLLECTOR_NAME},
     remote::{
         model::{
             ExecContext, ExecutePlanRequest, PhysicalPlan, RemoteExecuteRequest, TableIdentifier,
@@ -175,24 +176,27 @@ struct RemotePhysicalPlanExecutorImpl {
 impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
     fn execute(
         &self,
+        task_context: RemoteTaskContext,
         table: TableIdentifier,
-        task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         // Get the custom context to rebuild execution context.
         let options = task_context
+            .task_ctx
             .session_config()
             .options()
             .extensions
             .get::<HoraeDBOptions>();
         assert!(options.is_some());
         let options = options.unwrap();
-        let request_id = RequestId::from(options.request_id);
+
+        let request_id = RequestId::from(options.request_id.to_string());
         let deadline = options
             .request_timeout
             .map(|n| Instant::now() + Duration::from_millis(n));
         let default_catalog = options.default_catalog.clone();
         let default_schema = options.default_schema.clone();
+        let priority = options.priority;
 
         let display_plan = DisplayableExecutionPlan::new(plan.as_ref());
         let exec_ctx = ExecContext {
@@ -201,6 +205,8 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             default_catalog,
             default_schema,
             query: display_plan.indent(true).to_string(),
+            priority,
+            is_analyze: task_context.is_analyze,
         };
 
         // Encode plan and schema
@@ -226,6 +232,7 @@ impl RemotePhysicalPlanExecutor for RemotePhysicalPlanExecutorImpl {
             let request = ExecutePlanRequest {
                 plan_schema,
                 remote_request,
+                remote_metrics: task_context.remote_metrics,
             };
 
             // Remote execute.
@@ -254,7 +261,7 @@ struct DistQueryResolverBuilder {
 impl DistQueryResolverBuilder {
     fn build(&self, ctx: &Context) -> Resolver {
         let scan_builder = Box::new(ExecutableScanBuilderImpl {
-            request_id: ctx.request_id,
+            request_id: ctx.request_id.clone(),
             deadline: ctx.deadline,
         });
 
@@ -262,6 +269,7 @@ impl DistQueryResolverBuilder {
             self.remote_executor.clone(),
             self.catalog_manager.clone(),
             scan_builder,
+            ctx.priority,
         )
     }
 }
@@ -279,6 +287,7 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
         &self,
         table: TableRef,
         ctx: TableScanContext,
+        priority: Priority,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         let read_opts = ReadOptions {
             batch_size: ctx.batch_size,
@@ -287,11 +296,12 @@ impl ExecutableScanBuilder for ExecutableScanBuilderImpl {
         };
 
         let read_request = ReadRequest {
-            request_id: self.request_id,
+            request_id: self.request_id.clone(),
             opts: read_opts,
             projected_schema: ctx.projected_schema,
             predicate: ctx.predicate,
-            metrics_collector: MetricsCollector::default(),
+            metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
+            priority,
         };
 
         let mut scan = ScanTable::new(table, read_request);

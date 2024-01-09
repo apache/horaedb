@@ -57,6 +57,7 @@ use crate::{
     memtable::{
         columnar::factory::ColumnarMemTableFactory,
         factory::{FactoryRef as MemTableFactoryRef, Options as MemTableOptions},
+        layered::factory::LayeredMemtableFactory,
         skiplist::factory::SkiplistMemTableFactory,
         MemtableType,
     },
@@ -73,9 +74,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to create memtable, err:{}", source))]
-    CreateMemTable {
-        source: crate::memtable::factory::Error,
-    },
+    CreateMemTable { source: crate::memtable::Error },
 
     #[snafu(display(
         "Failed to find or create memtable, timestamp overflow, timestamp:{:?}, duration:{:?}.\nBacktrace:\n{}",
@@ -235,6 +234,9 @@ pub struct TableData {
     /// Whether enable primary key sampling
     enable_primary_key_sampling: bool,
 
+    /// Whether enable layered memtable
+    pub enable_layered_memtable: bool,
+
     /// Metrics of this table
     pub metrics: Metrics,
 
@@ -318,7 +320,22 @@ impl TableData {
 
         let memtable_factory: MemTableFactoryRef = match opts.memtable_type {
             MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
-            MemtableType::Columnar => Arc::new(ColumnarMemTableFactory),
+            MemtableType::Column => Arc::new(ColumnarMemTableFactory),
+        };
+
+        // Wrap it by `LayeredMemtable`.
+        let mutable_segment_switch_threshold = opts
+            .layered_memtable_opts
+            .mutable_segment_switch_threshold
+            .0 as usize;
+        let enable_layered_memtable = mutable_segment_switch_threshold > 0;
+        let memtable_factory = if enable_layered_memtable {
+            Arc::new(LayeredMemtableFactory::new(
+                memtable_factory,
+                mutable_segment_switch_threshold,
+            ))
+        } else {
+            memtable_factory
         };
 
         let purge_queue = purger.create_purge_queue(space_id, id);
@@ -358,6 +375,7 @@ impl TableData {
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
             enable_primary_key_sampling,
+            enable_layered_memtable,
         })
     }
 
@@ -379,7 +397,27 @@ impl TableData {
             metrics_opt,
             enable_primary_key_sampling,
         } = config;
-        let memtable_factory = Arc::new(SkiplistMemTableFactory);
+
+        let memtable_factory: MemTableFactoryRef = match add_meta.opts.memtable_type {
+            MemtableType::SkipList => Arc::new(SkiplistMemTableFactory),
+            MemtableType::Column => Arc::new(ColumnarMemTableFactory),
+        };
+        // Maybe wrap it by `LayeredMemtable`.
+        let mutable_segment_switch_threshold = add_meta
+            .opts
+            .layered_memtable_opts
+            .mutable_segment_switch_threshold
+            .0 as usize;
+        let enable_layered_memtable = mutable_segment_switch_threshold > 0;
+        let memtable_factory = if enable_layered_memtable {
+            Arc::new(LayeredMemtableFactory::new(
+                memtable_factory,
+                mutable_segment_switch_threshold,
+            )) as _
+        } else {
+            memtable_factory as _
+        };
+
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version =
             TableVersion::new(mem_size_options.size_sampling_interval, purge_queue);
@@ -413,6 +451,7 @@ impl TableData {
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
             enable_primary_key_sampling,
+            enable_layered_memtable,
         })
     }
 
@@ -447,6 +486,11 @@ impl TableData {
     #[inline]
     pub fn set_last_sequence(&self, seq: SequenceNumber) {
         self.last_sequence.store(seq, Ordering::Release);
+    }
+
+    #[inline]
+    pub fn next_sequence(&self) -> SequenceNumber {
+        self.last_sequence.fetch_add(1, Ordering::Relaxed) + 1
     }
 
     /// Get last flush time
@@ -587,9 +631,7 @@ impl TableData {
     }
 
     /// Returns true if the memory usage of this table reaches flush threshold
-    ///
-    /// REQUIRE: Do in write worker
-    pub fn should_flush_table(&self, serial_exec: &mut TableOpSerialExecutor) -> bool {
+    pub fn should_flush_table(&self, in_flush: bool) -> bool {
         // Fallback to usize::MAX if Failed to convert arena_block_size into
         // usize (overflow)
         let max_write_buffer_size = self
@@ -605,7 +647,6 @@ impl TableData {
 
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
-        let in_flush = serial_exec.flush_scheduler().is_in_flush();
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
             info!(

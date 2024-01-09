@@ -20,7 +20,7 @@
 use std::{
     collections::HashMap,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex},
     task::{Context, Poll},
 };
 
@@ -32,11 +32,15 @@ use common_types::{record_batch::RecordBatch, schema::RecordSchema};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
 use horaedbproto::{
-    remote_engine::{self, read_response::Output::Arrow, remote_engine_service_client::*},
-    storage::arrow_payload,
+    remote_engine::{
+        self,
+        read_response::Output::{Arrow, Metric},
+        remote_engine_service_client::*,
+    },
+    storage::{arrow_payload, ArrowPayload},
 };
 use logger::{error, info};
-use router::RouterRef;
+use router::{endpoint::Endpoint, RouterRef};
 use runtime::Runtime;
 use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
@@ -118,8 +122,13 @@ impl Client {
         // When success to get the stream, table has been found in remote, not need to
         // evict cache entry.
         let response = response.into_inner();
-        let remote_read_record_batch_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, record_schema);
+        let remote_read_record_batch_stream = ClientReadRecordBatchStream::new(
+            route_context.endpoint,
+            table_ident,
+            response,
+            record_schema,
+            Default::default(),
+        );
 
         Ok(remote_read_record_batch_stream)
     }
@@ -130,6 +139,7 @@ impl Client {
 
         // Write to remote.
         let table_ident = request.table.clone();
+        let endpoint = route_context.endpoint.clone();
         let request_pb = request.convert_into_pb().box_err().context(Convert {
             msg: "Failed to convert WriteRequest to pb",
         })?;
@@ -147,6 +157,7 @@ impl Client {
             let response = response.into_inner();
             if let Some(header) = &response.header && !status_code::is_ok(header.code) {
                 Server {
+                    endpoint,
                     table_idents: vec![table_ident.clone()],
                     code: header.code,
                     msg: header.error.clone(),
@@ -182,9 +193,9 @@ impl Client {
         }
 
         // Merge according to endpoint.
-        let mut remote_writes = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
+        let mut write_handles = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
         let mut written_tables = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
-        for (_, context) in write_batch_contexts_by_endpoint {
+        for (endpoint, context) in write_batch_contexts_by_endpoint {
             // Write to remote.
             let WriteBatchContext {
                 table_idents,
@@ -199,18 +210,18 @@ impl Client {
                 rpc_client
                     .write_batch(Request::new(batch_request_pb))
                     .await
+                    .map(|v| (v, endpoint.clone()))
                     .box_err()
             });
 
-            remote_writes.push(handle);
+            write_handles.push(handle);
             written_tables.push(table_idents);
         }
 
-        let mut results = Vec::with_capacity(remote_writes.len());
-        for (table_idents, remote_write) in written_tables.into_iter().zip(remote_writes) {
-            let batch_result = remote_write.await;
+        let mut results = Vec::with_capacity(write_handles.len());
+        for (table_idents, handle) in written_tables.into_iter().zip(write_handles) {
             // If it's runtime error, don't evict entires from route cache.
-            let batch_result = match batch_result.box_err() {
+            let batch_result = match handle.await.box_err() {
                 Ok(result) => result,
                 Err(e) => {
                     results.push(WriteBatchResult {
@@ -222,10 +233,12 @@ impl Client {
             };
 
             // Check remote write result then.
-            let result = batch_result.and_then(|response| {
+            let result = batch_result.and_then(|result| {
+                let (response, endpoint) = result;
                 let response = response.into_inner();
                 if let Some(header) = &response.header && !status_code::is_ok(header.code) {
                     Server {
+                        endpoint,
                         table_idents: table_idents.clone(),
                         code: header.code,
                         msg: header.error.clone(),
@@ -255,6 +268,7 @@ impl Client {
         let route_context = self.cached_router.route(&request.table_ident).await?;
 
         let table_ident = request.table_ident.clone();
+        let endpoint = route_context.endpoint.clone();
         let request_pb: horaedbproto::remote_engine::AlterTableSchemaRequest = request.into();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
@@ -274,6 +288,7 @@ impl Client {
                 let response = response.into_inner();
                 if let Some(header) = &response.header && !status_code::is_ok(header.code) {
                     Server {
+                        endpoint:endpoint.clone(),
                         table_idents: vec![table_ident.clone()],
                         code: header.code,
                         msg: header.error.clone(),
@@ -313,6 +328,7 @@ impl Client {
         let route_context = self.cached_router.route(&request.table_ident).await?;
 
         let table_ident = request.table_ident.clone();
+        let endpoint = route_context.endpoint.clone();
         let request_pb: horaedbproto::remote_engine::AlterTableOptionsRequest = request.into();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
 
@@ -331,6 +347,7 @@ impl Client {
                 let response = response.into_inner();
                 if let Some(header) = &response.header && !status_code::is_ok(header.code) {
                     Server {
+                        endpoint:endpoint.clone(),
                         table_idents: vec![table_ident.clone()],
                         code: header.code,
                         msg: header.error.clone(),
@@ -366,6 +383,7 @@ impl Client {
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
         let table_ident = request.table.clone();
+        let endpoint = route_context.endpoint.clone();
         let request_pb = horaedbproto::remote_engine::GetTableInfoRequest::try_from(request)
             .box_err()
             .context(Convert {
@@ -386,6 +404,7 @@ impl Client {
             let response = response.into_inner();
             if let Some(header) = &response.header && !status_code::is_ok(header.code) {
                     Server {
+                        endpoint:endpoint.clone(),
                         table_idents: vec![table_ident.clone()],
                         code: header.code,
                         msg: header.error.clone(),
@@ -398,6 +417,7 @@ impl Client {
         match result {
             Ok(response) => {
                 let table_info = response.table_info.context(Server {
+                    endpoint: endpoint.clone(),
                     table_idents: vec![table_ident.clone()],
                     code: status_code::StatusCode::Internal.as_u32(),
                     msg: "Table info is empty",
@@ -418,6 +438,7 @@ impl Client {
                             msg: "Failed to covert table schema",
                         })?
                         .with_context(|| Server {
+                            endpoint,
                             table_idents: vec![table_ident],
                             code: status_code::StatusCode::Internal.as_u32(),
                             msg: "Table schema is empty",
@@ -484,8 +505,13 @@ impl Client {
         // When success to get the stream, table has been found in remote, not need to
         // evict cache entry.
         let response = response.into_inner();
-        let remote_execute_plan_stream =
-            ClientReadRecordBatchStream::new(table_ident, response, plan_schema);
+        let remote_execute_plan_stream = ClientReadRecordBatchStream::new(
+            route_context.endpoint,
+            table_ident,
+            response,
+            plan_schema,
+            request.remote_metrics,
+        );
 
         Ok(remote_execute_plan_stream)
     }
@@ -500,21 +526,27 @@ impl Client {
 }
 
 pub struct ClientReadRecordBatchStream {
+    endpoint: Endpoint,
     pub table_ident: TableIdentifier,
     pub response_stream: Streaming<remote_engine::ReadResponse>,
     pub record_schema: RecordSchema,
+    pub remote_metrics: Arc<Mutex<Option<String>>>,
 }
 
 impl ClientReadRecordBatchStream {
     pub fn new(
+        endpoint: Endpoint,
         table_ident: TableIdentifier,
         response_stream: Streaming<remote_engine::ReadResponse>,
         record_schema: RecordSchema,
+        remote_metrics: Arc<Mutex<Option<String>>>,
     ) -> Self {
         Self {
+            endpoint,
             table_ident,
             response_stream,
             record_schema,
+            remote_metrics,
         }
     }
 }
@@ -529,6 +561,7 @@ impl Stream for ClientReadRecordBatchStream {
                 // Check header.
                 if let Some(header) = response.header && !status_code::is_ok(header.code) {
                     return Poll::Ready(Some(Server {
+                        endpoint: this.endpoint.clone(),
                         table_idents: vec![this.table_ident.clone()],
                         code: header.code,
                         msg: header.error,
@@ -537,52 +570,14 @@ impl Stream for ClientReadRecordBatchStream {
 
                 match response.output {
                     None => Poll::Ready(None),
-                    Some(v) => {
-                        let record_batch = match v {
-                            Arrow(mut v) => {
-                                if v.record_batches.len() != 1 {
-                                    return Poll::Ready(Some(
-                                        InvalidRecordBatchNumber {
-                                            batch_num: v.record_batches.len(),
-                                        }
-                                        .fail(),
-                                    ));
-                                }
-
-                                let compression = match v.compression() {
-                                    arrow_payload::Compression::None => CompressionMethod::None,
-                                    arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
-                                };
-
-                                ipc::decode_record_batches(
-                                    v.record_batches.swap_remove(0),
-                                    compression,
-                                )
-                                .map_err(|e| Box::new(e) as _)
-                                .context(Convert {
-                                    msg: "decode read record batch",
-                                })
-                                .and_then(
-                                    |mut record_batch_vec| {
-                                        ensure!(
-                                            record_batch_vec.len() == 1,
-                                            InvalidRecordBatchNumber {
-                                                batch_num: record_batch_vec.len()
-                                            }
-                                        );
-                                        record_batch_vec
-                                            .swap_remove(0)
-                                            .try_into()
-                                            .map_err(|e| Box::new(e) as _)
-                                            .context(Convert {
-                                                msg: "convert read record batch",
-                                            })
-                                    },
-                                )
-                            }
-                        };
-                        Poll::Ready(Some(record_batch))
-                    }
+                    Some(v) => match v {
+                        Arrow(v) => Poll::Ready(Some(convert_arrow_payload(v))),
+                        Metric(v) => {
+                            let mut remote_metrics = this.remote_metrics.lock().unwrap();
+                            *remote_metrics = Some(v.metric);
+                            Poll::Ready(None)
+                        }
+                    },
                 }
             }
 
@@ -596,4 +591,38 @@ impl Stream for ClientReadRecordBatchStream {
             Poll::Pending => Poll::Pending,
         }
     }
+}
+
+fn convert_arrow_payload(mut v: ArrowPayload) -> Result<RecordBatch> {
+    if v.record_batches.len() != 1 {
+        return InvalidRecordBatchNumber {
+            batch_num: v.record_batches.len(),
+        }
+        .fail();
+    }
+    let compression = match v.compression() {
+        arrow_payload::Compression::None => CompressionMethod::None,
+        arrow_payload::Compression::Zstd => CompressionMethod::Zstd,
+    };
+
+    ipc::decode_record_batches(v.record_batches.swap_remove(0), compression)
+        .map_err(|e| Box::new(e) as _)
+        .context(Convert {
+            msg: "decode read record batch",
+        })
+        .and_then(|mut record_batch_vec| {
+            ensure!(
+                record_batch_vec.len() == 1,
+                InvalidRecordBatchNumber {
+                    batch_num: record_batch_vec.len()
+                }
+            );
+            record_batch_vec
+                .swap_remove(0)
+                .try_into()
+                .map_err(|e| Box::new(e) as _)
+                .context(Convert {
+                    msg: "convert read record batch",
+                })
+        })
 }

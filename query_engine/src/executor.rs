@@ -22,7 +22,7 @@ use std::{fmt, sync::Arc};
 use async_trait::async_trait;
 use table_engine::stream::SendableRecordBatchStream;
 
-use crate::{context::Context, error::*, physical_planner::PhysicalPlanPtr};
+use crate::{context::Context, error::*, physical_planner::PhysicalPlanRef};
 
 /// Query executor
 ///
@@ -36,7 +36,7 @@ pub trait Executor: fmt::Debug + Send + Sync + 'static {
     async fn execute(
         &self,
         ctx: &Context,
-        physical_plan: PhysicalPlanPtr,
+        physical_plan: PhysicalPlanRef,
     ) -> Result<SendableRecordBatchStream>;
 }
 

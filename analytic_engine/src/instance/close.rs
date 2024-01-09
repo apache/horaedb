@@ -28,6 +28,7 @@ use crate::{
     },
     manifest::{ManifestRef, SnapshotRequest},
     space::SpaceRef,
+    table::data::TableDataRef,
 };
 
 pub(crate) struct Closer {
@@ -50,13 +51,37 @@ impl Closer {
             }
         };
 
+        // Do flush before close for the fast recovery during the following opening.
+        // And it should not stop closing if flush fails.
+        if let Err(e) = self.flush(&table_data).await {
+            warn!(
+                "Ignore the failure to flush data before close, table:{}, table_id:{}, err:{e}",
+                table_data.name, table_data.id
+            );
+        }
+
+        // Table has been closed so remove it from the space.
+        let removed_table = self.space.remove_table(&request.table_name);
+        assert!(removed_table.is_some());
+
+        // Table is already moved out of space, we should close it to stop background
+        // jobs.
+        table_data.set_closed();
+
+        info!(
+            "table:{}-{} has been removed from the space_id:{}",
+            table_data.name, table_data.id, self.space.id
+        );
+        Ok(())
+    }
+
+    async fn flush(&self, table_data: &TableDataRef) -> Result<()> {
         // Flush table.
         let opts = TableFlushOptions::default();
         let mut serial_exec = table_data.serial_exec.lock().await;
         let flush_scheduler = serial_exec.flush_scheduler();
-
         self.flusher
-            .do_flush(flush_scheduler, &table_data, opts)
+            .do_flush(flush_scheduler, table_data, opts)
             .await
             .context(FlushTable {
                 space_id: self.space.id,
@@ -77,20 +102,6 @@ impl Closer {
             .context(DoManifestSnapshot {
                 space_id: self.space.id,
                 table: &table_data.name,
-            })?;
-
-        // Table has been closed so remove it from the space.
-        let removed_table = self.space.remove_table(&request.table_name);
-        assert!(removed_table.is_some());
-
-        // Table is already moved out of space, we should close it to stop background
-        // jobs.
-        table_data.set_closed();
-
-        info!(
-            "table:{}-{} has been removed from the space_id:{}",
-            table_data.name, table_data.id, self.space.id
-        );
-        Ok(())
+            })
     }
 }

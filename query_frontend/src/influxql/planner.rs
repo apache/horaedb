@@ -40,6 +40,7 @@ use table_engine::table::TableRef;
 
 use crate::{
     influxql::error::*,
+    logical_optimizer::optimize_plan,
     plan::{Plan, QueryPlan, QueryType, ShowPlan, ShowTablesPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
@@ -174,6 +175,12 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
                         .context(BuildPlanWithCause {
                             msg: "planner stmt to plan",
                         })?;
+                let df_plan = optimize_plan(&df_plan)
+                    .box_err()
+                    .context(BuildPlanWithCause {
+                        msg: "optimize plan",
+                    })?;
+
                 let tables = Arc::new(
                     self.schema_provider
                         .context_provider
@@ -183,7 +190,11 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
                             msg: "get tables from context_provider",
                         })?,
                 );
-                Ok(Plan::Query(QueryPlan { df_plan, tables }))
+                Ok(Plan::Query(QueryPlan {
+                    df_plan,
+                    tables,
+                    table_name: None,
+                }))
             }
         }
     }

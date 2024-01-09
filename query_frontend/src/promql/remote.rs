@@ -30,6 +30,7 @@ use prom_remote_api::types::{label_matcher, LabelMatcher, Query};
 use snafu::{OptionExt, ResultExt};
 
 use crate::{
+    logical_optimizer::optimize_plan,
     plan::{Plan, QueryPlan},
     promql::{
         convert::Selector,
@@ -85,6 +86,7 @@ pub fn remote_query_to_plan<P: MetaProvider>(
         .sort(sort_exprs)?
         .build()
         .context(BuildPlanError)?;
+    let df_plan = optimize_plan(&df_plan).context(BuildPlanError)?;
 
     let tables = Arc::new(
         meta_provider
@@ -94,7 +96,11 @@ pub fn remote_query_to_plan<P: MetaProvider>(
             })?,
     );
     Ok(RemoteQueryPlan {
-        plan: Plan::Query(QueryPlan { df_plan, tables }),
+        plan: Plan::Query(QueryPlan {
+            df_plan,
+            tables,
+            table_name: Some(metric),
+        }),
         field_col_name: field,
         timestamp_col_name: timestamp_col_name.to_string(),
     })
@@ -189,8 +195,8 @@ mod tests {
                 r#"
 Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FIRST
   Projection: cpu.tag1, cpu.tag2, cpu.time, cpu.tsid, cpu.value
-    Filter: cpu.tag1 = Utf8("some-value") AND cpu.time BETWEEN Int64(1000) AND Int64(2000)
-      TableScan: cpu })"#
+    Filter: cpu.tag1 = Utf8("some-value") AND cpu.time >= TimestampMillisecond(1000, None) AND cpu.time <= TimestampMillisecond(2000, None)
+      TableScan: cpu projection=[tsid, time, tag1, tag2, value], partial_filters=[cpu.tag1 = Utf8("some-value"), cpu.time >= TimestampMillisecond(1000, None), cpu.time <= TimestampMillisecond(2000, None)] })"#
                     .to_string()
             );
             assert_eq!(&field_col_name, "value");
@@ -221,8 +227,8 @@ Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FI
                 r#"
 Query(QueryPlan { df_plan: Sort: cpu.tsid ASC NULLS FIRST, cpu.time ASC NULLS FIRST
   Projection: cpu.tag1, cpu.tag2, cpu.time, cpu.tsid, cpu.field2
-    Filter: cpu.tag1 = Utf8("some-value") AND cpu.time BETWEEN Int64(1000) AND Int64(2000)
-      TableScan: cpu })"#
+    Filter: cpu.tag1 = Utf8("some-value") AND cpu.time >= TimestampMillisecond(1000, None) AND cpu.time <= TimestampMillisecond(2000, None)
+      TableScan: cpu projection=[tsid, time, tag1, tag2, field2], partial_filters=[cpu.tag1 = Utf8("some-value"), cpu.time >= TimestampMillisecond(1000, None), cpu.time <= TimestampMillisecond(2000, None)] })"#
                     .to_string()
             );
             assert_eq!(&field_col_name, "field2");

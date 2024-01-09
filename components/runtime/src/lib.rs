@@ -33,8 +33,10 @@ use tokio::{
 };
 
 mod metrics;
+mod priority_runtime;
 
-// TODO(yingwen): Use opaque error type
+pub use priority_runtime::{Priority, PriorityRuntime};
+
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {

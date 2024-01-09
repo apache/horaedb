@@ -15,11 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
+use datafusion::execution::context::QueryPlanner;
 use generic_error::BoxError;
-use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
+use query_frontend::plan::QueryPlan;
 use snafu::ResultExt;
 
 use crate::{
@@ -29,18 +30,33 @@ use crate::{
         DfContextBuilder,
     },
     error::*,
-    physical_planner::{PhysicalPlanPtr, PhysicalPlanner},
+    physical_planner::{PhysicalPlanRef, PhysicalPlanner},
 };
 
 /// Physical planner based on datafusion
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DatafusionPhysicalPlannerImpl {
     df_ctx_builder: Arc<DfContextBuilder>,
+    physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
+}
+
+impl fmt::Debug for DatafusionPhysicalPlannerImpl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DfContextBuilder")
+            .field("df_ctx_builder", &self.df_ctx_builder)
+            .finish()
+    }
 }
 
 impl DatafusionPhysicalPlannerImpl {
-    pub fn new(df_ctx_builder: Arc<DfContextBuilder>) -> Self {
-        Self { df_ctx_builder }
+    pub fn new(
+        df_ctx_builder: Arc<DfContextBuilder>,
+        physical_planner: Arc<dyn QueryPlanner + Send + Sync>,
+    ) -> Self {
+        Self {
+            df_ctx_builder,
+            physical_planner,
+        }
     }
 
     fn has_partitioned_table(logical_plan: &QueryPlan) -> bool {
@@ -61,22 +77,17 @@ impl DatafusionPhysicalPlannerImpl {
 #[async_trait]
 impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
     // TODO: we should modify `QueryPlan` to support create remote plan here.
-    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
-        // Register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderAdapter::new_adapters(logical_plan.tables.clone());
+    async fn plan(&self, ctx: &Context, logical_plan: QueryPlan) -> Result<PhysicalPlanRef> {
         // TODO: maybe we should not build `SessionContext` in each physical plan's
         // building. We need to do so because we place some dynamic
         // information(such as `timeout`) in `SessionConfig`, maybe it is better
         // to remove it to `TaskContext`.
         let df_ctx = self.df_ctx_builder.build(ctx);
-        for (name, catalog) in catalogs {
-            df_ctx.register_catalog(&name, Arc::new(catalog));
-        }
+        let state = df_ctx.state();
 
-        // Generate physical plan.
-        let exec_plan = df_ctx
-            .state()
-            .create_physical_plan(&logical_plan.df_plan)
+        let exec_plan = self
+            .physical_planner
+            .create_physical_plan(&logical_plan.df_plan, &state)
             .await
             .box_err()
             .context(PhysicalPlannerWithCause { msg: None })?;
@@ -91,6 +102,6 @@ impl PhysicalPlanner for DatafusionPhysicalPlannerImpl {
         };
         let physical_plan = DataFusionPhysicalPlanAdapter::new(typed_plan);
 
-        Ok(Box::new(physical_plan))
+        Ok(Arc::new(physical_plan))
     }
 }

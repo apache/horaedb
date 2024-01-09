@@ -21,8 +21,9 @@ use async_recursion::async_recursion;
 use catalog::manager::ManagerRef as CatalogManagerRef;
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    physical_plan::ExecutionPlan,
+    physical_plan::{analyze::AnalyzeExec, ExecutionPlan},
 };
+use runtime::Priority;
 use table_engine::{remote::model::TableIdentifier, table::TableRef};
 
 use crate::{
@@ -48,6 +49,7 @@ pub struct Resolver {
     remote_executor: RemotePhysicalPlanExecutorRef,
     catalog_manager: CatalogManagerRef,
     scan_builder: ExecutableScanBuilderRef,
+    priority: Priority,
 }
 
 impl Resolver {
@@ -55,11 +57,13 @@ impl Resolver {
         remote_executor: RemotePhysicalPlanExecutorRef,
         catalog_manager: CatalogManagerRef,
         scan_builder: ExecutableScanBuilderRef,
+        priority: Priority,
     ) -> Self {
         Self {
             remote_executor,
             catalog_manager,
             scan_builder,
+            priority,
         }
     }
 
@@ -102,7 +106,10 @@ impl Resolver {
         &self,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
-        let resolved_plan = self.resolve_partitioned_scan_internal(plan)?;
+        // Check if this plan is `AnalyzeExec`, if it is, we should collect metrics.
+        let is_analyze = plan.as_any().is::<AnalyzeExec>();
+
+        let resolved_plan = self.resolve_partitioned_scan_internal(plan, is_analyze)?;
         PUSH_DOWN_PLAN_COUNTER
             .with_label_values(&["remote_scan"])
             .inc();
@@ -120,6 +127,7 @@ impl Resolver {
     pub fn resolve_partitioned_scan_internal(
         &self,
         plan: Arc<dyn ExecutionPlan>,
+        is_analyze: bool,
     ) -> DfResult<Arc<dyn ExecutionPlan>> {
         // Leave node, let's resolve it and return.
         if let Some(unresolved) = plan.as_any().downcast_ref::<UnresolvedPartitionedScan>() {
@@ -142,6 +150,7 @@ impl Resolver {
                 self.remote_executor.clone(),
                 remote_plans,
                 metrics_collector,
+                is_analyze,
             )));
         }
 
@@ -154,7 +163,7 @@ impl Resolver {
         // Resolve children if exist.
         let mut new_children = Vec::with_capacity(children.len());
         for child in children {
-            let child = self.resolve_partitioned_scan_internal(child)?;
+            let child = self.resolve_partitioned_scan_internal(child, is_analyze)?;
 
             new_children.push(child);
         }
@@ -212,7 +221,10 @@ impl Resolver {
             };
 
         if let Some((table, table_scan_ctx)) = build_scan_opt {
-            return self.scan_builder.build(table, table_scan_ctx).await;
+            return self
+                .scan_builder
+                .build(table, table_scan_ctx, self.priority)
+                .await;
         }
 
         let children = plan.children().clone();

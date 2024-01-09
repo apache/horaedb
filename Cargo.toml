@@ -97,7 +97,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "92152841fc8a10729d6864d2873c62b7a334b2bd" }
+horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "4a6f323b892c5944acdcf5447a3cc1e0c18f6e16" }
 codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"
@@ -119,10 +119,10 @@ hash_ext = { path = "components/hash_ext" }
 hex = "0.4.3"
 hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
 id_allocator = { path = "components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "acbd3ad7651f2deb74857155bea892f88926da57", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "schema" }
 interpreters = { path = "interpreters" }
 itertools = "0.10.5"
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
@@ -187,6 +187,7 @@ tokio = { version = "1.29", features = ["full"] }
 wal = { path = "src/wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
+uuid = "1.6.1"
 regex = "1"
 
 # This profile optimizes for good runtime performance.

@@ -32,7 +32,8 @@ use common_types::schema::SchemaName;
 use generic_error::GenericError;
 use macros::define_result;
 use meta_client::types::{
-    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
+    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardStatus,
+    ShardVersion,
 };
 use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};
@@ -164,6 +165,23 @@ pub enum Error {
 
 define_result!(Error);
 
+#[derive(Debug)]
+pub enum TableStatus {
+    Ready,
+    Recovering,
+    Frozen,
+}
+
+impl From<ShardStatus> for TableStatus {
+    fn from(value: ShardStatus) -> Self {
+        match value {
+            ShardStatus::Init | ShardStatus::Opening => TableStatus::Recovering,
+            ShardStatus::Ready => TableStatus::Ready,
+            ShardStatus::Frozen => TableStatus::Frozen,
+        }
+    }
+}
+
 pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
 
 #[derive(Clone, Debug)]
@@ -187,12 +205,14 @@ pub trait Cluster {
     /// None.
     fn shard(&self, shard_id: ShardId) -> Option<ShardRef>;
 
+    fn get_table_status(&self, schema_name: &str, table_name: &str) -> Option<TableStatus>;
+
     /// Close shard.
     ///
     /// Return error if the shard is not found.
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef>;
 
-    /// list shards
+    /// list loaded shards in current node.
     fn list_shards(&self) -> Vec<ShardInfo>;
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;

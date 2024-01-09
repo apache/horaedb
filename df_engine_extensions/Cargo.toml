@@ -44,6 +44,7 @@ horaedbproto = { workspace = true }
 lazy_static = { workspace = true }
 prometheus = { workspace = true }
 prost = { workspace = true }
+runtime = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 trace_metric = { workspace = true }

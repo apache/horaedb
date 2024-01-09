@@ -15,8 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Logical optimizer
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
 
-#[cfg(test)]
-pub mod tests;
-pub mod type_conversion;
+lazy_static! {
+    pub static ref ENGINE_QUERY_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "engine_query_counter",
+        "engine_query_counter",
+        &["priority"]
+    )
+    .unwrap();
+}

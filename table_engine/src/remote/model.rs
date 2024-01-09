@@ -19,6 +19,7 @@
 
 use std::{
     collections::HashMap,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -33,10 +34,11 @@ use common_types::{
 };
 use generic_error::{BoxError, GenericError, GenericResult};
 use horaedbproto::remote_engine::{
-    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc,
+    self, execute_plan_request, row_group::Rows::Contiguous, ColumnDesc, QueryPriority,
 };
 use itertools::Itertools;
 use macros::define_result;
+use runtime::Priority;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
@@ -412,6 +414,9 @@ pub struct ExecutePlanRequest {
 
     /// Remote plan execution request
     pub remote_request: RemoteExecuteRequest,
+
+    /// Collect metrics of remote plan
+    pub remote_metrics: Arc<Mutex<Option<String>>>,
 }
 
 impl ExecutePlanRequest {
@@ -420,6 +425,7 @@ impl ExecutePlanRequest {
         plan_schema: RecordSchema,
         context: ExecContext,
         physical_plan: PhysicalPlan,
+        remote_metrics: Arc<Mutex<Option<String>>>,
     ) -> Self {
         let remote_request = RemoteExecuteRequest {
             table,
@@ -430,6 +436,7 @@ impl ExecutePlanRequest {
         Self {
             plan_schema,
             remote_request,
+            remote_metrics,
         }
     }
 }
@@ -451,6 +458,10 @@ pub struct ExecContext {
     pub default_catalog: String,
     pub default_schema: String,
     pub query: String,
+    pub priority: Priority,
+    // TOOO: there are many explain types, we need to support them all.
+    // A proper way is to define a enum for all explain types.
+    pub is_analyze: bool,
 }
 
 pub enum PhysicalPlan {
@@ -465,13 +476,20 @@ impl From<RemoteExecuteRequest> for horaedbproto::remote_engine::ExecutePlanRequ
             NO_TIMEOUT
         };
 
+        let explain = if value.context.is_analyze {
+            Some(horaedbproto::remote_engine::Explain::Analyze)
+        } else {
+            None
+        };
         let pb_context = horaedbproto::remote_engine::ExecContext {
-            request_id: value.context.request_id.as_u64(),
+            request_id: 0,
+            request_id_str: String::from(value.context.request_id),
             default_catalog: value.context.default_catalog,
             default_schema: value.context.default_schema,
             timeout_ms: rest_duration_ms,
-            priority: 0, // not used now
+            priority: value.context.priority.as_u8() as i32,
             displayable_query: value.context.query,
+            explain: explain.map(|v| v as i32),
         };
 
         let pb_plan = match value.physical_plan {
@@ -506,16 +524,24 @@ impl TryFrom<horaedbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
         let pb_exec_ctx = value.context.context(ConvertRemoteExecuteRequest {
             msg: "missing exec ctx",
         })?;
+        let priority = match pb_exec_ctx.priority() {
+            QueryPriority::Low => Priority::Low,
+            QueryPriority::High => Priority::High,
+        };
         let horaedbproto::remote_engine::ExecContext {
             request_id,
             default_catalog,
             default_schema,
             timeout_ms,
             displayable_query,
+            explain,
             ..
         } = pb_exec_ctx;
+        let is_analyze = explain == Some(horaedbproto::remote_engine::Explain::Analyze as i32);
 
-        let request_id = RequestId::from(request_id);
+        // FIXME: The request id should be string already, but it's not in the proto
+        // file.
+        let request_id = RequestId::from(request_id.to_string());
         let deadline = if timeout_ms >= 0 {
             Some(Instant::now() + Duration::from_millis(timeout_ms as u64))
         } else {
@@ -528,6 +554,8 @@ impl TryFrom<horaedbproto::remote_engine::ExecutePlanRequest> for RemoteExecuteR
             default_catalog,
             default_schema,
             query: displayable_query,
+            priority,
+            is_analyze,
         };
 
         // Plan

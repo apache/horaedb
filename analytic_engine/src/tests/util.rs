@@ -29,6 +29,7 @@ use common_types::{
 use futures::stream::StreamExt;
 use logger::info;
 use object_store::config::{LocalOptions, ObjectStoreOptions, StorageOptions};
+use runtime::PriorityRuntime;
 use size_ext::ReadableSize;
 use table_engine::{
     engine::{
@@ -127,7 +128,7 @@ impl<T: WalsOpener> TestContext<T> {
                 .open_wals(
                     &self.config.wal,
                     WalRuntimes {
-                        read_runtime: self.runtimes.read_runtime.clone(),
+                        read_runtime: self.runtimes.read_runtime.high().clone(),
                         write_runtime: self.runtimes.write_runtime.clone(),
                         default_runtime: self.runtimes.default_runtime.clone(),
                     },
@@ -531,7 +532,7 @@ impl Builder {
             _dir: dir,
             config,
             runtimes: Arc::new(EngineRuntimes {
-                read_runtime: runtime.clone(),
+                read_runtime: PriorityRuntime::new(runtime.clone(), runtime.clone()),
                 write_runtime: runtime.clone(),
                 meta_runtime: runtime.clone(),
                 compact_runtime: runtime.clone(),

@@ -26,7 +26,7 @@ use parquet::{
     file::{footer, metadata::ParquetMetaData},
 };
 
-use crate::reader::ObjectStoreReader;
+use crate::reader::{NoopMetricsObserver, ObjectStoreReader};
 
 #[async_trait]
 pub trait ChunkReader: Sync + Send {
@@ -89,7 +89,7 @@ pub async fn fetch_parquet_metadata(
 /// TODO: Currently there is no method to build page indexes for meta data in
 /// `parquet`, maybe we can write a issue in `arrow-rs` .
 pub async fn meta_with_page_indexes(
-    object_store_reader: ObjectStoreReader,
+    object_store_reader: ObjectStoreReader<NoopMetricsObserver>,
 ) -> Result<Arc<ParquetMetaData>> {
     let read_options = ArrowReaderOptions::new().with_page_index(true);
     let builder =
