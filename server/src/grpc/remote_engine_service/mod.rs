@@ -149,7 +149,7 @@ struct ExecutePlanMetricCollector {
 
 impl ExecutePlanMetricCollector {
     fn new(
-        request_id: String,
+        request_id: RequestId,
         query: String,
         slow_threshold_secs: u64,
         priority: Priority,
@@ -157,7 +157,7 @@ impl ExecutePlanMetricCollector {
         Self {
             start: Instant::now(),
             query,
-            request_id: request_id.into(),
+            request_id,
             slow_threshold: Duration::from_secs(slow_threshold_secs),
             priority,
         }
@@ -711,12 +711,10 @@ impl RemoteEngineServiceImpl {
             priority,
         );
 
-        debug!(
-            "Execute remote query, ctx:{query_ctx:?}, query:{}",
-            &ctx.displayable_query
-        );
+        debug!("Execute remote query, id:{}", query_ctx.request_id.as_str());
+
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id.to_string(),
+            query_ctx.request_id.clone(),
             ctx.displayable_query,
             slow_threshold_secs,
             query_ctx.priority,
@@ -775,8 +773,12 @@ impl RemoteEngineServiceImpl {
             ctx.timeout_ms,
             priority,
         );
+        debug!(
+            "Execute dedupped remote query, id:{}",
+            query_ctx.request_id.as_str()
+        );
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id.to_string(),
+            query_ctx.request_id.clone(),
             ctx.displayable_query,
             slow_threshold_secs,
             query_ctx.priority,
