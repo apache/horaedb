@@ -43,7 +43,7 @@ use futures::{
     Future,
 };
 use generic_error::BoxError;
-use logger::{error, info, slow_query};
+use logger::{debug, error, info, slow_query};
 use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
     hotspot::{HotspotRecorder, Message},
@@ -711,7 +711,8 @@ impl RemoteEngineServiceImpl {
             priority,
         );
 
-        info!("Execute remote query, id:{}", query_ctx.request_id.as_str());
+        debug!("Execute remote query, id:{}", query_ctx.request_id.as_str());
+
         let metric = ExecutePlanMetricCollector::new(
             query_ctx.request_id.clone(),
             ctx.displayable_query,
@@ -772,7 +773,7 @@ impl RemoteEngineServiceImpl {
             ctx.timeout_ms,
             priority,
         );
-        info!(
+        debug!(
             "Execute dedupped remote query, id:{}",
             query_ctx.request_id.as_str()
         );
