@@ -482,8 +482,7 @@ impl From<RemoteExecuteRequest> for horaedbproto::remote_engine::ExecutePlanRequ
             None
         };
         let pb_context = horaedbproto::remote_engine::ExecContext {
-            request_id: 0,
-            request_id_str: String::from(value.context.request_id),
+            request_id: String::from(value.context.request_id),
             default_catalog: value.context.default_catalog,
             default_schema: value.context.default_schema,
             timeout_ms: rest_duration_ms,

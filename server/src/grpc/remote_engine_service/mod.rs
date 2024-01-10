@@ -707,7 +707,7 @@ impl RemoteEngineServiceImpl {
 
         let priority = ctx.priority();
         let query_ctx = create_query_ctx(
-            ctx.request_id_str,
+            ctx.request_id,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
@@ -770,7 +770,7 @@ impl RemoteEngineServiceImpl {
             .load(std::sync::atomic::Ordering::Relaxed);
         let priority = ctx.priority();
         let query_ctx = create_query_ctx(
-            ctx.request_id_str,
+            ctx.request_id,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,

@@ -443,7 +443,7 @@ impl TryFrom<ReadRequest> for horaedbproto::remote_engine::TableReadRequest {
                 })?;
 
         Ok(Self {
-            request_id: 0, // this field not used any more
+            request_id: String::from(request.request_id),
             opts: Some(request.opts.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),

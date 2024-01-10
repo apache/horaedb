@@ -97,7 +97,7 @@ bytes = "1"
 bytes_ext = { path = "components/bytes_ext" }
 catalog = { path = "catalog" }
 catalog_impls = { path = "catalog_impls" }
-horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "4a6f323b892c5944acdcf5447a3cc1e0c18f6e16" }
+horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "19ece8f771fc0b3e8e734072cc3d8040de6c74cb" }
 codec = { path = "components/codec" }
 chrono = "0.4"
 clap = "3.0"
