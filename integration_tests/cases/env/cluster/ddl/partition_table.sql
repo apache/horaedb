@@ -46,6 +46,7 @@ EXPLAIN ANALYZE SELECT * from partition_table_t where name in ("ceresdb0", "cere
 
 ALTER TABLE partition_table_t ADD COLUMN (b string);
 
+-- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
 INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "horaedb0", 100);
 
 -- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
