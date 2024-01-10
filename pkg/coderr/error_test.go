@@ -32,7 +32,7 @@ func TestErrorStack(t *testing.T) {
 	cerr := NewCodeError(Internal, "test internal error")
 	err := cerr.WithCausef("failed reason:%s", "for test")
 	errDesc := fmt.Sprintf("%s", err)
-	expectErrDesc := "ceresmeta/pkg/coderr/error_test.go:"
+	expectErrDesc := "horaedb-meta/pkg/coderr/error_test.go:"
 
 	r.True(strings.Contains(errDesc, expectErrDesc), "actual errDesc:%s", errDesc)
 }
