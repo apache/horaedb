@@ -46,7 +46,7 @@ const (
 	TestSchemaName                     = "TestSchemaName"
 	TestRootPath                       = "/rootPath"
 	DefaultIDAllocatorStep             = 20
-	ClusterName                        = "ceresdbCluster1"
+	ClusterName                        = "testCluster1"
 	DefaultNodeCount                   = 2
 	DefaultShardTotal                  = 4
 	DefaultSchedulerOperator           = true

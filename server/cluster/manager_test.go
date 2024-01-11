@@ -37,8 +37,8 @@ import (
 
 const (
 	defaultTimeout                     = time.Second * 20
-	cluster1                           = "ceresdbCluster1"
-	defaultSchema                      = "ceresdbSchema"
+	cluster1                           = "testCluster1"
+	defaultSchema                      = "testSchema"
 	defaultNodeCount                   = 2
 	defaultShardTotal                  = 8
 	defaultProcedureExecutingBatchSize = 100

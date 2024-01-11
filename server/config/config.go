@@ -59,7 +59,7 @@ const (
 
 	defaultNodeNamePrefix          = "horaemeta"
 	defaultEndpoint                = "127.0.0.1"
-	defaultRootPath                = "/ceresdb"
+	defaultRootPath                = "/horaedb"
 	defaultClientUrls              = "http://0.0.0.0:2379"
 	defaultPeerUrls                = "http://0.0.0.0:2380"
 	defaultInitialClusterState     = embed.ClusterStateFlagNew
