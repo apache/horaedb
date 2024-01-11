@@ -21,7 +21,6 @@ package transferleader
 
 import (
 	"context"
-	"encoding/json"
 	"sync"
 
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
@@ -61,6 +60,8 @@ var (
 	}
 )
 
+// Procedure will not persist.
+// TODO: After supporting the expiration cleanup mechanism of Procedure, we can consider persisting it to facilitate tracing historical information.
 type Procedure struct {
 	fsm                *fsm.FSM
 	params             ProcedureParams
@@ -70,18 +71,6 @@ type Procedure struct {
 	// FIXME: the procedure should be executed sequentially, so any need to use a lock to protect it?
 	lock  sync.RWMutex
 	state procedure.State
-}
-
-// rawData used for storage, procedure will be converted to persist raw data before saved in storage.
-type rawData struct {
-	ID       uint64
-	FsmState string
-	State    procedure.State
-
-	snapshot          metadata.Snapshot
-	ShardID           storage.ShardID
-	OldLeaderNodeName string
-	NewLeaderNodeName string
 }
 
 // callbackRequest is fsm callbacks param.
@@ -197,25 +186,16 @@ func (p *Procedure) Start(ctx context.Context) error {
 	for {
 		switch p.fsm.Current() {
 		case stateBegin:
-			if err := p.persist(ctx); err != nil {
-				return errors.WithMessage(err, "transferLeader procedure persist")
-			}
 			if err := p.fsm.Event(eventCloseOldLeader, transferLeaderRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
 				return errors.WithMessage(err, "transferLeader procedure close old leader")
 			}
 		case stateCloseOldLeader:
-			if err := p.persist(ctx); err != nil {
-				return errors.WithMessage(err, "transferLeader procedure persist")
-			}
 			if err := p.fsm.Event(eventOpenNewLeader, transferLeaderRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
 				return errors.WithMessage(err, "transferLeader procedure open new leader")
 			}
 		case stateOpenNewLeader:
-			if err := p.persist(ctx); err != nil {
-				return errors.WithMessage(err, "transferLeader procedure persist")
-			}
 			if err := p.fsm.Event(eventFinish, transferLeaderRequest); err != nil {
 				p.updateStateWithLock(procedure.StateFailed)
 				return errors.WithMessage(err, "transferLeader procedure finish")
@@ -223,24 +203,9 @@ func (p *Procedure) Start(ctx context.Context) error {
 		case stateFinish:
 			// TODO: The state update sequence here is inconsistent with the previous one. Consider reconstructing the state update logic of the state machine.
 			p.updateStateWithLock(procedure.StateFinished)
-			if err := p.persist(ctx); err != nil {
-				return errors.WithMessage(err, "transferLeader procedure persist")
-			}
 			return nil
 		}
 	}
-}
-
-func (p *Procedure) persist(ctx context.Context) error {
-	meta, err := p.convertToMeta()
-	if err != nil {
-		return errors.WithMessage(err, "convert to meta")
-	}
-	err = p.params.Storage.CreateOrUpdate(ctx, meta)
-	if err != nil {
-		return errors.WithMessage(err, "createOrUpdate procedure storage")
-	}
-	return nil
 }
 
 func (p *Procedure) Cancel(_ context.Context) error {
@@ -327,35 +292,4 @@ func (p *Procedure) updateStateWithLock(state procedure.State) {
 	defer p.lock.Unlock()
 
 	p.state = state
-}
-
-// TODO: Consider refactor meta procedure convertor function, encapsulate as a tool function.
-func (p *Procedure) convertToMeta() (procedure.Meta, error) {
-	p.lock.RLock()
-	defer p.lock.RUnlock()
-
-	rawData := rawData{
-		ID:                p.params.ID,
-		FsmState:          p.fsm.Current(),
-		ShardID:           p.params.ShardID,
-		snapshot:          p.params.ClusterSnapshot,
-		OldLeaderNodeName: p.params.OldLeaderNodeName,
-		NewLeaderNodeName: p.params.NewLeaderNodeName,
-		State:             p.state,
-	}
-	rawDataBytes, err := json.Marshal(rawData)
-	if err != nil {
-		var emptyMeta procedure.Meta
-		return emptyMeta, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ShardID, err)
-	}
-
-	meta := procedure.Meta{
-		ID:    p.params.ID,
-		Kind:  procedure.TransferLeader,
-		State: p.state,
-
-		RawData: rawDataBytes,
-	}
-
-	return meta, nil
 }
