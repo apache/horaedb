@@ -334,12 +334,13 @@ fn naive_datetime_to_timestamp(s: &str, datetime: NaiveDateTime) -> Result<i64, 
         LocalResult::None => Err(ArrowError::CastError(format!(
             "Error parsing '{s}' as timestamp: local time representation is invalid"
         ))),
-        LocalResult::Single(local_datetime) => {
-            Ok(local_datetime.with_timezone(&Utc).timestamp_nanos() / 1_000_000)
-        }
-
-        LocalResult::Ambiguous(local_datetime, _) => {
-            Ok(local_datetime.with_timezone(&Utc).timestamp_nanos() / 1_000_000)
+        LocalResult::Single(local_datetime) | LocalResult::Ambiguous(local_datetime, _) => {
+            match local_datetime.with_timezone(&Utc).timestamp_nanos_opt() {
+                Some(v) => Ok(v / 1_000_000),
+                None => Err(ArrowError::CastError(format!(
+                    "Error parsing '{s}' as timestamp: failed to convert into nanos"
+                ))),
+            }
         }
     }
 }
