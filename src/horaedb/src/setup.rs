@@ -35,6 +35,7 @@ use proxy::{
     },
 };
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
+use runtime::PriorityRuntime;
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
     local_tables::LocalTablesRecoverer,
@@ -89,17 +90,25 @@ fn build_runtime(name: &str, threads_num: usize) -> runtime::Runtime {
 }
 
 fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
+    let read_stack_size = config.read_thread_stack_size.as_byte() as usize;
     EngineRuntimes {
-        read_runtime: Arc::new(build_runtime_with_stack_size(
-            "horae-read",
-            config.read_thread_num,
-            Some(config.read_thread_stack_size.as_byte() as usize),
-        )),
-        write_runtime: Arc::new(build_runtime("horae-write", config.write_thread_num)),
-        compact_runtime: Arc::new(build_runtime("horae-compact", config.compact_thread_num)),
-        meta_runtime: Arc::new(build_runtime("horae-meta", config.meta_thread_num)),
-        default_runtime: Arc::new(build_runtime("horae-default", config.default_thread_num)),
-        io_runtime: Arc::new(build_runtime("horae-io", config.io_thread_num)),
+        read_runtime: PriorityRuntime::new(
+            Arc::new(build_runtime_with_stack_size(
+                "read-low",
+                config.low_read_thread_num,
+                Some(read_stack_size),
+            )),
+            Arc::new(build_runtime_with_stack_size(
+                "read-high",
+                config.read_thread_num,
+                Some(read_stack_size),
+            )),
+        ),
+        write_runtime: Arc::new(build_runtime("ceres-write", config.write_thread_num)),
+        compact_runtime: Arc::new(build_runtime("ceres-compact", config.compact_thread_num)),
+        meta_runtime: Arc::new(build_runtime("ceres-meta", config.meta_thread_num)),
+        default_runtime: Arc::new(build_runtime("ceres-default", config.default_thread_num)),
+        io_runtime: Arc::new(build_runtime("ceres-io", config.io_thread_num)),
     }
 }
 
@@ -269,7 +278,8 @@ async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<Tabl
 fn make_wal_runtime(runtimes: Arc<EngineRuntimes>) -> WalRuntimes {
     WalRuntimes {
         write_runtime: runtimes.write_runtime.clone(),
-        read_runtime: runtimes.read_runtime.clone(),
+        // TODO: remove read_runtime from WalRuntimes
+        read_runtime: runtimes.read_runtime.high().clone(),
         default_runtime: runtimes.default_runtime.clone(),
     }
 }
@@ -327,8 +337,11 @@ async fn build_with_meta<T: WalsOpener>(
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
-    let meta_based_manager_ref =
-        Arc::new(volatile::ManagerImpl::new(shard_set, meta_client.clone()));
+    let meta_based_manager_ref = Arc::new(volatile::ManagerImpl::new(
+        shard_set,
+        meta_client.clone(),
+        cluster.clone(),
+    ));
 
     // Build catalog manager.
     let catalog_manager = Arc::new(CatalogManagerImpl::new(meta_based_manager_ref));

@@ -22,7 +22,7 @@ use std::cmp;
 use async_trait::async_trait;
 use bytes_ext::Bytes;
 use common_types::{
-    record_batch::RecordBatchWithKey, request_id::RequestId, schema::Schema, time::TimeRange,
+    record_batch::FetchedRecordBatch, request_id::RequestId, schema::Schema, time::TimeRange,
     SequenceNumber,
 };
 use futures::Stream;
@@ -85,6 +85,9 @@ pub mod error {
         #[snafu(display("Failed to build parquet filter, err:{}", source))]
         BuildParquetFilter { source: GenericError },
 
+        #[snafu(display("Failed to build parquet filter msg:{msg}.\nBacktrace:\n{backtrace}"))]
+        BuildParquetFilterNoCause { msg: String, backtrace: Backtrace },
+
         #[snafu(display("Failed to poll record batch, err:{}", source))]
         PollRecordBatch { source: GenericError },
 
@@ -100,7 +103,7 @@ pub mod error {
 
 pub use error::*;
 
-pub type RecordBatchStreamItem = std::result::Result<RecordBatchWithKey, GenericError>;
+pub type RecordBatchStreamItem = std::result::Result<FetchedRecordBatch, GenericError>;
 // TODO(yingwen): SstReader also has a RecordBatchStream, can we use same type?
 pub type RecordBatchStream = Box<dyn Stream<Item = RecordBatchStreamItem> + Send + Unpin>;
 

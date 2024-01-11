@@ -27,6 +27,7 @@ use system_catalog::{tables::Tables, SystemTableAdapter};
 
 use crate::system_tables::{SystemTables, SystemTablesBuilder};
 
+mod cluster_based;
 mod system_tables;
 pub mod table_based;
 pub mod volatile;

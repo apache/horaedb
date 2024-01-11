@@ -15,7 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{fmt, sync::Arc};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
@@ -26,6 +29,7 @@ use datafusion::{
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
+use runtime::Priority;
 use table_engine::{predicate::PredicateRef, remote::model::TableIdentifier, table::TableRef};
 
 pub mod codec;
@@ -38,8 +42,8 @@ pub mod test_util;
 pub trait RemotePhysicalPlanExecutor: fmt::Debug + Send + Sync + 'static {
     fn execute(
         &self,
+        task_context: RemoteTaskContext,
         table: TableIdentifier,
-        task_context: &TaskContext,
         plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>>;
 }
@@ -56,10 +60,31 @@ pub trait ExecutableScanBuilder: fmt::Debug + Send + Sync + 'static {
         &self,
         table: TableRef,
         ctx: TableScanContext,
+        priority: Priority,
     ) -> DfResult<Arc<dyn ExecutionPlan>>;
 }
 
 type ExecutableScanBuilderRef = Box<dyn ExecutableScanBuilder>;
+
+pub struct RemoteTaskContext {
+    pub task_ctx: Arc<TaskContext>,
+    pub remote_metrics: Arc<Mutex<Option<String>>>,
+    pub is_analyze: bool,
+}
+
+impl RemoteTaskContext {
+    pub fn new(
+        task_ctx: Arc<TaskContext>,
+        remote_metrics: Arc<Mutex<Option<String>>>,
+        is_analyze: bool,
+    ) -> Self {
+        Self {
+            task_ctx,
+            remote_metrics,
+            is_analyze,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct TableScanContext {

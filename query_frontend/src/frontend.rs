@@ -147,7 +147,7 @@ impl<P: MetaProvider> Frontend<P> {
     pub fn statement_to_plan(&self, ctx: &Context, stmt: Statement) -> Result<Plan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -163,7 +163,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<(Plan, Arc<ColumnNames>)> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -179,7 +179,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<RemoteQueryPlan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -189,7 +189,7 @@ impl<P: MetaProvider> Frontend<P> {
     pub fn influxql_stmt_to_plan(&self, ctx: &Context, stmt: InfluxqlStatement) -> Result<Plan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -204,7 +204,7 @@ impl<P: MetaProvider> Frontend<P> {
     ) -> Result<Plan> {
         let planner = Planner::new(
             &self.provider,
-            ctx.request_id,
+            ctx.request_id.clone(),
             ctx.read_parallelism,
             self.dyn_config.as_ref(),
         );
@@ -215,50 +215,53 @@ impl<P: MetaProvider> Frontend<P> {
     }
 }
 
+pub fn parse_table_name_with_standard(sql_statement: &SqlStatement) -> Option<String> {
+    match sql_statement.clone() {
+        SqlStatement::Insert { table_name, .. } => {
+            Some(TableName::from(table_name.clone()).to_string())
+        }
+        SqlStatement::Explain { statement, .. } => {
+            if let SqlStatement::Query(q) = *statement {
+                match *q.body {
+                    SetExpr::Select(select) => {
+                        if select.from.len() != 1 {
+                            None
+                        } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
+                            Some(TableName::from(name.clone()).to_string())
+                        } else {
+                            None
+                        }
+                    }
+                    // TODO: return unsupported error rather than none.
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
+        SqlStatement::Query(q) => match *q.body {
+            SetExpr::Select(select) => {
+                if select.from.len() != 1 {
+                    None
+                } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
+                    Some(TableName::from(name.clone()).to_string())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
     // maybe have empty sql
     if statements.is_empty() {
         return None;
     }
     match &statements[0] {
-        Statement::Standard(s) => match *s.clone() {
-            SqlStatement::Insert { table_name, .. } => {
-                Some(TableName::from(table_name).to_string())
-            }
-            SqlStatement::Explain { statement, .. } => {
-                if let SqlStatement::Query(q) = *statement {
-                    match *q.body {
-                        SetExpr::Select(select) => {
-                            if select.from.len() != 1 {
-                                None
-                            } else if let TableFactor::Table { name, .. } = &select.from[0].relation
-                            {
-                                Some(TableName::from(name.clone()).to_string())
-                            } else {
-                                None
-                            }
-                        }
-                        // TODO: return unsupported error rather than none.
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            }
-            SqlStatement::Query(q) => match *q.body {
-                SetExpr::Select(select) => {
-                    if select.from.len() != 1 {
-                        None
-                    } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
-                        Some(TableName::from(name.clone()).to_string())
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            },
-            _ => None,
-        },
+        Statement::Standard(s) => parse_table_name_with_standard(s),
         Statement::Create(s) => Some(s.table_name.to_string()),
         Statement::Drop(s) => Some(s.table_name.to_string()),
         Statement::Describe(s) => Some(s.table_name.to_string()),

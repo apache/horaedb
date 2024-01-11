@@ -203,6 +203,7 @@ mod tests {
 
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
+        TableStatus,
     };
     use common_types::table::ShardId;
     use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
@@ -231,6 +232,10 @@ mod tests {
 
         fn shard(&self, _: ShardId) -> Option<ShardRef> {
             unimplemented!();
+        }
+
+        fn get_table_status(&self, _: &str, _: &str) -> Option<TableStatus> {
+            unimplemented!()
         }
 
         async fn close_shard(&self, _: ShardId) -> cluster::Result<ShardRef> {

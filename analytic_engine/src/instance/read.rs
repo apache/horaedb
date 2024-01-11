@@ -26,7 +26,7 @@ use std::{
 use async_stream::try_stream;
 use common_types::{
     projected_schema::ProjectedSchema,
-    record_batch::{RecordBatch, RecordBatchWithKey},
+    record_batch::{FetchedRecordBatch, RecordBatch},
     schema::RecordSchema,
     time::TimeRange,
 };
@@ -45,15 +45,14 @@ use time_ext::current_time_millis;
 use trace_metric::Metric;
 
 use crate::{
-    instance::{create_sst_read_option, Instance, ScanType},
+    instance::{Instance, ScanType, SstReadOptionsBuilder},
     row_iter::{
         chain,
         chain::{ChainConfig, ChainIterator},
         dedup::DedupIterator,
         merge::{MergeBuilder, MergeConfig, MergeIterator},
-        IterOptions, RecordBatchWithKeyIterator,
+        FetchedRecordBatchIterator, IterOptions,
     },
-    sst::factory::SstReadOptions,
     table::{
         data::TableData,
         version::{ReadView, TableVersion},
@@ -109,16 +108,10 @@ impl Instance {
         let now = current_time_millis() as i64;
 
         let query_time_range = (end_time as f64 - start_time as f64) / 1000.0;
-        table_data
-            .metrics
-            .maybe_table_level_metrics()
-            .query_time_range
-            .observe(query_time_range);
-
+        let table_metrics = table_data.metrics.maybe_table_level_metrics();
+        table_metrics.query_time_range.observe(query_time_range);
         let since_start = (now as f64 - start_time as f64) / 1000.0;
-        table_data
-            .metrics
-            .maybe_table_level_metrics()
+        table_metrics
             .duration_since_query_query_start_time
             .observe(since_start);
 
@@ -132,29 +125,38 @@ impl Instance {
             None,
         ));
 
-        let sst_read_options = create_sst_read_option(
+        let runtime = self
+            .read_runtime()
+            .choose_runtime(&request.priority)
+            .clone();
+        let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Query,
             self.scan_options.clone(),
-            table_data
-                .metrics
-                .maybe_table_level_metrics()
-                .sst_metrics
-                .clone(),
+            table_metrics.sst_metrics.clone(),
             table_options.num_rows_per_row_group,
-            request.projected_schema.clone(),
             request.predicate.clone(),
             self.meta_cache.clone(),
-            self.read_runtime().clone(),
+            runtime,
         );
 
         if need_merge_sort {
             let merge_iters = self
-                .build_merge_iters(table_data, &request, &table_options, sst_read_options)
+                .build_merge_iters(
+                    table_data,
+                    &request,
+                    &table_options,
+                    sst_read_options_builder,
+                )
                 .await?;
             self.build_partitioned_streams(&request, merge_iters)
         } else {
             let chain_iters = self
-                .build_chain_iters(table_data, &request, &table_options, sst_read_options)
+                .build_chain_iters(
+                    table_data,
+                    &request,
+                    &table_options,
+                    sst_read_options_builder,
+                )
                 .await?;
             self.build_partitioned_streams(&request, chain_iters)
         }
@@ -163,7 +165,7 @@ impl Instance {
     fn build_partitioned_streams(
         &self,
         request: &ReadRequest,
-        partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
+        partitioned_iters: Vec<impl FetchedRecordBatchIterator + 'static>,
     ) -> Result<PartitionedStreams> {
         let read_parallelism = request.opts.read_parallelism;
 
@@ -192,7 +194,7 @@ impl Instance {
         table_data: &TableData,
         request: &ReadRequest,
         table_options: &TableOptions,
-        sst_read_options: SstReadOptions,
+        sst_read_options_builder: SstReadOptionsBuilder,
     ) -> Result<Vec<DedupIterator<MergeIterator>>> {
         // Current visible sequence
         let sequence = table_data.last_sequence();
@@ -207,7 +209,7 @@ impl Instance {
                 .metrics_collector
                 .span(format!("{MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
             let merge_config = MergeConfig {
-                request_id: request.request_id,
+                request_id: request.request_id.clone(),
                 metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
                 space_id: table_data.space_id,
@@ -216,7 +218,7 @@ impl Instance {
                 projected_schema: request.projected_schema.clone(),
                 predicate: request.predicate.clone(),
                 sst_factory: &self.space_store.sst_factory,
-                sst_read_options: sst_read_options.clone(),
+                sst_read_options_builder: sst_read_options_builder.clone(),
                 store_picker: self.space_store.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.need_dedup(),
@@ -233,7 +235,7 @@ impl Instance {
                     table: &table_data.name,
                 })?;
             let dedup_iter =
-                DedupIterator::new(request.request_id, merge_iter, iter_options.clone());
+                DedupIterator::new(request.request_id.clone(), merge_iter, iter_options.clone());
 
             iters.push(dedup_iter);
         }
@@ -252,7 +254,7 @@ impl Instance {
         table_data: &TableData,
         request: &ReadRequest,
         table_options: &TableOptions,
-        sst_read_options: SstReadOptions,
+        sst_read_options_builder: SstReadOptionsBuilder,
     ) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
 
@@ -266,7 +268,7 @@ impl Instance {
                 .metrics_collector
                 .span(format!("{CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
             let chain_config = ChainConfig {
-                request_id: request.request_id,
+                request_id: request.request_id.clone(),
                 metrics_collector: Some(metrics_collector),
                 deadline: request.opts.deadline,
                 num_streams_to_prefetch: self.scan_options.num_streams_to_prefetch,
@@ -274,7 +276,7 @@ impl Instance {
                 table_id: table_data.id,
                 projected_schema: projected_schema.clone(),
                 predicate: request.predicate.clone(),
-                sst_read_options: sst_read_options.clone(),
+                sst_read_options_builder: sst_read_options_builder.clone(),
                 sst_factory: &self.space_store.sst_factory,
                 store_picker: self.space_store.store_picker(),
             };
@@ -360,7 +362,7 @@ struct StreamStateOnMultiIters<I> {
     projected_schema: ProjectedSchema,
 }
 
-impl<I: RecordBatchWithKeyIterator + 'static> StreamStateOnMultiIters<I> {
+impl<I: FetchedRecordBatchIterator + 'static> StreamStateOnMultiIters<I> {
     fn is_exhausted(&self) -> bool {
         self.curr_iter_idx >= self.iters.len()
     }
@@ -375,7 +377,7 @@ impl<I: RecordBatchWithKeyIterator + 'static> StreamStateOnMultiIters<I> {
 
     async fn fetch_next_batch(
         &mut self,
-    ) -> Option<std::result::Result<RecordBatchWithKey, I::Error>> {
+    ) -> Option<std::result::Result<FetchedRecordBatch, I::Error>> {
         loop {
             if self.is_exhausted() {
                 return None;
@@ -392,7 +394,7 @@ impl<I: RecordBatchWithKeyIterator + 'static> StreamStateOnMultiIters<I> {
 }
 
 fn iters_to_stream(
-    iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
+    iters: Vec<impl FetchedRecordBatchIterator + 'static>,
     projected_schema: ProjectedSchema,
 ) -> SendableRecordBatchStream {
     let mut state = StreamStateOnMultiIters {

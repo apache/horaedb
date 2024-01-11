@@ -41,8 +41,12 @@ use analytic_engine::{
     },
     table::sst_util,
     table_options::{Compression, StorageFormatHint},
+    ScanType, SstReadOptionsBuilder,
 };
-use common_types::{projected_schema::ProjectedSchema, request_id::RequestId};
+use common_types::{
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
+    request_id::RequestId,
+};
 use generic_error::BoxError;
 use logger::info;
 use object_store::{LocalFileSystem, ObjectStoreRef, Path};
@@ -69,6 +73,7 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
         num_rows_per_row_group: config.num_rows_per_row_group,
         compression: config.compression,
         max_buffer_size: 1024 * 1024 * 10,
+        column_stats: Default::default(),
     };
 
     info!(
@@ -123,15 +128,19 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
         max_record_batches_in_flight: 1024,
         num_streams_to_prefetch: 2,
     };
+
+    let fetched_schema = projected_schema.to_record_schema();
+    let table_schema = projected_schema.table_schema().clone();
+    let row_projector_builder = RowProjectorBuilder::new(fetched_schema, table_schema, None);
     let sst_read_options = SstReadOptions {
         maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: config.num_rows_per_row_group,
-        projected_schema,
         predicate: config.predicate.into_predicate(),
         meta_cache: None,
         scan_options,
         runtime,
+        row_projector_builder,
     };
 
     let record_batch_stream =
@@ -226,6 +235,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let iter_options = IterOptions {
         batch_size: config.num_rows_per_row_group,
     };
+
     let scan_options = ScanOptions {
         background_read_parallelism: 1,
         max_record_batches_in_flight: 1024,
@@ -236,20 +246,28 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let sst_factory: SstFactoryRef = Arc::new(FactoryImpl);
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
-    let sst_read_options = SstReadOptions {
-        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
-        frequency: ReadFrequency::Once,
-        num_rows_per_row_group: config.num_rows_per_row_group,
-        projected_schema: projected_schema.clone(),
-        predicate: config.predicate.into_predicate(),
-        meta_cache: None,
+    let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench"));
+    let sst_read_options_builder = SstReadOptionsBuilder::new(
+        ScanType::Query,
         scan_options,
-        runtime: runtime.clone(),
-    };
+        maybe_table_level_metrics,
+        config.num_rows_per_row_group,
+        config.predicate.into_predicate(),
+        None,
+        runtime.clone(),
+    );
+    let fetched_schema = projected_schema.to_record_schema_with_key();
+    let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
+    let fetched_schema = fetched_schema.into_record_schema();
+    let table_schema = projected_schema.table_schema().clone();
+    let row_projector_builder =
+        RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
+
     let iter = {
         let space_id = config.space_id;
         let table_id = config.table_id;
         let sequence = max_sequence + 1;
+        let request_id = request_id.clone();
 
         let mut builder = MergeBuilder::new(MergeConfig {
             request_id,
@@ -261,11 +279,11 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
             projected_schema,
             predicate: Arc::new(Predicate::empty()),
             sst_factory: &sst_factory,
-            sst_read_options: sst_read_options.clone(),
             store_picker: &store_picker,
             merge_iter_options: iter_options.clone(),
             need_dedup: true,
             reverse: false,
+            sst_read_options_builder: sst_read_options_builder.clone(),
         });
         builder
             .mut_ssts_of_level(Level::MIN)
@@ -275,12 +293,13 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     };
 
     let record_batch_stream = if config.dedup {
-        let iter = DedupIterator::new(request_id, iter, iter_options);
+        let iter = DedupIterator::new(request_id.clone(), iter, iter_options);
         row_iter::record_batch_with_key_iter_to_stream(iter)
     } else {
         row_iter::record_batch_with_key_iter_to_stream(iter)
     };
 
+    let sst_read_options = sst_read_options_builder.build(row_projector_builder);
     let sst_meta = {
         let meta_reader = SstMetaReader {
             space_id,

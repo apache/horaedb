@@ -32,6 +32,7 @@ use query_frontend::{
     config::DynamicConfig, parser::Parser, plan::Plan, planner::Planner, provider::MetaProvider,
     tests::MockMetaProvider,
 };
+use runtime::{Builder, PriorityRuntime};
 use table_engine::{engine::TableEngineRef, memory::MockRemoteEngine};
 
 use crate::{
@@ -65,6 +66,7 @@ where
     pub catalog_manager: ManagerRef,
     pub table_manipulator: TableManipulatorRef,
     pub query_engine: QueryEngineRef,
+    pub read_runtime: PriorityRuntime,
 }
 
 impl<M> Env<M>
@@ -87,6 +89,7 @@ where
             self.catalog_manager.clone(),
             self.engine(),
             self.table_manipulator.clone(),
+            self.read_runtime.clone(),
         )
     }
 
@@ -239,6 +242,7 @@ where
             catalog_manager.clone(),
             self.engine(),
             table_manipulator.clone(),
+            self.read_runtime.clone(),
         );
         let insert_sql = "INSERT INTO test_missing_columns_table(key1, key2, field4) VALUES('tagk', 1638428434000, 1), ('tagk2', 1638428434000, 10);";
 
@@ -259,6 +263,7 @@ where
             catalog_manager,
             self.engine(),
             table_manipulator,
+            self.read_runtime.clone(),
         );
         let ctx = Context::builder(RequestId::next_id(), None)
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
@@ -359,14 +364,21 @@ where
     }
 }
 
-#[tokio::test]
-async fn test_interpreters_rocks() {
-    test_util::init_log_for_test();
-    let rocksdb_ctx = RocksDBEngineBuildContext::default();
-    test_interpreters(rocksdb_ctx).await;
+#[test]
+fn test_interpreters_rocks() {
+    let rt = Arc::new(Builder::default().build().unwrap());
+    let read_runtime = PriorityRuntime::new(rt.clone(), rt.clone());
+    rt.block_on(async {
+        test_util::init_log_for_test();
+        let rocksdb_ctx = RocksDBEngineBuildContext::default();
+        test_interpreters(rocksdb_ctx, read_runtime).await;
+    })
 }
 
-async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
+async fn test_interpreters<T: EngineBuildContext>(
+    engine_context: T,
+    read_runtime: PriorityRuntime,
+) {
     let env = TestEnv::builder().build();
     let mut test_ctx = env.new_context(engine_context);
     test_ctx.open().await;
@@ -394,6 +406,7 @@ async fn test_interpreters<T: EngineBuildContext>(engine_context: T) {
         catalog_manager,
         table_manipulator,
         query_engine,
+        read_runtime,
     };
 
     env.test_create_table().await;

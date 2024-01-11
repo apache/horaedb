@@ -15,8 +15,31 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Logical optimizer
+use common_types::row::Row;
 
-#[cfg(test)]
-pub mod tests;
-pub mod type_conversion;
+use crate::memtable::*;
+
+pub trait TestMemtableBuilder {
+    fn build(&self, data: &[(KeySequence, Row)]) -> MemTableRef;
+}
+
+pub struct TestUtil {
+    memtable: MemTableRef,
+    data: Vec<(KeySequence, Row)>,
+}
+
+impl TestUtil {
+    pub fn new<B: TestMemtableBuilder>(builder: B, data: Vec<(KeySequence, Row)>) -> Self {
+        let memtable = builder.build(&data);
+
+        Self { memtable, data }
+    }
+
+    pub fn memtable(&self) -> MemTableRef {
+        self.memtable.clone()
+    }
+
+    pub fn data(&self) -> Vec<Row> {
+        self.data.iter().map(|d| d.1.clone()).collect()
+    }
+}

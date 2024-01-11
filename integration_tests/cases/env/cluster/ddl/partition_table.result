@@ -78,13 +78,36 @@ UInt64(18050575420545011296),Timestamp(1651737067000),String("horaedb8"),Int32(0
 UInt64(16367588166920223437),Timestamp(1651737067000),String("horaedb9"),Int32(0),Double(109.0),
 
 
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb0";
+
+plan_type,plan,
+String("Plan with Metrics"),String("ResolvedPartitionedScan: pushdown_continue:false, partition_count:1, metrics=[\npartition_table_t:\n    __partition_table_t_1:\n        poll_duration=xxs\n        total_duration=xxs\n        wait_duration=xxs\n\n__partition_table_t_1:\nCoalescePartitionsExec, metrics=[output_rows=0, elapsed_compute=xxs]\n  ScanTable: table=__partition_table_t_1, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[name = Utf8(\"ceresdb0\")], time_range:TimeRange { inclusive_start: Timestamp(-9223372036854775808), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=0\n        scan_count=1\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=0\n        total_rows_fetch_from_one=0\n        scan_memtable_1, fetched_columns:[tsid,t,name,id,value]:\n=0]\n=0]\n"),
+
+
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+-- SQLNESS REPLACE __partition_table_t_\d __partition_table_t_x
+EXPLAIN ANALYZE SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4");
+
+plan_type,plan,
+String("Plan with Metrics"),String("ResolvedPartitionedScan: pushdown_continue:false, partition_count:3, metrics=[\npartition_table_t:\n    __partition_table_t_x:\n        poll_duration=xxs\n        total_duration=xxs\n        wait_duration=xxs\n    __partition_table_t_x:\n        poll_duration=xxs\n        total_duration=xxs\n        wait_duration=xxs\n    __partition_table_t_x:\n        poll_duration=xxs\n        total_duration=xxs\n        wait_duration=xxs\n\n__partition_table_t_x:\nCoalescePartitionsExec, metrics=[output_rows=0, elapsed_compute=xxs]\n  ScanTable: table=__partition_table_t_x, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[name IN ([Utf8(\"ceresdb0\"), Utf8(\"ceresdb1\"), Utf8(\"ceresdb2\"), Utf8(\"ceresdb3\"), Utf8(\"ceresdb4\")])], time_range:TimeRange { inclusive_start: Timestamp(-9223372036854775808), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=0\n        scan_count=1\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=0\n        total_rows_fetch_from_one=0\n        scan_memtable_1, fetched_columns:[tsid,t,name,id,value]:\n=0]\n\n__partition_table_t_x:\nCoalescePartitionsExec, metrics=[output_rows=0, elapsed_compute=xxs]\n  ScanTable: table=__partition_table_t_x, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[name IN ([Utf8(\"ceresdb0\"), Utf8(\"ceresdb1\"), Utf8(\"ceresdb2\"), Utf8(\"ceresdb3\"), Utf8(\"ceresdb4\")])], time_range:TimeRange { inclusive_start: Timestamp(-9223372036854775808), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=0\n        scan_count=1\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=0\n        total_rows_fetch_from_one=0\n        scan_memtable_1, fetched_columns:[tsid,t,name,id,value]:\n=0]\n\n__partition_table_t_x:\nCoalescePartitionsExec, metrics=[output_rows=0, elapsed_compute=xxs]\n  ScanTable: table=__partition_table_t_x, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[name IN ([Utf8(\"ceresdb0\"), Utf8(\"ceresdb1\"), Utf8(\"ceresdb2\"), Utf8(\"ceresdb3\"), Utf8(\"ceresdb4\")])], time_range:TimeRange { inclusive_start: Timestamp(-9223372036854775808), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=0\n        scan_count=1\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=0\n        total_rows_fetch_from_one=0\n        scan_memtable_1, fetched_columns:[tsid,t,name,id,value]:\n=0]\n=0]\n"),
+
+
 ALTER TABLE partition_table_t ADD COLUMN (b string);
 
 affected_rows: 0
 
+-- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
 INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "horaedb0", 100);
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute insert, err:Failed to write table, err:Failed to write tables in batch, tables:[\"__partition_table_t_1\"], err:Failed to query from table in server, table_idents:[TableIdentifier { catalog: \"horaedb\", schema: \"public\", table: \"__partition_table_t_1\" }], code:401, msg:failed to decode row group payload. Caused by: Schema mismatch with the write request, msg:expect 6 columns, but got 5. sql:INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, \"horaedb0\", 100);" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute insert, err:Failed to write table, err:Failed to write tables in batch, tables:[\"__partition_table_t_1\"], err:Failed to query from table in server, table_idents:[TableIdentifier { catalog: \"horaedb\", schema: \"public\", table: \"__partition_table_t_1\" }], endpoint:xx, code:401, msg:failed to decode row group payload. Caused by: Schema mismatch with the write request, msg:expect 6 columns, but got 5. sql:INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, \"horaedb0\", 100);" })
+
+-- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
+INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "ceresdb0", 100);
+
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute insert, err:Failed to write table, err:Failed to write tables in batch, tables:[\"__partition_table_t_1\"], err:Failed to query from table in server, table_idents:[TableIdentifier { catalog: \"horaedb\", schema: \"public\", table: \"__partition_table_t_1\" }], endpoint:xx, code:401, msg:failed to decode row group payload. Caused by: Schema mismatch with the write request, msg:expect 6 columns, but got 5. sql:INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, \"ceresdb0\", 100);" })
 
 ALTER TABLE partition_table_t MODIFY SETTING enable_ttl='true';
 
@@ -167,6 +190,18 @@ SELECT * from random_partition_table_t where name = "horaedb5";
 
 tsid,t,name,id,value,
 UInt64(11618546385801067358),Timestamp(1651737067000),String("horaedb5"),Int32(0),Double(105.0),
+
+
+SELECT
+    time_bucket (t, "PT1M") AS ts,
+    approx_percentile_cont (value, 0.9) AS value
+FROM
+    random_partition_table_t
+GROUP BY
+    time_bucket (t, "PT1M");
+
+ts,value,
+Timestamp(1651737060000),Double(109.4),
 
 
 DROP TABLE IF EXISTS `random_partition_table_t`;

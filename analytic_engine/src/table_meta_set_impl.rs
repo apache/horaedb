@@ -137,6 +137,7 @@ impl TableMetaSetImpl {
                     collector: space.mem_usage_collector.clone(),
                     size_sampling_interval: space.mem_usage_sampling_interval,
                 };
+
                 let table_data = Arc::new(
                     TableData::new(
                         TableDesc {

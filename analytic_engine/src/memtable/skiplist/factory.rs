@@ -23,9 +23,9 @@ use arena::MonoIncArena;
 use skiplist::{BytewiseComparator, Skiplist};
 
 use crate::memtable::{
-    factory::{Factory, Options, Result},
+    factory::{Factory, Options},
     skiplist::SkiplistMemTable,
-    MemTableRef,
+    MemTableRef, Result,
 };
 
 /// Factory to create memtable

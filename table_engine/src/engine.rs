@@ -27,7 +27,7 @@ use common_types::{
 use generic_error::{GenericError, GenericResult};
 use horaedbproto::sys_catalog as sys_catalog_pb;
 use macros::define_result;
-use runtime::RuntimeRef;
+use runtime::{PriorityRuntime, RuntimeRef};
 use snafu::{ensure, Backtrace, Snafu};
 
 use crate::{
@@ -349,7 +349,7 @@ pub type TableEngineRef = Arc<dyn TableEngine>;
 #[derive(Clone, Debug)]
 pub struct EngineRuntimes {
     /// Runtime for reading data
-    pub read_runtime: RuntimeRef,
+    pub read_runtime: PriorityRuntime,
     /// Runtime for writing data
     pub write_runtime: RuntimeRef,
     /// Runtime for compacting data

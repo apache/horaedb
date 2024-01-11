@@ -39,9 +39,8 @@ use parquet_ext::prune::{
 use snafu::ensure;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
-use super::meta_data::ColumnValueSet;
 use crate::sst::{
-    parquet::meta_data::ParquetFilter,
+    parquet::meta_data::{ColumnValueSet, ParquetFilter},
     reader::error::{OtherNoCause, Result},
 };
 

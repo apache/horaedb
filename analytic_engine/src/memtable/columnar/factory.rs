@@ -27,10 +27,9 @@ use std::{
 
 use crate::memtable::{
     columnar::ColumnarMemTable,
-    factory::{Factory, Options, Result},
-    MemTableRef,
+    factory::{Factory, Options},
+    MemTableRef, Result,
 };
-
 /// Factory to create memtable
 #[derive(Debug)]
 pub struct ColumnarMemTableFactory;

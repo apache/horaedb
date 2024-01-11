@@ -42,7 +42,6 @@ mod write;
 pub const FORWARDED_FROM: &str = "forwarded-from";
 
 use std::{
-    ops::Bound,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -54,18 +53,13 @@ use catalog::{
     },
     CatalogRef,
 };
-use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID, ENABLE_TTL, TTL};
-use datafusion::{
-    prelude::{Column, Expr},
-    scalar::ScalarValue,
-};
+use common_types::{request_id::RequestId, table::DEFAULT_SHARD_ID};
 use futures::FutureExt;
 use generic_error::BoxError;
 use horaedbproto::storage::{
     storage_service_client::StorageServiceClient, PrometheusRemoteQueryRequest,
     PrometheusRemoteQueryResponse, Route,
 };
-use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
     context::Context as InterpreterContext,
     factory::Factory,
@@ -83,7 +77,6 @@ use table_engine::{
     table::{TableId, TableRef},
     PARTITION_TABLE_ENGINE_TYPE,
 };
-use time_ext::{current_time_millis, parse_duration};
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
@@ -94,9 +87,6 @@ use crate::{
     read::ReadRequestNotifiers,
     schema_config_provider::SchemaConfigProviderRef,
 };
-
-// Because the clock may have errors, choose 1 hour as the error buffer
-const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
@@ -126,6 +116,7 @@ pub struct Proxy {
     cluster_with_meta: bool,
     sub_table_access_perm: SubTableAccessPerm,
     request_notifiers: Option<ReadRequestNotifiers>,
+    expensive_query_threshold: u64,
 }
 
 impl Proxy {
@@ -143,6 +134,7 @@ impl Proxy {
         cluster_with_meta: bool,
         sub_table_access_perm: SubTableAccessPerm,
         request_notifiers: Option<ReadRequestNotifiers>,
+        expensive_query_threshold: u64,
     ) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
@@ -162,6 +154,7 @@ impl Proxy {
             cluster_with_meta,
             sub_table_access_perm,
             request_notifiers,
+            expensive_query_threshold,
         }
     }
 
@@ -212,70 +205,6 @@ impl Proxy {
                 None
             }
         })
-    }
-
-    /// Returns true when query range maybe exceeding ttl,
-    /// Note: False positive is possible
-    // TODO(tanruixiang): Add integration testing when supported by the testing
-    // framework
-    fn is_plan_expired(
-        &self,
-        plan: &Plan,
-        catalog_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<bool> {
-        if let Plan::Query(query) = &plan {
-            let catalog = self.get_catalog(catalog_name)?;
-            let schema = self.get_schema(&catalog, schema_name)?;
-            let table_ref = match self.get_table(&schema, table_name) {
-                Ok(Some(v)) => v,
-                _ => return Ok(false),
-            };
-            if let Some(value) = table_ref.options().get(ENABLE_TTL) {
-                if value == "false" {
-                    return Ok(false);
-                }
-            }
-            let ttl_duration = if let Some(ttl) = table_ref.options().get(TTL) {
-                if let Ok(ttl) = parse_duration(ttl) {
-                    ttl
-                } else {
-                    return Ok(false);
-                }
-            } else {
-                return Ok(false);
-            };
-
-            let timestamp_name = &table_ref
-                .schema()
-                .column(table_ref.schema().timestamp_index())
-                .name
-                .clone();
-            let ts_col = Column::from_name(timestamp_name);
-            let range = find_time_range(&query.df_plan, &ts_col)
-                .box_err()
-                .context(Internal {
-                    msg: "Failed to find time range",
-                })?;
-            match range.end {
-                Bound::Included(x) | Bound::Excluded(x) => {
-                    if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
-                        let now = current_time_millis() as i64;
-                        let deadline = now
-                            - ttl_duration.as_millis() as i64
-                            - QUERY_EXPIRED_BUFFER.as_millis() as i64;
-
-                        if x * 1_000 <= deadline {
-                            return Ok(true);
-                        }
-                    }
-                }
-                Bound::Unbounded => (),
-            }
-        }
-
-        Ok(false)
     }
 
     fn get_catalog(&self, catalog_name: &str) -> Result<CatalogRef> {
@@ -526,14 +455,6 @@ impl Proxy {
         plan: Plan,
         deadline: Option<Instant>,
     ) -> Result<Output> {
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
-
         let interpreter =
             self.build_interpreter(request_id, catalog, schema, plan, deadline, false)?;
         Self::interpreter_execute_plan(interpreter, deadline).await
@@ -547,14 +468,6 @@ impl Proxy {
         plan: Plan,
         deadline: Option<Instant>,
     ) -> Result<Output> {
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
-
         let interpreter =
             self.build_interpreter(request_id, catalog, schema, plan, deadline, true)?;
         Self::interpreter_execute_plan(interpreter, deadline).await
@@ -573,6 +486,7 @@ impl Proxy {
             // Use current ctx's catalog and schema as default catalog and schema
             .default_catalog_and_schema(catalog.to_string(), schema.to_string())
             .enable_partition_table_access(enable_partition_table_access)
+            .expensive_query_threshold(self.expensive_query_threshold)
             .build();
         let interpreter_factory = Factory::new(
             self.instance.query_engine.executor(),
@@ -580,6 +494,7 @@ impl Proxy {
             self.instance.catalog_manager.clone(),
             self.instance.table_engine.clone(),
             self.instance.table_manipulator.clone(),
+            self.instance.query_runtime.clone(),
         );
         interpreter_factory
             .create(interpreter_ctx, plan)

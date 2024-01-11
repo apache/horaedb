@@ -545,7 +545,8 @@ async fn replay_table_log_entries(
                 }
 
                 // Flush the table if necessary.
-                if table_data.should_flush_table(serial_exec) {
+                let in_flush = serial_exec.flush_scheduler().is_in_flush();
+                if table_data.should_flush_table(in_flush) {
                     let opts = TableFlushOptions {
                         res_sender: None,
                         max_retry_flush_limit,

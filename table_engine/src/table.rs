@@ -39,6 +39,7 @@ use common_types::{
 use generic_error::{BoxError, GenericError};
 use horaedbproto::sys_catalog as sys_catalog_pb;
 use macros::define_result;
+use runtime::Priority;
 use serde::Deserialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use trace_metric::MetricsCollector;
@@ -390,6 +391,7 @@ pub struct ReadRequest {
     pub predicate: PredicateRef,
     /// Collector for metrics of this read request.
     pub metrics_collector: MetricsCollector,
+    pub priority: Priority,
 }
 
 impl fmt::Debug for ReadRequest {
@@ -418,6 +420,7 @@ impl fmt::Debug for ReadRequest {
             .field("opts", &self.opts)
             .field("projected", &projected)
             .field("predicate", &predicate)
+            .field("priority", &self.priority)
             .finish()
     }
 }
@@ -440,7 +443,7 @@ impl TryFrom<ReadRequest> for horaedbproto::remote_engine::TableReadRequest {
                 })?;
 
         Ok(Self {
-            request_id: request.request_id.as_u64(),
+            request_id: String::from(request.request_id),
             opts: Some(request.opts.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),
@@ -468,11 +471,13 @@ impl TryFrom<horaedbproto::remote_engine::TableReadRequest> for ReadRequest {
                 .context(ConvertPredicate)?,
         );
         Ok(Self {
-            request_id: pb.request_id.into(),
+            request_id: pb.request_id.to_string().into(),
             opts,
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::default(),
+            // TODO: pass priority from request.
+            priority: Default::default(),
         })
     }
 }

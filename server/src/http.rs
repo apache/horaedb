@@ -46,7 +46,7 @@ use proxy::{
     Proxy,
 };
 use router::endpoint::Endpoint;
-use runtime::{Runtime, RuntimeRef};
+use runtime::{PriorityRuntime, Runtime};
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};
@@ -313,7 +313,10 @@ impl Service {
             .and(self.with_proxy())
             .and(self.with_read_runtime())
             .and_then(
-                |req, ctx, proxy: Arc<Proxy>, runtime: RuntimeRef| async move {
+                |req, mut ctx: RequestContext, proxy: Arc<Proxy>, runtime: PriorityRuntime| async move {
+                    // We don't timeout http api since it's mainly used for debugging.
+                    ctx.timeout = None;
+
                     let result = runtime
                         .spawn(async move {
                             proxy
@@ -774,7 +777,7 @@ impl Service {
 
     fn with_read_runtime(
         &self,
-    ) -> impl Filter<Extract = (Arc<Runtime>,), Error = Infallible> + Clone {
+    ) -> impl Filter<Extract = (PriorityRuntime,), Error = Infallible> + Clone {
         let runtime = self.engine_runtimes.read_runtime.clone();
         warp::any().map(move || runtime.clone())
     }

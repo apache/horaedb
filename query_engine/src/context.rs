@@ -20,6 +20,7 @@
 use std::{sync::Arc, time::Instant};
 
 use common_types::request_id::RequestId;
+use runtime::Priority;
 
 pub type ContextRef = Arc<Context>;
 
@@ -30,4 +31,5 @@ pub struct Context {
     pub deadline: Option<Instant>,
     pub default_catalog: String,
     pub default_schema: String,
+    pub priority: Priority,
 }

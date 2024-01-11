@@ -30,8 +30,8 @@ use common_types::{
     column::Column,
     column_schema::ColumnId,
     datum::Datum,
-    projected_schema::{ProjectedSchema, RowProjector},
-    record_batch::{RecordBatchWithKey, RecordBatchWithKeyBuilder},
+    projected_schema::RowProjector,
+    record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::Row,
     schema::Schema,
     SequenceNumber,
@@ -69,8 +69,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     /// Schema of this memtable, used to decode row
     memtable_schema: Schema,
     /// Projection of schema to read
-    projected_schema: ProjectedSchema,
-    projector: RowProjector,
+    row_projector: RowProjector,
 
     // Options related:
     batch_size: usize,
@@ -104,17 +103,16 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         last_sequence: SequenceNumber,
         skiplist: Skiplist<BytewiseComparator, A>,
     ) -> Result<Self> {
-        let projector = request
-            .projected_schema
-            .try_project_with_key(&schema)
+        let row_projector = request
+            .row_projector_builder
+            .build(&schema)
             .context(ProjectSchema)?;
         let mut columnar_iter = Self {
             memtable,
             row_num,
             current_idx: 0,
             memtable_schema: schema,
-            projected_schema: request.projected_schema,
-            projector,
+            row_projector,
             batch_size: ctx.batch_size,
             deadline: ctx.deadline,
             start_user_key: request.start_user_key,
@@ -193,7 +191,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     }
 
     /// Fetch next record batch
-    fn fetch_next_record_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    fn fetch_next_record_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batch_size > 0);
         let rows = if !self.need_dedup {
@@ -210,8 +208,14 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 }
             }
 
-            let mut builder = RecordBatchWithKeyBuilder::with_capacity(
-                self.projected_schema.to_record_schema_with_key(),
+            let fetched_schema = self.row_projector.fetched_schema().clone();
+            let primary_key_indexes = self
+                .row_projector
+                .primary_key_indexes()
+                .map(|idxs| idxs.to_vec());
+            let mut builder = FetchedRecordBatchBuilder::with_capacity(
+                fetched_schema,
+                primary_key_indexes,
                 self.batch_size,
             );
             for row in rows.into_iter() {
@@ -311,7 +315,12 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             Row::from_datums(vec![Datum::Null; self.memtable_schema.num_columns()]);
             self.batch_size
         ];
-        for (col_idx, column_schema_idx) in self.projector.source_projection().iter().enumerate() {
+        for (col_idx, column_schema_idx) in self
+            .row_projector
+            .fetched_source_column_indexes()
+            .iter()
+            .enumerate()
+        {
             if let Some(column_schema_idx) = column_schema_idx {
                 let column_schema = self.memtable_schema.column(*column_schema_idx);
                 if let Some(column) = memtable.get(&column_schema.id) {
@@ -331,11 +340,16 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         let mut num_rows = 0;
         let memtable = self.memtable.read().unwrap();
 
-        let record_schema = self.projected_schema.to_record_schema();
+        let record_schema = self.row_projector.fetched_schema();
         let mut rows =
             vec![Row::from_datums(vec![Datum::Null; record_schema.num_columns()]); self.batch_size];
 
-        for (col_idx, column_schema_idx) in self.projector.source_projection().iter().enumerate() {
+        for (col_idx, column_schema_idx) in self
+            .row_projector
+            .fetched_source_column_indexes()
+            .iter()
+            .enumerate()
+        {
             if let Some(column_schema_idx) = column_schema_idx {
                 let column_schema = self.memtable_schema.column(*column_schema_idx);
                 if let Some(column) = memtable.get(&column_schema.id) {
@@ -381,7 +395,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 }
 
 impl Iterator for ColumnarIterImpl<MonoIncArena> {
-    type Item = Result<RecordBatchWithKey>;
+    type Item = Result<FetchedRecordBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.state != State::Initialized {

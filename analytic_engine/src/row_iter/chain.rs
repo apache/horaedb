@@ -22,7 +22,9 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::{
-    projected_schema::ProjectedSchema, record_batch::RecordBatchWithKey, request_id::RequestId,
+    projected_schema::{ProjectedSchema, RowProjectorBuilder},
+    record_batch::FetchedRecordBatch,
+    request_id::RequestId,
     schema::RecordSchemaWithKey,
 };
 use generic_error::GenericError;
@@ -33,13 +35,16 @@ use table_engine::{predicate::PredicateRef, table::TableId};
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
+    instance::SstReadOptionsBuilder,
     row_iter::{
-        record_batch_stream, record_batch_stream::BoxedPrefetchableRecordBatchStream,
-        RecordBatchWithKeyIterator,
+        record_batch_stream::{
+            self, BoxedPrefetchableRecordBatchStream, MemtableStreamContext, SstStreamContext,
+        },
+        FetchedRecordBatchIterator,
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
+        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef},
         file::FileHandle,
     },
     table::version::{MemTableVec, SamplingMemTable},
@@ -77,7 +82,7 @@ pub struct ChainConfig<'a> {
     pub predicate: PredicateRef,
     pub num_streams_to_prefetch: usize,
 
-    pub sst_read_options: SstReadOptions,
+    pub sst_read_options_builder: SstReadOptionsBuilder,
     /// Sst factory
     pub sst_factory: &'a SstFactoryRef,
     /// Store picker for persisting sst.
@@ -122,6 +127,29 @@ impl<'a> Builder<'a> {
 
 impl<'a> Builder<'a> {
     pub async fn build(self) -> Result<ChainIterator> {
+        let fetched_schema = self.config.projected_schema.to_record_schema();
+        let table_schema = self.config.projected_schema.table_schema();
+        let row_projector_builder =
+            RowProjectorBuilder::new(fetched_schema.clone(), table_schema.clone(), None);
+        let sst_read_options = self
+            .config
+            .sst_read_options_builder
+            .build(row_projector_builder.clone());
+
+        let memtable_stream_ctx = MemtableStreamContext {
+            row_projector_builder,
+            fetched_schema: fetched_schema.clone(),
+            predicate: self.config.predicate,
+            need_dedup: false,
+            reverse: false,
+            deadline: self.config.deadline,
+        };
+
+        let sst_stream_ctx = SstStreamContext {
+            sst_read_options,
+            fetched_schema,
+        };
+
         let total_sst_streams: usize = self.ssts.iter().map(|v| v.len()).sum();
         let mut total_streams = self.memtables.len() + total_sst_streams;
         if self.sampling_mem.is_some() {
@@ -131,12 +159,8 @@ impl<'a> Builder<'a> {
 
         if let Some(v) = &self.sampling_mem {
             let stream = record_batch_stream::filtered_stream_from_memtable(
-                self.config.projected_schema.clone(),
-                false,
                 &v.mem,
-                false,
-                self.config.predicate.as_ref(),
-                self.config.deadline,
+                &memtable_stream_ctx,
                 self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
@@ -145,14 +169,10 @@ impl<'a> Builder<'a> {
 
         for memtable in &self.memtables {
             let stream = record_batch_stream::filtered_stream_from_memtable(
-                self.config.projected_schema.clone(),
-                false,
                 // chain iterator only handle the case reading in no order so just read in asc
                 // order by default.
                 &memtable.mem,
-                false,
-                self.config.predicate.as_ref(),
-                self.config.deadline,
+                &memtable_stream_ctx,
                 self.config.metrics_collector.clone(),
             )
             .context(BuildStreamFromMemtable)?;
@@ -166,8 +186,8 @@ impl<'a> Builder<'a> {
                     self.config.table_id,
                     sst,
                     self.config.sst_factory,
-                    &self.config.sst_read_options,
                     self.config.store_picker,
+                    &sst_stream_ctx,
                     self.config.metrics_collector.clone(),
                 )
                 .await
@@ -310,7 +330,7 @@ impl ChainIterator {
         }
     }
 
-    async fn next_batch_internal(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn next_batch_internal(&mut self) -> Result<Option<FetchedRecordBatch>> {
         self.init_if_necessary();
         self.maybe_prefetch().await;
 
@@ -360,14 +380,14 @@ impl Drop for ChainIterator {
 }
 
 #[async_trait]
-impl RecordBatchWithKeyIterator for ChainIterator {
+impl FetchedRecordBatchIterator for ChainIterator {
     type Error = Error;
 
     fn schema(&self) -> &RecordSchemaWithKey {
         &self.schema
     }
 
-    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    async fn next_batch(&mut self) -> Result<Option<FetchedRecordBatch>> {
         let timer = Instant::now();
         let res = self.next_batch_internal().await;
         self.metrics.scan_duration += timer.elapsed();

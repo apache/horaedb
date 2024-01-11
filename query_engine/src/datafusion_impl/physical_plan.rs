@@ -29,7 +29,7 @@ use datafusion::physical_plan::{
     ExecutionPlan,
 };
 use generic_error::BoxError;
-use logger::info;
+use logger::debug;
 use snafu::{OptionExt, ResultExt};
 use table_engine::stream::{FromDfStream, SendableRecordBatchStream};
 
@@ -112,7 +112,7 @@ impl PhysicalPlan for DataFusionPhysicalPlanAdapter {
             Arc::new(CoalescePartitionsExec::new(executable))
         };
 
-        info!(
+        debug!(
             "DatafusionExecutorImpl get the executable plan, request_id:{}, physical_plan:{}",
             df_task_ctx.ctx.request_id,
             displayable(executable.as_ref()).indent(true)

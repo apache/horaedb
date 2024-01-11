@@ -32,7 +32,7 @@ use common_types::{
 };
 use datafusion::{
     error::{DataFusionError, Result as DfResult},
-    execution::{FunctionRegistry, TaskContext},
+    execution::FunctionRegistry,
     logical_expr::{expr_fn, Literal, Operator},
     physical_plan::{
         aggregates::{AggregateExec, AggregateMode, PhysicalGroupBy},
@@ -47,6 +47,7 @@ use datafusion::{
     scalar::ScalarValue,
 };
 use futures::{future::BoxFuture, Stream};
+use runtime::Priority;
 use table_engine::{
     memory::MemoryTable,
     predicate::PredicateBuilder,
@@ -59,7 +60,7 @@ use trace_metric::MetricsCollector;
 use crate::dist_sql_query::{
     physical_plan::{PartitionedScanStream, UnresolvedPartitionedScan, UnresolvedSubTableScan},
     resolver::Resolver,
-    ExecutableScanBuilder, RemotePhysicalPlanExecutor, TableScanContext,
+    ExecutableScanBuilder, RemotePhysicalPlanExecutor, RemoteTaskContext, TableScanContext,
 };
 
 // Test context
@@ -202,11 +203,12 @@ impl TestContext {
             .extract_time_range(&test_schema, &logical_filters)
             .build();
         let read_request = ReadRequest {
-            request_id: 42.into(),
+            request_id: "42".into(),
             opts: ReadOptions::default(),
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::default(),
+            priority: Default::default(),
         };
 
         // Build the test catalog
@@ -241,6 +243,7 @@ impl TestContext {
             Arc::new(MockRemotePhysicalPlanExecutor),
             self.catalog_manager.clone(),
             Box::new(MockScanBuilder),
+            Priority::High,
         )
     }
 
@@ -425,9 +428,10 @@ impl ExecutableScanBuilder for MockScanBuilder {
         &self,
         _table: TableRef,
         ctx: TableScanContext,
+        priority: Priority,
     ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let request = ReadRequest {
-            request_id: RequestId::from(42),
+            request_id: RequestId::from("test"),
             opts: ReadOptions {
                 batch_size: ctx.batch_size,
                 read_parallelism: ctx.read_parallelism,
@@ -436,6 +440,7 @@ impl ExecutableScanBuilder for MockScanBuilder {
             projected_schema: ctx.projected_schema.clone(),
             predicate: ctx.predicate.clone(),
             metrics_collector: MetricsCollector::default(),
+            priority,
         };
 
         Ok(Arc::new(MockScan { request }))
@@ -507,8 +512,8 @@ struct MockRemotePhysicalPlanExecutor;
 impl RemotePhysicalPlanExecutor for MockRemotePhysicalPlanExecutor {
     fn execute(
         &self,
+        _task_context: RemoteTaskContext,
         _table: TableIdentifier,
-        _task_context: &TaskContext,
         _plan: Arc<dyn ExecutionPlan>,
     ) -> DfResult<BoxFuture<'static, DfResult<SendableRecordBatchStream>>> {
         unimplemented!()

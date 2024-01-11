@@ -36,7 +36,7 @@ use crate::{
     compaction::{
         self, CompactionStrategy, SizeTieredCompactionOptions, TimeWindowCompactionOptions,
     },
-    memtable::MemtableType,
+    memtable::{LayeredMemtableOptions, MemtableType},
 };
 
 const UPDATE_MODE_OVERWRITE: &str = "OVERWRITE";
@@ -101,6 +101,7 @@ pub enum Error {
         backtrace
     ))]
     ParseUpdateMode { s: String, backtrace: Backtrace },
+
     #[snafu(display(
         "Failed to parse compression, name:{}.\nBacktrace:\n{}",
         name,
@@ -137,6 +138,17 @@ pub enum Error {
         backtrace
     ))]
     HybridDeprecated { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Failed to parse layered memtable options, err:{source}.\nBacktrace:\n{backtrace}",
+    ))]
+    ParseLayeredMemtableOptions {
+        source: crate::memtable::Error,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display("Layered memtable options is missing.\nBacktrace:\n{backtrace}",))]
+    MissingLayeredMemtableOptions { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -399,8 +411,11 @@ pub struct TableOptions {
     pub num_rows_per_row_group: usize,
     /// Table Compression
     pub compression: Compression,
+
     /// Memtable type
     pub memtable_type: MemtableType,
+    /// Layered memtable options
+    pub layered_memtable_opts: LayeredMemtableOptions,
 }
 
 impl TableOptions {
@@ -586,6 +601,8 @@ impl From<TableOptions> for manifest_pb::TableOptions {
             ),
         };
 
+        let layered_memtable_opts = opts.layered_memtable_opts.into();
+
         manifest_pb::TableOptions {
             segment_duration,
             enable_ttl: opts.enable_ttl,
@@ -601,6 +618,7 @@ impl From<TableOptions> for manifest_pb::TableOptions {
             storage_format_hint: Some(manifest_pb::StorageFormatHint::from(
                 opts.storage_format_hint,
             )),
+            layered_memtable_options: Some(layered_memtable_opts),
             // TODO: persist `memtable_type` in PB.
         }
     }
@@ -662,6 +680,15 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
         };
 
         let storage_format_hint = opts.storage_format_hint.context(MissingStorageFormatHint)?;
+        // For compatible with old `table_options`, `layered_memtable_options` is
+        // allowed to be `None`, and when found `None`, we disable `layered_memtable`.
+        let layered_memtable_opts = match opts.layered_memtable_options {
+            Some(v) => v.into(),
+            None => LayeredMemtableOptions {
+                mutable_segment_switch_threshold: ReadableSize(0),
+            },
+        };
+
         let table_opts = Self {
             segment_duration,
             enable_ttl: opts.enable_ttl,
@@ -674,6 +701,7 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
             compression: Compression::from(compression),
             storage_format_hint: StorageFormatHint::try_from(storage_format_hint)?,
             memtable_type: MemtableType::SkipList,
+            layered_memtable_opts,
         };
 
         Ok(table_opts)
@@ -694,6 +722,7 @@ impl Default for TableOptions {
             compression: Compression::Zstd,
             storage_format_hint: StorageFormatHint::default(),
             memtable_type: MemtableType::SkipList,
+            layered_memtable_opts: LayeredMemtableOptions::default(),
         }
     }
 }
@@ -715,54 +744,59 @@ pub fn merge_table_options_for_alter(
 /// The options will override the old options.
 fn merge_table_options(
     options: &HashMap<String, String>,
-    table_old_opts: &TableOptions,
+    base_table_opts: &TableOptions,
     is_create: bool,
 ) -> Result<TableOptions> {
-    let mut table_opts = table_old_opts.clone();
+    let mut base_table_opts = base_table_opts.clone();
     if is_create {
         if let Some(v) = options.get(SEGMENT_DURATION) {
             if v.is_empty() {
-                table_opts.segment_duration = None;
+                base_table_opts.segment_duration = None;
             } else {
-                table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
+                base_table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
             }
         }
         if let Some(v) = options.get(UPDATE_MODE) {
-            table_opts.update_mode = UpdateMode::parse_from(v)?;
+            base_table_opts.update_mode = UpdateMode::parse_from(v)?;
         }
     }
 
     if let Some(v) = options.get(TTL) {
-        table_opts.ttl = parse_duration(v).context(ParseDuration)?;
+        base_table_opts.ttl = parse_duration(v).context(ParseDuration)?;
     }
     if let Some(v) = options.get(OPTION_KEY_ENABLE_TTL) {
-        table_opts.enable_ttl = v.parse::<bool>().context(ParseBool)?;
+        base_table_opts.enable_ttl = v.parse::<bool>().context(ParseBool)?;
     }
     if let Some(v) = options.get(ARENA_BLOCK_SIZE) {
         let size = parse_size(v)?;
-        table_opts.arena_block_size = size.0 as u32;
+        base_table_opts.arena_block_size = size.0 as u32;
     }
     if let Some(v) = options.get(WRITE_BUFFER_SIZE) {
         let size = parse_size(v)?;
-        table_opts.write_buffer_size = size.0 as u32;
+        base_table_opts.write_buffer_size = size.0 as u32;
     }
     if let Some(v) = options.get(COMPACTION_STRATEGY) {
-        table_opts.compaction_strategy =
+        base_table_opts.compaction_strategy =
             CompactionStrategy::parse_from(v, options).context(ParseStrategy { value: v })?;
     }
     if let Some(v) = options.get(NUM_ROWS_PER_ROW_GROUP) {
-        table_opts.num_rows_per_row_group = v.parse().context(ParseInt)?;
+        base_table_opts.num_rows_per_row_group = v.parse().context(ParseInt)?;
     }
     if let Some(v) = options.get(COMPRESSION) {
-        table_opts.compression = Compression::parse_from(v)?;
+        base_table_opts.compression = Compression::parse_from(v)?;
     }
     if let Some(v) = options.get(STORAGE_FORMAT) {
-        table_opts.storage_format_hint = v.as_str().try_into()?;
+        base_table_opts.storage_format_hint = v.as_str().try_into()?;
     }
     if let Some(v) = options.get(MEMTABLE_TYPE) {
-        table_opts.memtable_type = MemtableType::parse_from(v);
+        base_table_opts.memtable_type = MemtableType::parse_from(v);
     }
-    Ok(table_opts)
+
+    let layered_memtable_opts =
+        LayeredMemtableOptions::parse_from(options).context(ParseLayeredMemtableOptions)?;
+    base_table_opts.layered_memtable_opts = layered_memtable_opts;
+
+    Ok(base_table_opts)
 }
 
 fn parse_size(v: &str) -> Result<ReadableSize> {

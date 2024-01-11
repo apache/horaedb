@@ -178,7 +178,7 @@ mod tests {
     use parquet::{arrow::ArrowWriter, file::footer};
     use parquet_ext::ParquetMetaData;
 
-    use super::MetaData;
+    use super::*;
     use crate::{
         sst::parquet::{
             encoding::{self, META_PATH_KEY, META_VERSION_KEY},

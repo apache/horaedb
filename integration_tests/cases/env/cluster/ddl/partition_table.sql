@@ -35,9 +35,22 @@ SELECT * from partition_table_t where name in ("horaedb0", "horaedb1", "horaedb2
 
 SELECT * from partition_table_t where name in ("horaedb5", "horaedb6", "horaedb7","horaedb8", "horaedb9", "horaedb10") order by name;
 
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb0";
+
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+-- SQLNESS REPLACE __partition_table_t_\d __partition_table_t_x
+EXPLAIN ANALYZE SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4");
+
 ALTER TABLE partition_table_t ADD COLUMN (b string);
 
+-- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
 INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "horaedb0", 100);
+
+-- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
+INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "ceresdb0", 100);
 
 ALTER TABLE partition_table_t MODIFY SETTING enable_ttl='true';
 
@@ -81,6 +94,14 @@ VALUES (1651737067000, "horaedb0", 100),
 SELECT * from random_partition_table_t where name = "horaedb0";
 
 SELECT * from random_partition_table_t where name = "horaedb5";
+
+SELECT
+    time_bucket (t, "PT1M") AS ts,
+    approx_percentile_cont (value, 0.9) AS value
+FROM
+    random_partition_table_t
+GROUP BY
+    time_bucket (t, "PT1M");
 
 DROP TABLE IF EXISTS `random_partition_table_t`;
 

@@ -229,6 +229,11 @@ impl ShardInfo {
     pub fn is_opened(&self) -> bool {
         matches!(self.status, ShardStatus::Ready | ShardStatus::Frozen)
     }
+
+    #[inline]
+    pub fn is_ready(&self) -> bool {
+        matches!(self.status, ShardStatus::Ready)
+    }
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Serialize)]
