@@ -1,25 +1,28 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Frontend
 
 use std::{sync::Arc, time::Instant};
 
-use ceresdbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::request_id::RequestId;
 use generic_error::GenericError;
+use horaedbproto::{prometheus::Expr as PromExpr, storage::WriteTableRequest};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;
@@ -285,8 +288,8 @@ mod tests {
     fn test_parse_table_name() {
         let table = "test_parse_table_name";
         let test_cases = vec![
-                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'ceresdb', 100)"),
-                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'ceresdb', 100)"),
+                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'horaedb', 100)"),
+                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'horaedb', 100)"),
                             format!("select * from {table}"),
                             format!("select * from `{table}`"),
                             format!("explain select * from {table}"),

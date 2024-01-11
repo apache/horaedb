@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! This module implements prometheus remote storage API.
 //! It converts write request to gRPC write request, and
@@ -24,16 +27,16 @@ use std::{
 
 use async_trait::async_trait;
 use catalog::consts::DEFAULT_CATALOG;
-use ceresdbproto::storage::{
-    value, Field, FieldGroup, PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse,
-    RequestContext as GrpcRequestContext, Tag, Value, WriteRequest as GrpcWriteRequest,
-    WriteSeriesEntry, WriteTableRequest,
-};
 use common_types::{
     datum::DatumKind,
     schema::{RecordSchema, TSID_COLUMN},
 };
 use generic_error::BoxError;
+use horaedbproto::storage::{
+    value, Field, FieldGroup, PrometheusRemoteQueryRequest, PrometheusRemoteQueryResponse,
+    RequestContext as GrpcRequestContext, Tag, Value, WriteRequest as GrpcWriteRequest,
+    WriteSeriesEntry, WriteTableRequest,
+};
 use http::StatusCode;
 use interpreters::{interpreter::Output, RecordBatchVec};
 use logger::{error, info};
@@ -172,7 +175,7 @@ impl Proxy {
     }
 
     /// This method is used to handle forwarded gRPC query from
-    /// another CeresDB instance.
+    /// another HoraeDB instance.
     pub async fn handle_prom_grpc_query(
         &self,
         timeout: Option<Duration>,
@@ -226,7 +229,7 @@ impl RemoteStorage for Proxy {
         let do_query = || async {
             let metric = find_metric(&query.matchers)?;
             let remote_req = PrometheusRemoteQueryRequest {
-                context: Some(ceresdbproto::storage::RequestContext {
+                context: Some(horaedbproto::storage::RequestContext {
                     database: ctx.schema.to_string(),
                 }),
                 query: query.encode_to_vec(),

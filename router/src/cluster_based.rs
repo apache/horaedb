@@ -1,23 +1,26 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! A router based on the [`cluster::Cluster`].
 
 use async_trait::async_trait;
-use ceresdbproto::storage::Route;
 use cluster::ClusterRef;
 use generic_error::BoxError;
+use horaedbproto::storage::Route;
 use logger::trace;
 use meta_client::types::RouteTablesRequest;
 use moka::future::Cache;
@@ -198,11 +201,12 @@ impl Router for ClusterBasedRouter {
 mod tests {
     use std::{collections::HashMap, sync::Arc, thread::sleep, time::Duration};
 
-    use ceresdbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
+        TableStatus,
     };
     use common_types::table::ShardId;
+    use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
     };
@@ -228,6 +232,10 @@ mod tests {
 
         fn shard(&self, _: ShardId) -> Option<ShardRef> {
             unimplemented!();
+        }
+
+        fn get_table_status(&self, _: &str, _: &str) -> Option<TableStatus> {
+            unimplemented!()
         }
 
         async fn close_shard(&self, _: ShardId) -> cluster::Result<ShardRef> {

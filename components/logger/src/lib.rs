@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 use std::{
     fmt,
@@ -76,12 +79,12 @@ fn get_string_by_level(lv: Level) -> &'static str {
     }
 }
 
-pub fn term_drainer() -> CeresFormat<TermDecorator> {
+pub fn term_drainer() -> LogFormat<TermDecorator> {
     let decorator = TermDecorator::new().stdout().build();
-    CeresFormat::new(decorator)
+    LogFormat::new(decorator)
 }
 
-pub fn file_drainer(path: &Option<String>) -> Option<CeresFormat<PlainDecorator<File>>> {
+pub fn file_drainer(path: &Option<String>) -> Option<LogFormat<PlainDecorator<File>>> {
     match path {
         Some(path) => {
             let file = OpenOptions::new()
@@ -90,7 +93,7 @@ pub fn file_drainer(path: &Option<String>) -> Option<CeresFormat<PlainDecorator<
                 .open(path)
                 .unwrap();
             let decorator = PlainDecorator::new(file);
-            Some(CeresFormat::new(decorator))
+            Some(LogFormat::new(decorator))
         }
         None => None,
     }
@@ -123,7 +126,7 @@ where
         } else if self.slow.is_some() && tag == SLOW_QUERY_TAG {
             self.slow.as_ref().unwrap().log(record, values)
         } else {
-            // For crates outside ceresdb
+            // For crates outside horaedb
             self.normal.log(record, values)
         }
     }
@@ -221,14 +224,14 @@ where
 // ```text
 // 2020-01-20 13:00:14.998 INFO [src/engine/rocksdb/rocks_kv.rs:394] RocksKV::open_with_op start, name:autogen
 // ```
-pub struct CeresFormat<D>
+pub struct LogFormat<D>
 where
     D: Decorator,
 {
     decorator: D,
 }
 
-impl<D> CeresFormat<D>
+impl<D> LogFormat<D>
 where
     D: Decorator,
 {
@@ -237,7 +240,7 @@ where
     }
 }
 
-impl<D> Drain for CeresFormat<D>
+impl<D> Drain for LogFormat<D>
 where
     D: Decorator,
 {
@@ -456,10 +459,7 @@ pub fn init_test_logger() {
 
     // drain
     let term_drain = term_drainer();
-    let drain = LogDispatcher::new(
-        term_drain,
-        Option::<CeresFormat<PlainDecorator<File>>>::None,
-    );
+    let drain = LogDispatcher::new(term_drain, Option::<LogFormat<PlainDecorator<File>>>::None);
 
     // Use async and init stdlog
     let _ = init_log_from_drain(drain, level, false, 12400, true);

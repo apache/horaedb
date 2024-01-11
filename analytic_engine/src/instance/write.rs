@@ -1,23 +1,25 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Write logic of instance
 
 use std::iter;
 
 use bytes_ext::ByteVec;
-use ceresdbproto::{schema as schema_pb, table_requests};
 use codec::{
     columnar::{ColumnarEncoder, EncodeHint},
     row,
@@ -25,8 +27,8 @@ use codec::{
 use common_types::{
     row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
-    MIN_SEQUENCE_NUMBER,
 };
+use horaedbproto::{schema as schema_pb, table_requests};
 use itertools::Itertools;
 use logger::{debug, error, info, trace, warn};
 use macros::define_result;
@@ -529,17 +531,19 @@ impl<'a> Writer<'a> {
                 e
             })?;
 
-        // When seq is MIN_SEQUENCE_NUMBER, it means the wal used for write is not
-        // normal, ignore check in this case.
-        // NOTE: Currently write wal will only increment seq by one,
-        // this may change in future.
-        if sequence != MIN_SEQUENCE_NUMBER && table_data.last_sequence() + 1 != sequence {
-            warn!(
-                "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
-                table_data.name,table_data.id,
-                table_data.last_sequence(),
-                sequence
-            );
+        // When wal is disabled, there is no need to do this check.
+        if !self.instance.disable_wal {
+            // NOTE: Currently write wal will only increment seq by one,
+            // this may change in future.
+            let last_seq = table_data.last_sequence();
+            if sequence != last_seq + 1 {
+                warn!(
+                    "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
+                    table_data.name,table_data.id,
+                    table_data.last_sequence(),
+                    sequence
+                );
+            }
         }
 
         debug!(

@@ -11,29 +11,29 @@ CREATE TABLE `partition_table_t`(
 SHOW CREATE TABLE partition_table_t;
 
 INSERT INTO partition_table_t (t, name, value)
-VALUES (1651737067000, "ceresdb0", 100),
-       (1651737067000, "ceresdb1", 101),
-       (1651737067000, "ceresdb2", 102),
-       (1651737067000, "ceresdb3", 103),
-       (1651737067000, "ceresdb4", 104),
-       (1651737067000, "ceresdb5", 105),
-       (1651737067000, "ceresdb6", 106),
-       (1651737067000, "ceresdb7", 107),
-       (1651737067000, "ceresdb8", 108),
-       (1651737067000, "ceresdb9", 109),
-       (1651737067000, "ceresdb10", 110);
+VALUES (1651737067000, "horaedb0", 100),
+       (1651737067000, "horaedb1", 101),
+       (1651737067000, "horaedb2", 102),
+       (1651737067000, "horaedb3", 103),
+       (1651737067000, "horaedb4", 104),
+       (1651737067000, "horaedb5", 105),
+       (1651737067000, "horaedb6", 106),
+       (1651737067000, "horaedb7", 107),
+       (1651737067000, "horaedb8", 108),
+       (1651737067000, "horaedb9", 109),
+       (1651737067000, "horaedb10", 110);
 
-SELECT * from partition_table_t where name = "ceresdb0";
+SELECT * from partition_table_t where name = "horaedb0";
 
-SELECT * from partition_table_t where name = "ceresdb1";
+SELECT * from partition_table_t where name = "horaedb1";
 
-SELECT * from partition_table_t where name = "ceresdb2";
+SELECT * from partition_table_t where name = "horaedb2";
 
-SELECT * from partition_table_t where name = "ceresdb3";
+SELECT * from partition_table_t where name = "horaedb3";
 
-SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4") order by name;
+SELECT * from partition_table_t where name in ("horaedb0", "horaedb1", "horaedb2", "horaedb3", "horaedb4") order by name;
 
-SELECT * from partition_table_t where name in ("ceresdb5", "ceresdb6", "ceresdb7","ceresdb8", "ceresdb9", "ceresdb10") order by name;
+SELECT * from partition_table_t where name in ("horaedb5", "horaedb6", "horaedb7","horaedb8", "horaedb9", "horaedb10") order by name;
 
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
@@ -46,6 +46,10 @@ EXPLAIN ANALYZE SELECT * from partition_table_t where name in ("ceresdb0", "cere
 
 ALTER TABLE partition_table_t ADD COLUMN (b string);
 
+-- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
+INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "horaedb0", 100);
+
+-- SQLNESS REPLACE endpoint:(.*?), endpoint:xx,
 INSERT INTO partition_table_t (t, id, name, value) VALUES (1651737067000, 10, "ceresdb0", 100);
 
 ALTER TABLE partition_table_t MODIFY SETTING enable_ttl='true';
@@ -75,21 +79,21 @@ CREATE TABLE `random_partition_table_t`(
 SHOW CREATE TABLE random_partition_table_t;
 
 INSERT INTO random_partition_table_t (t, name, value)
-VALUES (1651737067000, "ceresdb0", 100),
-       (1651737067000, "ceresdb1", 101),
-       (1651737067000, "ceresdb2", 102),
-       (1651737067000, "ceresdb3", 103),
-       (1651737067000, "ceresdb4", 104),
-       (1651737067000, "ceresdb5", 105),
-       (1651737067000, "ceresdb6", 106),
-       (1651737067000, "ceresdb7", 107),
-       (1651737067000, "ceresdb8", 108),
-       (1651737067000, "ceresdb9", 109),
-       (1651737067000, "ceresdb10", 110);
+VALUES (1651737067000, "horaedb0", 100),
+       (1651737067000, "horaedb1", 101),
+       (1651737067000, "horaedb2", 102),
+       (1651737067000, "horaedb3", 103),
+       (1651737067000, "horaedb4", 104),
+       (1651737067000, "horaedb5", 105),
+       (1651737067000, "horaedb6", 106),
+       (1651737067000, "horaedb7", 107),
+       (1651737067000, "horaedb8", 108),
+       (1651737067000, "horaedb9", 109),
+       (1651737067000, "horaedb10", 110);
 
-SELECT * from random_partition_table_t where name = "ceresdb0";
+SELECT * from random_partition_table_t where name = "horaedb0";
 
-SELECT * from random_partition_table_t where name = "ceresdb5";
+SELECT * from random_partition_table_t where name = "horaedb5";
 
 SELECT
     time_bucket (t, "PT1M") AS ts,

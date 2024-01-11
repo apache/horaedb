@@ -96,7 +96,6 @@ dependencies = [
  "atomic_enum",
  "base64 0.13.1",
  "bytes_ext",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "codec",
  "common_types",
  "datafusion",
@@ -106,6 +105,7 @@ dependencies = [
  "generic_error",
  "hash_ext",
  "hex",
+ "horaedbproto 2.0.0",
  "hyperloglog",
  "id_allocator",
  "itertools 0.10.5",
@@ -1264,97 +1264,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ceresdb"
-version = "1.2.6-alpha"
-dependencies = [
- "analytic_engine",
- "catalog",
- "catalog_impls",
- "clap 3.2.23",
- "cluster",
- "datafusion",
- "df_operator",
- "etcd-client",
- "interpreters",
- "logger",
- "meta_client",
- "moka",
- "panic_ext",
- "proxy",
- "query_engine",
- "router",
- "runtime",
- "serde",
- "server",
- "signal-hook",
- "size_ext",
- "table_engine",
- "toml 0.7.3",
- "toml_ext",
- "tracing_util",
- "vergen",
- "wal",
-]
-
-[[package]]
-name = "ceresdb-client"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ef195bacb1ca0eb02d6a0562b09852941d01de2b962c7066c922115fab7dcb7"
-dependencies = [
- "arrow 38.0.0",
- "async-trait",
- "ceresdbproto 1.0.23 (registry+https://github.com/rust-lang/crates.io-index)",
- "dashmap 5.4.0",
- "futures 0.3.28",
- "paste 1.0.12",
- "thiserror",
- "tokio",
- "tonic 0.8.3",
- "zstd",
-]
-
-[[package]]
-name = "ceresdb-test"
-version = "1.2.6-alpha"
-dependencies = [
- "anyhow",
- "async-trait",
- "ceresdb-client",
- "local-ip-address",
- "reqwest",
- "serde",
- "sqlness",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "ceresdbproto"
-version = "1.0.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "566b40a90db96af9274f42dd6ef088e220ffa7c306e3d3d1ed3848d2c770da99"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic 0.8.3",
- "tonic-build",
- "walkdir",
-]
-
-[[package]]
-name = "ceresdbproto"
-version = "1.0.23"
-source = "git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc#cfdacccebb7c609cb1aac791b73ba9a838d7ade6"
-dependencies = [
- "prost",
- "protoc-bin-vendored",
- "tonic 0.8.3",
- "tonic-build",
- "walkdir",
-]
-
-[[package]]
 name = "cexpr"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1528,11 +1437,11 @@ dependencies = [
  "async-trait",
  "bytes_ext",
  "catalog",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "common_types",
  "etcd-client",
  "future_ext",
  "generic_error",
+ "horaedbproto 2.0.0",
  "logger",
  "macros",
  "meta_client",
@@ -1606,10 +1515,10 @@ dependencies = [
  "arrow 43.0.0",
  "arrow_ext",
  "bytes_ext",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "chrono",
  "datafusion",
  "hash_ext",
+ "horaedbproto 2.0.0",
  "macros",
  "paste 1.0.12",
  "prost",
@@ -2362,12 +2271,12 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "catalog",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "common_types",
  "datafusion",
  "datafusion-proto",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto 2.0.0",
  "insta",
  "lazy_static",
  "prometheus 0.12.0",
@@ -3086,6 +2995,97 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
+]
+
+[[package]]
+name = "horaedb"
+version = "1.2.6-alpha"
+dependencies = [
+ "analytic_engine",
+ "catalog",
+ "catalog_impls",
+ "clap 3.2.23",
+ "cluster",
+ "datafusion",
+ "df_operator",
+ "etcd-client",
+ "interpreters",
+ "logger",
+ "meta_client",
+ "moka",
+ "panic_ext",
+ "proxy",
+ "query_engine",
+ "router",
+ "runtime",
+ "serde",
+ "server",
+ "signal-hook",
+ "size_ext",
+ "table_engine",
+ "toml 0.7.3",
+ "toml_ext",
+ "tracing_util",
+ "vergen",
+ "wal",
+]
+
+[[package]]
+name = "horaedb-client"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bb850f1e1fc5d95b31278a842836652f0159e7f00d5e846e78c6076ae46b3b3"
+dependencies = [
+ "arrow 38.0.0",
+ "async-trait",
+ "dashmap 5.4.0",
+ "futures 0.3.28",
+ "horaedbproto 1.0.24",
+ "paste 1.0.12",
+ "thiserror",
+ "tokio",
+ "tonic 0.8.3",
+ "zstd",
+]
+
+[[package]]
+name = "horaedb-test"
+version = "1.2.6-alpha"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "horaedb-client",
+ "local-ip-address",
+ "reqwest",
+ "serde",
+ "sqlness",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "horaedbproto"
+version = "1.0.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5907c770ee20818978cf2050341ca2c4c7fb7888423ccb090cbb2fda250dfad7"
+dependencies = [
+ "prost",
+ "protoc-bin-vendored",
+ "tonic 0.8.3",
+ "tonic-build",
+ "walkdir",
+]
+
+[[package]]
+name = "horaedbproto"
+version = "2.0.0"
+source = "git+https://github.com/apache/incubator-horaedb-proto.git?rev=19ece8f771fc0b3e8e734072cc3d8040de6c74cb#19ece8f771fc0b3e8e734072cc3d8040de6c74cb"
+dependencies = [
+ "prost",
+ "protoc-bin-vendored",
+ "tonic 0.8.3",
+ "tonic-build",
+ "walkdir",
 ]
 
 [[package]]
@@ -3921,10 +3921,10 @@ name = "meta_client"
 version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto 2.0.0",
  "logger",
  "macros",
  "prost",
@@ -4446,13 +4446,13 @@ version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "bytes",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "chrono",
  "clru",
  "crc",
  "futures 0.3.28",
  "generic_error",
  "hash_ext",
+ "horaedbproto 2.0.0",
  "lazy_static",
  "logger",
  "lru 0.7.8",
@@ -5323,7 +5323,6 @@ dependencies = [
  "async-trait",
  "bytes",
  "catalog",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "clru",
  "cluster",
  "common_types",
@@ -5331,6 +5330,7 @@ dependencies = [
  "df_operator",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto 2.0.0",
  "http",
  "influxdb-line-protocol",
  "interpreters",
@@ -5451,7 +5451,6 @@ dependencies = [
  "arrow 43.0.0",
  "async-trait",
  "catalog",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "chrono",
  "cluster",
  "codec",
@@ -5461,6 +5460,7 @@ dependencies = [
  "df_operator",
  "generic_error",
  "hash_ext",
+ "horaedbproto 2.0.0",
  "influxdb_influxql_parser",
  "iox_query",
  "iox_query_influxql",
@@ -5765,10 +5765,10 @@ version = "1.2.6-alpha"
 dependencies = [
  "arrow_ext",
  "async-trait",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto 2.0.0",
  "logger",
  "macros",
  "router",
@@ -5894,10 +5894,10 @@ name = "router"
 version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "cluster",
  "common_types",
  "generic_error",
+ "horaedbproto 2.0.0",
  "logger",
  "macros",
  "meta_client",
@@ -5962,7 +5962,7 @@ dependencies = [
 name = "rust-sdk-test"
 version = "1.2.6-alpha"
 dependencies = [
- "ceresdb-client",
+ "horaedb-client",
  "tokio",
 ]
 
@@ -6269,7 +6269,6 @@ dependencies = [
  "async-trait",
  "bytes_ext",
  "catalog",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "clru",
  "cluster",
  "common_types",
@@ -6279,6 +6278,7 @@ dependencies = [
  "future_ext",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto 2.0.0",
  "http",
  "influxdb-line-protocol",
  "interpreters",
@@ -6795,11 +6795,11 @@ dependencies = [
  "async-trait",
  "bytes_ext",
  "catalog",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "codec",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto 2.0.0",
  "logger",
  "macros",
  "prost",
@@ -6817,7 +6817,6 @@ dependencies = [
  "arrow_ext",
  "async-trait",
  "bytes_ext",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "common_types",
  "datafusion",
  "datafusion-proto",
@@ -6825,6 +6824,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "hash_ext",
+ "horaedbproto 2.0.0",
  "itertools 0.10.5",
  "lazy_static",
  "logger",
@@ -7020,9 +7020,9 @@ dependencies = [
 name = "time_ext"
 version = "1.2.6-alpha"
 dependencies = [
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "chrono",
  "common_types",
+ "horaedbproto 2.0.0",
  "macros",
  "serde",
  "serde_json",
@@ -7532,8 +7532,8 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
- "rand 0.3.23",
+ "cfg-if 1.0.0",
+ "rand 0.8.5",
  "static_assertions",
 ]
 
@@ -7672,12 +7672,12 @@ version = "1.2.6-alpha"
 dependencies = [
  "async-trait",
  "bytes_ext",
- "ceresdbproto 1.0.23 (git+https://github.com/CeresDB/horaedbproto.git?rev=cfdaccc)",
  "chrono",
  "codec",
  "common_types",
  "futures 0.3.28",
  "generic_error",
+ "horaedbproto 2.0.0",
  "lazy_static",
  "logger",
  "macros",

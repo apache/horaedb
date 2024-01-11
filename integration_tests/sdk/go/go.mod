@@ -1,11 +1,11 @@
 module go-sdk-test
 
-go 1.17
+go 1.21
 
-require github.com/CeresDB/ceresdb-client-go v1.1.3
+require github.com/apache/incubator-horaedb-client-go v1.2.0
 
 require (
-	github.com/CeresDB/ceresdbproto/golang v0.0.0-20230228090856-37ba6214b131 // indirect
+	github.com/CeresDB/horaedbproto/golang v0.0.0-20231129131648-5d5d868218c3 // indirect
 	github.com/apache/arrow/go/arrow v0.0.0-20211112161151-bc219186db40 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/flatbuffers v2.0.0+incompatible // indirect
@@ -21,3 +21,6 @@ require (
 	google.golang.org/grpc v1.56.3 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
+
+// TODO: remove this when a new version is released.
+replace github.com/apache/incubator-horaedb-client-go => github.com/CeresDB/horaedb-client-go v1.2.0

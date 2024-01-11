@@ -12,9 +12,9 @@ CREATE TABLE `03_dml_select_real_time_range` (
 
 INSERT INTO `03_dml_select_real_time_range` (t, name, value)
     VALUES
-    (1695348000000, "ceresdb", 100),
-    (1695348001000, "ceresdb", 200),
-    (1695348002000, "ceresdb", 300);
+    (1695348000000, "horaedb", 100),
+    (1695348001000, "horaedb", 200),
+    (1695348002000, "horaedb", 300);
 
 -- This query should include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx

@@ -1,18 +1,21 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-// Config for ceresdb server.
+// Config for horaedb server.
 
 use cluster::config::ClusterConfig;
 use proxy::limiter::LimiterConfig;
@@ -23,7 +26,7 @@ use size_ext::ReadableSize;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct NodeInfo {
-    /// The address of the ceresdb node. It can be a domain name or an IP
+    /// The address of the horaedb node. It can be a domain name or an IP
     /// address without port followed.
     pub addr: String,
     pub zone: String,
@@ -73,13 +76,29 @@ pub struct Config {
     pub limiter: LimiterConfig,
 }
 
-/// The cluster deployment decides how to deploy the CeresDB cluster.
+impl Config {
+    pub fn set_meta_addr(&mut self, meta_addr: String) {
+        if let Some(ClusterDeployment::WithMeta(v)) = &mut self.cluster_deployment {
+            v.meta_client.meta_addr = meta_addr;
+        }
+    }
+
+    // etcd_addrs: should be a string split by ",".
+    // Example: "etcd1:2379,etcd2:2379,etcd3:2379"
+    pub fn set_etcd_addrs(&mut self, etcd_addrs: String) {
+        if let Some(ClusterDeployment::WithMeta(v)) = &mut self.cluster_deployment {
+            v.etcd_client.server_addrs = etcd_addrs.split(',').map(|s| s.to_string()).collect();
+        }
+    }
+}
+
+/// The cluster deployment decides how to deploy the HoraeDB cluster.
 ///
-/// [ClusterDeployment::NoMeta] means to start one or multiple CeresDB
-/// instance(s) without CeresMeta.
+/// [ClusterDeployment::NoMeta] means to start one or multiple HoraeDB
+/// instance(s) without HoraeMeta.
 ///
-/// [ClusterDeployment::WithMeta] means to start one or multiple CeresDB
-/// instance(s) under the control of CeresMeta.
+/// [ClusterDeployment::WithMeta] means to start one or multiple HoraeDB
+/// instance(s) under the control of HoraeMeta.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
 #[allow(clippy::large_enum_variant)]

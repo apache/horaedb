@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 use std::{
     collections::HashMap,
@@ -20,11 +23,11 @@ use std::{
 };
 
 use bytes_ext::Bytes;
-use ceresdbproto::meta_event::ShardLockValue;
 use common_types::table::ShardId;
 use etcd_client::{
     Client, Compare, CompareOp, LeaseKeepAliveStream, LeaseKeeper, PutOptions, Txn, TxnOp,
 };
+use horaedbproto::meta_event::ShardLockValue;
 use logger::{debug, error, info, warn};
 use macros::define_result;
 use prost::Message;
@@ -889,12 +892,12 @@ mod tests {
 
     #[test]
     fn test_format_shard_lock_key() {
-        let key_prefix = "/ceresdb/defaultCluster";
+        let key_prefix = "/horaedb/defaultCluster";
         let cases = vec![
-            (0, "/ceresdb/defaultCluster/00000000000000000000"),
-            (10, "/ceresdb/defaultCluster/00000000000000000010"),
-            (10000, "/ceresdb/defaultCluster/00000000000000010000"),
-            (999999999, "/ceresdb/defaultCluster/00000000000999999999"),
+            (0, "/horaedb/defaultCluster/00000000000000000000"),
+            (10, "/horaedb/defaultCluster/00000000000000000010"),
+            (10000, "/horaedb/defaultCluster/00000000000000010000"),
+            (999999999, "/horaedb/defaultCluster/00000000000999999999"),
         ];
 
         for (shard_id, expected) in cases {

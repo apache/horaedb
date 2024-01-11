@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Setup server
 
@@ -297,7 +300,7 @@ async fn build_with_meta<T: WalsOpener>(
         binary_version: config.node.binary_version.clone(),
     };
 
-    info!("Build ceresdb with node meta info:{node_meta_info:?}");
+    info!("Build horaedb with node meta info:{node_meta_info:?}");
 
     let endpoint = node_meta_info.endpoint();
     let meta_client =
@@ -334,8 +337,11 @@ async fn build_with_meta<T: WalsOpener>(
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
-    let meta_based_manager_ref =
-        Arc::new(volatile::ManagerImpl::new(shard_set, meta_client.clone()));
+    let meta_based_manager_ref = Arc::new(volatile::ManagerImpl::new(
+        shard_set,
+        meta_client.clone(),
+        cluster.clone(),
+    ));
 
     // Build catalog manager.
     let catalog_manager = Arc::new(CatalogManagerImpl::new(meta_based_manager_ref));

@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 use std::{
     sync::{Arc, Mutex, RwLock},
@@ -44,14 +47,14 @@ use crate::{
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause,
     InitEtcdClientConfig, InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause,
-    Result, ShardNotFound,
+    Result, ShardNotFound, TableStatus,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
 ///
 /// Its functions are to:
-///  - Handle the some action from the CeresMeta;
-///  - Handle the heartbeat between ceresdb-server and CeresMeta;
+///  - Handle the some action from the HoraeMeta;
+///  - Handle the heartbeat between horaedb-server and HoraeMeta;
 ///  - Provide the cluster topology.
 pub struct ClusterImpl {
     inner: Arc<Inner>,
@@ -192,7 +195,7 @@ impl Inner {
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse> {
         // TODO: we should use self.topology to cache the route result to reduce the
-        // pressure on the CeresMeta.
+        // pressure on the HoraeMeta.
         let route_resp = self
             .meta_client
             .route_tables(req.clone())
@@ -311,6 +314,19 @@ impl Inner {
         self.shard_set.get(shard_id)
     }
 
+    /// Get shard by table name.
+    ///
+    /// This method is similar to `route_tables`, but it will not send request
+    /// to meta server, it only load data from local cache.
+    /// If target table is not found in any shards in this cluster, return None.
+    /// Otherwise, return the shard where this table is exists.
+    fn get_shard_by_table_name(&self, schema_name: &str, table_name: &str) -> Option<ShardRef> {
+        let shards = self.shard_set.all_shards();
+        shards
+            .into_iter()
+            .find(|shard| shard.find_table(schema_name, table_name).is_some())
+    }
+
     fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
         info!("Remove shard from shard_set, id:{shard_id}");
         self.shard_set
@@ -366,6 +382,12 @@ impl Cluster for ClusterImpl {
 
     fn shard(&self, shard_id: ShardId) -> Option<ShardRef> {
         self.inner.shard(shard_id)
+    }
+
+    fn get_table_status(&self, schema_name: &str, table_name: &str) -> Option<TableStatus> {
+        self.inner
+            .get_shard_by_table_name(schema_name, table_name)
+            .map(|shard| TableStatus::from(shard.get_status()))
     }
 
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef> {
@@ -425,8 +447,8 @@ mod tests {
     fn test_format_shard_lock_key_prefix() {
         let cases = vec![
             (
-                ("/ceresdb", "defaultCluster"),
-                Some("/ceresdb/defaultCluster/shards"),
+                ("/horaedb", "defaultCluster"),
+                Some("/horaedb/defaultCluster/shards"),
             ),
             (("", "defaultCluster"), None),
             (("vvv", "defaultCluster"), None),

@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Projected schema
 
@@ -224,7 +227,7 @@ impl RowProjector {
 
     /// The projected indexes of all columns(existed and not exist) in the
     /// projected source schema.
-    pub fn fetched_projected_source_column_indexes(&self) -> &[Option<usize>] {
+    pub fn target_record_projection_remapping(&self) -> &[Option<usize>] {
         &self.target_record_projection_remapping
     }
 
@@ -346,7 +349,7 @@ impl ProjectedSchema {
     }
 }
 
-impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
+impl From<ProjectedSchema> for horaedbproto::schema::ProjectedSchema {
     fn from(request: ProjectedSchema) -> Self {
         let table_schema_pb = (&request.0.table_schema).into();
         let projection_pb = request.0.projection.as_ref().map(|project| {
@@ -354,7 +357,7 @@ impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
                 .iter()
                 .map(|one_project| *one_project as u64)
                 .collect::<Vec<u64>>();
-            ceresdbproto::schema::Projection { idx: project }
+            horaedbproto::schema::Projection { idx: project }
         });
 
         Self {
@@ -364,11 +367,11 @@ impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
     }
 }
 
-impl TryFrom<ceresdbproto::schema::ProjectedSchema> for ProjectedSchema {
+impl TryFrom<horaedbproto::schema::ProjectedSchema> for ProjectedSchema {
     type Error = Error;
 
     fn try_from(
-        pb: ceresdbproto::schema::ProjectedSchema,
+        pb: horaedbproto::schema::ProjectedSchema,
     ) -> std::result::Result<Self, Self::Error> {
         let schema: Schema = pb
             .table_schema

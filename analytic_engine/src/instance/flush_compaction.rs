@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Flush and compaction logic of instance
 
@@ -63,7 +66,7 @@ use crate::{
         factory::{self, ColumnStats, ScanOptions, SstWriteOptions},
         file::{FileMeta, Level},
         meta_data::{SstMetaData, SstMetaReader},
-        writer::{MetaData, RecordBatchStream},
+        writer::MetaData,
     },
     table::{
         data::{self, TableData, TableDataRef},
@@ -367,7 +370,7 @@ impl FlushTask {
         let mut last_sequence = table_data.last_sequence();
         // Switch (freeze) all mutable memtables. And update segment duration if
         // suggestion is returned.
-        let mut need_reorder = false;
+        let mut need_reorder = table_data.enable_layered_memtable;
         if let Some(suggest_segment_duration) = current_version.suggest_duration() {
             info!(
                 "Update segment duration, table:{}, table_id:{}, segment_duration:{:?}",
@@ -483,7 +486,9 @@ impl FlushTask {
             }
         }
         for mem in &mems_to_flush.memtables {
-            let file = self.dump_normal_memtable(request_id.clone(), mem).await?;
+            let file = self
+                .dump_normal_memtable(request_id.clone(), mem, need_reorder)
+                .await?;
             if let Some(file) = file {
                 let sst_size = file.size;
                 files_to_level0.push(AddFile {
@@ -728,6 +733,7 @@ impl FlushTask {
         &self,
         request_id: RequestId,
         memtable_state: &MemTableState,
+        need_reorder: bool,
     ) -> Result<Option<FileMeta>> {
         let (min_key, max_key) = match (memtable_state.mem.min_key(), memtable_state.mem.max_key())
         {
@@ -778,8 +784,24 @@ impl FlushTask {
 
         let iter = build_mem_table_iter(memtable_state.mem.clone(), &self.table_data)?;
 
-        let record_batch_stream: RecordBatchStream =
-            Box::new(stream::iter(iter).map_err(|e| Box::new(e) as _));
+        let record_batch_stream = if need_reorder {
+            let schema = self.table_data.schema();
+            let primary_key_indexes = schema.primary_key_indexes().to_vec();
+            let reorder = Reorder {
+                iter,
+                schema,
+                order_by_col_indexes: primary_key_indexes,
+            };
+            Box::new(
+                reorder
+                    .into_stream()
+                    .await
+                    .context(ReorderMemIter)?
+                    .map(|batch| batch.box_err()),
+            ) as _
+        } else {
+            Box::new(stream::iter(iter).map(|batch| batch.box_err())) as _
+        };
 
         let sst_info = writer
             .write(request_id, &sst_meta, record_batch_stream)
@@ -1231,6 +1253,7 @@ fn build_mem_table_iter(
         need_dedup: table_data.dedup(),
         reverse: false,
         metrics_collector: None,
+        time_range: TimeRange::min_to_max(),
     };
     memtable
         .scan(scan_ctx, scan_req)

@@ -12,7 +12,7 @@ explain verbose select * from issue_1087;
 
 plan_type,plan,
 String("initial_logical_plan"),String("Projection: issue_1087.tsid, issue_1087.t, issue_1087.name, issue_1087.value\n  TableScan: issue_1087"),
-String("logical_plan after ceresdb_type_conversion"),String("SAME TEXT AS ABOVE"),
+String("logical_plan after horaedb_type_conversion"),String("SAME TEXT AS ABOVE"),
 String("logical_plan after inline_table_scan"),String("SAME TEXT AS ABOVE"),
 String("logical_plan after type_coercion"),String("SAME TEXT AS ABOVE"),
 String("logical_plan after count_wildcard_rule"),String("SAME TEXT AS ABOVE"),

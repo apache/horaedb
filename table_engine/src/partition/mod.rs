@@ -1,23 +1,26 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Partitioned table supports
 
 pub mod rule;
 
 use bytes_ext::Bytes;
-use ceresdbproto::cluster::partition_info::Info;
+use horaedbproto::cluster::partition_info::Info;
 use macros::define_result;
 use regex::Regex;
 use snafu::{Backtrace, Snafu};
@@ -137,23 +140,23 @@ pub struct KeyPartitionInfo {
     pub linear: bool,
 }
 
-impl From<PartitionDefinition> for ceresdbproto::cluster::PartitionDefinition {
+impl From<PartitionDefinition> for horaedbproto::cluster::PartitionDefinition {
     fn from(definition: PartitionDefinition) -> Self {
         Self {
             name: definition.name,
             origin_name: definition
                 .origin_name
-                .map(ceresdbproto::cluster::partition_definition::OriginName::Origin),
+                .map(horaedbproto::cluster::partition_definition::OriginName::Origin),
         }
     }
 }
 
-impl From<ceresdbproto::cluster::PartitionDefinition> for PartitionDefinition {
-    fn from(pb: ceresdbproto::cluster::PartitionDefinition) -> Self {
+impl From<horaedbproto::cluster::PartitionDefinition> for PartitionDefinition {
+    fn from(pb: horaedbproto::cluster::PartitionDefinition) -> Self {
         let mut origin_name = None;
         if let Some(v) = pb.origin_name {
             match v {
-                ceresdbproto::cluster::partition_definition::OriginName::Origin(name) => {
+                horaedbproto::cluster::partition_definition::OriginName::Origin(name) => {
                     origin_name = Some(name)
                 }
             }
@@ -165,8 +168,8 @@ impl From<ceresdbproto::cluster::PartitionDefinition> for PartitionDefinition {
     }
 }
 
-impl From<ceresdbproto::cluster::HashPartitionInfo> for HashPartitionInfo {
-    fn from(partition_info_pb: ceresdbproto::cluster::HashPartitionInfo) -> Self {
+impl From<horaedbproto::cluster::HashPartitionInfo> for HashPartitionInfo {
+    fn from(partition_info_pb: horaedbproto::cluster::HashPartitionInfo) -> Self {
         HashPartitionInfo {
             version: partition_info_pb.version,
             definitions: partition_info_pb
@@ -180,9 +183,9 @@ impl From<ceresdbproto::cluster::HashPartitionInfo> for HashPartitionInfo {
     }
 }
 
-impl From<HashPartitionInfo> for ceresdbproto::cluster::HashPartitionInfo {
+impl From<HashPartitionInfo> for horaedbproto::cluster::HashPartitionInfo {
     fn from(partition_info: HashPartitionInfo) -> Self {
-        ceresdbproto::cluster::HashPartitionInfo {
+        horaedbproto::cluster::HashPartitionInfo {
             version: partition_info.version,
             definitions: partition_info
                 .definitions
@@ -195,8 +198,8 @@ impl From<HashPartitionInfo> for ceresdbproto::cluster::HashPartitionInfo {
     }
 }
 
-impl From<ceresdbproto::cluster::KeyPartitionInfo> for KeyPartitionInfo {
-    fn from(partition_info_pb: ceresdbproto::cluster::KeyPartitionInfo) -> Self {
+impl From<horaedbproto::cluster::KeyPartitionInfo> for KeyPartitionInfo {
+    fn from(partition_info_pb: horaedbproto::cluster::KeyPartitionInfo) -> Self {
         KeyPartitionInfo {
             version: partition_info_pb.version,
             definitions: partition_info_pb
@@ -210,9 +213,9 @@ impl From<ceresdbproto::cluster::KeyPartitionInfo> for KeyPartitionInfo {
     }
 }
 
-impl From<KeyPartitionInfo> for ceresdbproto::cluster::KeyPartitionInfo {
+impl From<KeyPartitionInfo> for horaedbproto::cluster::KeyPartitionInfo {
     fn from(partition_info: KeyPartitionInfo) -> Self {
-        ceresdbproto::cluster::KeyPartitionInfo {
+        horaedbproto::cluster::KeyPartitionInfo {
             version: partition_info.version,
             definitions: partition_info
                 .definitions
@@ -225,8 +228,8 @@ impl From<KeyPartitionInfo> for ceresdbproto::cluster::KeyPartitionInfo {
     }
 }
 
-impl From<ceresdbproto::cluster::RandomPartitionInfo> for RandomPartitionInfo {
-    fn from(partition_info_pb: ceresdbproto::cluster::RandomPartitionInfo) -> Self {
+impl From<horaedbproto::cluster::RandomPartitionInfo> for RandomPartitionInfo {
+    fn from(partition_info_pb: horaedbproto::cluster::RandomPartitionInfo) -> Self {
         RandomPartitionInfo {
             definitions: partition_info_pb
                 .definitions
@@ -237,9 +240,9 @@ impl From<ceresdbproto::cluster::RandomPartitionInfo> for RandomPartitionInfo {
     }
 }
 
-impl From<RandomPartitionInfo> for ceresdbproto::cluster::RandomPartitionInfo {
+impl From<RandomPartitionInfo> for horaedbproto::cluster::RandomPartitionInfo {
     fn from(partition_info: RandomPartitionInfo) -> Self {
-        ceresdbproto::cluster::RandomPartitionInfo {
+        horaedbproto::cluster::RandomPartitionInfo {
             definitions: partition_info
                 .definitions
                 .into_iter()
@@ -249,24 +252,24 @@ impl From<RandomPartitionInfo> for ceresdbproto::cluster::RandomPartitionInfo {
     }
 }
 
-impl From<PartitionInfo> for ceresdbproto::cluster::PartitionInfo {
+impl From<PartitionInfo> for horaedbproto::cluster::PartitionInfo {
     fn from(partition_info: PartitionInfo) -> Self {
         match partition_info {
             PartitionInfo::Hash(v) => {
-                let hash_partition_info = ceresdbproto::cluster::HashPartitionInfo::from(v);
-                ceresdbproto::cluster::PartitionInfo {
+                let hash_partition_info = horaedbproto::cluster::HashPartitionInfo::from(v);
+                horaedbproto::cluster::PartitionInfo {
                     info: Some(Info::Hash(hash_partition_info)),
                 }
             }
             PartitionInfo::Key(v) => {
-                let key_partition_info = ceresdbproto::cluster::KeyPartitionInfo::from(v);
-                ceresdbproto::cluster::PartitionInfo {
+                let key_partition_info = horaedbproto::cluster::KeyPartitionInfo::from(v);
+                horaedbproto::cluster::PartitionInfo {
                     info: Some(Info::Key(key_partition_info)),
                 }
             }
             PartitionInfo::Random(v) => {
-                let random_partition_info = ceresdbproto::cluster::RandomPartitionInfo::from(v);
-                ceresdbproto::cluster::PartitionInfo {
+                let random_partition_info = horaedbproto::cluster::RandomPartitionInfo::from(v);
+                horaedbproto::cluster::PartitionInfo {
                     info: Some(Info::Random(random_partition_info)),
                 }
             }
@@ -274,11 +277,11 @@ impl From<PartitionInfo> for ceresdbproto::cluster::PartitionInfo {
     }
 }
 
-impl TryFrom<ceresdbproto::cluster::PartitionInfo> for PartitionInfo {
+impl TryFrom<horaedbproto::cluster::PartitionInfo> for PartitionInfo {
     type Error = Error;
 
     fn try_from(
-        partition_info_pb: ceresdbproto::cluster::PartitionInfo,
+        partition_info_pb: horaedbproto::cluster::PartitionInfo,
     ) -> std::result::Result<Self, Self::Error> {
         match partition_info_pb.info {
             Some(info) => match info {

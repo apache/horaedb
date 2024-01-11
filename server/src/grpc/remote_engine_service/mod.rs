@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 // Remote engine rpc service implementation.
 
@@ -25,7 +28,13 @@ use std::{
 use arrow_ext::ipc::{self, CompressOptions, CompressOutput, CompressionMethod};
 use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
-use ceresdbproto::{
+use common_types::{record_batch::RecordBatch, request_id::RequestId};
+use futures::{
+    stream::{self, BoxStream, FuturesUnordered, StreamExt},
+    Future,
+};
+use generic_error::BoxError;
+use horaedbproto::{
     remote_engine::{
         execute_plan_request,
         read_response::Output::{Arrow, Metric},
@@ -37,12 +46,6 @@ use ceresdbproto::{
     },
     storage::{arrow_payload, ArrowPayload},
 };
-use common_types::{record_batch::RecordBatch, request_id::RequestId};
-use futures::{
-    stream::{self, BoxStream, FuturesUnordered, StreamExt},
-    Future,
-};
-use generic_error::BoxError;
 use logger::{debug, error, info, slow_query};
 use notifier::notifier::{ExecutionGuard, RequestNotifiers, RequestResult};
 use proxy::{
@@ -149,7 +152,7 @@ struct ExecutePlanMetricCollector {
 
 impl ExecutePlanMetricCollector {
     fn new(
-        request_id: String,
+        request_id: RequestId,
         query: String,
         slow_threshold_secs: u64,
         priority: Priority,
@@ -157,7 +160,7 @@ impl ExecutePlanMetricCollector {
         Self {
             start: Instant::now(),
             query,
-            request_id: request_id.into(),
+            request_id,
             slow_threshold: Duration::from_secs(slow_threshold_secs),
             priority,
         }
@@ -704,19 +707,17 @@ impl RemoteEngineServiceImpl {
 
         let priority = ctx.priority();
         let query_ctx = create_query_ctx(
-            ctx.request_id_str,
+            ctx.request_id,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
             priority,
         );
 
-        debug!(
-            "Execute remote query, ctx:{query_ctx:?}, query:{}",
-            &ctx.displayable_query
-        );
+        debug!("Execute remote query, id:{}", query_ctx.request_id.as_str());
+
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id.to_string(),
+            query_ctx.request_id.clone(),
             ctx.displayable_query,
             slow_threshold_secs,
             query_ctx.priority,
@@ -769,14 +770,18 @@ impl RemoteEngineServiceImpl {
             .load(std::sync::atomic::Ordering::Relaxed);
         let priority = ctx.priority();
         let query_ctx = create_query_ctx(
-            ctx.request_id_str,
+            ctx.request_id,
             ctx.default_catalog,
             ctx.default_schema,
             ctx.timeout_ms,
             priority,
         );
+        debug!(
+            "Execute dedupped remote query, id:{}",
+            query_ctx.request_id.as_str()
+        );
         let metric = ExecutePlanMetricCollector::new(
-            ctx.request_id.to_string(),
+            query_ctx.request_id.clone(),
             ctx.displayable_query,
             slow_threshold_secs,
             query_ctx.priority,
@@ -1199,7 +1204,7 @@ async fn handle_get_table_info(
 
     Ok(GetTableInfoResponse {
         header: None,
-        table_info: Some(ceresdbproto::remote_engine::TableInfo {
+        table_info: Some(horaedbproto::remote_engine::TableInfo {
             catalog_name: request.table.catalog,
             schema_name: schema.name().to_string(),
             schema_id: schema.id().as_u32(),

@@ -18,10 +18,10 @@ show create table `sampling_primary_key_table`;
 
 INSERT INTO `sampling_primary_key_table` (t, name, myVALUE)
     VALUES
-    (1695348000000, "ceresdb2", 200),
-    (1695348000005, "ceresdb2", 100),
-    (1695348000001, "ceresdb1", 100),
-    (1695348000003, "ceresdb3", 200);
+    (1695348000000, "horaedb2", 200),
+    (1695348000005, "horaedb2", 100),
+    (1695348000001, "horaedb1", 100),
+    (1695348000003, "horaedb3", 200);
 
 select * from `sampling_primary_key_table`;
 

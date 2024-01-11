@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! A volatile catalog implementation used for storing information about table
 //! and schema in memory.
@@ -32,7 +35,7 @@ use catalog::{
     },
     Catalog, CatalogRef, CreateSchemaWithCause,
 };
-use cluster::shard_set::ShardSet;
+use cluster::{shard_set::ShardSet, ClusterRef};
 use common_types::schema::SchemaName;
 use generic_error::BoxError;
 use logger::{debug, info};
@@ -41,19 +44,23 @@ use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::table::{SchemaId, TableRef};
 use tokio::sync::Mutex;
 
+use crate::cluster_based::SchemaWithCluster;
+
 /// ManagerImpl manages multiple volatile catalogs.
 pub struct ManagerImpl {
     catalogs: HashMap<String, Arc<CatalogImpl>>,
     shard_set: ShardSet,
     meta_client: MetaClientRef,
+    cluster: ClusterRef,
 }
 
 impl ManagerImpl {
-    pub fn new(shard_set: ShardSet, meta_client: MetaClientRef) -> Self {
+    pub fn new(shard_set: ShardSet, meta_client: MetaClientRef, cluster: ClusterRef) -> Self {
         let mut manager = ManagerImpl {
             catalogs: HashMap::new(),
             shard_set,
             meta_client,
+            cluster,
         };
 
         manager.maybe_create_default_catalog();
@@ -101,6 +108,7 @@ impl ManagerImpl {
             schemas: RwLock::new(HashMap::new()),
             shard_set: self.shard_set.clone(),
             meta_client: self.meta_client.clone(),
+            cluster: self.cluster.clone(),
         });
 
         self.catalogs.insert(catalog_name, catalog.clone());
@@ -121,6 +129,7 @@ struct CatalogImpl {
     schemas: RwLock<HashMap<SchemaName, SchemaRef>>,
     shard_set: ShardSet,
     meta_client: MetaClientRef,
+    cluster: ClusterRef,
 }
 
 #[async_trait]
@@ -171,7 +180,10 @@ impl Catalog for CatalogImpl {
             self.shard_set.clone(),
         ));
 
-        schemas.insert(name.to_string(), schema);
+        let cluster_based: SchemaRef =
+            Arc::new(SchemaWithCluster::new(schema, self.cluster.clone()));
+
+        schemas.insert(name.to_string(), cluster_based);
 
         info!(
             "create schema success, catalog:{}, schema:{}",
@@ -282,7 +294,10 @@ impl Schema for SchemaImpl {
     }
 
     fn table_by_name(&self, name: NameRef) -> schema::Result<Option<TableRef>> {
-        let table = self.tables.read().unwrap().get(name).cloned();
+        let table = self
+            .get_table(self.catalog_name.as_str(), self.schema_name.as_str(), name)
+            .unwrap()
+            .clone();
         Ok(table)
     }
 

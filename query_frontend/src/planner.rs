@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Planner converts a SQL AST into logical plans
 
@@ -29,7 +32,6 @@ use arrow::{
     error::ArrowError,
 };
 use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use ceresdbproto::storage::{value::Value as PbValue, WriteTableRequest};
 use cluster::config::SchemaConfig;
 use common_types::{
     column_schema::{self, ColumnSchema},
@@ -49,6 +51,7 @@ use datafusion::{
     },
 };
 use generic_error::GenericError;
+use horaedbproto::storage::{value::Value as PbValue, WriteTableRequest};
 use influxql_parser::statement::Statement as InfluxqlStatement;
 use logger::{debug, trace};
 use macros::define_result;
@@ -1395,13 +1398,13 @@ pub fn get_table_ref(table_name: &str) -> TableReference {
 #[cfg(test)]
 pub mod tests {
 
-    use ceresdbproto::storage::{
-        value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
-    };
     use datafusion::{
         common::tree_node::{TreeNode, TreeNodeVisitor, VisitRecursion},
         datasource::source_as_provider,
         logical_expr::LogicalPlan,
+    };
+    use horaedbproto::storage::{
+        value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
     };
     use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
     use sqlparser::ast::Value;
@@ -1618,9 +1621,9 @@ pub mod tests {
 
     #[test]
     fn test_create_table_failed() {
-        // CeresDB can reference other columns in default value expr, but it is mysql
+        // HoraeDB can reference other columns in default value expr, but it is mysql
         // style, which only allow it reference columns defined before it.
-        // issue: https://github.com/CeresDB/ceresdb/issues/250
+        // issue: https://github.com/apache/incubator-horaedb/issues/250
         let sql = "CREATE TABLE IF NOT EXISTS t(c1 string tag not null,
                                                       ts timestamp not null,
                                                       c3 uint32 Default c4,

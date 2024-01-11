@@ -1,28 +1,31 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Table factory trait
 
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use ceresdbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     schema::Schema,
     table::{ShardId, DEFAULT_SHARD_ID},
 };
 use generic_error::{GenericError, GenericResult};
+use horaedbproto::sys_catalog as sys_catalog_pb;
 use macros::define_result;
 use runtime::{PriorityRuntime, RuntimeRef};
 use snafu::{ensure, Backtrace, Snafu};
@@ -351,7 +354,7 @@ pub struct EngineRuntimes {
     pub write_runtime: RuntimeRef,
     /// Runtime for compacting data
     pub compact_runtime: RuntimeRef,
-    /// Runtime for ceresmeta communication
+    /// Runtime for horaemeta communication
     pub meta_runtime: RuntimeRef,
     /// Runtime for some other tasks which are not so important
     pub default_runtime: RuntimeRef,

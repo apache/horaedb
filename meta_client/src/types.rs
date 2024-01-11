@@ -1,26 +1,29 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 use std::{collections::HashMap, fmt, sync::Arc};
 
-use ceresdbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
 pub use common_types::table::{ShardId, ShardVersion};
 use common_types::{
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
 };
 use generic_error::BoxError;
+use horaedbproto::{cluster as cluster_pb, meta_service as meta_service_pb};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use table_engine::partition::PartitionInfo;
@@ -176,7 +179,7 @@ pub struct NodeInfo {
 
 /// The status changes of a shard as following:
 ///
-///```plaintext
+/// ```plaintext
 ///   ┌────┐
 ///   │Init│
 ///   └──┬─┘
@@ -209,10 +212,10 @@ pub struct ShardInfo {
     pub id: ShardId,
     pub role: ShardRole,
     pub version: ShardVersion,
-    // This status is only used for request ceresdb send to ceresmeta via heartbeat
-    // When ceresdb receive this via open shard request, this field is meaningless.
-    // TODO: Use different request and response body between ceresdb and
-    // ceresmeta.
+    // This status is only used for request horaedb send to horaemeta via heartbeat
+    // When horaedb receive this via open shard request, this field is meaningless.
+    // TODO: Use different request and response body between horaedb and
+    // horaemeta.
     pub status: ShardStatus,
 }
 
@@ -225,6 +228,11 @@ impl ShardInfo {
     #[inline]
     pub fn is_opened(&self) -> bool {
         matches!(self.status, ShardStatus::Ready | ShardStatus::Frozen)
+    }
+
+    #[inline]
+    pub fn is_ready(&self) -> bool {
+        matches!(self.status, ShardStatus::Ready)
     }
 }
 
@@ -251,7 +259,7 @@ impl Default for MetaClientConfig {
         Self {
             cluster_name: String::new(),
             meta_addr: "127.0.0.1:8080".to_string(),
-            meta_members_url: "ceresmeta/members".to_string(),
+            meta_members_url: "horaemeta/members".to_string(),
             lease: ReadableDuration::secs(10),
             timeout: ReadableDuration::secs(5),
             cq_count: 8,

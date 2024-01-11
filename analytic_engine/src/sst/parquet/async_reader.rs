@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Sst reader implementation based on parquet.
 
@@ -37,7 +40,7 @@ use datafusion::{
 };
 use futures::{Stream, StreamExt};
 use generic_error::{BoxError, GenericResult};
-use logger::{debug, error};
+use logger::{debug, error, warn};
 use object_store::{ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
@@ -397,7 +400,28 @@ impl<'a> Reader<'a> {
                     file_path: self.path.to_string(),
                 })?;
 
-        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
+        // TODO: Support page index until https://github.com/apache/incubator-horaedb/issues/1040 is fixed.
+        let mut parquet_meta_data = Arc::new(parquet_meta_data);
+        let object_store_reader = parquet_ext::reader::ObjectStoreReader::new(
+            self.store.clone(),
+            self.path.clone(),
+            parquet_meta_data.clone(),
+        );
+
+        if let Ok(meta_data) = parquet_ext::meta_data::meta_with_page_indexes(object_store_reader)
+            .await
+            .map_err(|e| {
+                // When loading page indexes failed, we just log the error and continue querying
+                // TODO: Fix this in stream. https://github.com/apache/incubator-horaedb/issues/1040
+                warn!(
+                    "Fail to load page indexes, path:{}, err:{:?}.",
+                    self.path, e
+                );
+                e
+            })
+        {
+            parquet_meta_data = meta_data;
+        }
 
         MetaData::try_new(&parquet_meta_data, ignore_sst_filter, self.store.clone())
             .await
@@ -540,10 +564,21 @@ impl Stream for RecordBatchProjector {
                         }
                         projector.metrics.row_num += record_batch.num_rows();
 
-                        let projected_batch =
-                            FetchedRecordBatch::try_new(&projector.row_projector, record_batch)
-                                .box_err()
-                                .context(DecodeRecordBatch {});
+                        let fetched_schema = projector.row_projector.fetched_schema().clone();
+                        let primary_key_indexes = projector
+                            .row_projector
+                            .primary_key_indexes()
+                            .map(|idxs| idxs.to_vec());
+                        let fetching_column_indexes =
+                            projector.row_projector.target_record_projection_remapping();
+                        let projected_batch = FetchedRecordBatch::try_new(
+                            fetched_schema,
+                            primary_key_indexes,
+                            fetching_column_indexes,
+                            record_batch,
+                        )
+                        .box_err()
+                        .context(DecodeRecordBatch {});
 
                         Poll::Ready(Some(projected_batch))
                     }

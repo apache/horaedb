@@ -1,24 +1,30 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-use std::{collections::HashSet, sync::RwLock};
+use std::{collections::HashSet, str::FromStr, sync::RwLock};
 
 use datafusion::logical_expr::logical_plan::LogicalPlan;
 use macros::define_result;
 use query_frontend::plan::Plan;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
+use time_ext::ReadableDuration;
+
+use crate::metrics::BLOCKED_REQUEST_COUNTER_VEC_GLOBAL;
 
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
@@ -33,10 +39,24 @@ pub enum Error {
 define_result!(Error);
 
 #[derive(Clone, Copy, Deserialize, Debug, PartialEq, Eq, Hash, Serialize, PartialOrd, Ord)]
+#[serde(tag = "type", content = "content")]
 pub enum BlockRule {
     QueryWithoutPredicate,
+    /// Max time range a query can scan.
+    #[serde(deserialize_with = "deserialize_readable_duration")]
+    QueryRange(i64),
     AnyQuery,
     AnyInsert,
+}
+
+fn deserialize_readable_duration<'de, D>(deserializer: D) -> std::result::Result<i64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    ReadableDuration::from_str(s)
+        .map(|d| d.0.as_millis() as i64)
+        .map_err(serde::de::Error::custom)
 }
 
 #[derive(Default, Clone, Deserialize, Debug, Serialize)]
@@ -52,6 +72,17 @@ impl BlockRule {
         match self {
             BlockRule::QueryWithoutPredicate => self.is_query_without_predicate(plan),
             BlockRule::AnyQuery => matches!(plan, Plan::Query(_)),
+            BlockRule::QueryRange(threshold) => {
+                if let Plan::Query(plan) = plan {
+                    if let Some(range) = plan.query_range() {
+                        if range > *threshold {
+                            return true;
+                        }
+                    }
+                }
+
+                false
+            }
             BlockRule::AnyInsert => matches!(plan, Plan::Insert(_)),
         }
     }
@@ -159,8 +190,18 @@ impl Limiter {
     ///
     /// Error will throws if the plan is forbidden to execute.
     pub fn try_limit(&self, plan: &Plan) -> Result<()> {
-        self.try_limit_by_block_list(plan)?;
-        self.try_limit_by_rules(plan)
+        let result = {
+            self.try_limit_by_block_list(plan)?;
+            self.try_limit_by_rules(plan)
+        };
+
+        if result.is_err() {
+            BLOCKED_REQUEST_COUNTER_VEC_GLOBAL
+                .with_label_values(&[plan.plan_type()])
+                .inc();
+        }
+
+        result
     }
 
     pub fn add_write_block_list(&self, block_list: Vec<String>) {

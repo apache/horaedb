@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! MemTable based on skiplist
 
@@ -286,7 +289,34 @@ mod tests {
     use crate::memtable::{
         factory::{Factory, Options},
         skiplist::factory::SkiplistMemTableFactory,
+        test_util::{TestMemtableBuilder, TestUtil},
+        MemTableRef,
     };
+
+    struct TestMemtableBuilderImpl;
+
+    impl TestMemtableBuilder for TestMemtableBuilderImpl {
+        fn build(&self, data: &[(KeySequence, Row)]) -> MemTableRef {
+            let schema = build_schema();
+            let factory = SkiplistMemTableFactory;
+            let memtable = factory
+                .create_memtable(Options {
+                    schema: schema.clone(),
+                    arena_block_size: 512,
+                    creation_sequence: 1,
+                    collector: Arc::new(NoopCollector {}),
+                })
+                .unwrap();
+
+            let mut ctx =
+                PutContext::new(IndexInWriterSchema::for_same_schema(schema.num_columns()));
+            for (seq, row) in data {
+                memtable.put(&mut ctx, *seq, row, &schema).unwrap();
+            }
+
+            memtable
+        }
+    }
 
     fn test_memtable_scan_for_scan_request(
         schema: Schema,
@@ -309,6 +339,7 @@ mod tests {
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -329,6 +360,7 @@ mod tests {
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -348,6 +380,7 @@ mod tests {
                     need_dedup: true,
                     reverse: false,
                     metrics_collector: None,
+                    time_range: TimeRange::min_to_max(),
                 },
                 vec![
                     build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -383,6 +416,7 @@ mod tests {
                 need_dedup: true,
                 reverse: false,
                 metrics_collector: None,
+                time_range: TimeRange::min_to_max(),
             },
             vec![
                 build_row_for_two_column(b"a", 1),
@@ -401,19 +435,52 @@ mod tests {
 
     #[test]
     fn test_memtable_scan() {
-        let schema = build_schema();
-        let factory = SkiplistMemTableFactory;
-        let memtable = factory
-            .create_memtable(Options {
-                schema: schema.clone(),
-                arena_block_size: 512,
-                creation_sequence: 1,
-                collector: Arc::new(NoopCollector {}),
-            })
-            .unwrap();
+        let data = test_data();
+        let builder = TestMemtableBuilderImpl;
+        let test_util = TestUtil::new(builder, data);
+        let memtable = test_util.memtable();
+        let schema = memtable.schema().clone();
 
-        let mut ctx = PutContext::new(IndexInWriterSchema::for_same_schema(schema.num_columns()));
-        let input = vec![
+        test_memtable_scan_for_scan_request(schema.clone(), memtable.clone());
+        test_memtable_scan_for_projection(schema, memtable);
+    }
+
+    fn check_iterator<T: Iterator<Item = Result<FetchedRecordBatch>>>(
+        iter: T,
+        expected_rows: Vec<Row>,
+    ) {
+        let mut visited_rows = 0;
+        for batch in iter {
+            let batch = batch.unwrap();
+            for row_idx in 0..batch.num_rows() {
+                assert_eq!(batch.clone_row_at(row_idx), expected_rows[visited_rows]);
+                visited_rows += 1;
+            }
+        }
+
+        assert_eq!(visited_rows, expected_rows.len());
+    }
+
+    fn build_scan_key(c1: &str, c2: i64) -> Bytes {
+        let mut buf = ByteVec::new();
+        let encoder = MemComparable;
+        encoder.encode(&mut buf, &Datum::from(c1)).unwrap();
+        encoder.encode(&mut buf, &Datum::from(c2)).unwrap();
+
+        Bytes::from(buf)
+    }
+
+    pub fn build_row_for_two_column(key1: &[u8], key2: i64) -> Row {
+        let datums = vec![
+            Datum::Varbinary(Bytes::copy_from_slice(key1)),
+            Datum::Timestamp(Timestamp::new(key2)),
+        ];
+
+        Row::from_datums(datums)
+    }
+
+    fn test_data() -> Vec<(KeySequence, Row)> {
+        vec![
             (
                 KeySequence::new(1, 1),
                 build_row(b"a", 1, 10.0, "v1", 1000, 1_000_000),
@@ -453,47 +520,6 @@ mod tests {
                 KeySequence::new(3, 4),
                 build_row(b"g", 7, 10.0, "v7", 7000, 7_000_000),
             ),
-        ];
-
-        for (seq, row) in input {
-            memtable.put(&mut ctx, seq, &row, &schema).unwrap();
-        }
-
-        test_memtable_scan_for_scan_request(schema.clone(), memtable.clone());
-        test_memtable_scan_for_projection(schema, memtable);
-    }
-
-    fn check_iterator<T: Iterator<Item = Result<FetchedRecordBatch>>>(
-        iter: T,
-        expected_rows: Vec<Row>,
-    ) {
-        let mut visited_rows = 0;
-        for batch in iter {
-            let batch = batch.unwrap();
-            for row_idx in 0..batch.num_rows() {
-                assert_eq!(batch.clone_row_at(row_idx), expected_rows[visited_rows]);
-                visited_rows += 1;
-            }
-        }
-
-        assert_eq!(visited_rows, expected_rows.len());
-    }
-
-    fn build_scan_key(c1: &str, c2: i64) -> Bytes {
-        let mut buf = ByteVec::new();
-        let encoder = MemComparable;
-        encoder.encode(&mut buf, &Datum::from(c1)).unwrap();
-        encoder.encode(&mut buf, &Datum::from(c2)).unwrap();
-
-        Bytes::from(buf)
-    }
-
-    pub fn build_row_for_two_column(key1: &[u8], key2: i64) -> Row {
-        let datums = vec![
-            Datum::Varbinary(Bytes::copy_from_slice(key1)),
-            Datum::Timestamp(Timestamp::new(key2)),
-        ];
-
-        Row::from_datums(datums)
+        ]
     }
 }

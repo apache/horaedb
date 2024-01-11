@@ -1,21 +1,24 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
-//! Cluster sub-crate includes serval functionalities for supporting CeresDB
+//! Cluster sub-crate includes several functionalities for supporting HoraeDB
 //! server to running in the distribute mode. Including:
-//! - Request CeresMeta for reading topology or configuration.
-//! - Accept CeresMeta's commands like open/close shard or create/drop table
+//! - Request HoraeMeta for reading topology or configuration.
+//! - Accept HoraeMeta's commands like open/close shard or create/drop table
 //!   etc.
 //!
 //! The core types are [Cluster] trait and its implementation [ClusterImpl].
@@ -29,7 +32,8 @@ use common_types::schema::SchemaName;
 use generic_error::GenericError;
 use macros::define_result;
 use meta_client::types::{
-    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardVersion,
+    ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardStatus,
+    ShardVersion,
 };
 use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};
@@ -161,6 +165,23 @@ pub enum Error {
 
 define_result!(Error);
 
+#[derive(Debug)]
+pub enum TableStatus {
+    Ready,
+    Recovering,
+    Frozen,
+}
+
+impl From<ShardStatus> for TableStatus {
+    fn from(value: ShardStatus) -> Self {
+        match value {
+            ShardStatus::Init | ShardStatus::Opening => TableStatus::Recovering,
+            ShardStatus::Ready => TableStatus::Ready,
+            ShardStatus::Frozen => TableStatus::Frozen,
+        }
+    }
+}
+
 pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
 
 #[derive(Clone, Debug)]
@@ -184,12 +205,14 @@ pub trait Cluster {
     /// None.
     fn shard(&self, shard_id: ShardId) -> Option<ShardRef>;
 
+    fn get_table_status(&self, schema_name: &str, table_name: &str) -> Option<TableStatus>;
+
     /// Close shard.
     ///
     /// Return error if the shard is not found.
     async fn close_shard(&self, shard_id: ShardId) -> Result<ShardRef>;
 
-    /// list shards
+    /// list loaded shards in current node.
     fn list_shards(&self) -> Vec<ShardInfo>;
 
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;

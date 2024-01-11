@@ -1,16 +1,19 @@
-// Copyright 2023 The HoraeDB Authors
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 //! Table abstraction
 
@@ -25,7 +28,6 @@ use std::{
 };
 
 use async_trait::async_trait;
-use ceresdbproto::sys_catalog as sys_catalog_pb;
 use common_types::{
     column_schema::ColumnSchema,
     datum::Datum,
@@ -35,6 +37,7 @@ use common_types::{
     schema::{RecordSchemaWithKey, Schema, Version},
 };
 use generic_error::{BoxError, GenericError};
+use horaedbproto::sys_catalog as sys_catalog_pb;
 use macros::define_result;
 use runtime::Priority;
 use serde::Deserialize;
@@ -336,8 +339,8 @@ impl Default for ReadOptions {
     }
 }
 
-impl From<ceresdbproto::remote_engine::ReadOptions> for ReadOptions {
-    fn from(pb: ceresdbproto::remote_engine::ReadOptions) -> Self {
+impl From<horaedbproto::remote_engine::ReadOptions> for ReadOptions {
+    fn from(pb: horaedbproto::remote_engine::ReadOptions) -> Self {
         Self {
             batch_size: pb.batch_size as usize,
             read_parallelism: pb.read_parallelism as usize,
@@ -350,7 +353,7 @@ impl From<ceresdbproto::remote_engine::ReadOptions> for ReadOptions {
     }
 }
 
-impl From<ReadOptions> for ceresdbproto::remote_engine::ReadOptions {
+impl From<ReadOptions> for horaedbproto::remote_engine::ReadOptions {
     fn from(opts: ReadOptions) -> Self {
         Self {
             batch_size: opts.batch_size as u64,
@@ -422,7 +425,7 @@ impl fmt::Debug for ReadRequest {
     }
 }
 
-impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
+impl TryFrom<ReadRequest> for horaedbproto::remote_engine::TableReadRequest {
     type Error = Error;
 
     fn try_from(request: ReadRequest) -> std::result::Result<Self, Error> {
@@ -440,7 +443,7 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
                 })?;
 
         Ok(Self {
-            request_id: 0, // this field not used any more
+            request_id: String::from(request.request_id),
             opts: Some(request.opts.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),
@@ -449,10 +452,10 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
     }
 }
 
-impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
+impl TryFrom<horaedbproto::remote_engine::TableReadRequest> for ReadRequest {
     type Error = Error;
 
-    fn try_from(pb: ceresdbproto::remote_engine::TableReadRequest) -> Result<Self> {
+    fn try_from(pb: horaedbproto::remote_engine::TableReadRequest) -> Result<Self> {
         let opts = pb.opts.context(EmptyReadOptions)?.into();
         let projected_schema = pb
             .projected_schema
