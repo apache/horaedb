@@ -218,12 +218,10 @@ fn select_variable(query: &str, _session: SessionRef) -> Option<Output> {
             .collect();
 
         // get value of variables from known sources or fallback to defaults
-        let value = match var_as[0] {
-            _ => VAR_VALUES
-                .get(var_as[0])
-                .map(|v| v.to_string())
-                .unwrap_or_else(|| "0".to_owned()),
-        };
+        let value = VAR_VALUES
+            .get(var_as[0])
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "0".to_owned());
 
         values.push(Arc::new(StringArray::from(vec![value])));
 
@@ -334,10 +332,7 @@ mod test {
     use arrow::util::pretty;
 
     use super::*;
-    use crate::session::{
-        context::{Channel, QueryContext},
-        Session,
-    };
+    use crate::session::{Channel, Session};
     fn pretty_print(data: RecordBatchVec) -> String {
         let df_batches = &data
             .iter()

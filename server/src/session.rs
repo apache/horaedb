@@ -172,11 +172,17 @@ pub fn parse_catalog_and_schema_from_db_string(db: &str) -> (&str, &str) {
 
 #[cfg(test)]
 mod tests {
-    use arrow::util::pretty;
-    use interpreters::RecordBatchVec;
-
     use super::*;
     use crate::session::Session;
+
+    /// Build db name from catalog and schema string
+    fn build_db_string(catalog: &str, schema: &str) -> String {
+        if catalog == DEFAULT_CATALOG {
+            schema.to_string()
+        } else {
+            format!("{catalog}-{schema}")
+        }
+    }
 
     #[test]
     fn test_db_string() {
@@ -213,14 +219,5 @@ mod tests {
         assert_eq!(client_addr.port(), 9000);
 
         assert_eq!("mysql[127.0.0.1:9000]", session.conn_info().to_string());
-    }
-
-    #[test]
-    fn test_context_db_string() {
-        let context = QueryContext::with("a0b1c2d3", "test");
-        assert_eq!("a0b1c2d3-test", context.get_db_string());
-
-        let context = QueryContext::with(DEFAULT_CATALOG, "test");
-        assert_eq!("test", context.get_db_string());
     }
 }
