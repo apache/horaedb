@@ -37,24 +37,15 @@
 use std::{collections::HashMap, env, sync::Arc};
 
 use arrow::{
-    array::{StringArray, UInt8Array},
+    array::StringArray,
     datatypes::{DataType, Field, Schema},
     record_batch::RecordBatch,
-};
-use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use common_types::{
-    column_schema,
-    column_schema::ColumnSchema,
-    datum::{Datum, DatumKind},
-    row::Row,
-    schema,
-    string::StringBytes,
 };
 use interpreters::{interpreter::Output, RecordBatchVec};
 use once_cell::sync::Lazy;
 use regex::{bytes::RegexSet, Regex};
 
-use crate::session::{context::QueryContextRef, SessionRef};
+use crate::session::SessionRef;
 
 static SELECT_VAR_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new("(?i)^(SELECT @@(.*))").unwrap());
 static MYSQL_CONN_JAVA_PATTERN: Lazy<Regex> =
@@ -202,7 +193,7 @@ fn show_variables(name: &str, value: &str) -> RecordBatchVec {
     vec![record_batch]
 }
 
-fn select_variable(query: &str, query_context: QueryContextRef) -> Option<Output> {
+fn select_variable(query: &str, _session: SessionRef) -> Option<Output> {
     let mut fields: Vec<Field> = vec![];
     let mut values: Vec<Arc<(dyn arrow::array::Array + 'static)>> = vec![];
 
@@ -264,12 +255,12 @@ fn select_variable(query: &str, query_context: QueryContextRef) -> Option<Output
     Some(Output::Records(vec![record_batch]))
 }
 
-fn check_select_variable(query: &str, query_context: QueryContextRef) -> Option<Output> {
+fn check_select_variable(query: &str, session: SessionRef) -> Option<Output> {
     if [&SELECT_VAR_PATTERN, &MYSQL_CONN_JAVA_PATTERN]
         .iter()
         .any(|r| r.is_match(query))
     {
-        select_variable(query, query_context)
+        select_variable(query, session)
     } else {
         None
     }
@@ -289,13 +280,13 @@ fn check_show_variables(query: &str) -> Option<Output> {
 }
 
 // TODO(sunng87): extract this to use sqlparser for more variables
-fn check_set_variables(query: &str, session: SessionRef) -> Option<Output> {
+fn check_set_variables(_query: &str, _session: SessionRef) -> Option<Output> {
     None
 }
 
 // Check for SET or others query, this is the final check of the federated
 // query.
-fn check_others(query: &str, query_ctx: QueryContextRef) -> Option<Output> {
+fn check_others(query: &str, session: SessionRef) -> Option<Output> {
     if OTHER_NOT_SUPPORTED_STMT.is_match(query.as_bytes()) {
         return Some(Output::Records(Vec::new()));
     }
@@ -303,8 +294,8 @@ fn check_others(query: &str, query_ctx: QueryContextRef) -> Option<Output> {
     let recordbatches = if SELECT_VERSION_PATTERN.is_match(query) {
         Some(select_function("version()", &get_version()))
     } else if SELECT_DATABASE_PATTERN.is_match(query) {
-        let schema = query_ctx.current_schema();
-        Some(select_function("database()", schema))
+        let schema = session.schema();
+        Some(select_function("database()", &schema))
     } else if SELECT_TIME_DIFF_FUNC_PATTERN.is_match(query) {
         Some(select_function(
             "TIMEDIFF(NOW(), UTC_TIMESTAMP())",
@@ -318,11 +309,7 @@ fn check_others(query: &str, query_ctx: QueryContextRef) -> Option<Output> {
 
 // Check whether the query is a federated or driver setup command,
 // and return some faked results if there are any.
-pub(crate) fn check(
-    query: &str,
-    query_ctx: QueryContextRef,
-    session: SessionRef,
-) -> Option<Output> {
+pub(crate) fn check(query: &str, session: SessionRef) -> Option<Output> {
     // INSERT don't need MySQL federated check. We assume the query doesn't contain
     // federated or driver setup command if it starts with a 'INSERT' statement.
     if query.len() > 6 && query[..6].eq_ignore_ascii_case("INSERT") {
@@ -330,12 +317,12 @@ pub(crate) fn check(
     }
 
     // First to check the query is like "select @@variables".
-    check_select_variable(query, query_ctx.clone())
+    check_select_variable(query, session.clone())
         // Then to check "show variables like ...".
         .or_else(|| check_show_variables(query))
         .or_else(|| check_set_variables(query, session.clone()))
         // Last check
-        .or_else(|| check_others(query, query_ctx))
+        .or_else(|| check_others(query, session))
 }
 
 // get GreptimeDB's version.
@@ -345,11 +332,13 @@ fn get_version() -> String {
 #[cfg(test)]
 mod test {
     use arrow::util::pretty;
-    use crate::session::context::{Channel, QueryContext};
-    use crate::session::Session;
 
     use super::*;
-     fn pretty_print(data: RecordBatchVec) -> String {
+    use crate::session::{
+        context::{Channel, QueryContext},
+        Session,
+    };
+    fn pretty_print(data: RecordBatchVec) -> String {
         let df_batches = &data
             .iter()
             .map(|x| x.as_arrow_record_batch().clone())
@@ -362,16 +351,16 @@ mod test {
     fn test_check() {
         let session = Arc::new(Session::new(None, Channel::Mysql));
         let query = "select 1";
-        let result = check(query, QueryContext::arc(), session.clone());
+        let result = check(query, session.clone());
         assert!(result.is_none());
 
         let query = "select version";
-        let output = check(query, QueryContext::arc(), session.clone());
+        let output = check(query, session.clone());
         assert!(output.is_none());
 
         fn test(query: &str, expected: &str) {
             let session = Arc::new(Session::new(None, Channel::Mysql));
-            let output = check(query, QueryContext::arc(), session.clone());
+            let output = check(query, session.clone());
             match output.unwrap() {
                 Output::Records(r) => {
                     assert_eq!(pretty_print(r), expected)
@@ -382,11 +371,10 @@ mod test {
 
         let query = "select version()";
         let version = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "unknown".to_string());
-        let output = check(query, QueryContext::arc(), session.clone());
+        let output = check(query, session.clone());
         match output.unwrap() {
             Output::Records(r) => {
-                assert!(pretty_print(r)
-                    .contains(&format!("{version}-greptime")));
+                assert!(pretty_print(r).contains(&format!("{version}-greptime")));
             }
             _ => unreachable!(),
         }

@@ -21,7 +21,6 @@
 
 #![feature(string_remove_matches)]
 
-use arrow::util::pretty;
 use common_types::record_batch::RecordBatch;
 
 pub mod alter_table;
@@ -45,5 +44,3 @@ mod tests;
 
 // Use a type alias so that we are able to replace the implementation
 pub type RecordBatchVec = Vec<RecordBatch>;
-
-
