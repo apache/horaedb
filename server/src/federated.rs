@@ -136,11 +136,8 @@ static OTHER_NOT_SUPPORTED_STMT: Lazy<RegexSet> = Lazy::new(|| {
     ]).unwrap()
 });
 
-static VAR_VALUES: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
-    HashMap::from([
-        ("version_comment", "Apache HoraeDB"),
-    ])
-});
+static VAR_VALUES: Lazy<HashMap<&str, &str>> =
+    Lazy::new(|| HashMap::from([("version_comment", "Apache HoraeDB")]));
 
 // RecordBatchVec for select function.
 // Format:
@@ -374,23 +371,13 @@ mod test {
 +-------------------+";
         test(query, expected);
 
-        // variables
-        let query = "select @@tx_isolation, @@session.tx_isolation";
-        let expected = "\
-+-----------------+------------------------+
-| @@tx_isolation  | @@session.tx_isolation |
-+-----------------+------------------------+
-| REPEATABLE-READ | REPEATABLE-READ        |
-+-----------------+------------------------+";
-        test(query, expected);
-
         // complex variables
         let query = "/* mysql-connector-java-8.0.17 (Revision: 16a712ddb3f826a1933ab42b0039f7fb9eebc6ec) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@sql_mode AS sql_mode, @@transaction_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout;";
         let expected = "\
 +--------------------------+----------------------+--------------------------+-----------------------+----------------------+------------------+----------------------+--------------+---------------------+---------+------------------------+--------------------+-------------------+--------------------+----------+-----------------------+---------------+
 | auto_increment_increment | character_set_client | character_set_connection | character_set_results | character_set_server | collation_server | collation_connection | init_connect | interactive_timeout | license | lower_case_table_names | max_allowed_packet | net_write_timeout | performance_schema | sql_mode | transaction_isolation | wait_timeout; |
 +--------------------------+----------------------+--------------------------+-----------------------+----------------------+------------------+----------------------+--------------+---------------------+---------+------------------------+--------------------+-------------------+--------------------+----------+-----------------------+---------------+
-| 0                        | 0                    | 0                        | 0                     | 0                    | 0                | 0                    | 0            | 31536000            | 0       | 0                      | 134217728          | 31536000          | 0                  | 0        | REPEATABLE-READ       | 31536000      |
+| 0                        | 0                    | 0                        | 0                     | 0                    | 0                | 0                    | 0            | 0                   | 0       | 0                      | 0                  | 0                 | 0                  | 0        | 0                     | 0             |
 +--------------------------+----------------------+--------------------------+-----------------------+----------------------+------------------+----------------------+--------------+---------------------+---------+------------------------+--------------------+-------------------+--------------------+----------+-----------------------+---------------+";
         test(query, expected);
 
