@@ -401,12 +401,6 @@ impl<'a> RecordBatchGroupWriter<'a> {
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        // parquet_encoder
-        //     .close()
-        //     .await
-        //     .box_err()
-        //     .context(EncodeRecordBatch)?;
-
         Ok((total_num_rows, parquet_meta_data, parquet_encoder))
     }
 }
@@ -525,6 +519,12 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         data_encoder
             .set_meta_data_size(meta_size)
+            .box_err()
+            .context(EncodeRecordBatch)?;
+
+        data_encoder
+            .close()
+            .await
             .box_err()
             .context(EncodeRecordBatch)?;
 
