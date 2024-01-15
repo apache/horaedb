@@ -101,6 +101,15 @@ pub enum Error {
         source: Utf8Error,
         backtrace: Backtrace,
     },
+
+    #[snafu(display(
+        "Parse meta size failed, size:{size}, source:{source}.\nBacktrace:\n{backtrace}"
+    ))]
+    InvalidSize {
+        size: String,
+        source: std::num::ParseIntError,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);

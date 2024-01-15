@@ -20,11 +20,11 @@ use std::{
 use lru::LruCache;
 use object_store::{ObjectStoreRef, Path};
 use parquet::{file::metadata::FileMetaData, format::KeyValue};
-use snafu::{ensure, OptionExt};
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::sst::{
     meta_data::{
-        metadata_reader::parse_metadata, KvMetaDataNotFound, KvMetaVersionEmpty,
+        metadata_reader::parse_metadata, InvalidSize, KvMetaDataNotFound, KvMetaVersionEmpty,
         ParquetMetaDataRef, Result,
     },
     metrics::{META_DATA_CACHE_HIT_COUNTER, META_DATA_CACHE_MISS_COUNTER},
@@ -63,6 +63,7 @@ impl MetaData {
         ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
 
         let mut meta_path = None;
+        let mut meta_size = None;
         let mut other_kv_metas: Vec<KeyValue> = Vec::with_capacity(kv_metas.len() - 1);
         let mut custom_kv_meta = None;
         let mut meta_version = encoding::META_VERSION_V1; // default is v1
@@ -74,6 +75,11 @@ impl MetaData {
                 meta_path = kv_meta.value.as_ref().map(|path| Path::from(path.as_str()))
             } else if kv_meta.key == encoding::META_VERSION_KEY {
                 meta_version = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?;
+            } else if kv_meta.key == encoding::META_SIZE_KEY {
+                let size = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?;
+                meta_size = Some(size.parse::<usize>().with_context(|| InvalidSize {
+                    size: size.to_string(),
+                })?);
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }
@@ -84,6 +90,7 @@ impl MetaData {
             custom_kv_meta,
             ignore_sst_filter,
             meta_path.clone(),
+            meta_size,
             store,
         )
         .await?;

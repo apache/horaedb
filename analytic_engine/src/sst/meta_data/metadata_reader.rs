@@ -59,12 +59,17 @@ impl CustomMetadataReader for MetaV1Reader<'_> {
 
 pub struct MetaV2Reader {
     meta_path: Option<Path>,
+    meta_size: Option<usize>,
     store: ObjectStoreRef,
 }
 
 impl MetaV2Reader {
-    fn new(meta_path: Option<Path>, store: ObjectStoreRef) -> Self {
-        Self { meta_path, store }
+    fn new(meta_path: Option<Path>, meta_size: Option<usize>, store: ObjectStoreRef) -> Self {
+        Self {
+            meta_path,
+            meta_size,
+            store,
+        }
     }
 }
 
@@ -74,18 +79,29 @@ impl CustomMetadataReader for MetaV2Reader {
         match &self.meta_path {
             None => KvMetaPathEmpty {}.fail(),
             Some(meta_path) => {
-                let metadata = self
-                    .store
-                    .get(meta_path)
-                    .await
-                    .with_context(|| FetchFromStore {
-                        file_path: meta_path.to_string(),
-                    })?
-                    .bytes()
-                    .await
-                    .with_context(|| FetchAndDecodeSstMeta {
-                        file_path: meta_path.to_string(),
-                    })?;
+                let metadata = match self.meta_size {
+                    Some(size) => {
+                        let all_range = 0..size;
+                        self.store
+                            .get_range(meta_path, all_range)
+                            .await
+                            .with_context(|| FetchFromStore {
+                                file_path: meta_path.to_string(),
+                            })?
+                    }
+                    None => self
+                        .store
+                        .get(meta_path)
+                        .await
+                        .with_context(|| FetchFromStore {
+                            file_path: meta_path.to_string(),
+                        })?
+                        .bytes()
+                        .await
+                        .with_context(|| FetchAndDecodeSstMeta {
+                            file_path: meta_path.to_string(),
+                        })?,
+                };
 
                 decode_sst_meta_data_from_bytes(metadata.as_bytes()).context(DecodeCustomMetaData)
             }
@@ -98,6 +114,7 @@ pub async fn parse_metadata(
     custom_kv_meta: Option<&KeyValue>,
     ignore_sst_filter: bool,
     meta_path: Option<Path>,
+    meta_size: Option<usize>,
     store: ObjectStoreRef,
 ) -> Result<ParquetMetaDataRef> {
     // Must ensure custom metadata only store in one place
@@ -108,7 +125,7 @@ pub async fn parse_metadata(
 
     let reader: Box<dyn CustomMetadataReader + Send + Sync + '_> = match meta_version {
         META_VERSION_V1 => Box::new(MetaV1Reader::new(custom_kv_meta)),
-        META_VERSION_CURRENT => Box::new(MetaV2Reader::new(meta_path, store)),
+        META_VERSION_CURRENT => Box::new(MetaV2Reader::new(meta_path, meta_size, store)),
         _ => {
             return UnknownMetaVersion {
                 version: meta_version,

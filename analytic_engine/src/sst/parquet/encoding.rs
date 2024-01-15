@@ -162,6 +162,7 @@ pub const META_VERSION_V1: &str = "1";
 pub const META_VERSION_CURRENT: &str = "2";
 pub const META_KEY: &str = "meta"; // used in v1
 pub const META_PATH_KEY: &str = "meta_path"; // used in v2
+pub const META_SIZE_KEY: &str = "meta_size"; // used in v2
 pub const META_VERSION_KEY: &str = "meta_version";
 pub const META_VALUE_HEADER: u8 = 0;
 
@@ -225,6 +226,7 @@ trait RecordEncoder {
     async fn encode(&mut self, record_batches: Vec<ArrowRecordBatch>) -> Result<usize>;
 
     fn set_meta_data_path(&mut self, metadata_path: Option<String>) -> Result<()>;
+    fn set_meta_data_size(&mut self, size: usize) -> Result<()>;
 
     /// Return encoded bytes
     /// Note: trait method cannot receive `self`, so take a &mut self here to
@@ -320,6 +322,17 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
         Ok(())
     }
 
+    fn set_meta_data_size(&mut self, size: usize) -> Result<()> {
+        let size_kv = KeyValue {
+            key: META_SIZE_KEY.to_string(),
+            value: Some(size.to_string()),
+        };
+        let writer = self.arrow_writer.as_mut().unwrap();
+        writer.append_key_value_metadata(size_kv);
+
+        Ok(())
+    }
+
     async fn close(&mut self) -> Result<()> {
         assert!(self.arrow_writer.is_some());
 
@@ -364,6 +377,10 @@ impl ParquetEncoder {
 
     pub fn set_meta_data_path(&mut self, meta_data_path: Option<String>) -> Result<()> {
         self.record_encoder.set_meta_data_path(meta_data_path)
+    }
+
+    pub fn set_meta_data_size(&mut self, size: usize) -> Result<()> {
+        self.record_encoder.set_meta_data_size(size)
     }
 
     pub async fn close(mut self) -> Result<()> {
