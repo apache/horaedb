@@ -104,7 +104,7 @@ impl MysqlService {
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(proxy,addr, timeout),
+                        MysqlWorker::new(proxy, addr, timeout),
                         stream,
                     ));
                 },
