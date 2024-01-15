@@ -27,9 +27,9 @@ use proxy::{context::RequestContext, http::sql::Request, Proxy};
 use snafu::ResultExt;
 
 use crate::{
+    federated,
     mysql::{
         error::{CreateContext, HandleSql, Result},
-        federated,
         writer::MysqlQueryResultWriter,
     },
     session::{parse_catalog_and_schema_from_db_string, Channel, Session, SessionRef},

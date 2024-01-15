@@ -17,7 +17,6 @@
 
 mod builder;
 pub mod error;
-mod federated;
 mod service;
 mod worker;
 mod writer;

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Fork from https://github.com/GreptimeTeam/greptimedb/blob/702ea32538a99e2d163fb1fbd3e75b1ce4ec4232/src/servers/src/mysql/federated.rs.
+// Forked from https://github.com/GreptimeTeam/greptimedb/blob/702ea32538a99e2d163fb1fbd3e75b1ce4ec4232/src/servers/src/mysql/federated.rs.
 
 // Copyright 2023 Greptime Team
 //
@@ -138,16 +138,7 @@ static OTHER_NOT_SUPPORTED_STMT: Lazy<RegexSet> = Lazy::new(|| {
 
 static VAR_VALUES: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
     HashMap::from([
-        ("tx_isolation", "REPEATABLE-READ"),
-        ("session.tx_isolation", "REPEATABLE-READ"),
-        ("transaction_isolation", "REPEATABLE-READ"),
-        ("session.transaction_isolation", "REPEATABLE-READ"),
-        ("session.transaction_read_only", "0"),
-        ("max_allowed_packet", "134217728"),
-        ("interactive_timeout", "31536000"),
-        ("wait_timeout", "31536000"),
-        ("net_write_timeout", "31536000"),
-        ("version_comment", "Greptime"),
+        ("version_comment", "Apache HoraeDB"),
     ])
 });
 
@@ -169,7 +160,7 @@ fn select_function(name: &str, value: &str) -> RecordBatchVec {
     vec![record_batch]
 }
 
-// Recordbatches for show variable statement.
+// RecordbatchVec for show variable statement.
 // Format is:
 // | Variable_name | Value |
 // | xx            | yy    |
@@ -265,7 +256,7 @@ fn check_select_variable(query: &str, session: SessionRef) -> Option<Output> {
 }
 
 fn check_show_variables(query: &str) -> Option<Output> {
-    let recordbatches = if SHOW_SQL_MODE_PATTERN.is_match(query) {
+    let record_batch_vec = if SHOW_SQL_MODE_PATTERN.is_match(query) {
         Some(show_variables("sql_mode", "ONLY_FULL_GROUP_BY STRICT_TRANS_TABLES NO_ZERO_IN_DATE NO_ZERO_DATE ERROR_FOR_DIVISION_BY_ZERO NO_ENGINE_SUBSTITUTION"))
     } else if SHOW_LOWER_CASE_PATTERN.is_match(query) {
         Some(show_variables("lower_case_table_names", "0"))
@@ -274,7 +265,7 @@ fn check_show_variables(query: &str) -> Option<Output> {
     } else {
         None
     };
-    recordbatches.map(Output::Records)
+    record_batch_vec.map(Output::Records)
 }
 
 // TODO(sunng87): extract this to use sqlparser for more variables
@@ -289,7 +280,7 @@ fn check_others(query: &str, session: SessionRef) -> Option<Output> {
         return Some(Output::Records(Vec::new()));
     }
 
-    let recordbatches = if SELECT_VERSION_PATTERN.is_match(query) {
+    let record_batch_vec = if SELECT_VERSION_PATTERN.is_match(query) {
         Some(select_function("version()", &get_version()))
     } else if SELECT_DATABASE_PATTERN.is_match(query) {
         let schema = session.schema();
@@ -302,7 +293,7 @@ fn check_others(query: &str, session: SessionRef) -> Option<Output> {
     } else {
         None
     };
-    recordbatches.map(Output::Records)
+    record_batch_vec.map(Output::Records)
 }
 
 // Check whether the query is a federated or driver setup command,
@@ -323,9 +314,9 @@ pub(crate) fn check(query: &str, session: SessionRef) -> Option<Output> {
         .or_else(|| check_others(query, session))
 }
 
-// get GreptimeDB's version.
+// get HoraeDB's version.
 fn get_version() -> String {
-    format!("{}-greptime", env!("CARGO_PKG_VERSION"))
+    format!("{}-horaedb", env!("CARGO_PKG_VERSION"))
 }
 #[cfg(test)]
 mod test {
@@ -369,7 +360,7 @@ mod test {
         let output = check(query, session.clone());
         match output.unwrap() {
             Output::Records(r) => {
-                assert!(pretty_print(r).contains(&format!("{version}-greptime")));
+                assert!(pretty_print(r).contains(&format!("{version}-horaedb")));
             }
             _ => unreachable!(),
         }
@@ -379,7 +370,7 @@ mod test {
 +-------------------+
 | @@version_comment |
 +-------------------+
-| Greptime          |
+| Apache HoraeDB    |
 +-------------------+";
         test(query, expected);
 
