@@ -53,6 +53,7 @@ members = [
     "components/sampling_cache",
     "components/size_ext",
     "components/skiplist",
+    "components/system_stats",
     "components/table_kv",
     "components/test_util",
     "components/time_ext",
@@ -161,7 +162,7 @@ router = { path = "router" }
 runtime = { path = "components/runtime" }
 sampling_cache = { path = "components/sampling_cache" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.60"
 server = { path = "server" }
 size_ext = { path = "components/size_ext" }
@@ -170,6 +171,7 @@ slog = "2.7"
 spin = "0.9.6"
 sqlparser = { version = "0.35", features = ["serde"] }
 system_catalog = { path = "system_catalog" }
+system_statis = { path = "component/system_stats" }
 table_engine = { path = "table_engine" }
 table_kv = { path = "components/table_kv" }
 tempfile = "3.1.0"
