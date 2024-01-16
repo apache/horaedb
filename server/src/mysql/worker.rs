@@ -15,23 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, net::SocketAddr, sync::Arc, time::Duration};
 
 use generic_error::BoxError;
 use interpreters::interpreter::Output;
 use logger::{error, info};
-use opensrv_mysql::{AsyncMysqlShim, ErrorKind, QueryResultWriter, StatementMetaWriter};
+use opensrv_mysql::{
+    AsyncMysqlShim, ErrorKind, InitWriter, QueryResultWriter, StatementMetaWriter,
+};
 use proxy::{context::RequestContext, http::sql::Request, Proxy};
 use snafu::ResultExt;
 
-use crate::mysql::{
-    error::{CreateContext, HandleSql, Result},
-    writer::MysqlQueryResultWriter,
+use crate::{
+    federated,
+    mysql::{
+        error::{CreateContext, HandleSql, Result},
+        writer::MysqlQueryResultWriter,
+    },
+    session::{parse_catalog_and_schema_from_db_string, Channel, Session, SessionRef},
 };
 
 pub struct MysqlWorker<W: std::io::Write + Send + Sync> {
     generic_hold: PhantomData<W>,
     proxy: Arc<Proxy>,
+    session: SessionRef,
     timeout: Option<Duration>,
 }
 
@@ -39,10 +46,11 @@ impl<W> MysqlWorker<W>
 where
     W: std::io::Write + Send + Sync,
 {
-    pub fn new(proxy: Arc<Proxy>, timeout: Option<Duration>) -> Self {
+    pub fn new(proxy: Arc<Proxy>, add: SocketAddr, timeout: Option<Duration>) -> Self {
         Self {
             generic_hold: PhantomData,
             proxy,
+            session: Arc::new(Session::new(Some(add), Channel::Mysql)),
             timeout,
         }
     }
@@ -102,6 +110,15 @@ where
             }
         }
     }
+
+    async fn on_init<'a>(&'a mut self, database: &'a str, w: InitWriter<'a, W>) -> Result<()> {
+        let (catalog, schema) = parse_catalog_and_schema_from_db_string(database);
+
+        self.session.set_catalog(catalog.into());
+        self.session.set_schema(schema.into());
+
+        w.ok().map_err(|e| e.into())
+    }
 }
 
 impl<W> MysqlWorker<W>
@@ -109,10 +126,14 @@ where
     W: std::io::Write + Send + Sync,
 {
     async fn do_query<'a>(&'a mut self, sql: &'a str) -> Result<Output> {
-        let ctx = self.create_ctx()?;
+        if let Some(output) = federated::check(sql, self.session.clone()) {
+            return Ok(output);
+        }
+
         let req = Request {
             query: sql.to_string(),
         };
+        let ctx = self.create_ctx(self.session.clone())?;
         self.proxy
             .handle_http_sql_query(&ctx, req)
             .await
@@ -126,23 +147,10 @@ where
             })
     }
 
-    fn create_ctx(&self) -> Result<RequestContext> {
-        let default_catalog = self
-            .proxy
-            .instance()
-            .catalog_manager
-            .default_catalog_name()
-            .to_string();
-        let default_schema = self
-            .proxy
-            .instance()
-            .catalog_manager
-            .default_schema_name()
-            .to_string();
-
+    fn create_ctx(&self, session: SessionRef) -> Result<RequestContext> {
         RequestContext::builder()
-            .catalog(default_catalog)
-            .schema(default_schema)
+            .catalog(session.catalog().to_string())
+            .schema(session.schema().to_string())
             .timeout(self.timeout)
             .build()
             .context(CreateContext)

@@ -93,7 +93,7 @@ impl MysqlService {
         loop {
             tokio::select! {
                 conn_result = listener.accept() => {
-                    let (stream, _) = match conn_result {
+                    let (stream, addr) = match conn_result {
                         Ok((s, addr)) => (s, addr),
                         Err(err) => {
                             error!("Mysql Server accept new connection fail. err: {}", err);
@@ -104,7 +104,7 @@ impl MysqlService {
 
                     let rt = runtimes.read_runtime.clone();
                     rt.spawn(AsyncMysqlIntermediary::run_on(
-                        MysqlWorker::new(proxy,  timeout),
+                        MysqlWorker::new(proxy, addr, timeout),
                         stream,
                     ));
                 },

@@ -108,6 +108,7 @@ horaedb-client = "1.0.2"
 common_types = { path = "common_types" }
 datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
+derive_builder = "0.12"
 df_operator = { path = "df_operator" }
 df_engine_extensions = { path = "df_engine_extensions" }
 future_ext = { path = "components/future_ext" }
@@ -135,6 +136,7 @@ meta_client = { path = "meta_client" }
 metric_ext = { path = "components/metric_ext" }
 notifier = { path = "components/notifier" }
 object_store = { path = "components/object_store" }
+once_cell = "1.18"
 panic_ext = { path = "components/panic_ext" }
 partitioned_lock = { path = "components/partitioned_lock" }
 partition_table_engine = { path = "partition_table_engine" }
@@ -152,6 +154,7 @@ proxy = { path = "proxy" }
 query_engine = { path = "query_engine" }
 query_frontend = { path = "query_frontend" }
 rand = "0.7"
+regex = "1"
 remote_engine_client = { path = "remote_engine_client" }
 reqwest = { version = "0.11", default-features = false, features = [
     "rustls-tls",
@@ -184,11 +187,10 @@ trace_metric_derive = { path = "components/trace_metric_derive" }
 trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
 tonic = "0.8.1"
 tokio = { version = "1.29", features = ["full"] }
+uuid = "1.6.1"
 wal = { path = "src/wal" }
 xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
 zstd = { version = "0.12", default-features = false }
-uuid = "1.6.1"
-regex = "1"
 
 # This profile optimizes for good runtime performance.
 [profile.release]

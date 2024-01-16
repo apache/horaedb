@@ -23,6 +23,7 @@
 pub mod config;
 mod consts;
 mod error_util;
+mod federated;
 mod grpc;
 mod http;
 pub mod local_tables;
@@ -30,3 +31,4 @@ mod metrics;
 mod mysql;
 mod postgresql;
 pub mod server;
+mod session;
