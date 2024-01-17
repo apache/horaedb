@@ -19,7 +19,8 @@
 
 use std::{sync::Mutex, time::Duration};
 
-use sysinfo::{Cpu, CpuRefreshKind, LoadAvg, MemoryRefreshKind, RefreshKind, System};
+pub use sysinfo::LoadAvg;
+use sysinfo::{Cpu, CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
 /// The stats about the system.
 #[derive(Debug)]
