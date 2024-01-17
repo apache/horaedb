@@ -16,8 +16,8 @@
 # under the License.
 
 [package]
-name = "skiplist"
-authors = ["Jay Lee <busyjaylee@gmail.com>", "HoraeDB Authors"]
+name = "system_stats"
+authors = ["HoraeDB Authors"]
 
 [package.license]
 workspace = true
@@ -29,14 +29,5 @@ workspace = true
 workspace = true
 
 [dependencies]
-arena = { workspace = true }
-bytes = { workspace = true }
-rand = { workspace = true }
-
-[dev-dependencies]
-criterion = { workspace = true }
-yatp = { git = "https://github.com/tikv/yatp.git", rev = "4b71f8abd86890f0d1e95778c2b6bf5a9ee4c502" }
-
-[[bench]]
-name = "bench"
-harness = false
+sysinfo = { version = "0.30", default-features = false }
+tokio = { workspace = true }
