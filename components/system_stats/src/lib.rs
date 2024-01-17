@@ -72,7 +72,7 @@ impl SystemStatsCollector {
         tokio::time::sleep(wait_dur).await;
 
         let mut system = self.system.lock().unwrap();
-        system.refresh_specifics(Self::make_system_refresh_kind());
+        system.refresh_specifics(Self::make_cpu_and_mem_refresh_kind());
 
         SystemStats {
             cpu_usage: self.compute_cpu_usage(system.cpus()),
@@ -112,7 +112,7 @@ impl SystemStatsCollector {
     }
 
     #[inline]
-    fn make_system_refresh_kind() -> RefreshKind {
+    fn make_cpu_and_mem_refresh_kind() -> RefreshKind {
         let cpu_refresh_kind = CpuRefreshKind::new().with_cpu_usage();
         let mem_refresh_kind = MemoryRefreshKind::new().with_ram();
         RefreshKind::new()
