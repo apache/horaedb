@@ -116,7 +116,7 @@ impl Preprocessor {
         ctx: &Context,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // Decode to datafusion physical plan.
-        let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan)
+        let protobuf = protobuf::PhysicalPlanNode::try_decode(encoded_plan)
             .box_err()
             .with_context(|| ExecutorWithCause {
                 msg: Some("failed to decode plan".to_string()),

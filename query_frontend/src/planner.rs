@@ -984,7 +984,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     }
                 }
 
-                let rows = build_row_group(schema, source, column_index_in_insert)?;
+                let rows = build_row_group(schema, source.unwrap(), column_index_in_insert)?;
 
                 Ok(Plan::Insert(InsertPlan {
                     table,

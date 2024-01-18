@@ -161,6 +161,7 @@ fn filter_record_batch(
     let filter_array = predicate
         .evaluate(record_batch)
         .map(|v| v.into_array(record_batch.num_rows()))
+        .context(FilterExec)?
         .context(FilterExec)?;
     let selected_rows = filter_array
         .as_any()

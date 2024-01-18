@@ -147,8 +147,11 @@ impl ExecutionPlan for ScanMemIter {
         }))
     }
 
-    fn statistics(&self) -> Statistics {
-        Statistics::default()
+    fn statistics(
+        &self,
+    ) -> std::result::Result<datafusion::common::Statistics, datafusion::error::DataFusionError>
+    {
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 

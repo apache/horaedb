@@ -236,9 +236,9 @@ impl ExecutionPlan for PromAlignExec {
         }))
     }
 
-    fn statistics(&self) -> Statistics {
+    fn statistics(&self) -> std::result::Result<datafusion::common::Statistics, datafusion::error::DataFusionError> {
         // TODO(chenxiang)
-        Statistics::default()
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 
@@ -514,7 +514,7 @@ impl Stream for PromAlignReader {
                 if !tsid_samples.is_empty() {
                     Poll::Ready(Some(
                         self.samples_to_record_batch(schema, tsid_samples)
-                            .map_err(DataFusionError::ArrowError),
+                            .map_err(|err| DataFusionError::ArrowError(err, None)),
                     ))
                 } else {
                     Poll::Ready(Some(Ok(RecordBatch::new_empty(schema))))
@@ -529,7 +529,7 @@ impl Stream for PromAlignReader {
                     if !tsid_samples.is_empty() {
                         return Poll::Ready(Some(
                             self.samples_to_record_batch(schema, tsid_samples)
-                                .map_err(DataFusionError::ArrowError),
+                            .map_err(|err| DataFusionError::ArrowError(err, None)),
                         ));
                     }
                 }

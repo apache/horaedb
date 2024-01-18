@@ -413,6 +413,13 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     fn get_window_meta(&self, _name: &str) -> Option<Arc<datafusion::logical_expr::WindowUDF>> {
         None
     }
+
+    fn get_table_source(
+        &self,
+        name: TableReference,
+    ) -> datafusion::error::Result<Arc<dyn TableSource>> {
+        self.get_table_provider(name)
+    }
 }
 
 struct SchemaProviderAdapter {

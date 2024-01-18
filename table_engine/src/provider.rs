@@ -467,9 +467,12 @@ impl ExecutionPlan for ScanTable {
         Some(metric_set)
     }
 
-    fn statistics(&self) -> Statistics {
+    fn statistics(
+        &self,
+    ) -> std::result::Result<datafusion::common::Statistics, datafusion::error::DataFusionError>
+    {
         // TODO(yingwen): Implement this
-        Statistics::default()
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 
