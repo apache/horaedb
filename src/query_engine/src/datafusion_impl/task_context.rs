@@ -40,7 +40,7 @@ use df_engine_extensions::dist_sql_query::{
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
-use prost::Message;
+
 use runtime::Priority;
 use snafu::ResultExt;
 use table_engine::{
