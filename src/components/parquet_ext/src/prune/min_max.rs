@@ -196,6 +196,15 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
     fn null_counts(&self, _column: &Column) -> Option<ArrayRef> {
         None
     }
+
+    // TODO: support this.
+    fn contained(
+        &self,
+        column: &Column,
+        values: &std::collections::HashSet<ScalarValue>,
+    ) -> Option<arrow::array::BooleanArray> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -245,7 +254,7 @@ mod test {
             })
             .collect();
         let schema = SchemaType::group_type_builder("schema")
-            .with_fields(&mut fields)
+            .with_fields(fields)
             .build()
             .unwrap();
 

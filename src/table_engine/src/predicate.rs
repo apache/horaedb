@@ -329,6 +329,8 @@ impl<'a> TimeRangeExtractor<'a> {
             | Operator::BitwiseAnd
             | Operator::BitwiseOr
             | Operator::BitwiseXor
+            | Operator::AtArrow
+            | Operator::ArrowAt
             | Operator::BitwiseShiftRight
             | Operator::BitwiseShiftLeft
             | Operator::StringConcat => TimeRange::min_to_max(),
@@ -432,15 +434,12 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::TryCast { .. }
             | Expr::Sort { .. }
             | Expr::ScalarFunction { .. }
-            | Expr::ScalarUDF { .. }
             | Expr::AggregateFunction { .. }
             | Expr::WindowFunction { .. }
-            | Expr::AggregateUDF { .. }
             | Expr::Wildcard { .. }
             | Expr::Exists { .. }
             | Expr::InSubquery { .. }
             | Expr::ScalarSubquery(_)
-            | Expr::QualifiedWildcard { .. }
             | Expr::GroupingSet(_)
             | Expr::GetIndexedField { .. }
             | Expr::OuterReferenceColumn { .. }
