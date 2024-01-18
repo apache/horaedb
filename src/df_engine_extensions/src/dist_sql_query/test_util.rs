@@ -263,7 +263,6 @@ impl TestContext {
                 self.group_by.clone(),
                 self.aggr_exprs.clone(),
                 vec![None],
-                vec![None],
                 input,
                 input_schema.clone(),
             )
@@ -288,7 +287,6 @@ impl TestContext {
                 AggregateMode::Final,
                 final_group_by,
                 self.aggr_exprs.clone(),
-                vec![None],
                 vec![None],
                 merge,
                 input_schema,
@@ -490,8 +488,8 @@ impl ExecutionPlan for MockScan {
         unimplemented!()
     }
 
-    fn statistics(&self) -> datafusion::physical_plan::Statistics {
-        unimplemented!()
+    fn statistics(&self) -> DfResult<datafusion::physical_plan::Statistics> {
+        Ok(datafusion::physical_plan::Statistics::new_unknown(&self.schema()))
     }
 }
 
