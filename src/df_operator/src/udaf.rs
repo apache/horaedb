@@ -50,7 +50,7 @@ impl AggregateUdf {
 
     #[inline]
     pub fn name(&self) -> &str {
-        &self.df_udaf.name()
+        self.df_udaf.name()
     }
 
     #[inline]

@@ -43,7 +43,7 @@ impl ScalarUdf {
 
     #[inline]
     pub fn name(&self) -> &str {
-        &self.df_udf.name()
+        self.df_udf.name()
     }
 
     /// Convert into datafusion's udf

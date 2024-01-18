@@ -200,8 +200,8 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
     // TODO: support this.
     fn contained(
         &self,
-        column: &Column,
-        values: &std::collections::HashSet<ScalarValue>,
+        _column: &Column,
+        _values: &std::collections::HashSet<ScalarValue>,
     ) -> Option<arrow::array::BooleanArray> {
         None
     }
@@ -239,7 +239,7 @@ mod test {
     }
 
     fn prepare_parquet_schema_descr(schema: &ArrowSchema) -> SchemaDescPtr {
-        let mut fields = schema
+        let fields = schema
             .fields()
             .iter()
             .map(|field| {

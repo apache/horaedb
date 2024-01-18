@@ -107,7 +107,7 @@ cluster = { path = "src/cluster" }
 criterion = "0.5"
 horaedb-client = "1.0.2"
 common_types = { path = "src/common_types" }
-datafusion = {  git = "https://github.com/apache/arrow-datafusion.git", rev = "a154884545cfdeb1a6c20872b3882a5624cd1119"}
+datafusion = { git = "https://github.com/apache/arrow-datafusion.git", rev = "a154884545cfdeb1a6c20872b3882a5624cd1119" }
 datafusion-proto = { git = "https://github.com/apache/arrow-datafusion.git", rev = "a154884545cfdeb1a6c20872b3882a5624cd1119" }
 derive_builder = "0.12"
 df_operator = { path = "src/df_operator" }
