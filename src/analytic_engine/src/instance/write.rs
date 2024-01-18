@@ -555,9 +555,12 @@ impl<'a> Writer<'a> {
 
         // Collect metrics.
         let num_columns = row_group.schema().num_columns();
-        table_data
-            .metrics
-            .on_write_request_done(row_group.num_rows(), num_columns);
+        let num_written_bytes: usize = row_group.iter().map(|row| row.size()).sum();
+        table_data.metrics.on_write_request_done(
+            row_group.num_rows(),
+            num_columns,
+            num_written_bytes,
+        );
 
         Ok(())
     }
