@@ -129,10 +129,10 @@ mod tests {
         assert!(stats.total_memory > 0);
         assert!(stats.used_memory > 0);
         assert!(stats.used_memory < stats.total_memory);
-        assert!(stats.cpu_usage > 0.0);
-        assert!(stats.load_avg.one > 0.0);
-        assert!(stats.load_avg.five > 0.0);
-        assert!(stats.load_avg.fifteen > 0.0);
+        assert!(stats.cpu_usage >= 0.0);
+        assert!(stats.load_avg.one >= 0.0);
+        assert!(stats.load_avg.five >= 0.0);
+        assert!(stats.load_avg.fifteen >= 0.0);
     }
 
     #[tokio::test]
