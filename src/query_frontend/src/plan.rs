@@ -447,7 +447,7 @@ mod tests {
                 .1
                 .map(|v| TimeRange::new_unchecked(v.0.into(), v.1.into()));
 
-            assert_eq!(plan.extract_time_range(), expected, "sql:{}", sql);
+            assert_eq!(plan.extract_time_range().unwrap(), expected, "sql:{}", sql);
         }
     }
 }
