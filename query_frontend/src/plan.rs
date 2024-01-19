@@ -39,7 +39,7 @@ use runtime::Priority;
 use snafu::Snafu;
 use table_engine::{partition::PartitionInfo, table::TableRef};
 
-use crate::{ast::ShowCreateObject, container::TableContainer};
+use crate::{ast::ShowCreateObject, container::TableContainer, planner::get_table_ref};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -111,7 +111,7 @@ pub struct QueryPlan {
 impl QueryPlan {
     fn find_timestamp_column(&self) -> Option<Column> {
         let table_name = self.table_name.as_ref()?;
-        let table_ref = self.tables.get(table_name.into())?;
+        let table_ref = self.tables.get(get_table_ref(table_name))?;
         let schema = table_ref.table.schema();
         let timestamp_name = schema.timestamp_name();
         Some(Column::from_name(timestamp_name))
