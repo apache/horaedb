@@ -83,9 +83,16 @@ impl Interpreter for SelectInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
         let plan = self.plan;
-        let priority = match plan.decide_query_priority(PriorityContext {
-            time_range_threshold: self.ctx.expensive_query_threshold(),
-        }) {
+        let priority = match plan
+            .decide_query_priority(PriorityContext {
+                time_range_threshold: self.ctx.expensive_query_threshold(),
+            })
+            .box_err()
+            .with_context(|| ExecutePlan {
+                msg: format!("decide query priority failed, id:{request_id}"),
+            })
+            .context(Select)?
+        {
             Some(v) => v,
             None => {
                 debug!(

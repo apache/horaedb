@@ -36,7 +36,7 @@ use datafusion::{
 use logger::{debug, warn};
 use macros::define_result;
 use runtime::Priority;
-use snafu::Snafu;
+use snafu::{OptionExt, Snafu};
 use table_engine::{partition::PartitionInfo, table::TableRef};
 
 use crate::{ast::ShowCreateObject, container::TableContainer, planner::get_table_ref};
@@ -54,6 +54,9 @@ pub enum Error {
 
     #[snafu(display("Alter primary key is not allowed."))]
     AlterPrimaryKey,
+
+    #[snafu(display("Query plan is invalid, msg:{msg}."))]
+    InvalidQueryPlan { msg: String },
 }
 
 define_result!(Error);
@@ -109,12 +112,22 @@ pub struct QueryPlan {
 }
 
 impl QueryPlan {
-    fn find_timestamp_column(&self) -> Option<Column> {
-        let table_name = self.table_name.as_ref()?;
-        let table_ref = self.tables.get(get_table_ref(table_name))?;
+    fn find_timestamp_column(&self) -> Result<Option<Column>> {
+        let table_name = match self.table_name.as_ref() {
+            Some(v) => v,
+            None => {
+                return Ok(None);
+            }
+        };
+        let table_ref = self
+            .tables
+            .get(get_table_ref(table_name))
+            .with_context(|| InvalidQueryPlan {
+                msg: format!("Couldn't find table in table container, name:{table_name}"),
+            })?;
         let schema = table_ref.table.schema();
         let timestamp_name = schema.timestamp_name();
-        Some(Column::from_name(timestamp_name))
+        Ok(Some(Column::from_name(timestamp_name)))
     }
 
     /// This function is used to extract time range from the query plan.
@@ -125,15 +138,15 @@ impl QueryPlan {
     /// Note: When it timestamp filter evals to false(such as ts < 10 and ts >
     /// 100), it will return None, which means no valid time range for this
     /// query.
-    fn extract_time_range(&self) -> Option<TimeRange> {
-        let ts_column = if let Some(v) = self.find_timestamp_column() {
+    fn extract_time_range(&self) -> Result<Option<TimeRange>> {
+        let ts_column = if let Some(v) = self.find_timestamp_column()? {
             v
         } else {
             warn!(
                 "Couldn't find time column, plan:{:?}, table_name:{:?}",
                 self.df_plan, self.table_name
             );
-            return Some(TimeRange::min_to_max());
+            return Ok(Some(TimeRange::min_to_max()));
         };
         let time_range = match influxql_query::logical_optimizer::range_predicate::find_time_range(
             &self.df_plan,
@@ -145,10 +158,9 @@ impl QueryPlan {
                     "Couldn't find time range, plan:{:?}, err:{}",
                     self.df_plan, e
                 );
-                return Some(TimeRange::min_to_max());
+                return Ok(Some(TimeRange::min_to_max()));
             }
         };
-
         debug!(
             "Extract time range, value:{time_range:?}, plan:{:?}",
             self.df_plan
@@ -190,16 +202,20 @@ impl QueryPlan {
             Bound::Unbounded => {}
         }
 
-        TimeRange::new(start.into(), end.into())
+        Ok(TimeRange::new(start.into(), end.into()))
     }
 
     /// Decide the query priority based on the query plan.
     /// When query contains invalid time range, it will return None.
     // TODO: Currently we only consider the time range, consider other factors, such
     // as the number of series, or slow log metrics.
-    pub fn decide_query_priority(&self, ctx: PriorityContext) -> Option<Priority> {
+    pub fn decide_query_priority(&self, ctx: PriorityContext) -> Result<Option<Priority>> {
         let threshold = ctx.time_range_threshold;
-        let time_range = self.extract_time_range()?;
+        let time_range = match self.extract_time_range()? {
+            Some(v) => v,
+            // When there is no valid time range , we cann't decide its priority.
+            None => return Ok(None),
+        };
         let is_expensive = if let Some(v) = time_range
             .exclusive_end()
             .as_i64()
@@ -217,18 +233,20 @@ impl QueryPlan {
             Priority::High
         };
 
-        Some(priority)
+        Ok(Some(priority))
     }
 
     /// When query contains invalid time range such as `[200, 100]`, it will
     /// return None.
-    pub fn query_range(&self) -> Option<i64> {
+    pub fn query_range(&self) -> Result<Option<i64>> {
         self.extract_time_range().map(|time_range| {
-            time_range
-                .exclusive_end()
-                .as_i64()
-                .checked_sub(time_range.inclusive_start().as_i64())
-                .unwrap_or(i64::MAX)
+            time_range.map(|time_range| {
+                time_range
+                    .exclusive_end()
+                    .as_i64()
+                    .checked_sub(time_range.inclusive_start().as_i64())
+                    .unwrap_or(i64::MAX)
+            })
         })
     }
 }

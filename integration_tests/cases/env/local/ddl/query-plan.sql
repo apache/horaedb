@@ -89,13 +89,14 @@ CREATE TABLE `TEST_QUERY_PRIORITY` (
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
-explain analyze select t from `TEST_QUERY_PRIORITY`
+explain analyze select TS from `TEST_QUERY_PRIORITY`
 where TS >= 1695348001000 and TS < 1695348002000;
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
-explain analyze select t from `TEST_QUERY_PRIORITY`
+explain analyze select TS from `TEST_QUERY_PRIORITY`
 where TS >= 1695348001000;
 
 DROP TABLE `03_dml_select_real_time_range`;
 DROP TABLE `03_append_mode_table`;
+DROP TABLE `TEST_QUERY_PRIORITY`;
