@@ -25,168 +25,168 @@ license = "Apache-2.0"
 resolver = "2"
 # In alphabetical order
 members = [
-    "analytic_engine",
-    "benchmarks",
-    "catalog",
-    "catalog_impls",
-    "cluster",
-    "common_types",
-    "components/alloc_tracker",
-    "components/arena",
-    "components/arrow_ext",
-    "components/bytes_ext",
-    "components/codec",
-    "components/future_ext",
-    "components/hash_ext",
-    "components/id_allocator",
-    "components/logger",
-    "components/macros",
-    "components/message_queue",
-    "components/metric_ext",
-    "components/notifier",
-    "components/object_store",
-    "components/panic_ext",
-    "components/parquet_ext",
-    "components/partitioned_lock",
-    "components/profile",
-    "components/runtime",
-    "components/sampling_cache",
-    "components/size_ext",
-    "components/skiplist",
-    "components/system_stats",
-    "components/table_kv",
-    "components/test_util",
-    "components/time_ext",
-    "components/timed_task",
-    "components/toml_ext",
-    "components/trace_metric",
-    "components/trace_metric_derive",
-    "components/trace_metric_derive_tests",
-    "components/tracing_util",
-    "df_engine_extensions",
-    "df_operator",
     "integration_tests",
     "integration_tests/sdk/rust",
-    "interpreters",
-    "meta_client",
-    "partition_table_engine",
-    "proxy",
-    "query_engine",
-    "query_frontend",
-    "remote_engine_client",
-    "router",
-    "server",
+    "src/analytic_engine",
+    "src/benchmarks",
+    "src/catalog",
+    "src/catalog_impls",
+    "src/cluster",
+    "src/common_types",
+    "src/components/alloc_tracker",
+    "src/components/arena",
+    "src/components/arrow_ext",
+    "src/components/bytes_ext",
+    "src/components/codec",
+    "src/components/future_ext",
+    "src/components/hash_ext",
+    "src/components/id_allocator",
+    "src/components/logger",
+    "src/components/macros",
+    "src/components/message_queue",
+    "src/components/metric_ext",
+    "src/components/notifier",
+    "src/components/object_store",
+    "src/components/panic_ext",
+    "src/components/parquet_ext",
+    "src/components/partitioned_lock",
+    "src/components/profile",
+    "src/components/runtime",
+    "src/components/sampling_cache",
+    "src/components/size_ext",
+    "src/components/skiplist",
+    "src/components/system_stats",
+    "src/components/table_kv",
+    "src/components/test_util",
+    "src/components/time_ext",
+    "src/components/timed_task",
+    "src/components/toml_ext",
+    "src/components/trace_metric",
+    "src/components/trace_metric_derive",
+    "src/components/trace_metric_derive_tests",
+    "src/components/tracing_util",
+    "src/df_engine_extensions",
+    "src/df_operator",
     "src/horaedb",
+    "src/interpreters",
+    "src/meta_client",
+    "src/partition_table_engine",
+    "src/proxy",
+    "src/query_engine",
+    "src/query_frontend",
+    "src/remote_engine_client",
+    "src/router",
+    "src/server",
+    "src/system_catalog",
+    "src/table_engine",
+    "src/tools",
     "src/wal",
-    "system_catalog",
-    "table_engine",
-    "tools",
 ]
 
 [workspace.dependencies]
-alloc_tracker = { path = "components/alloc_tracker" }
+alloc_tracker = { path = "src/components/alloc_tracker" }
 arrow = { version = "43.0.0", features = ["prettyprint"] }
 arrow_ipc = { version = "43.0.0" }
-arrow_ext = { path = "components/arrow_ext" }
-analytic_engine = { path = "analytic_engine" }
-arena = { path = "components/arena" }
+arrow_ext = { path = "src/components/arrow_ext" }
+analytic_engine = { path = "src/analytic_engine" }
+arena = { path = "src/components/arena" }
 async-stream = "0.3.4"
 async-trait = "0.1.72"
 atomic_enum = "0.2.0"
 base64 = "0.13"
 bytes = "1"
-bytes_ext = { path = "components/bytes_ext" }
-catalog = { path = "catalog" }
-catalog_impls = { path = "catalog_impls" }
+bytes_ext = { path = "src/components/bytes_ext" }
+catalog = { path = "src/catalog" }
+catalog_impls = { path = "src/catalog_impls" }
 horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "19ece8f771fc0b3e8e734072cc3d8040de6c74cb" }
-codec = { path = "components/codec" }
+codec = { path = "src/components/codec" }
 chrono = "0.4"
 clap = "3.0"
 clru = "0.6.1"
-cluster = { path = "cluster" }
+cluster = { path = "src/cluster" }
 criterion = "0.5"
 horaedb-client = "1.0.2"
-common_types = { path = "common_types" }
+common_types = { path = "src/common_types" }
 datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "9c3a537e25e5ab3299922864034f67fb2f79805d" }
 derive_builder = "0.12"
-df_operator = { path = "df_operator" }
-df_engine_extensions = { path = "df_engine_extensions" }
-future_ext = { path = "components/future_ext" }
+df_operator = { path = "src/df_operator" }
+df_engine_extensions = { path = "src/df_engine_extensions" }
+future_ext = { path = "src/components/future_ext" }
 etcd-client = { version = "0.10.3", features = ["tls"] }
 env_logger = "0.6"
 futures = "0.3"
-generic_error = { path = "components/generic_error" }
-hash_ext = { path = "components/hash_ext" }
+generic_error = { path = "src/components/generic_error" }
+hash_ext = { path = "src/components/hash_ext" }
 hex = "0.4.3"
 hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
-id_allocator = { path = "components/id_allocator" }
+id_allocator = { path = "src/components/id_allocator" }
 influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "iox_query_influxql" }
 influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "influxdb_influxql_parser" }
 influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "iox_query" }
 influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "a905863", package = "schema" }
-interpreters = { path = "interpreters" }
+interpreters = { path = "src/interpreters" }
 itertools = "0.10.5"
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
 lazy_static = "1.4.0"
-logger = { path = "components/logger" }
+logger = { path = "src/components/logger" }
 lru = "0.7.6"
-macros = { path = "components/macros" }
-message_queue = { path = "components/message_queue" }
-meta_client = { path = "meta_client" }
-metric_ext = { path = "components/metric_ext" }
-notifier = { path = "components/notifier" }
-object_store = { path = "components/object_store" }
+macros = { path = "src/components/macros" }
+message_queue = { path = "src/components/message_queue" }
+meta_client = { path = "src/meta_client" }
+metric_ext = { path = "src/components/metric_ext" }
+notifier = { path = "src/components/notifier" }
+object_store = { path = "src/components/object_store" }
 once_cell = "1.18"
-panic_ext = { path = "components/panic_ext" }
-partitioned_lock = { path = "components/partitioned_lock" }
-partition_table_engine = { path = "partition_table_engine" }
-parquet_ext = { path = "components/parquet_ext" }
+panic_ext = { path = "src/components/panic_ext" }
+partitioned_lock = { path = "src/components/partitioned_lock" }
+partition_table_engine = { path = "src/partition_table_engine" }
+parquet_ext = { path = "src/components/parquet_ext" }
 parquet = { version = "43.0.0" }
 paste = "1.0"
 pin-project-lite = "0.2.8"
 pprof = "0.12.1"
-profile = { path = "components/profile" }
+profile = { path = "src/components/profile" }
 prom-remote-api = { version = "0.2.2" }
 prometheus = "0.12"
 prometheus-static-metric = "0.5"
 prost = "0.11"
-proxy = { path = "proxy" }
-query_engine = { path = "query_engine" }
-query_frontend = { path = "query_frontend" }
+proxy = { path = "src/proxy" }
+query_engine = { path = "src/query_engine" }
+query_frontend = { path = "src/query_frontend" }
 rand = "0.7"
 regex = "1"
-remote_engine_client = { path = "remote_engine_client" }
+remote_engine_client = { path = "src/remote_engine_client" }
 reqwest = { version = "0.11", default-features = false, features = [
     "rustls-tls",
     "json",
 ] }
-router = { path = "router" }
-runtime = { path = "components/runtime" }
-sampling_cache = { path = "components/sampling_cache" }
+router = { path = "src/router" }
+runtime = { path = "src/components/runtime" }
+sampling_cache = { path = "src/components/sampling_cache" }
 snafu = { version = "0.6.10", features = ["backtraces"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.60"
-server = { path = "server" }
-size_ext = { path = "components/size_ext" }
+server = { path = "src/server" }
+size_ext = { path = "src/components/size_ext" }
 smallvec = "1.6"
 slog = "2.7"
 spin = "0.9.6"
 sqlparser = { version = "0.35", features = ["serde"] }
-system_catalog = { path = "system_catalog" }
-system_statis = { path = "component/system_stats" }
-table_engine = { path = "table_engine" }
-table_kv = { path = "components/table_kv" }
+system_catalog = { path = "src/system_catalog" }
+system_statis = { path = "src/components/system_stats" }
+table_engine = { path = "src/table_engine" }
+table_kv = { path = "src/components/table_kv" }
 tempfile = "3.1.0"
-test_util = { path = "components/test_util" }
-time_ext = { path = "components/time_ext" }
+test_util = { path = "src/components/test_util" }
+time_ext = { path = "src/components/time_ext" }
 toml = "0.7"
-toml_ext = { path = "components/toml_ext" }
-timed_task = { path = "components/timed_task" }
-tracing_util = { path = "components/tracing_util" }
-trace_metric = { path = "components/trace_metric" }
-trace_metric_derive = { path = "components/trace_metric_derive" }
-trace_metric_derive_tests = { path = "components/trace_metric_derive_tests" }
+toml_ext = { path = "src/components/toml_ext" }
+timed_task = { path = "src/components/timed_task" }
+tracing_util = { path = "src/components/tracing_util" }
+trace_metric = { path = "src/components/trace_metric" }
+trace_metric_derive = { path = "src/components/trace_metric_derive" }
+trace_metric_derive_tests = { path = "src/components/trace_metric_derive_tests" }
 tonic = "0.8.1"
 tokio = { version = "1.29", features = ["full"] }
 uuid = "1.6.1"
