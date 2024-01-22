@@ -11,4 +11,4 @@ TODO
 The project is under rapid development so that any contribution is welcome.
 
 ## License
-HoraeMeta is under [Apache License 2.0](./LICENSE).
+HoraeCTL is under [Apache License 2.0](./LICENSE).

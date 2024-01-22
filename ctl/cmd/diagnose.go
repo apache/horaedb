@@ -24,7 +24,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// diagnoseCmd represents the diagnose command
 var diagnoseCmd = &cobra.Command{
 	Use:     "diagnose",
 	Aliases: []string{"d"},

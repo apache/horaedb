@@ -25,7 +25,6 @@ import (
 	"os"
 )
 
-// quitCmd represents the quit command
 var quitCmd = &cobra.Command{
 	Use:     "quit",
 	Aliases: []string{"q", "exit"},

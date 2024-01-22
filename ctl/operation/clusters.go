@@ -79,7 +79,7 @@ func ClustersList() {
 }
 
 func ClusterDiagnose() {
-	url := clusterUrl()
+	url := diagnoseUrl()
 	var response DiagnoseShardResponse
 	err := HttpUtil(http.MethodGet, url, nil, &response)
 	if err != nil {

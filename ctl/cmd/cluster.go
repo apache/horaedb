@@ -24,7 +24,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// clusterCmd represents the cluster command
 var clusterCmd = &cobra.Command{
 	Use:     "cluster",
 	Aliases: []string{"c"},
