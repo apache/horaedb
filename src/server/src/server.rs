@@ -177,11 +177,12 @@ impl Server {
         if let Some(cluster) = &self.cluster {
             info!("Server start, start cluster");
             cluster.start().await.context(StartCluster)?;
+        } else {
+            // TODO: Is it necessary to create default schema in cluster mode?
+            info!("Server start, create default schema if not exist");
+            self.create_default_schema_if_not_exists().await;
         }
 
-        // TODO: Is it necessary to create default schema in cluster mode?
-        info!("Server start, create default schema if not exist");
-        self.create_default_schema_if_not_exists().await;
 
         info!("Server start, start services");
 
