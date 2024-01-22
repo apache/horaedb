@@ -25,8 +25,10 @@ use sysinfo::{Cpu, CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 /// The stats about the system.
 #[derive(Debug)]
 pub struct SystemStats {
-    /// The usage's range is [0, 1.0]
+    /// The valid range is [0.0, total_cpu].
     pub cpu_usage: f32,
+    /// The total cpu
+    pub num_cpus: u32,
     /// The memory is counted in byte.
     pub used_memory: u64,
     /// The memory is counted in byte.
@@ -76,6 +78,7 @@ impl SystemStatsCollector {
 
         SystemStats {
             cpu_usage: self.compute_cpu_usage(system.cpus()),
+            num_cpus: system.cpus().len() as u32,
             used_memory: system.used_memory(),
             total_memory: self.total_memory,
             load_avg: System::load_average(),
@@ -84,19 +87,13 @@ impl SystemStatsCollector {
 
     // Refresh and compute the latest cpu usage.
     fn compute_cpu_usage(&self, cpus: &[Cpu]) -> f32 {
-        let mut num_cpus = 0;
         let mut total_cpu_usage = 0.0;
         let valid_cpus = cpus.iter().filter(|v| !v.cpu_usage().is_nan());
         for cpu in valid_cpus {
             total_cpu_usage += cpu.cpu_usage();
-            num_cpus += 1;
         }
 
-        if num_cpus != 0 {
-            total_cpu_usage / (num_cpus as f32) / 100.0
-        } else {
-            0f32
-        }
+        total_cpu_usage / 100.0
     }
 
     #[inline]
@@ -130,13 +127,14 @@ mod tests {
         assert!(stats.used_memory > 0);
         assert!(stats.used_memory < stats.total_memory);
         assert!(stats.cpu_usage >= 0.0);
+        assert!(stats.cpu_usage <= stats.num_cpus as f32);
         assert!(stats.load_avg.one >= 0.0);
         assert!(stats.load_avg.five >= 0.0);
         assert!(stats.load_avg.fifteen >= 0.0);
     }
 
     #[tokio::test]
-    async fn test_normal_case() {
+    async fn test_collect_system_stats() {
         let collector = SystemStatsCollector::try_new().unwrap();
         let stats = collector
             .collect_and_report(Duration::from_millis(500))
