@@ -248,9 +248,15 @@ impl Proxy {
         }
 
         if let Plan::Query(plan) = &plan {
-            if let Some(priority) = plan.decide_query_priority(PriorityContext {
-                time_range_threshold: self.expensive_query_threshold,
-            }) {
+            if let Some(priority) = plan
+                .decide_query_priority(PriorityContext {
+                    time_range_threshold: self.expensive_query_threshold,
+                })
+                .box_err()
+                .context(Internal {
+                    msg: format!("Decide query priority failed, table_name:{table_name:?}"),
+                })?
+            {
                 slow_timer.priority(priority);
             }
         }

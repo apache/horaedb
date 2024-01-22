@@ -18,6 +18,7 @@
 use std::{collections::HashSet, str::FromStr, sync::RwLock};
 
 use datafusion::logical_expr::logical_plan::LogicalPlan;
+use logger::error;
 use macros::define_result;
 use query_frontend::plan::Plan;
 use serde::{Deserialize, Serialize};
@@ -74,7 +75,14 @@ impl BlockRule {
             BlockRule::AnyQuery => matches!(plan, Plan::Query(_)),
             BlockRule::QueryRange(threshold) => {
                 if let Plan::Query(plan) = plan {
-                    if let Some(range) = plan.query_range() {
+                    let range = match plan.query_range() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!("Find query range failed, err:{e}");
+                            return false;
+                        }
+                    };
+                    if let Some(range) = range {
                         if range > *threshold {
                             return true;
                         }

@@ -77,5 +77,26 @@ where t >= 1695348001000 and name = 'ceresdb';
 explain analyze select t from `03_append_mode_table`
 where t >= 1695348001000 and name = 'ceresdb';
 
+CREATE TABLE `TEST_QUERY_PRIORITY` (
+    NAME string TAG,
+    VALUE double NOT NULL,
+    TS timestamp NOT NULL,
+    timestamp KEY (TS)) ENGINE = Analytic WITH (
+    enable_ttl = 'false',
+    segment_duration = '2h',
+    update_mode = 'append'
+);
+
+-- This query should have higher priority
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+explain analyze select TS from `TEST_QUERY_PRIORITY`
+where TS >= 1695348001000 and TS < 1695348002000;
+
+-- This query should have higher priority
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+explain analyze select TS from `TEST_QUERY_PRIORITY`
+where TS >= 1695348001000;
+
 DROP TABLE `03_dml_select_real_time_range`;
 DROP TABLE `03_append_mode_table`;
+DROP TABLE `TEST_QUERY_PRIORITY`;
