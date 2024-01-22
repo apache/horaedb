@@ -21,7 +21,8 @@ use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use common_types::{
-    datum::DatumKind, record_batch::FetchedRecordBatch, request_id::RequestId, time::TimeRange,
+    datum::DatumKind, record_batch::FetchedRecordBatch, request_id::RequestId, schema::Schema,
+    time::TimeRange,
 };
 use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
@@ -39,14 +40,13 @@ use crate::{
         parquet::{
             encoding::{encode_sst_meta_data, ColumnEncoding, EncodeOptions, ParquetEncoder},
             meta_data::{
-                ColumnValueSet, ParquetFilter, ParquetMetaData, RowGroupFilter,
-                RowGroupFilterBuilder,
+                filter::{ParquetFilter, RowGroupFilter, RowGroupFilterBuilder},
+                ColumnValueSet, ParquetMetaData,
             },
         },
         writer::{
-            self, BuildParquetFilter, BuildParquetFilterNoCause, EncodePbData, EncodeRecordBatch,
-            ExpectTimestampColumn, Io, MetaData, PollRecordBatch, RecordBatchStream, Result,
-            SstInfo, SstWriter, Storage,
+            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
+            MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
@@ -237,15 +237,10 @@ impl<'a> RecordBatchGroupWriter<'a> {
     /// Build the parquet filter for the given `row_group`.
     fn build_row_group_filter(
         &self,
+        schema: &Schema,
         row_group_batch: &[FetchedRecordBatch],
     ) -> Result<RowGroupFilter> {
-        let schema_with_key =
-            row_group_batch[0]
-                .schema_with_key()
-                .with_context(|| BuildParquetFilterNoCause {
-                    msg: "primary key indexes not exist",
-                })?;
-        let mut builder = RowGroupFilterBuilder::new(&schema_with_key);
+        let mut builder = RowGroupFilterBuilder::new(schema);
 
         for partial_batch in row_group_batch {
             for (col_idx, column) in partial_batch.columns().iter().enumerate() {
@@ -356,7 +351,9 @@ impl<'a> RecordBatchGroupWriter<'a> {
         let timestamp_index = self.meta_data.schema.timestamp_index();
         while !row_group.is_empty() {
             if let Some(filter) = &mut parquet_filter {
-                filter.push_row_group_filter(self.build_row_group_filter(&row_group)?);
+                filter.push_row_group_filter(
+                    self.build_row_group_filter(&self.meta_data.schema, &row_group)?,
+                );
             }
 
             let num_batches = row_group.len();
