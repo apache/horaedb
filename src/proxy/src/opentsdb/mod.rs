@@ -126,7 +126,7 @@ impl Proxy {
             function_registry: &*self.instance.function_registry,
         };
         let frontend = Frontend::new(provider, self.instance.dyn_config.fronted.clone());
-        let sql_ctx = SqlContext::new(request_id, deadline);
+        let sql_ctx = SqlContext::new(request_id.clone(), deadline);
 
         let opentsdb_plan = frontend
             .opentsdb_query_to_plan(&sql_ctx, req)
@@ -149,10 +149,11 @@ impl Proxy {
 
         let mut futures = FuturesOrdered::new();
         for plan in opentsdb_plan.plans {
+            let request_id_clone = request_id.clone();
             let one_resp = async {
                 let output = self
                     .execute_plan(
-                        request_id.clone(),
+                        request_id_clone,
                         &ctx.catalog,
                         &ctx.schema,
                         plan.plan,

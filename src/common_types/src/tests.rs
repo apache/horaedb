@@ -279,7 +279,7 @@ pub fn build_schema_for_metric() -> Schema {
         )
         .unwrap();
 
-    builder.build().unwrap()
+    builder.primary_key_indexes(vec![0, 1]).build().unwrap()
 }
 
 #[allow(clippy::too_many_arguments)]
