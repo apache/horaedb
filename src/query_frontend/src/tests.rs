@@ -93,7 +93,7 @@ impl Default for MockMetaProvider {
 
 impl MetaProvider for MockMetaProvider {
     fn default_catalog_name(&self) -> &str {
-        DEFAULT_CATALOG
+        &DEFAULT_CATALOG
     }
 
     fn default_schema_name(&self) -> &str {

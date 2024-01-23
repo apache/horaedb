@@ -177,7 +177,7 @@ mod tests {
 
     /// Build db name from catalog and schema string
     fn build_db_string(catalog: &str, schema: &str) -> String {
-        if catalog == DEFAULT_CATALOG {
+        if catalog == DEFAULT_CATALOG.as_str() {
             schema.to_string()
         } else {
             format!("{catalog}-{schema}")
@@ -186,14 +186,14 @@ mod tests {
 
     #[test]
     fn test_db_string() {
-        assert_eq!("test", build_db_string(DEFAULT_CATALOG, "test"));
+        assert_eq!("test", build_db_string(&DEFAULT_CATALOG, "test"));
         assert_eq!("a0b1c2d3-test", build_db_string("a0b1c2d3", "test"));
     }
 
     #[test]
     fn test_parse_catalog_and_schema() {
         assert_eq!(
-            (DEFAULT_CATALOG, "fullschema"),
+            (DEFAULT_CATALOG.as_str(), "fullschema"),
             parse_catalog_and_schema_from_db_string("fullschema")
         );
 

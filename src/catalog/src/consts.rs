@@ -19,15 +19,14 @@
 
 use lazy_static::lazy_static;
 
+lazy_static! {
+    /// Default catalog name
+    pub static ref DEFAULT_CATALOG: String =
+        std::env::var("HORAEDB_DEFAULT_CATALOG").unwrap_or_else(|_| "horaedb".to_string());
+}
 /// Default schema name
 pub const DEFAULT_SCHEMA: &str = "public";
 /// Catalog name of the sys catalog
 pub const SYSTEM_CATALOG: &str = "system";
 /// Schema name of the sys catalog
 pub const SYSTEM_CATALOG_SCHEMA: &str = "public";
-
-lazy_static! {
-    /// Default catalog name
-    pub static ref DEFAULT_CATALOG: String =
-        std::env::var("HORAEDB_DEFAULT_CATALOG").unwrap_or_else(|_| "horaedb".to_string());
-}

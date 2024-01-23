@@ -183,7 +183,6 @@ impl Server {
         info!("Server start, create default schema if not exist");
         self.create_default_schema_if_not_exists().await;
 
-
         info!("Server start, start services");
 
         self.http_service.start().await.context(HttpService {
