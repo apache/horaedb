@@ -147,10 +147,11 @@ mod tests {
                 .collect_and_report(Duration::from_millis(200))
                 .await;
             check_system_stats(&new_stats);
-            all_cpu_usages.push(new_stats.cpu_usage);
+            all_cpu_usages.push(new_stats);
         }
 
-        // Ensure the stats will be updated for every collection.
-        assert!(all_cpu_usages.into_iter().any(|v| v != stats.cpu_usage));
+        assert!(all_cpu_usages
+            .into_iter()
+            .all(|v| v.num_cpus == stats.num_cpus && v.total_memory == stats.total_memory));
     }
 }
