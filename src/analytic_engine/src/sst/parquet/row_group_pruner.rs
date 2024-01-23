@@ -40,7 +40,7 @@ use snafu::ensure;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::sst::{
-    parquet::meta_data::{ColumnValueSet, ParquetFilter},
+    parquet::meta_data::{filter::ParquetFilter, ColumnValueSet},
     reader::error::{OtherNoCause, Result},
 };
 

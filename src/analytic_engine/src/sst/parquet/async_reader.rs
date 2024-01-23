@@ -71,7 +71,7 @@ use crate::{
         metrics::MaybeTableLevelMetrics,
         parquet::{
             encoding::ParquetDecoder,
-            meta_data::{ColumnValueSet, ParquetFilter},
+            meta_data::{filter::ParquetFilter, ColumnValueSet},
             row_group_pruner::RowGroupPruner,
         },
         reader::{error::*, Result, SstReader},
