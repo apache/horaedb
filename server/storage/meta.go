@@ -57,6 +57,13 @@ type Storage interface {
 	// DeleteTable delete table by table name in specified cluster and schema.
 	DeleteTable(ctx context.Context, req DeleteTableRequest) error
 
+	// AssignTableToShard save table assign result.
+	AssignTableToShard(ctx context.Context, req AssignTableToShardRequest) error
+	// DeleteTableAssignedShard delete table assign result.
+	DeleteTableAssignedShard(ctx context.Context, req DeleteTableAssignedRequest) error
+	// ListTableAssignedShard list table assign result.
+	ListTableAssignedShard(ctx context.Context, req ListAssignTableRequest) (ListTableAssignedShardResult, error)
+
 	// CreateShardViews create shard views in specified cluster.
 	CreateShardViews(ctx context.Context, req CreateShardViewsRequest) error
 	// ListShardViews list all shard views in specified cluster.

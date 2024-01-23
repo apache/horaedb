@@ -58,7 +58,7 @@ func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *
 	dispatch := eventdispatch.NewDispatchImpl()
 
 	procedureIDRootPath := strings.Join([]string{rootPath, metadata.Name(), defaultProcedurePrefixKey}, "/")
-	procedureFactory := coordinator.NewFactory(logger, id.NewAllocatorImpl(logger, client, procedureIDRootPath, defaultAllocStep), dispatch, procedureStorage)
+	procedureFactory := coordinator.NewFactory(logger, id.NewAllocatorImpl(logger, client, procedureIDRootPath, defaultAllocStep), dispatch, procedureStorage, metadata)
 
 	schedulerManager := manager.NewManager(logger, procedureManager, procedureFactory, metadata, client, rootPath, metadata.GetTopologyType(), metadata.GetProcedureExecutingBatchSize())
 

@@ -35,23 +35,25 @@ func TestRebalancedScheduler(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
 
-	procedureFactory := coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
-
-	s := rebalanced.NewShardScheduler(zap.NewNop(), procedureFactory, nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop()), 1)
-
 	// EmptyCluster would be scheduled an empty procedure.
 	emptyCluster := test.InitEmptyCluster(ctx, t)
+	procedureFactory := coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t), emptyCluster.GetMetadata())
+	s := rebalanced.NewShardScheduler(zap.NewNop(), procedureFactory, nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop()), 1)
 	result, err := s.Schedule(ctx, emptyCluster.GetMetadata().GetClusterSnapshot())
 	re.NoError(err)
 	re.Empty(result)
 
 	// PrepareCluster would be scheduled an empty procedure.
 	prepareCluster := test.InitPrepareCluster(ctx, t)
+	procedureFactory = coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t), prepareCluster.GetMetadata())
+	s = rebalanced.NewShardScheduler(zap.NewNop(), procedureFactory, nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop()), 1)
 	_, err = s.Schedule(ctx, prepareCluster.GetMetadata().GetClusterSnapshot())
 	re.NoError(err)
 
 	// StableCluster with all shards assigned would be scheduled a load balance procedure.
 	stableCluster := test.InitStableCluster(ctx, t)
+	procedureFactory = coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t), stableCluster.GetMetadata())
+	s = rebalanced.NewShardScheduler(zap.NewNop(), procedureFactory, nodepicker.NewConsistentUniformHashNodePicker(zap.NewNop()), 1)
 	_, err = s.Schedule(ctx, stableCluster.GetMetadata().GetClusterSnapshot())
 	re.NoError(err)
 }

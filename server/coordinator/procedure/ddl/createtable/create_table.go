@@ -37,36 +37,76 @@ import (
 )
 
 const (
-	eventCreateMetadata = "EventCreateMetadata"
-	eventCreateOnShard  = "EventCreateOnShard"
-	eventFinish         = "EventFinish"
+	eventCheckTableExists = "EventCheckTableExists"
+	eventCreateMetadata   = "EventCreateMetadata"
+	eventCreateOnShard    = "EventCreateOnShard"
+	eventFinish           = "EventFinish"
 
-	stateBegin          = "StateBegin"
-	stateCreateMetadata = "StateCreateMetadata"
-	stateCreateOnShard  = "StateCreateOnShard"
-	stateFinish         = "StateFinish"
+	stateBegin            = "StateBegin"
+	stateCheckTableExists = "StateCheckTableExists"
+	stateCreateMetadata   = "StateCreateMetadata"
+	stateCreateOnShard    = "StateCreateOnShard"
+	stateFinish           = "StateFinish"
 )
 
 var (
 	createTableEvents = fsm.Events{
-		{Name: eventCreateMetadata, Src: []string{stateBegin}, Dst: stateCreateMetadata},
+		{Name: eventCheckTableExists, Src: []string{stateBegin}, Dst: stateCheckTableExists},
+		{Name: eventCreateMetadata, Src: []string{stateCheckTableExists}, Dst: stateCreateMetadata},
 		{Name: eventCreateOnShard, Src: []string{stateCreateMetadata}, Dst: stateCreateOnShard},
 		{Name: eventFinish, Src: []string{stateCreateOnShard}, Dst: stateFinish},
 	}
 	createTableCallbacks = fsm.Callbacks{
-		eventCreateMetadata: createMetadataCallback,
-		eventCreateOnShard:  createOnShard,
-		eventFinish:         createFinish,
+		eventCheckTableExists: checkTableExists,
+		eventCreateMetadata:   createMetadata,
+		eventCreateOnShard:    createOnShard,
+		eventFinish:           createFinish,
 	}
 )
 
-func createMetadataCallback(event *fsm.Event) {
+func checkTableExists(event *fsm.Event) {
 	req, err := procedure.GetRequestFromEvent[*callbackRequest](event)
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
 	}
 	params := req.p.params
+
+	// Check whether the table metadata already exists.
+	table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
+	if err != nil {
+		procedure.CancelEventWithLog(event, err, "get table metadata")
+		return
+	}
+	if !exists {
+		return
+	}
+
+	// Check whether the table shard mapping already exists.
+	_, exists = params.ClusterMetadata.GetTableShard(req.ctx, table)
+	if exists {
+		procedure.CancelEventWithLog(event, metadata.ErrTableAlreadyExists, "table shard already exists")
+		return
+	}
+}
+
+func createMetadata(event *fsm.Event) {
+	req, err := procedure.GetRequestFromEvent[*callbackRequest](event)
+	if err != nil {
+		procedure.CancelEventWithLog(event, err, "get request from event")
+		return
+	}
+	params := req.p.params
+
+	_, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), params.SourceReq.GetName())
+	if err != nil {
+		procedure.CancelEventWithLog(event, err, "get table metadata")
+		return
+	}
+	if exists {
+		log.Info("table metadata already exists", zap.String("schemaName", params.SourceReq.GetSchemaName()), zap.String("tableName", params.SourceReq.GetName()))
+		return
+	}
 
 	createTableMetadataRequest := metadata.CreateTableMetadataRequest{
 		SchemaName:    params.SourceReq.GetSchemaName(),
@@ -138,6 +178,11 @@ func createFinish(event *fsm.Event) {
 	if err != nil {
 		procedure.CancelEventWithLog(event, err, "get request from event")
 		return
+	}
+	params := req.p.params
+
+	if err := req.p.params.ClusterMetadata.DeleteTableAssignedShard(req.ctx, params.SourceReq.GetSchemaName(), params.SourceReq.GetName()); err != nil {
+		log.Warn("delete assign table failed", zap.String("schemaName", params.SourceReq.GetSchemaName()), zap.String("tableName", params.SourceReq.GetName()))
 	}
 
 	assert.Assert(req.createTableResult != nil)
@@ -229,7 +274,6 @@ func (p *Procedure) Kind() procedure.Kind {
 func (p *Procedure) Start(ctx context.Context) error {
 	p.updateState(procedure.StateRunning)
 
-	// Try to load persist data.
 	req := &callbackRequest{
 		ctx:               ctx,
 		p:                 p,
@@ -239,6 +283,11 @@ func (p *Procedure) Start(ctx context.Context) error {
 	for {
 		switch p.fsm.Current() {
 		case stateBegin:
+			if err := p.fsm.Event(eventCheckTableExists, req); err != nil {
+				_ = p.params.OnFailed(err)
+				return err
+			}
+		case stateCheckTableExists:
 			if err := p.fsm.Event(eventCreateMetadata, req); err != nil {
 				_ = p.params.OnFailed(err)
 				return err

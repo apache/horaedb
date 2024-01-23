@@ -35,12 +35,12 @@ import (
 func TestReopenShardScheduler(t *testing.T) {
 	re := require.New(t)
 	ctx := context.Background()
+	emptyCluster := test.InitEmptyCluster(ctx, t)
 
-	procedureFactory := coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t))
+	procedureFactory := coordinator.NewFactory(zap.NewNop(), test.MockIDAllocator{}, test.MockDispatch{}, test.NewTestStorage(t), emptyCluster.GetMetadata())
 
 	s := reopen.NewShardScheduler(procedureFactory, 1)
 
-	emptyCluster := test.InitEmptyCluster(ctx, t)
 	// ReopenShardScheduler should not schedule when cluster is not stable.
 	result, err := s.Schedule(ctx, emptyCluster.GetMetadata().GetClusterSnapshot())
 	re.NoError(err)

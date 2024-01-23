@@ -115,7 +115,8 @@ func (c *ClusterMetadata) Load(ctx context.Context) error {
 		return errors.WithMessage(err, "load table manager")
 	}
 
-	if err := c.topologyManager.Load(ctx); err != nil {
+	schemas := c.tableManager.GetSchemas()
+	if err := c.topologyManager.Load(ctx, schemas); err != nil {
 		return errors.WithMessage(err, "load topology manager")
 	}
 
@@ -279,6 +280,11 @@ func (c *ClusterMetadata) GetTable(schemaName, tableName string) (storage.Table,
 	return c.tableManager.GetTable(schemaName, tableName)
 }
 
+// GetTableShard get the shard where the table actually exists.
+func (c *ClusterMetadata) GetTableShard(ctx context.Context, table storage.Table) (storage.ShardID, bool) {
+	return c.topologyManager.GetTableShardID(ctx, table)
+}
+
 func (c *ClusterMetadata) CreateTableMetadata(ctx context.Context, request CreateTableMetadataRequest) (CreateTableMetadataResult, error) {
 	c.logger.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
@@ -390,6 +396,31 @@ func (c *ClusterMetadata) CreateTable(ctx context.Context, request CreateTableRe
 	}
 	c.logger.Info("create table succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
 	return ret, nil
+}
+
+func (c *ClusterMetadata) GetTableAssignedShard(ctx context.Context, schemaName string, tableName string) (storage.ShardID, bool, error) {
+	schema, exists := c.tableManager.GetSchema(schemaName)
+	if !exists {
+		return 0, false, errors.WithMessagef(ErrSchemaNotFound, "schema %s not found", schemaName)
+	}
+	shardIDs, exists := c.topologyManager.GetTableAssignedShard(ctx, schema.ID, tableName)
+	return shardIDs, exists, nil
+}
+
+func (c *ClusterMetadata) AssignTableToShard(ctx context.Context, schemaName string, tableName string, shardID storage.ShardID) error {
+	schema, exists := c.tableManager.GetSchema(schemaName)
+	if !exists {
+		return errors.WithMessagef(ErrSchemaNotFound, "schema %s not found", schemaName)
+	}
+	return c.topologyManager.AssignTableToShard(ctx, schema.ID, tableName, shardID)
+}
+
+func (c *ClusterMetadata) DeleteTableAssignedShard(ctx context.Context, schemaName string, tableName string) error {
+	schema, exists := c.tableManager.GetSchema(schemaName)
+	if !exists {
+		return errors.WithMessagef(ErrSchemaNotFound, "schema %s not found", schemaName)
+	}
+	return c.topologyManager.DeleteTableAssignedShard(ctx, schema.ID, tableName)
 }
 
 func (c *ClusterMetadata) GetShards() []storage.ShardID {

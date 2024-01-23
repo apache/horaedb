@@ -36,6 +36,7 @@ const (
 	shardView     = "shard_view"
 	latestVersion = "latest_version"
 	info          = "info"
+	tableAssign   = "table_assign"
 )
 
 // makeSchemaKey returns the key path to the schema meta info.
@@ -126,6 +127,19 @@ func makeNameToIDKey(rootPath string, clusterID uint32, schemaID uint32, tableNa
 	//	v1/cluster/1/schema/1/table_name_to_id/table1 -> 1
 	//	v1/cluster/1/schema/1/table_name_to_id/table2 -> 2
 	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), schema, fmtID(uint64(schemaID)), tableNameToID, tableName)
+}
+
+// makeTableAssignKey return the tableAssign key path.
+func makeTableAssignKey(rootPath string, clusterID uint32, schemaID uint32, tableName string) string {
+	// Example:
+	//	v1/cluster/1/schema/1/table_assign/tableName1 -> shardID1
+	//	v1/cluster/1/schema/1/table_assign/tableName2 -> shardID2
+	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), schema, fmtID(uint64(schemaID)), tableAssign, tableName)
+}
+
+// makeTableAssignPrefixKey return the tableAssign prefix key path.
+func makeTableAssignPrefixKey(rootPath string, clusterID uint32, schemaID uint32) string {
+	return path.Join(rootPath, version, cluster, fmtID(uint64(clusterID)), schema, fmtID(uint64(schemaID)), tableAssign)
 }
 
 func fmtID(id uint64) string {

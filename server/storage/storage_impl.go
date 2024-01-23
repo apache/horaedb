@@ -418,6 +418,73 @@ func (s *metaStorageImpl) DeleteTable(ctx context.Context, req DeleteTableReques
 	return nil
 }
 
+func (s *metaStorageImpl) AssignTableToShard(ctx context.Context, req AssignTableToShardRequest) error {
+	key := makeTableAssignKey(s.rootPath, uint32(req.ClusterID), uint32(req.SchemaID), req.TableName)
+
+	// Check if the key exists, if not，save table assign result; Otherwise, the table assign result already exists and return an error.
+	keyMissing := clientv3util.KeyMissing(key)
+	opCreateAssignTable := clientv3.OpPut(key, strconv.Itoa(int(req.ShardID)))
+
+	resp, err := s.client.Txn(ctx).
+		If(keyMissing).
+		Then(opCreateAssignTable).
+		Commit()
+	if err != nil {
+		return errors.WithMessagef(err, "create assign table, clusterID:%d, schemaID:%d, key:%s", req.ClusterID, req.ShardID, key)
+	}
+	if !resp.Succeeded {
+		return ErrCreateSchemaAgain.WithCausef("assign table may already exist, clusterID:%d, schemaID:%d, key:%s, resp:%v", req.ClusterID, req.SchemaID, key, resp)
+	}
+
+	return nil
+}
+
+func (s *metaStorageImpl) DeleteTableAssignedShard(ctx context.Context, req DeleteTableAssignedRequest) error {
+	key := makeTableAssignKey(s.rootPath, uint32(req.ClusterID), uint32(req.SchemaID), req.TableName)
+
+	keyExists := clientv3util.KeyExists(key)
+	opDeleteAssignTable := clientv3.OpDelete(key)
+
+	resp, err := s.client.Txn(ctx).
+		If(keyExists).
+		Then(opDeleteAssignTable).
+		Commit()
+	if err != nil {
+		return errors.WithMessagef(err, "delete assign table, clusterID:%d, schemaID:%d, tableName:%s", req.ClusterID, req.SchemaID, req.TableName)
+	}
+	if !resp.Succeeded {
+		return ErrDeleteTableAgain.WithCausef("assign table may have been deleted, clusterID:%d, schemaID:%d, tableName:%s", req.ClusterID, req.SchemaID, req.TableName)
+	}
+
+	return nil
+}
+
+func (s *metaStorageImpl) ListTableAssignedShard(ctx context.Context, req ListAssignTableRequest) (ListTableAssignedShardResult, error) {
+	key := makeTableAssignPrefixKey(s.rootPath, uint32(req.ClusterID), uint32(req.SchemaID))
+	rangeLimit := s.opts.MaxScanLimit
+
+	var tableAssigns []TableAssign
+	do := func(key string, value []byte) error {
+		tableName := etcdutil.GetLastPathSegment(key)
+		shardIDStr := string(value)
+		shardID, err := strconv.ParseUint(shardIDStr, 10, 32)
+		if err != nil {
+			return err
+		}
+		tableAssigns = append(tableAssigns, TableAssign{
+			TableName: tableName,
+			ShardID:   ShardID(shardID),
+		})
+		return nil
+	}
+
+	if err := etcdutil.ScanWithPrefix(ctx, s.client, key, do); err != nil {
+		return ListTableAssignedShardResult{}, errors.WithMessagef(err, "scan tables, clusterID:%d, schemaID:%d, prefix key:%s, range limit:%d", req.ClusterID, req.SchemaID, key, rangeLimit)
+	}
+
+	return ListTableAssignedShardResult{TableAssigns: tableAssigns}, nil
+}
+
 func (s *metaStorageImpl) createNShardViews(ctx context.Context, clusterID ClusterID, shardViews []ShardView, ifConds []clientv3.Cmp, opCreates []clientv3.Op) error {
 	for _, shardView := range shardViews {
 		shardViewPB := convertShardViewToPB(shardView)

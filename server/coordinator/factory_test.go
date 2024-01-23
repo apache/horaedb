@@ -39,7 +39,7 @@ func setupFactory(t *testing.T) (*coordinator.Factory, *metadata.ClusterMetadata
 	dispatch := test.MockDispatch{}
 	allocator := test.MockIDAllocator{}
 	storage := test.NewTestStorage(t)
-	f := coordinator.NewFactory(zap.NewNop(), allocator, dispatch, storage)
+	f := coordinator.NewFactory(zap.NewNop(), allocator, dispatch, storage, c.GetMetadata())
 
 	return f, c.GetMetadata()
 }

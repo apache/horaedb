@@ -44,7 +44,7 @@ func TestSchedulerManager(t *testing.T) {
 	dispatch := test.MockDispatch{}
 	allocator := test.MockIDAllocator{}
 	s := test.NewTestStorage(t)
-	f := coordinator.NewFactory(zap.NewNop(), allocator, dispatch, s)
+	f := coordinator.NewFactory(zap.NewNop(), allocator, dispatch, s, c.GetMetadata())
 	_, client, _ := etcdutil.PrepareEtcdServerAndClient(t)
 
 	// Create scheduler manager with enableScheduler equal to false.

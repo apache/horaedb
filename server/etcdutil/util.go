@@ -21,6 +21,7 @@ package etcdutil
 
 import (
 	"context"
+	"path"
 
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -118,11 +119,37 @@ func Scan(ctx context.Context, client *clientv3.Client, startKey, endKey string,
 			}
 		}
 
-		// Check whether the keys is exhausted.
+		// Check whether the keys are exhausted.
 		if len(resp.Kvs) < batchSize {
 			return nil
 		}
 
 		lastKeyInPrevBatch = string(resp.Kvs[len(resp.Kvs)-1].Key)
 	}
+}
+
+func ScanWithPrefix(ctx context.Context, client *clientv3.Client, prefix string, do func(key string, val []byte) error) error {
+	rangeEnd := clientv3.GetPrefixRangeEnd(prefix)
+	resp, err := client.Get(ctx, prefix, clientv3.WithRange(rangeEnd))
+	if err != nil {
+		return ErrEtcdKVGet.WithCause(err)
+	}
+	// Check whether the keys are exhausted.
+	if len(resp.Kvs) == 0 {
+		return nil
+	}
+
+	for _, item := range resp.Kvs {
+		err := do(string(item.Key), item.Value)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// GetLastPathSegment get the last path segment from completePath, path is split by '/'.
+func GetLastPathSegment(completePath string) string {
+	return path.Base(path.Clean(completePath))
 }

@@ -23,6 +23,7 @@ import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrShardLeaderNotFound     = coderr.NewCodeError(coderr.Internal, "shard leader not found")
+	ErrShardNotMatch           = coderr.NewCodeError(coderr.Internal, "target shard not match to persis data")
 	ErrProcedureNotFound       = coderr.NewCodeError(coderr.Internal, "procedure not found")
 	ErrClusterConfigChanged    = coderr.NewCodeError(coderr.Internal, "cluster config changed")
 	ErrTableNotExists          = coderr.NewCodeError(coderr.Internal, "table not exists")

@@ -33,7 +33,7 @@ import (
 // TopologyManager manages the cluster topology, including the mapping relationship between shards, nodes, and tables.
 type TopologyManager interface {
 	// Load load cluster topology from storage.
-	Load(ctx context.Context) error
+	Load(ctx context.Context, schemas []storage.Schema) error
 	// GetVersion get cluster view version.
 	GetVersion() uint64
 	// GetClusterState get cluster view state.
@@ -44,6 +44,14 @@ type TopologyManager interface {
 	AddTable(ctx context.Context, shardID storage.ShardID, latestVersion uint64, tables []storage.Table) error
 	// RemoveTable remove table on target shards from cluster topology.
 	RemoveTable(ctx context.Context, shardID storage.ShardID, latestVersion uint64, tableIDs []storage.TableID) error
+	// GetTableShardID get the shardID of the shard where the table is located.
+	GetTableShardID(ctx context.Context, table storage.Table) (storage.ShardID, bool)
+	// AssignTableToShard persistent table shard mapping, it is used to store assign results and make the table creation idempotent.
+	AssignTableToShard(ctx context.Context, schemaID storage.SchemaID, tableName string, shardID storage.ShardID) error
+	// GetTableAssignedShard get table assign result.
+	GetTableAssignedShard(ctx context.Context, schemaID storage.SchemaID, tableName string) (storage.ShardID, bool)
+	// DeleteTableAssignedShard delete table assign result.
+	DeleteTableAssignedShard(ctx context.Context, schemaID storage.SchemaID, tableName string) error
 	// GetShards get all shards in cluster topology.
 	GetShards() []storage.ShardID
 	// GetShardNodesByID get shardNodes with shardID.
@@ -133,6 +141,8 @@ type TopologyManagerImpl struct {
 	// ShardView in memory.
 	shardTablesMapping map[storage.ShardID]*storage.ShardView // ShardID -> shardTopology
 	tableShardMapping  map[storage.TableID][]storage.ShardID  // tableID -> ShardID
+	// Table assign result in memory.
+	tableAssignMapping map[storage.SchemaID]map[string]storage.ShardID // tableName -> shardID
 
 	nodes map[string]storage.Node // NodeName in memory.
 }
@@ -150,11 +160,12 @@ func NewTopologyManagerImpl(logger *zap.Logger, storage storage.Storage, cluster
 		nodeShardsMapping:  nil,
 		shardTablesMapping: nil,
 		tableShardMapping:  nil,
+		tableAssignMapping: nil,
 		nodes:              nil,
 	}
 }
 
-func (m *TopologyManagerImpl) Load(ctx context.Context) error {
+func (m *TopologyManagerImpl) Load(ctx context.Context, schemas []storage.Schema) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
@@ -169,6 +180,11 @@ func (m *TopologyManagerImpl) Load(ctx context.Context) error {
 	if err := m.loadNodes(ctx); err != nil {
 		return errors.WithMessage(err, "load nodes")
 	}
+
+	if err := m.loadAssignTable(ctx, schemas); err != nil {
+		return errors.WithMessage(err, "load assign table")
+	}
+
 	return nil
 }
 
@@ -290,6 +306,64 @@ func (m *TopologyManagerImpl) RemoveTable(ctx context.Context, shardID storage.S
 			}
 		}
 	}
+
+	return nil
+}
+
+func (m *TopologyManagerImpl) GetTableShardID(_ context.Context, table storage.Table) (storage.ShardID, bool) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	shardIDs, exists := m.tableShardMapping[table.ID]
+	if exists {
+		return shardIDs[0], true
+	}
+
+	return 0, false
+}
+
+func (m *TopologyManagerImpl) AssignTableToShard(ctx context.Context, schemaID storage.SchemaID, tableName string, shardID storage.ShardID) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if err := m.storage.AssignTableToShard(ctx, storage.AssignTableToShardRequest{
+		ClusterID: m.clusterID,
+		SchemaID:  schemaID,
+		TableName: tableName,
+		ShardID:   shardID,
+	}); err != nil {
+		return errors.WithMessage(err, "storage assign table")
+	}
+
+	// Update cache im memory.
+	if _, exists := m.tableAssignMapping[schemaID]; !exists {
+		m.tableAssignMapping[schemaID] = make(map[string]storage.ShardID, 0)
+	}
+
+	m.tableAssignMapping[schemaID][tableName] = shardID
+
+	return nil
+}
+
+func (m *TopologyManagerImpl) GetTableAssignedShard(_ context.Context, schemaID storage.SchemaID, tableName string) (storage.ShardID, bool) {
+	assignResult, exists := m.tableAssignMapping[schemaID][tableName]
+	return assignResult, exists
+}
+
+func (m *TopologyManagerImpl) DeleteTableAssignedShard(ctx context.Context, schemaID storage.SchemaID, tableName string) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	if err := m.storage.DeleteTableAssignedShard(ctx, storage.DeleteTableAssignedRequest{
+		ClusterID: m.clusterID,
+		SchemaID:  schemaID,
+		TableName: tableName,
+	}); err != nil {
+		return errors.WithMessage(err, "storage delete assign table")
+	}
+
+	// Update cache im memory.
+	delete(m.tableAssignMapping[schemaID], tableName)
 
 	return nil
 }
@@ -578,6 +652,23 @@ func (m *TopologyManagerImpl) loadShardViews(ctx context.Context) error {
 				m.tableShardMapping[tableID] = []storage.ShardID{}
 			}
 			m.tableShardMapping[tableID] = append(m.tableShardMapping[tableID], shardView.ShardID)
+		}
+	}
+
+	return nil
+}
+
+func (m *TopologyManagerImpl) loadAssignTable(ctx context.Context, schemas []storage.Schema) error {
+	m.tableAssignMapping = make(map[storage.SchemaID]map[string]storage.ShardID, len(schemas))
+	for _, schema := range schemas {
+		m.tableAssignMapping[schema.ID] = make(map[string]storage.ShardID, 0)
+
+		listAssignTableResult, err := m.storage.ListTableAssignedShard(ctx, storage.ListAssignTableRequest{ClusterID: m.clusterID, SchemaID: schema.ID})
+		if err != nil {
+			return errors.WithMessage(err, "storage list assign table")
+		}
+		for _, assignTable := range listAssignTableResult.TableAssigns {
+			m.tableAssignMapping[schema.ID][assignTable.TableName] = assignTable.ShardID
 		}
 	}
 

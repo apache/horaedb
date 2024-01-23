@@ -43,7 +43,7 @@ type Factory struct {
 	idAllocator id.Allocator
 	dispatch    eventdispatch.Dispatch
 	storage     procedure.Storage
-	shardPicker ShardPicker
+	shardPicker *PersistShardPicker
 }
 
 type CreateTableRequest struct {
@@ -101,13 +101,13 @@ type BatchRequest struct {
 	BatchType procedure.Kind
 }
 
-func NewFactory(logger *zap.Logger, allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage) *Factory {
+func NewFactory(logger *zap.Logger, allocator id.Allocator, dispatch eventdispatch.Dispatch, storage procedure.Storage, clusterMetadata *metadata.ClusterMetadata) *Factory {
 	return &Factory{
 		idAllocator: allocator,
 		dispatch:    dispatch,
 		storage:     storage,
 		logger:      logger,
-		shardPicker: NewLeastTableShardPicker(),
+		shardPicker: NewPersistShardPicker(clusterMetadata, NewLeastTableShardPicker()),
 	}
 }
 
@@ -129,14 +129,24 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 	}
 	snapshot := request.ClusterMetadata.GetClusterSnapshot()
 
-	shards, err := f.shardPicker.PickShards(ctx, snapshot, 1)
+	var targetShardID storage.ShardID
+	shardID, exists, err := request.ClusterMetadata.GetTableAssignedShard(ctx, request.SourceReq.SchemaName, request.SourceReq.Name)
 	if err != nil {
-		f.logger.Error("pick table shard", zap.Error(err))
-		return nil, errors.WithMessage(err, "pick table shard")
+		return nil, err
 	}
-	if len(shards) != 1 {
-		f.logger.Error("pick table shards length not equal 1", zap.Int("shards", len(shards)))
-		return nil, errors.WithMessagef(procedure.ErrPickShard, "pick table shard, shards length:%d", len(shards))
+	if exists {
+		targetShardID = shardID
+	} else {
+		shards, err := f.shardPicker.PickShards(ctx, snapshot, request.SourceReq.GetSchemaName(), []string{request.SourceReq.GetName()})
+		if err != nil {
+			f.logger.Error("pick table shard", zap.Error(err))
+			return nil, errors.WithMessage(err, "pick table shard")
+		}
+		if len(shards) != 1 {
+			f.logger.Error("pick table shards length not equal 1", zap.Int("shards", len(shards)))
+			return nil, errors.WithMessagef(procedure.ErrPickShard, "pick table shard, shards length:%d", len(shards))
+		}
+		targetShardID = shards[request.SourceReq.GetName()].ID
 	}
 
 	return createtable.NewProcedure(createtable.ProcedureParams{
@@ -144,7 +154,7 @@ func (f *Factory) makeCreateTableProcedure(ctx context.Context, request CreateTa
 		ClusterMetadata: request.ClusterMetadata,
 		ClusterSnapshot: snapshot,
 		ID:              id,
-		ShardID:         shards[0].ID,
+		ShardID:         targetShardID,
 		SourceReq:       request.SourceReq,
 		OnSucceeded:     request.OnSucceeded,
 		OnFailed:        request.OnFailed,
@@ -164,7 +174,7 @@ func (f *Factory) makeCreatePartitionTableProcedure(ctx context.Context, request
 		nodeNames[shardNode.NodeName] = 1
 	}
 
-	subTableShards, err := f.shardPicker.PickShards(ctx, snapshot, len(request.SourceReq.PartitionTableInfo.SubTableNames))
+	subTableShards, err := f.shardPicker.PickShards(ctx, snapshot, request.SourceReq.GetSchemaName(), request.SourceReq.PartitionTableInfo.SubTableNames)
 	if err != nil {
 		return nil, errors.WithMessage(err, "pick sub table shards")
 	}

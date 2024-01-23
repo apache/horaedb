@@ -105,3 +105,42 @@ func TestScanFailed(t *testing.T) {
 	err := Scan(ctx, client, startKey, endKey, 10, do)
 	r.Equal(fakeErr, err)
 }
+
+func TestScanWithPrefix(t *testing.T) {
+	r := require.New(t)
+
+	_, client, closeSrv := PrepareEtcdServerAndClient(t)
+	defer closeSrv()
+	ctx := context.Background()
+
+	// Build keys with different prefix.
+	keys := []string{}
+	keys = append(keys, "/prefix/0")
+	keys = append(keys, "/prefix/1")
+	keys = append(keys, "/diff/0")
+
+	// Put the keys.
+	for _, key := range keys {
+		// Let the value equal key for simplicity.
+		val := key
+		_, err := client.Put(ctx, key, val)
+		r.NoError(err)
+	}
+
+	var scanResult []string
+	do := func(key string, value []byte) error {
+		scanResult = append(scanResult, key)
+		return nil
+	}
+	err := ScanWithPrefix(ctx, client, "/prefix", do)
+	r.NoError(err)
+	r.Equal(len(scanResult), 2)
+}
+
+func TestGetLastPathSegment(t *testing.T) {
+	r := require.New(t)
+
+	path := "/prefix/a/b/c"
+	lastPathSegment := GetLastPathSegment(path)
+	r.Equal("c", lastPathSegment)
+}
