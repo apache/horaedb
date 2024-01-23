@@ -114,7 +114,7 @@ pub struct TableBasedManager {
 
 impl Manager for TableBasedManager {
     fn default_catalog_name(&self) -> NameRef {
-        consts::DEFAULT_CATALOG
+        &consts::DEFAULT_CATALOG
     }
 
     fn default_schema_name(&self) -> NameRef {
@@ -255,7 +255,7 @@ impl TableBasedManager {
 
     async fn maybe_create_default_catalog(&mut self) -> Result<()> {
         // Try to get default catalog, create it if not exists.
-        let catalog = match self.catalogs.get(consts::DEFAULT_CATALOG) {
+        let catalog = match self.catalogs.get(consts::DEFAULT_CATALOG.as_str()) {
             Some(v) => v.clone(),
             None => {
                 // Only system catalog should exists.

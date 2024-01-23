@@ -1389,7 +1389,7 @@ fn ensure_column_default_value_valid<P: MetaProvider>(
 // TODO: support catalog/schema
 pub fn get_table_ref(table_name: &str) -> TableReference {
     TableReference::from(ResolvedTableReference {
-        catalog: Cow::from(DEFAULT_CATALOG),
+        catalog: Cow::from(DEFAULT_CATALOG.as_str()),
         schema: Cow::from(DEFAULT_SCHEMA),
         table: Cow::from(table_name),
     })
