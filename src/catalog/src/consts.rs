@@ -18,7 +18,8 @@
 //! Catalog constants
 
 /// Default catalog name
-pub const DEFAULT_CATALOG: &str = "horaedb";
+// pub const DEFAULT_CATALOG: &str = "horaedb";
+pub const DEFAULT_CATALOG: &str = "ceresdb";
 /// Default schema name
 pub const DEFAULT_SCHEMA: &str = "public";
 /// Catalog name of the sys catalog
