@@ -96,7 +96,11 @@ impl ManagerImpl {
     fn maybe_create_default_catalog(&mut self) {
         // TODO: we should delegate this operation to the [TableManager].
         // Try to get default catalog, create it if not exists.
-        if self.catalogs.get(consts::DEFAULT_CATALOG.as_str()).is_none() {
+        if self
+            .catalogs
+            .get(consts::DEFAULT_CATALOG.as_str())
+            .is_none()
+        {
             // Default catalog is not exists, create and store it.
             self.create_catalog(consts::DEFAULT_CATALOG.to_string());
         };
