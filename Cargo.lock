@@ -1234,6 +1234,7 @@ dependencies = [
  "async-trait",
  "common_types",
  "generic_error",
+ "lazy_static",
  "logger",
  "macros",
  "snafu 0.6.10",

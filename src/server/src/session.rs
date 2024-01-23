@@ -54,7 +54,7 @@ pub type SessionRef = Arc<Session>;
 impl Session {
     pub fn new(addr: Option<SocketAddr>, channel: Channel) -> Self {
         Session {
-            catalog: ArcSwap::new(Arc::new(DEFAULT_CATALOG.into())),
+            catalog: ArcSwap::new(Arc::new(DEFAULT_CATALOG.clone())),
             schema: ArcSwap::new(Arc::new(DEFAULT_SCHEMA.into())),
             conn_info: ConnInfo::new(addr, channel),
         }
@@ -166,7 +166,7 @@ pub fn parse_catalog_and_schema_from_db_string(db: &str) -> (&str, &str) {
     if parts.len() == 2 {
         (parts[0], parts[1])
     } else {
-        (DEFAULT_CATALOG, db)
+        (&DEFAULT_CATALOG, db)
     }
 }
 
@@ -177,7 +177,7 @@ mod tests {
 
     /// Build db name from catalog and schema string
     fn build_db_string(catalog: &str, schema: &str) -> String {
-        if catalog == DEFAULT_CATALOG {
+        if catalog == DEFAULT_CATALOG.as_str() {
             schema.to_string()
         } else {
             format!("{catalog}-{schema}")
@@ -186,14 +186,14 @@ mod tests {
 
     #[test]
     fn test_db_string() {
-        assert_eq!("test", build_db_string(DEFAULT_CATALOG, "test"));
+        assert_eq!("test", build_db_string(&DEFAULT_CATALOG, "test"));
         assert_eq!("a0b1c2d3-test", build_db_string("a0b1c2d3", "test"));
     }
 
     #[test]
     fn test_parse_catalog_and_schema() {
         assert_eq!(
-            (DEFAULT_CATALOG, "fullschema"),
+            (DEFAULT_CATALOG.as_str(), "fullschema"),
             parse_catalog_and_schema_from_db_string("fullschema")
         );
 
