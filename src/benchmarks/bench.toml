@@ -1,0 +1,65 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+[sst_bench]
+store_path = "/tmp/horaedb/1/1"
+sst_file_name = "37.sst"
+runtime_thread_num = 1
+bench_measurement_time = "30s"
+max_projections = 5
+read_batch_row_num = 500
+sst_meta_cache_cap = 1000
+sst_data_cache_cap = 10000
+
+[sst_bench.predicate]
+# start_time_ms = 0
+start_time_ms = 1632985200000
+# end_time_ms = 0
+end_time_ms = 1632985800000
+
+[merge_sst_bench]
+store_path = "/tmp/horaedb"
+space_id = 1
+table_id = 1
+sst_file_ids = [ 34, 37 ]
+runtime_thread_num = 1
+bench_measurement_time = "120s"
+max_projections = 5
+read_batch_row_num = 500
+
+[merge_sst_bench.predicate]
+start_time_ms = 0
+# start_time_ms = 1632985200000
+end_time_ms = 0
+# end_time_ms = 1632985800000
+
+[scan_memtable_bench]
+store_path = "/tmp/horaedb/1/1"
+sst_file_name = "37.sst"
+runtime_thread_num = 1
+max_projections = 5
+arena_block_size = "64M"
+
+[wal_row_bench]
+rows_num = 100_0000
+test_num = 3
+
+[wal_write_bench]
+bench_measurement_time = "60s"
+bench_sample_size = 60
+batch_size = 512
+value_size = 1024

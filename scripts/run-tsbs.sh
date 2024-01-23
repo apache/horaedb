@@ -4,18 +4,18 @@
 # - RESULT_FILE
 # - DATA_FILE
 # - LOG_DIR
-# - CERESDB_CONFIG_FILE
-# - CERESDB_ADDR
+# - HORAEDB_CONFIG_FILE
+# - HORAEDB_ADDR
 # - WRITE_WORKER_NUM
 # - WRITE_BATCH_SIZE
 
 export CURR_DIR=$(pwd)
 export DEFAULT_RESULT_FILE=${CURR_DIR}/tsbs/result.md
 export RESULT_FILE=${RESULT_FILE:-${DEFAULT_RESULT_FILE}}
-export CERESDB_CONFIG_FILE=${CERESDB_CONFIG_FILE:-docs/minimal.toml}
+export HORAEDB_CONFIG_FILE=${HORAEDB_CONFIG_FILE:-docs/minimal.toml}
 export LOG_DIR=${LOG_DIR:-${CURR_DIR}/logs}
-export CERESDB_ADDR=${CERESDB_ADDR:-127.0.0.1:8831}
-export CERESDB_PID_FILE=${CURR_DIR}/ceresdb-server.pid
+export HORAEDB_ADDR=${HORAEDB_ADDR:-127.0.0.1:8831}
+export HORAEDB_PID_FILE=${CURR_DIR}/horaedb-server.pid
 export WRITE_WORKER_NUM=${WRITE_WORKER_NUM:-36}
 export WRITE_BATCH_SIZE=${WRITE_BATCH_SIZE:-500}
 # Where generated data stored
@@ -42,8 +42,8 @@ single-groupby-5-8-1"
 set -x
 
 kill_ceresdb_server() {
-  if [ -f ${CERESDB_PID_FILE} ]; then
-    pid=$(cat ${CERESDB_PID_FILE})
+  if [ -f ${HORAEDB_PID_FILE} ]; then
+    pid=$(cat ${HORAEDB_PID_FILE})
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid"
     fi
@@ -62,7 +62,7 @@ cleanup() {
 mkdir -p ${LOG_DIR}
 
 kill_ceresdb_server
-nohup ./target/release/ceresdb-server -c ${CERESDB_CONFIG_FILE} > ${LOG_DIR}/server.log & echo $! > ${CERESDB_PID_FILE}
+nohup ./target/release/horaedb-server -c ${HORAEDB_CONFIG_FILE} > ${LOG_DIR}/server.log & echo $! > ${HORAEDB_PID_FILE}
 
 git clone -b feat-ceresdb --depth 1 --single-branch https://github.com/CeresDB/tsbs.git
 
@@ -86,15 +86,15 @@ if [ ! -f ${DATA_FILE} ]; then
 fi
 
 
-# Write data to ceresdb
-./tsbs_load_ceresdb --ceresdb-addr=${CERESDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATCH_SIZE} --workers ${WRITE_WORKER_NUM} | tee ${LOG_DIR}/write.log
+# Write data to horaedb
+./tsbs_load_ceresdb --ceresdb-addr=${HORAEDB_ADDR} --file ${DATA_FILE} --batch-size ${WRITE_BATCH_SIZE} --workers ${WRITE_WORKER_NUM} | tee ${LOG_DIR}/write.log
 
 # Generate queries for query
 ./scripts/generate_queries.sh
 
-# Run queries against ceresdb
+# Run queries against horaedb
 # TODO: support more kinds of queries besides 5-8-1.
-cat ${BULK_DATA_DIR}/ceresdb-single-groupby-5-8-1-queries.gz | gunzip | ./tsbs_run_queries_ceresdb --ceresdb-addr=${CERESDB_ADDR} | tee ${LOG_DIR}/5-8-1.log
+cat ${BULK_DATA_DIR}/ceresdb-single-groupby-5-8-1-queries.gz | gunzip | ./tsbs_run_queries_ceresdb --ceresdb-addr=${HORAEDB_ADDR} | tee ${LOG_DIR}/5-8-1.log
 
 # Clean the result file
 rm ${RESULT_FILE}

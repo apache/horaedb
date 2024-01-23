@@ -1,0 +1,93 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+[package]
+name = "server"
+
+[package.license]
+workspace = true
+
+[package.version]
+workspace = true
+
+[package.authors]
+workspace = true
+
+[package.edition]
+workspace = true
+
+[dependencies]
+analytic_engine = { workspace = true }
+arc-swap = "1.5"
+arrow = { workspace = true }
+arrow_ext = { workspace = true }
+async-trait = { workspace = true }
+bytes_ext = { workspace = true }
+catalog = { workspace = true }
+clru = { workspace = true }
+cluster = { workspace = true }
+common_types = { workspace = true }
+datafusion = { workspace = true }
+derive_builder = { workspace = true }
+df_operator = { workspace = true }
+flate2 = "1.0"
+future_ext = { workspace = true }
+futures = { workspace = true }
+generic_error = { workspace = true }
+horaedbproto = { workspace = true }
+http = "0.2"
+influxdb-line-protocol = "1.0"
+interpreters = { workspace = true }
+lazy_static = { workspace = true }
+logger = { workspace = true }
+macros = { workspace = true }
+meta_client = { workspace = true }
+notifier = { workspace = true }
+once_cell = { workspace = true }
+opensrv-mysql = "0.1.0"
+partition_table_engine = { workspace = true }
+paste = { workspace = true }
+pgwire = "0.19.1"
+profile = { workspace = true }
+prom-remote-api = { workspace = true, features = ["warp"] }
+prometheus = { workspace = true }
+prometheus-static-metric = { workspace = true }
+prost = { workspace = true }
+proxy = { workspace = true }
+query_engine = { workspace = true }
+query_frontend = { workspace = true }
+regex = { workspace = true }
+remote_engine_client = { workspace = true }
+router = { workspace = true }
+runtime = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+size_ext = { workspace = true }
+snafu = { workspace = true }
+spin = { workspace = true }
+sqlparser = { workspace = true }
+table_engine = { workspace = true }
+time_ext = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { workspace = true }
+wal = { workspace = true }
+warp = "0.3"
+zstd = { workspace = true }
+
+[dev-dependencies]
+query_frontend = { workspace = true, features = ["test"] }
