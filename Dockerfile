@@ -7,15 +7,15 @@ USER root
 
 RUN apt update && apt install --yes git gcc g++ libssl-dev pkg-config cmake protobuf-compiler && rm -rf /var/lib/apt/lists/*
 
-COPY . /horaedb
-WORKDIR /horaedb
+COPY . /ceresdb
+WORKDIR /ceresdb
 
 RUN make build
 
-## HoraeDB
+## CeresDB
 FROM ubuntu:20.04
 
-RUN useradd -m -s /bin/bash horae
+RUN useradd -m -s /bin/bash ceres
 
 RUN apt update && \
     apt install --yes curl gdb iotop cron vim less net-tools && \
@@ -23,15 +23,15 @@ RUN apt update && \
 
 ENV RUST_BACKTRACE 1
 
-COPY --from=build /horaedb/target/release/horaedb-server /usr/bin/horaedb-server
-RUN chmod +x /usr/bin/horaedb-server
+COPY --from=build /ceresdb/target/release/ceresdb-server /usr/bin/ceresdb-server
+RUN chmod +x /usr/bin/ceresdb-server
 
 COPY ./docker/entrypoint.sh /entrypoint.sh
-COPY ./docs/minimal.toml /etc/horaedb/horaedb.toml
+COPY ./docs/minimal.toml /etc/ceresdb/ceresdb.toml
 
 COPY ./docker/tini /tini
 RUN chmod +x /tini
 
-ARG USER=horae
+ARG USER ceres
 
 ENTRYPOINT ["/tini", "--", "/entrypoint.sh"]

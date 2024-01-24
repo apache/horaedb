@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 ![HoraeDB](docs/logo/horaedb-banner-white-small.jpg)
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
