@@ -80,9 +80,8 @@ impl MetaData {
                 meta_version = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?;
             } else if kv_meta.key == encoding::META_SIZE_KEY {
                 let size = kv_meta.value.as_ref().context(KvMetaVersionEmpty)?;
-                meta_size = Some(size.parse::<usize>().with_context(|| InvalidSize {
-                    size: size.to_string(),
-                })?);
+                let size = size.parse::<usize>().context(InvalidSize { size })?;
+                meta_size = Some(size);
             } else {
                 other_kv_metas.push(kv_meta.clone());
             }
