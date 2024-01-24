@@ -24,11 +24,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-<<<<<<< HEAD
   IMAGE_NAME: apache/horaedb-server
-=======
-  IMAGE_NAME: apache/horaemeta-server
->>>>>>> ceresmeta/main
 
 jobs:
   docker:

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-<<<<<<< HEAD
-=======
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -20,31 +18,17 @@
 
 
 
->>>>>>> ceresmeta/main
 
 set -exo pipefail
 
 ## init varibles
 USER="horae"
-<<<<<<< HEAD
-DATA_DIR="/home/${USER}/data"
-DATA_PATH="${DATA_DIR}/horaedb"
-CONFIG_FILE="/etc/horaedb/horaedb.toml"
-
-# enable jemalloc heap profiling
-export MALLOC_CONF="prof:true,prof_active:false,lg_prof_sample:19"
-=======
 DATA_DIR="/tmp/horaemeta0"
 CONFIG_FILE="/etc/horaemeta/horaemeta.toml"
->>>>>>> ceresmeta/main
 
 ## data dir
 mkdir -p ${DATA_DIR}
 chmod +777 -R ${DATA_DIR}
 chown -R ${USER}.${USER} ${DATA_DIR}
 
-<<<<<<< HEAD
-exec /usr/bin/horaedb-server --config ${CONFIG_FILE}
-=======
 exec /usr/bin/horaemeta-server --config ${CONFIG_FILE}
->>>>>>> ceresmeta/main

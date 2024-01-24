@@ -5,7 +5,6 @@ To make the process easier and more valuable for everyone involved we have a few
 
 ## Submitting Issues and Feature Requests
 
-<<<<<<< HEAD
 Before you file an [issue](https://github.com/apache/incubator-horaedb/issues/new), please search existing issues in case the same or similar issues have already been filed.
 If you find an existing open ticket covering your issue then please avoid adding "👍" or "me too" comments; GitHub notifications can cause a lot of noise for the project maintainers who triage the back-log.
 However, if you have a new piece of information for an existing ticket, and you think it may help the investigation or resolution, then please do add it as a comment!
@@ -14,16 +13,6 @@ You can signal to the team that you're experiencing an existing issue with one o
 ### Submitting an Issue
 
 The [New Issue](https://github.com/apache/incubator-horaedb/issues/new) page has templates for both bug reports and feature requests.
-=======
-Before you file an [issue](https://github.com/apache/incubator-horaedb-meta/issues/new), please search existing issues in case the same or similar issues have already been filed.
-If you find an existing open ticket covering your issue then please avoid adding "👍" or "me too" comments; Github notifications can cause a lot of noise for the project maintainers who triage the back-log.
-However, if you have a new piece of information for an existing ticket and you think it may help the investigation or resolution, then please do add it as a comment!
-You can signal to the team that you're experiencing an existing issue with one of Github's emoji reactions (these are a good way to add "weight" to an issue from a prioritisation perspective).
-
-### Submitting an Issue
-
-The [New Issue]((https://github.com/apache/incubator-horaedb-meta/issues/new)) page has templates for both bug reports and feature requests.
->>>>>>> ceresmeta/main
 Please fill one of them out!
 The issue templates provide details on what information we will find useful to help us fix an issue.
 In short though, the more information you can provide us about your environment and what behaviour you're seeing, the easier we can fix the issue.
@@ -31,7 +20,6 @@ If you can push a PR with test cases that trigger a defect or bug, even better!
 
 As well as bug reports we also welcome feature requests (there is a dedicated issue template for these).
 Typically, the maintainers will periodically review community feature requests and make decisions about if we want to add them.
-<<<<<<< HEAD
 For features, we don't plan to support we will close the feature request ticket (so, again, please check closed tickets for feature requests before submitting them).
 
 ## Contributing Changes
@@ -44,34 +32,15 @@ All code must adhere to the `rustfmt` format, and pass all of the `clippy` check
 To open a PR you will need to have a GitHub account.
 Fork the `horaedb` repo and work on a branch on your fork.
 When you have completed your changes, or you want some incremental feedback make a Pull Request to HoraeDB [here](https://github.com/apache/incubator-horaedb/compare).
-=======
-For features we don't plan to support we will close the feature request ticket (so, again, please check closed tickets for feature requests before submitting them).
-
-## Contributing Changes
-
-Please see the [Style Guide](horaemeta/docs/style_guide.md) for more details.
-
-### Making a PR
-
-To open a PR you will need to have a Github account.
-Fork the `horaemeta` repo and work on a branch on your fork.
-When you have completed your changes, or you want some incremental feedback make a Pull Request to HoraeDB [here](https://github.com/apache/incubator-horaedb-meta/compare).
->>>>>>> ceresmeta/main
 
 If you want to discuss some work in progress then please prefix `[WIP]` to the
 PR title.
 
 For PRs that you consider ready for review, verify the following locally before you submit it:
 
-<<<<<<< HEAD
 * you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://horaedb.apache.org/dev/conventional_commit.html) specification;
 * all the tests and/or benchmarks pass, including documentation tests;
 * the code is correctly formatted and all `clippy` checks pass; and
-  =======
-* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://github.com/apache/incubator-horaedb-docs/blob/main/docs/src/en/dev/conventional_commit.md) specification;
-* all the tests and/or benchmarks pass, including documentation tests;
-* the code is correctly formatted and all linter checks pass; and
->>>>>>> ceresmeta/main
 * you haven't left any "code cruft" (commented out code blocks etc).
 
 There are some tips on verifying the above in the [next section](#running-tests).
@@ -84,7 +53,6 @@ There are some tips on verifying the above in the [next section](#running-tests)
 
 ## Running Tests
 
-<<<<<<< HEAD
 The `cargo` build tool runs tests as well. Run:
 
 ```shell
@@ -130,20 +98,4 @@ And run with:
 
 ```shell
 cargo clippy --all-targets --workspace -- -D warnings
-=======
-The rule for running test has been configured in the [Makefile](./Makefile) so just run:
-
-```shell
-make test
-```
-
-## Running linter check
-
-CI will check the code formatting and best practices by some specific linters.
-
-And you can run the check locally by the command:
-
-```shell
-make check
->>>>>>> ceresmeta/main
 ```

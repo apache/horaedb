@@ -34,7 +34,7 @@ github:
     - horaedb
   enabled_merge_buttons:
     squash:  true
-    merge:   false
+    merge:   true
     rebase:  true
   protected_branches:
     main:
