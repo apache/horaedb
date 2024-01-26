@@ -24,7 +24,7 @@ use datafusion::{
         runtime_env::{RuntimeConfig, RuntimeEnv},
         FunctionRegistry,
     },
-    prelude::{SessionConfig, SessionContext},
+    prelude::{SessionConfig, SessionContext}, physical_optimizer::{output_requirements::OutputRequirements, aggregate_statistics::AggregateStatistics, join_selection::JoinSelection, limited_distinct_aggregation::LimitedDistinctAggregation, combine_partial_final_agg::CombinePartialFinalAggregate, enforce_sorting::EnforceSorting, coalesce_batches::CoalesceBatches, pipeline_checker::PipelineChecker, topk_aggregation::TopKAggregation},
 };
 use df_engine_extensions::codec::PhysicalExtensionCodecImpl;
 use table_engine::{provider::HoraeDBOptions, remote::RemoteEngineRef};
@@ -137,7 +137,23 @@ impl DfContextBuilder {
 
         // Using default logcial optimizer, if want to add more custom rule, using
         // `add_optimizer_rule` to add.
-        let state = SessionState::new_with_config_rt(df_session_config, self.runtime_env.clone());
+        let mut state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone());
+        state = state.with_physical_optimizer_rules(vec![
+            Arc::new(OutputRequirements::new_add_mode()),
+            Arc::new(AggregateStatistics::new()),
+            Arc::new(JoinSelection::new()),
+            Arc::new(LimitedDistinctAggregation::new()),
+            // TODO: this rule will throw this error
+            // Internal error: Children cannot be replaced in ScanTable
+            // Arc::new(EnforceDistribution::new()),
+            Arc::new(CombinePartialFinalAggregate::new()),
+            Arc::new(EnforceSorting::new()),
+            Arc::new(CoalesceBatches::new()),
+            Arc::new(OutputRequirements::new_remove_mode()),
+            Arc::new(PipelineChecker::new()),
+            Arc::new(TopKAggregation::new()),
+            // Arc::new(ProjectionPushdown::new()),
+        ]);
         SessionContext::new_with_state(state)
     }
 }
