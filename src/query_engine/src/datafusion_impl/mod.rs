@@ -152,6 +152,7 @@ impl DfContextBuilder {
             Arc::new(OutputRequirements::new_remove_mode()),
             Arc::new(PipelineChecker::new()),
             Arc::new(TopKAggregation::new()),
+            // TODO: This rule is not public, so we can't use it
             // Arc::new(ProjectionPushdown::new()),
         ]);
         SessionContext::new_with_state(state)
