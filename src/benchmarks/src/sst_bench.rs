@@ -64,7 +64,7 @@ impl SstBench {
             max_record_batches_in_flight: 1024,
             num_streams_to_prefetch: 0,
         };
-        let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench"));
+        let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Query,
             scan_options,

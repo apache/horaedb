@@ -132,7 +132,7 @@ pub async fn load_sst_to_memtable(
     let table_schema = projected_schema.table_schema().clone();
     let row_projector_builder = RowProjectorBuilder::new(fetched_schema, table_schema, None);
     let sst_read_options = SstReadOptions {
-        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
+        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench", "")),
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 8192,
         predicate: Arc::new(Predicate::empty()),

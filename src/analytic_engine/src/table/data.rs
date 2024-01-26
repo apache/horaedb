@@ -341,7 +341,7 @@ impl TableData {
         let purge_queue = purger.create_purge_queue(space_id, id);
         let current_version =
             TableVersion::new(mem_size_options.size_sampling_interval, purge_queue);
-        let metrics_ctx = MetricsContext::new(&name, metrics_opt);
+        let metrics_ctx = MetricsContext::new(&name, shard_id, metrics_opt);
         let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             opts.write_buffer_size,
@@ -421,7 +421,7 @@ impl TableData {
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version =
             TableVersion::new(mem_size_options.size_sampling_interval, purge_queue);
-        let metrics_ctx = MetricsContext::new(&add_meta.table_name, metrics_opt);
+        let metrics_ctx = MetricsContext::new(&add_meta.table_name, shard_id, metrics_opt);
         let metrics = Metrics::new(metrics_ctx);
         let mutable_limit = AtomicU32::new(compute_mutable_limit(
             add_meta.opts.write_buffer_size,

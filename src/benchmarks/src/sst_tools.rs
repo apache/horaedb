@@ -133,7 +133,7 @@ pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     let table_schema = projected_schema.table_schema().clone();
     let row_projector_builder = RowProjectorBuilder::new(fetched_schema, table_schema, None);
     let sst_read_options = SstReadOptions {
-        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench")),
+        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench", "")),
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: config.num_rows_per_row_group,
         predicate: config.predicate.into_predicate(),
@@ -246,7 +246,7 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
     let sst_factory: SstFactoryRef = Arc::new(FactoryImpl);
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let projected_schema = ProjectedSchema::no_projection(schema.clone());
-    let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench"));
+    let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
     let sst_read_options_builder = SstReadOptionsBuilder::new(
         ScanType::Query,
         scan_options,

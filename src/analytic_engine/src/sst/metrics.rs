@@ -54,10 +54,10 @@ lazy_static! {
         &["table"]
     ).unwrap();
 
-    static ref FETCHED_SST_BYTES_HISTOGRAM: HistogramVec = register_histogram_vec!(
+    pub static ref FETCHED_SST_BYTES_HISTOGRAM: HistogramVec = register_histogram_vec!(
         "fetched_sst_bytes",
         "Histogram for sst get range length",
-        &["table"],
+        &["shard_id", "table"],
         // The buckets: [1MB, 2MB, 4MB, 8MB, ... , 8GB]
         exponential_buckets(1024.0 * 1024.0, 2.0, 13).unwrap()
     ).unwrap();
@@ -72,13 +72,14 @@ pub struct MaybeTableLevelMetrics {
 }
 
 impl MaybeTableLevelMetrics {
-    pub fn new(table: &str) -> Self {
+    pub fn new(table: &str, shard_id_label: &str) -> Self {
         Self {
             row_group_before_prune_counter: ROW_GROUP_BEFORE_PRUNE_COUNTER
                 .with_label_values(&[table]),
             row_group_after_prune_counter: ROW_GROUP_AFTER_PRUNE_COUNTER
                 .with_label_values(&[table]),
-            num_fetched_sst_bytes_hist: FETCHED_SST_BYTES_HISTOGRAM.with_label_values(&[table]),
+            num_fetched_sst_bytes_hist: FETCHED_SST_BYTES_HISTOGRAM
+                .with_label_values(&[&shard_id_label, table]),
             num_fetched_sst_bytes: AtomicU64::new(0),
         }
     }
