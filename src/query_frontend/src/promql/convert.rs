@@ -27,9 +27,10 @@ use datafusion::{
         expr::{Alias, ScalarFunction},
         lit,
         logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
-        max, min, sum, Expr as DataFusionExpr,
+        max, min, sum,
+        utils::conjunction,
+        Expr as DataFusionExpr,
     },
-    optimizer::utils::conjunction,
     prelude::ident,
     sql::planner::ContextProvider,
 };

@@ -21,8 +21,7 @@ use std::sync::Arc;
 
 use common_types::{schema::Schema, time::TimeRange};
 use datafusion::{
-    logical_expr::{LogicalPlanBuilder, Operator},
-    optimizer::utils::conjunction,
+    logical_expr::{utils::conjunction, LogicalPlanBuilder, Operator},
     prelude::{ident, lit, Expr},
     sql::{planner::ContextProvider, TableReference},
 };
