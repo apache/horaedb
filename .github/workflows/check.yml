@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Check
+name: HoraeMeta Check
 on:
   pull_request:
     paths-ignore:
@@ -24,12 +24,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  style-check:
+  horaemeta-style-check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v3
-      - name: Check License Header
+      - name: HoraeMeta Check License Header
         uses: korandoru/hawkeye@v3
       - uses: actions/setup-go@v3
         with:
@@ -39,7 +39,7 @@ jobs:
           make install-tools
           make check
           
-  unit-test:
+  horaemeta-unit-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -52,7 +52,7 @@ jobs:
           make install-tools
           make test
 
-  integration-test:
+  horaemeta-integration-test:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
