@@ -32,7 +32,7 @@ use common_types::{
 use datafusion::{
     common::ToDFSchema,
     error::DataFusionError,
-    optimizer::utils::conjunction,
+    logical_expr::utils::conjunction,
     physical_expr::{self, execution_props::ExecutionProps},
     physical_plan::PhysicalExpr,
 };

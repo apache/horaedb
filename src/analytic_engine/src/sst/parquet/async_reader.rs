@@ -219,7 +219,7 @@ impl<'a> Reader<'a> {
     ) -> Result<Option<RowSelection>> {
         // TODO: remove fixed partition
         let partition = 0;
-        let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
+        let exprs = datafusion::logical_expr::utils::conjunction(self.predicate.exprs().to_vec());
         let exprs = match exprs {
             Some(exprs) => exprs,
             None => return Ok(None),
