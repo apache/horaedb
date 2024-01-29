@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Check
+name: HoraeMeta
 on:
   pull_request:
     paths-ignore:
