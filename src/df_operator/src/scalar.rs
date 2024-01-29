@@ -31,6 +31,7 @@ pub struct ScalarUdf {
 }
 
 impl ScalarUdf {
+    #[allow(deprecated)]
     pub fn create(name: &str, func: ScalarFunction) -> Self {
         let signature = func.signature().to_datafusion_signature();
         let return_type = func.return_type().to_datafusion_return_type();

@@ -320,7 +320,7 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
 }
 
 impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
-    fn get_table_provider(
+    fn get_table_source(
         &self,
         name: TableReference,
     ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
@@ -414,12 +414,6 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         None
     }
 
-    fn get_table_source(
-        &self,
-        name: TableReference,
-    ) -> datafusion::error::Result<Arc<dyn TableSource>> {
-        self.get_table_provider(name)
-    }
 }
 
 struct SchemaProviderAdapter {
