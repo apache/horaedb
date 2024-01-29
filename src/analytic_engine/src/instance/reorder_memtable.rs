@@ -263,8 +263,8 @@ impl Reorder {
         // 1. Init datafusion context
         let runtime = Arc::new(RuntimeEnv::default());
         let mut state = SessionState::new_with_config_rt(SessionConfig::new(), runtime);
-        // The physical optimizer rules have bug, and the plan here is simple, optimize is not required,
-        // so we disable it here.
+        // The physical optimizer rules have bug, and the plan here is simple, optimize
+        // is not required, so we disable it here.
         state = state.with_physical_optimizer_rules(vec![]);
         let ctx = SessionContext::new_with_state(state);
         let table_provider = Arc::new(MemIterProvider {

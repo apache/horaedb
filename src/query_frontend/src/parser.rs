@@ -352,13 +352,11 @@ impl<'a> Parser<'a> {
                     is_dictionary = true;
                 }
             }
-            if let DataType::String(_) = c.data_type {
-                if is_dictionary {
-                    return parser_err!(format!(
-                        "Only string column can be dictionary encoded: {:?}",
-                        c.to_string()
-                    ));
-                }
+            if !matches!(c.data_type, DataType::String(_)) && is_dictionary {
+                return parser_err!(format!(
+                    "Only string column can be dictionary encoded: {:?}",
+                    c.to_string()
+                ));
             }
         }
 

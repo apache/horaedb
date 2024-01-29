@@ -410,7 +410,7 @@ impl ExecutionPlan for ScanTable {
         // However, we have no inputs here, so `UnknownPartitioning` is suitable.
         // In datafusion, always set it to `UnknownPartitioning` in the scan plan, for
         // example:  https://github.com/apache/arrow-datafusion/blob/cf152af6515f0808d840e1fe9c63b02802595826/datafusion/core/src/datasource/physical_plan/csv.rs#L175
-        Partitioning::UnknownPartitioning(self.parallelism)
+        Partitioning::UnknownPartitioning(self.parallelism.max(1))
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -480,10 +480,11 @@ impl DisplayAs for ScanTable {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "ScanTable: table={}, parallelism={}, priority={:?}",
+            "ScanTable: table={}, parallelism={}, priority={:?}, partition_count={:?}",
             self.table.name(),
             self.request.opts.read_parallelism,
-            self.request.priority
+            self.request.priority,
+            self.output_partitioning()
         )
     }
 }

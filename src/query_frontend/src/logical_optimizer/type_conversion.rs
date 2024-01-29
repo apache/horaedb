@@ -30,7 +30,7 @@ use datafusion::{
     logical_expr::{
         expr::{Expr, InList},
         logical_plan::{Filter, LogicalPlan, TableScan},
-         Between, BinaryExpr, ExprSchemable, Operator,
+        Between, BinaryExpr, ExprSchemable, Operator,
     },
     optimizer::analyzer::AnalyzerRule,
     scalar::ScalarValue,

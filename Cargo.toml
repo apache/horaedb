@@ -107,8 +107,8 @@ cluster = { path = "src/cluster" }
 criterion = "0.5"
 horaedb-client = "1.0.2"
 common_types = { path = "src/common_types" }
-datafusion = { git = "https://github.com/apache/arrow-datafusion.git", rev = "a154884545cfdeb1a6c20872b3882a5624cd1119" }
-datafusion-proto = { git = "https://github.com/apache/arrow-datafusion.git", rev = "a154884545cfdeb1a6c20872b3882a5624cd1119" }
+datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "2891cba41" }
+datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "2891cba41" }
 derive_builder = "0.12"
 df_operator = { path = "src/df_operator" }
 df_engine_extensions = { path = "src/df_engine_extensions" }
@@ -121,10 +121,10 @@ hash_ext = { path = "src/components/hash_ext" }
 hex = "0.4.3"
 hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
 id_allocator = { path = "src/components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "cafd1c73e375e218b646cef5024cd27c3855f997", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "cafd1c73e375e218b646cef5024cd27c3855f997", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "cafd1c73e375e218b646cef5024cd27c3855f997", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "cafd1c73e375e218b646cef5024cd27c3855f997", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "5077dcc", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "5077dcc", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "5077dcc", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "5077dcc", package = "schema" }
 interpreters = { path = "src/interpreters" }
 itertools = "0.10.5"
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
