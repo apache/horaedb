@@ -262,7 +262,7 @@ impl TestContext {
                 AggregateMode::Partial,
                 self.group_by.clone(),
                 self.aggr_exprs.clone(),
-                vec![None],
+                vec![None; self.aggr_exprs.len()],
                 input,
                 input_schema.clone(),
             )
@@ -287,7 +287,7 @@ impl TestContext {
                 AggregateMode::Final,
                 final_group_by,
                 self.aggr_exprs.clone(),
-                vec![None],
+                vec![None; self.aggr_exprs.len()],
                 merge,
                 input_schema,
             )
