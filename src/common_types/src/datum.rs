@@ -1465,6 +1465,7 @@ impl Datum {
             | ScalarValue::IntervalDayTime(_)
             | ScalarValue::Struct(_, _)
             | ScalarValue::Decimal128(_, _, _)
+            | ScalarValue::Decimal256(_, _, _)
             | ScalarValue::Null
             | ScalarValue::IntervalMonthDayNano(_)
             | ScalarValue::Fixedsizelist(_, _, _)
@@ -1514,6 +1515,7 @@ impl<'a> DatumView<'a> {
             | ScalarValue::IntervalDayTime(_)
             | ScalarValue::Struct(_, _)
             | ScalarValue::Decimal128(_, _, _)
+            | ScalarValue::Decimal256(_, _, _)
             | ScalarValue::Null
             | ScalarValue::IntervalMonthDayNano(_)
             | ScalarValue::Fixedsizelist(_, _, _)
