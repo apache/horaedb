@@ -765,7 +765,7 @@ mod tests {
                 None,
             );
             let sst_read_options = SstReadOptions {
-                maybe_table_level_metrics: Arc::new(MaybeTableLevelMetrics::new("test", "0")),
+                maybe_table_level_metrics: None,
                 frequency: ReadFrequency::Frequent,
                 num_rows_per_row_group: 5,
                 predicate: Arc::new(Predicate::empty()),

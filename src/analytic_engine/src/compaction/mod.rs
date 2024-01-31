@@ -32,8 +32,11 @@ use crate::{
     table::data::TableDataRef,
 };
 
+pub mod compactor;
+pub mod executor;
 mod metrics;
 pub mod picker;
+pub mod runner;
 pub mod scheduler;
 
 #[derive(Debug, Snafu)]

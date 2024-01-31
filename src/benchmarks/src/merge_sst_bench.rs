@@ -88,7 +88,7 @@ impl MergeSstBench {
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             scan_type,
             scan_options,
-            maybe_table_level_metrics,
+            None,
             config.num_rows_per_row_group,
             predicate,
             meta_cache.clone(),

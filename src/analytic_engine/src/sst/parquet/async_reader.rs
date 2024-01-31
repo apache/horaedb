@@ -134,8 +134,9 @@ impl<'a> Reader<'a> {
             ..Default::default()
         };
 
-        let table_level_sst_metrics = matches!(options.frequency, ReadFrequency::Frequent)
-            .then(|| options.maybe_table_level_metrics.clone());
+        // let table_level_sst_metrics = matches!(options.frequency,
+        // ReadFrequency::Frequent)     .then(||
+        // options.maybe_table_level_metrics.clone());
 
         Self {
             path,
@@ -150,7 +151,7 @@ impl<'a> Reader<'a> {
             row_projector: None,
             metrics,
             df_plan_metrics,
-            table_level_sst_metrics,
+            table_level_sst_metrics: options.maybe_table_level_metrics.clone(),
         }
     }
 

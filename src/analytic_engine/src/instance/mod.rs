@@ -335,7 +335,7 @@ impl Instance {
 pub struct SstReadOptionsBuilder {
     scan_type: ScanType,
     scan_options: ScanOptions,
-    maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
+    maybe_table_level_metrics: Option<Arc<MaybeTableLevelMetrics>>,
     num_rows_per_row_group: usize,
     predicate: PredicateRef,
     meta_cache: Option<MetaCacheRef>,
@@ -346,7 +346,7 @@ impl SstReadOptionsBuilder {
     pub fn new(
         scan_type: ScanType,
         scan_options: ScanOptions,
-        maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
+        maybe_table_level_metrics: Option<Arc<MaybeTableLevelMetrics>>,
         num_rows_per_row_group: usize,
         predicate: PredicateRef,
         meta_cache: Option<MetaCacheRef>,
@@ -365,7 +365,7 @@ impl SstReadOptionsBuilder {
 
     pub fn build(self, row_projector_builder: RowProjectorBuilder) -> SstReadOptions {
         SstReadOptions {
-            maybe_table_level_metrics: self.maybe_table_level_metrics,
+            maybe_table_level_metrics: self.maybe_table_level_metrics.clone(),
             num_rows_per_row_group: self.num_rows_per_row_group,
             frequency: self.scan_type.into(),
             row_projector_builder,

@@ -131,9 +131,9 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to build merge iterator, table:{}, err:{}", table, source))]
+    #[snafu(display("Failed to build merge iterator, mgs:{}, err:{}", msg, source))]
     BuildMergeIterator {
-        table: String,
+        msg: String,
         source: crate::row_iter::merge::Error,
     },
 
@@ -605,7 +605,7 @@ impl FlushTask {
                 .await
                 .context(AllocFileId)?;
 
-            let sst_file_path = self.table_data.set_sst_file_path(file_id);
+            let sst_file_path = self.table_data.sst_file_path(file_id);
             // TODO: `min_key` & `max_key` should be figured out when writing sst.
             let sst_meta = MetaData {
                 min_key: min_key.clone(),
@@ -759,7 +759,7 @@ impl FlushTask {
             .await
             .context(AllocFileId)?;
 
-        let sst_file_path = self.table_data.set_sst_file_path(file_id);
+        let sst_file_path = self.table_data.sst_file_path(file_id);
         let storage_format_hint = self.table_data.table_options().storage_format_hint;
         let sst_write_options = SstWriteOptions {
             storage_format_hint,
@@ -963,7 +963,7 @@ impl SpaceStore {
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Compaction,
             scan_options,
-            maybe_table_level_metrics,
+            None,
             table_options.num_rows_per_row_group,
             predicate,
             self.meta_cache.clone(),
@@ -1006,7 +1006,7 @@ impl SpaceStore {
                 .mut_ssts_of_level(input.level)
                 .extend_from_slice(&input.files);
             builder.build().await.context(BuildMergeIterator {
-                table: table_data.name.clone(),
+                msg: format!("table_id:{table_id}, space_id:{space_id},"),
             })?
         };
 
@@ -1046,7 +1046,7 @@ impl SpaceStore {
             .await
             .context(AllocFileId)?;
 
-        let sst_file_path = table_data.set_sst_file_path(file_id);
+        let sst_file_path = table_data.sst_file_path(file_id);
         let write_options = SstWriteOptions {
             storage_format_hint: sst_write_options.storage_format_hint,
             num_rows_per_row_group: sst_write_options.num_rows_per_row_group,

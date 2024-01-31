@@ -717,9 +717,13 @@ impl TableData {
         Ok(())
     }
 
-    /// Set the sst file path into the object storage path.
-    pub fn set_sst_file_path(&self, file_id: FileId) -> Path {
+    /// Get sst file path in the object storage
+    pub fn sst_file_path(&self, file_id: FileId) -> Path {
         sst_util::new_sst_file_path(self.space_id, self.id, file_id)
+    }
+
+    pub fn compaction_task_key(&self, file_id: FileId) -> String {
+        format!("{}-{file_id}", self.id)
     }
 
     /// Allocate next memtable id

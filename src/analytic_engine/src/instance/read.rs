@@ -132,7 +132,7 @@ impl Instance {
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Query,
             self.scan_options.clone(),
-            table_metrics.sst_metrics.clone(),
+            Some(table_metrics.sst_metrics.clone()),
             table_options.num_rows_per_row_group,
             request.predicate.clone(),
             self.meta_cache.clone(),
