@@ -324,7 +324,7 @@ impl<'a> RecordBatchGroupWriter<'a> {
         mut self,
         sink: W,
         meta_path: &Path,
-    ) -> Result<(usize, ParquetMetaData)> {
+    ) -> Result<(usize, ParquetMetaData, ParquetEncoder)> {
         let mut prev_record_batch: Option<FetchedRecordBatch> = None;
         let mut arrow_row_group = Vec::new();
         let mut total_num_rows = 0;
@@ -401,13 +401,7 @@ impl<'a> RecordBatchGroupWriter<'a> {
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        parquet_encoder
-            .close()
-            .await
-            .box_err()
-            .context(EncodeRecordBatch)?;
-
-        Ok((total_num_rows, parquet_meta_data))
+        Ok((total_num_rows, parquet_meta_data, parquet_encoder))
     }
 }
 
@@ -449,23 +443,22 @@ async fn write_metadata<W>(
     mut meta_sink: W,
     parquet_metadata: ParquetMetaData,
     meta_path: &object_store::Path,
-) -> writer::Result<()>
+) -> writer::Result<usize>
 where
     W: AsyncWrite + Send + Unpin,
 {
     let buf = encode_sst_meta_data(parquet_metadata).context(EncodePbData)?;
-    meta_sink
-        .write_all(buf.as_bytes())
-        .await
-        .with_context(|| Io {
-            file: meta_path.clone(),
-        })?;
+    let bytes = buf.as_bytes();
+    let bytes_size = bytes.len();
+    meta_sink.write_all(bytes).await.with_context(|| Io {
+        file: meta_path.clone(),
+    })?;
 
     meta_sink.shutdown().await.with_context(|| Io {
         file: meta_path.clone(),
     })?;
 
-    Ok(())
+    Ok(bytes_size)
 }
 
 async fn multi_upload_abort(path: &Path, aborter: ObjectStoreMultiUploadAborter<'_>) {
@@ -503,7 +496,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         let meta_path = Path::from(sst_util::new_metadata_path(self.path.as_ref()));
 
-        let (total_num_rows, parquet_metadata) =
+        let (total_num_rows, parquet_metadata, mut data_encoder) =
             match group_writer.write_all(sink, &meta_path).await {
                 Ok(v) => v,
                 Err(e) => {
@@ -515,14 +508,25 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         let (meta_aborter, meta_sink) =
             ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
-        match write_metadata(meta_sink, parquet_metadata, &meta_path).await {
+        let meta_size = match write_metadata(meta_sink, parquet_metadata, &meta_path).await {
             Ok(v) => v,
             Err(e) => {
                 multi_upload_abort(self.path, aborter).await;
                 multi_upload_abort(&meta_path, meta_aborter).await;
                 return Err(e);
             }
-        }
+        };
+
+        data_encoder
+            .set_meta_data_size(meta_size)
+            .box_err()
+            .context(EncodeRecordBatch)?;
+
+        data_encoder
+            .close()
+            .await
+            .box_err()
+            .context(EncodeRecordBatch)?;
 
         let file_head = self.store.head(self.path).await.context(Storage)?;
         Ok(SstInfo {
