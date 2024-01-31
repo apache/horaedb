@@ -82,6 +82,9 @@ impl CustomMetadataReader for MetaV2Reader {
         match &self.meta_path {
             None => KvMetaPathEmpty {}.fail(),
             Some(meta_path) => {
+                // TODO: The disk cache only works for `get_range` now, so here
+                // We prefer to use `get_range` to fetch metadata when possible.
+                // A better way is to fix https://github.com/apache/incubator-horaedb/issues/1473.
                 let metadata = match self.meta_size {
                     Some(size) => {
                         let all_range = 0..size;
