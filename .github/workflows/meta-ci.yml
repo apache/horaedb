@@ -15,12 +15,23 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: HoraeMeta
+name: HoraeMeta CI
+
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'integration_tests/**'
+      - 'horaemeta/**'
+      - '.github/workflows/meta-ci.yml'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '**.md'
+    paths:
+      - 'src/**'
+      - 'integration_tests/**'
+      - 'horaemeta/**'
+      - '.github/workflows/meta-ci.yml'
   workflow_dispatch:
 
 jobs:
@@ -38,7 +49,7 @@ jobs:
         run: |
           make install-tools
           make check
-          
+
   unit-test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -60,8 +71,7 @@ jobs:
       - uses: actions/setup-go@v3
         with:
           go-version: 1.21.3
-      - working-directory: ./horaemeta
+      - working-directory: ./integration_tests
         run: |
-          make install-tools
           sudo apt install -y protobuf-compiler
-          make integration-test
+          make run

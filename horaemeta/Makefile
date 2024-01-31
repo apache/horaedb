@@ -1,6 +1,7 @@
 GO_TOOLS_BIN_PATH := $(shell pwd)/.tools/bin
 PATH := $(GO_TOOLS_BIN_PATH):$(PATH)
 SHELL := env PATH='$(PATH)' GOBIN='$(GO_TOOLS_BIN_PATH)' $(shell which bash)
+ROOT = $(shell pwd)
 
 COMMIT_ID := $(shell git rev-parse HEAD)
 BRANCH_NAME := $(shell git rev-parse --abbrev-ref HEAD)
@@ -28,6 +29,3 @@ test:
 
 build:
 	@ go build -ldflags="-X main.commitID=$(COMMIT_ID) -X main.branchName=$(BRANCH_NAME) -X main.buildDate=$(BUILD_DATE)" -o bin/horaemeta-server ./cmd/horaemeta-server
-
-integration-test: build
-	@ bash ./scripts/run-integration-test.sh
