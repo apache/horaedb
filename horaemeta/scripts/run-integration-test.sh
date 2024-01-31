@@ -16,9 +16,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-
-
-
 set -exo
 
 META_BIN_PATH="$(pwd)/bin/horaemeta-server"
