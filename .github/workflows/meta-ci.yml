@@ -71,8 +71,7 @@ jobs:
       - uses: actions/setup-go@v3
         with:
           go-version: 1.21.3
-      - working-directory: ./horaemeta
+      - working-directory: ./integration_tests
         run: |
-          make install-tools
           sudo apt install -y protobuf-compiler
           make integration-test
