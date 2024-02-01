@@ -17,12 +17,7 @@
 
 // Flush and compaction logic of instance
 
-use std::{
-    cmp,
-    collections::{Bound, HashMap},
-    fmt,
-    sync::Arc,
-};
+use std::{cmp, collections::Bound, fmt};
 
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjectorBuilder},
@@ -39,39 +34,29 @@ use futures::{
 use generic_error::{BoxError, GenericError};
 use logger::{debug, error, info};
 use macros::define_result;
-use runtime::{Runtime, RuntimeRef};
+use runtime::RuntimeRef;
 use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::predicate::Predicate;
 use time_ext::{self, ReadableDuration};
 use tokio::{sync::oneshot, time::Instant};
 use wal::manager::WalLocation;
 
 use crate::{
-    compaction::{CompactionInputFiles, CompactionTask, ExpiredFiles},
     instance::{
-        self, reorder_memtable::Reorder, serial_executor::TableFlushScheduler, ScanType,
-        SpaceStore, SpaceStoreRef, SstReadOptionsBuilder,
+        self, reorder_memtable::Reorder, serial_executor::TableFlushScheduler, SpaceStoreRef,
     },
     manifest::meta_edit::{
         AlterOptionsMeta, AlterSchemaMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
     },
     memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
-    row_iter::{
-        self,
-        dedup::DedupIterator,
-        merge::{MergeBuilder, MergeConfig},
-        IterOptions,
-    },
     sst::{
-        factory::{self, ColumnStats, ScanOptions, SstWriteOptions},
+        factory::{self, SstWriteOptions},
         file::{FileMeta, Level},
-        meta_data::{SstMetaData, SstMetaReader},
         writer::MetaData,
     },
     table::{
-        data::{self, TableData, TableDataRef},
+        data::{self, TableDataRef},
         version::{FlushableMemTables, MemTableState, SamplingMemTable},
-        version_edit::{AddFile, DeleteFile},
+        version_edit::AddFile,
     },
     table_options::StorageFormatHint,
 };
@@ -825,367 +810,6 @@ impl FlushTask {
     }
 }
 
-impl SpaceStore {
-    pub(crate) async fn compact_table(
-        &self,
-        request_id: RequestId,
-        table_data: &TableData,
-        task: &CompactionTask,
-        scan_options: ScanOptions,
-        sst_write_options: &SstWriteOptions,
-        runtime: Arc<Runtime>,
-    ) -> Result<()> {
-        debug!(
-            "Begin compact table, table_name:{}, id:{}, task:{:?}",
-            table_data.name, table_data.id, task
-        );
-        let inputs = task.inputs();
-        let mut edit_meta = VersionEditMeta {
-            space_id: table_data.space_id,
-            table_id: table_data.id,
-            flushed_sequence: 0,
-            // Use the number of compaction inputs as the estimated number of files to add.
-            files_to_add: Vec::with_capacity(inputs.len()),
-            files_to_delete: vec![],
-            mems_to_remove: vec![],
-            max_file_id: 0,
-        };
-
-        if task.is_empty() {
-            // Nothing to compact.
-            return Ok(());
-        }
-
-        for files in task.expired() {
-            self.delete_expired_files(table_data, &request_id, files, &mut edit_meta);
-        }
-
-        info!(
-            "Try do compaction for table:{}#{}, estimated input files size:{}, input files number:{}",
-            table_data.name,
-            table_data.id,
-            task.estimated_total_input_file_size(),
-            task.num_compact_files(),
-        );
-
-        for input in inputs {
-            self.compact_input_files(
-                request_id.clone(),
-                table_data,
-                input,
-                scan_options.clone(),
-                sst_write_options,
-                runtime.clone(),
-                &mut edit_meta,
-            )
-            .await?;
-        }
-
-        if !table_data.allow_compaction() {
-            return Other {
-                msg: format!(
-                    "Table status is not ok, unable to update manifest, table:{}, table_id:{}",
-                    table_data.name, table_data.id
-                ),
-            }
-            .fail();
-        }
-
-        let edit_req = {
-            let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
-            MetaEditRequest {
-                shard_info: table_data.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
-                table_catalog_info: table_data.table_catalog_info.clone(),
-            }
-        };
-        self.manifest
-            .apply_edit(edit_req)
-            .await
-            .context(StoreVersionEdit)?;
-
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn compact_input_files(
-        &self,
-        request_id: RequestId,
-        table_data: &TableData,
-        input: &CompactionInputFiles,
-        scan_options: ScanOptions,
-        sst_write_options: &SstWriteOptions,
-        runtime: Arc<Runtime>,
-        edit_meta: &mut VersionEditMeta,
-    ) -> Result<()> {
-        debug!(
-            "Compact input files, table_name:{}, id:{}, input::{:?}, edit_meta:{:?}",
-            table_data.name, table_data.id, input, edit_meta
-        );
-        if input.files.is_empty() {
-            return Ok(());
-        }
-
-        // metrics
-        let _timer = table_data.metrics.start_compaction_timer();
-        table_data
-            .metrics
-            .compaction_observe_sst_num(input.files.len());
-        let mut sst_size = 0;
-        let mut sst_row_num = 0;
-        for file in &input.files {
-            sst_size += file.size();
-            sst_row_num += file.row_num();
-        }
-        table_data
-            .metrics
-            .compaction_observe_input_sst_size(sst_size);
-        table_data
-            .metrics
-            .compaction_observe_input_sst_row_num(sst_row_num);
-
-        info!(
-            "Instance try to compact table, table:{}, table_id:{}, request_id:{}, input_files:{:?}",
-            table_data.name, table_data.id, &request_id, input.files,
-        );
-
-        // The schema may be modified during compaction, so we acquire it first and use
-        // the acquired schema as the compacted sst meta.
-        let schema = table_data.schema();
-        let table_options = table_data.table_options();
-        let projected_schema = ProjectedSchema::no_projection(schema.clone());
-        let predicate = Arc::new(Predicate::empty());
-        let maybe_table_level_metrics = table_data
-            .metrics
-            .maybe_table_level_metrics()
-            .sst_metrics
-            .clone();
-        let sst_read_options_builder = SstReadOptionsBuilder::new(
-            ScanType::Compaction,
-            scan_options,
-            None,
-            table_options.num_rows_per_row_group,
-            predicate,
-            self.meta_cache.clone(),
-            runtime,
-        );
-        let fetched_schema = projected_schema.to_record_schema_with_key();
-        let primary_key_indexes = fetched_schema.primary_key_idx().to_vec();
-        let fetched_schema = fetched_schema.into_record_schema();
-        let table_schema = projected_schema.table_schema().clone();
-        let row_projector_builder =
-            RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
-
-        let iter_options = IterOptions {
-            batch_size: table_options.num_rows_per_row_group,
-        };
-        let merge_iter = {
-            let space_id = table_data.space_id;
-            let table_id = table_data.id;
-            let sequence = table_data.last_sequence();
-            let request_id = request_id.clone();
-            let mut builder = MergeBuilder::new(MergeConfig {
-                request_id,
-                metrics_collector: None,
-                // no need to set deadline for compaction
-                deadline: None,
-                space_id,
-                table_id,
-                sequence,
-                projected_schema,
-                predicate: Arc::new(Predicate::empty()),
-                sst_read_options_builder: sst_read_options_builder.clone(),
-                sst_factory: &self.sst_factory,
-                store_picker: self.store_picker(),
-                merge_iter_options: iter_options.clone(),
-                need_dedup: table_options.need_dedup(),
-                reverse: false,
-            });
-            // Add all ssts in compaction input to builder.
-            builder
-                .mut_ssts_of_level(input.level)
-                .extend_from_slice(&input.files);
-            builder.build().await.context(BuildMergeIterator {
-                msg: format!("table_id:{table_id}, space_id:{space_id},"),
-            })?
-        };
-
-        let record_batch_stream = if table_options.need_dedup() {
-            row_iter::record_batch_with_key_iter_to_stream(DedupIterator::new(
-                request_id.clone(),
-                merge_iter,
-                iter_options,
-            ))
-        } else {
-            row_iter::record_batch_with_key_iter_to_stream(merge_iter)
-        };
-
-        // TODO: eliminate the duplicated building of `SstReadOptions`.
-        let sst_read_options = sst_read_options_builder.build(row_projector_builder);
-        let (sst_meta, column_stats) = {
-            let meta_reader = SstMetaReader {
-                space_id: table_data.space_id,
-                table_id: table_data.id,
-                factory: self.sst_factory.clone(),
-                read_opts: sst_read_options,
-                store_picker: self.store_picker.clone(),
-            };
-            let sst_metas = meta_reader
-                .fetch_metas(&input.files)
-                .await
-                .context(ReadSstMeta)?;
-
-            let column_stats = collect_column_stats_from_meta_datas(&sst_metas);
-            let merged_meta = MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema);
-            (merged_meta, column_stats)
-        };
-
-        // Alloc file id for the merged sst.
-        let file_id = table_data
-            .alloc_file_id(&self.manifest)
-            .await
-            .context(AllocFileId)?;
-
-        let sst_file_path = table_data.sst_file_path(file_id);
-        let write_options = SstWriteOptions {
-            storage_format_hint: sst_write_options.storage_format_hint,
-            num_rows_per_row_group: sst_write_options.num_rows_per_row_group,
-            compression: sst_write_options.compression,
-            max_buffer_size: sst_write_options.max_buffer_size,
-            column_stats,
-        };
-        let mut sst_writer = self
-            .sst_factory
-            .create_writer(
-                &write_options,
-                &sst_file_path,
-                self.store_picker(),
-                input.output_level,
-            )
-            .await
-            .context(CreateSstWriter {
-                storage_format_hint: sst_write_options.storage_format_hint,
-            })?;
-
-        let sst_info = sst_writer
-            .write(request_id.clone(), &sst_meta, record_batch_stream)
-            .await
-            .box_err()
-            .with_context(|| WriteSst {
-                path: sst_file_path.to_string(),
-            })?;
-
-        let sst_file_size = sst_info.file_size as u64;
-        let sst_row_num = sst_info.row_num as u64;
-        table_data
-            .metrics
-            .compaction_observe_output_sst_size(sst_file_size);
-        table_data
-            .metrics
-            .compaction_observe_output_sst_row_num(sst_row_num);
-
-        info!(
-            "Instance files compacted, table:{}, table_id:{}, request_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}, sst_info:{:?}",
-            table_data.name,
-            table_data.id,
-            request_id,
-            sst_file_path.to_string(),
-            input.files,
-            sst_meta,
-            sst_info,
-        );
-
-        // Update the flushed sequence number.
-        edit_meta.flushed_sequence = cmp::max(sst_meta.max_sequence, edit_meta.flushed_sequence);
-
-        // Store updates to edit_meta.
-        edit_meta.files_to_delete.reserve(input.files.len());
-        // The compacted file can be deleted later.
-        for file in &input.files {
-            edit_meta.files_to_delete.push(DeleteFile {
-                level: input.level,
-                file_id: file.id(),
-            });
-        }
-
-        // Add the newly created file to meta.
-        edit_meta.files_to_add.push(AddFile {
-            level: input.output_level,
-            file: FileMeta {
-                id: file_id,
-                size: sst_file_size,
-                row_num: sst_row_num,
-                max_seq: sst_meta.max_sequence,
-                time_range: sst_meta.time_range,
-                storage_format: sst_info.storage_format,
-                associated_files: vec![sst_info.meta_path],
-            },
-        });
-
-        Ok(())
-    }
-
-    pub(crate) fn delete_expired_files(
-        &self,
-        table_data: &TableData,
-        request_id: &RequestId,
-        expired: &ExpiredFiles,
-        edit_meta: &mut VersionEditMeta,
-    ) {
-        if !expired.files.is_empty() {
-            info!(
-                "Instance try to delete expired files, table:{}, table_id:{}, request_id:{}, level:{}, files:{:?}",
-                table_data.name, table_data.id, request_id, expired.level, expired.files,
-            );
-        }
-
-        let files = &expired.files;
-        edit_meta.files_to_delete.reserve(files.len());
-        for file in files {
-            edit_meta.files_to_delete.push(DeleteFile {
-                level: expired.level,
-                file_id: file.id(),
-            });
-        }
-    }
-}
-
-/// Collect the column stats from a batch of sst meta data.
-fn collect_column_stats_from_meta_datas(metas: &[SstMetaData]) -> HashMap<String, ColumnStats> {
-    let mut low_cardinality_counts: HashMap<String, usize> = HashMap::new();
-    for meta_data in metas {
-        let SstMetaData::Parquet(meta_data) = meta_data;
-        if let Some(column_values) = &meta_data.column_values {
-            for (col_idx, val_set) in column_values.iter().enumerate() {
-                let low_cardinality = val_set.is_some();
-                if low_cardinality {
-                    let col_name = meta_data.schema.column(col_idx).name.clone();
-                    low_cardinality_counts
-                        .entry(col_name)
-                        .and_modify(|v| *v += 1)
-                        .or_insert(1);
-                }
-            }
-        }
-    }
-
-    // Only the column whose cardinality is low in all the metas is a
-    // low-cardinality column.
-    // TODO: shall we merge all the distinct values of the column to check whether
-    // the cardinality is still thought to be low?
-    let low_cardinality_cols = low_cardinality_counts
-        .into_iter()
-        .filter_map(|(col_name, cnt)| {
-            (cnt == metas.len()).then_some((
-                col_name,
-                ColumnStats {
-                    low_cardinality: true,
-                },
-            ))
-        });
-    HashMap::from_iter(low_cardinality_cols)
-}
-
 fn split_record_batch_with_time_ranges(
     record_batch: FetchedRecordBatch,
     time_ranges: &[TimeRange],
@@ -1263,26 +887,17 @@ fn build_mem_table_iter(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
 
-    use bytes_ext::Bytes;
     use common_types::{
-        schema::Schema,
         tests::{
-            build_fetched_record_batch_by_rows, build_row, build_row_opt, build_schema,
+            build_fetched_record_batch_by_rows, build_row, build_row_opt,
             check_record_batch_with_key_with_rows,
         },
         time::TimeRange,
     };
 
-    use super::{collect_column_stats_from_meta_datas, FrequentFlushChecker};
-    use crate::{
-        instance::flush_compaction::split_record_batch_with_time_ranges,
-        sst::{
-            meta_data::SstMetaData,
-            parquet::meta_data::{ColumnValueSet, ParquetMetaData},
-        },
-    };
+    use super::FrequentFlushChecker;
+    use crate::instance::flush_compaction::split_record_batch_with_time_ranges;
 
     #[test]
     fn test_split_record_batch_with_time_ranges() {
@@ -1334,73 +949,6 @@ mod tests {
         check_record_batch_with_key_with_rows(&rets[0], rows0.len(), column_num, rows0);
         check_record_batch_with_key_with_rows(&rets[1], rows1.len(), column_num, rows1);
         check_record_batch_with_key_with_rows(&rets[2], rows2.len(), column_num, rows2);
-    }
-
-    fn check_collect_column_stats(
-        schema: &Schema,
-        expected_low_cardinality_col_indexes: Vec<usize>,
-        meta_datas: Vec<SstMetaData>,
-    ) {
-        let column_stats = collect_column_stats_from_meta_datas(&meta_datas);
-        assert_eq!(
-            column_stats.len(),
-            expected_low_cardinality_col_indexes.len()
-        );
-
-        for col_idx in expected_low_cardinality_col_indexes {
-            let col_schema = schema.column(col_idx);
-            assert!(column_stats.contains_key(&col_schema.name));
-        }
-    }
-
-    #[test]
-    fn test_collect_column_stats_from_metadata() {
-        let schema = build_schema();
-        let build_meta_data = |low_cardinality_col_indexes: Vec<usize>| {
-            let mut column_values = vec![None; 6];
-            for idx in low_cardinality_col_indexes {
-                column_values[idx] = Some(ColumnValueSet::StringValue(Default::default()));
-            }
-            let parquet_meta_data = ParquetMetaData {
-                min_key: Bytes::new(),
-                max_key: Bytes::new(),
-                time_range: TimeRange::empty(),
-                max_sequence: 0,
-                schema: schema.clone(),
-                parquet_filter: None,
-                column_values: Some(column_values),
-            };
-            SstMetaData::Parquet(Arc::new(parquet_meta_data))
-        };
-
-        // Normal case 0
-        let meta_datas = vec![
-            build_meta_data(vec![0]),
-            build_meta_data(vec![0]),
-            build_meta_data(vec![0, 1]),
-            build_meta_data(vec![0, 2]),
-            build_meta_data(vec![0, 3]),
-        ];
-        check_collect_column_stats(&schema, vec![0], meta_datas);
-
-        // Normal case 1
-        let meta_datas = vec![
-            build_meta_data(vec![0]),
-            build_meta_data(vec![0]),
-            build_meta_data(vec![]),
-            build_meta_data(vec![1]),
-            build_meta_data(vec![3]),
-        ];
-        check_collect_column_stats(&schema, vec![], meta_datas);
-
-        // Normal case 2
-        let meta_datas = vec![
-            build_meta_data(vec![3, 5]),
-            build_meta_data(vec![0, 3, 5]),
-            build_meta_data(vec![0, 1, 2, 3, 5]),
-            build_meta_data(vec![1, 3, 5]),
-        ];
-        check_collect_column_stats(&schema, vec![3, 5], meta_datas);
     }
 
     #[test]

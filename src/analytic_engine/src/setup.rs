@@ -40,10 +40,7 @@ use crate::{
     compaction::executor::CompactionExecutor,
     context::OpenContext,
     engine::TableEngineImpl,
-    instance::{
-        open::{InstanceContext, ManifestStorages},
-        Instance, InstanceRef,
-    },
+    instance::open::{InstanceContext, ManifestStorages},
     sst::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},

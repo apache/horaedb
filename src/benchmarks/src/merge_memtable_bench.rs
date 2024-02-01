@@ -33,7 +33,6 @@ use analytic_engine::{
     sst::{
         factory::{FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         meta_data::cache::MetaCacheRef,
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table::{
         sst_util,

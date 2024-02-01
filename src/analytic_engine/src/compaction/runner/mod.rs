@@ -30,10 +30,7 @@ use crate::{
     },
     instance::flush_compaction::Result,
     row_iter::IterOptions,
-    sst::{
-        factory::{ScanOptions, SstWriteOptions},
-        writer::{MetaData, SstInfo},
-    },
+    sst::factory::SstWriteOptions,
     table::data::TableData,
 };
 
@@ -56,6 +53,7 @@ pub(crate) type CompactionRunnerPtr = Box<dyn CompactionRunner>;
 /// Compaction runner task
 #[derive(Debug, Clone)]
 pub struct CompactionRunnerTask {
+    #[allow(unused)]
     task_key: String,
     executor_task: CompactionExecutorTask,
 }

@@ -135,7 +135,6 @@ impl Instance {
             wal_manager: wal_manager.clone(),
             store_picker: store_picker.clone(),
             sst_factory,
-            meta_cache: ctx.meta_cache.clone(),
         });
 
         let scheduler_config = ctx.config.compaction.clone();

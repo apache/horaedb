@@ -50,11 +50,7 @@ use wal::manager::{WalLocation, WalManagerRef};
 
 use self::flush_compaction::{Flusher, TableFlushOptions};
 use crate::{
-    compaction::{
-        executor::CompactionExecutor, scheduler::CompactionSchedulerRef, TableCompactionRequest,
-    },
-    context::OpenContext,
-    instance::open::ManifestStorages,
+    compaction::{scheduler::CompactionSchedulerRef, TableCompactionRequest},
     manifest::ManifestRef,
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef, SpacesRef},
@@ -111,8 +107,6 @@ pub struct SpaceStore {
     store_picker: ObjectStorePickerRef,
     /// Sst factory.
     sst_factory: SstFactoryRef,
-
-    meta_cache: Option<MetaCacheRef>,
 }
 
 pub type SpaceStoreRef = Arc<SpaceStore>;

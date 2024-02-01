@@ -83,7 +83,7 @@ impl MergeSstBench {
             num_streams_to_prefetch: 0,
         };
 
-        let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
+        let _maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
         let scan_type = ScanType::Query;
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             scan_type,

@@ -36,7 +36,6 @@ use analytic_engine::{
         file::{FilePurgeQueue, Level},
         manager::FileId,
         meta_data::SstMetaReader,
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         writer::{MetaData, RecordBatchStream},
     },
     table::sst_util,

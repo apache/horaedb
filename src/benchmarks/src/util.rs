@@ -30,7 +30,6 @@ use analytic_engine::{
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
         meta_data::cache::{self, MetaCacheRef},
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         writer::MetaData,
     },
     table::sst_util,

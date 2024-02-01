@@ -15,17 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{cmp, sync::Arc};
+use std::cmp;
 
-use common_types::{
-    projected_schema::{ProjectedSchema, RowProjectorBuilder},
-    request_id::RequestId,
-};
+use common_types::request_id::RequestId;
 use logger::{debug, info};
-use runtime::Runtime;
 use snafu::ResultExt;
-use table_engine::predicate::Predicate;
-use wal::manager::WalManagerRef;
 
 use crate::{
     compaction::{
@@ -33,24 +27,16 @@ use crate::{
         runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
         CompactionInputFiles, CompactionTask, ExpiredFiles,
     },
-    instance::flush_compaction::{
-        AllocFileId, CreateSstWriter, Other, Result, StoreVersionEdit, WriteSst,
-    },
+    instance::flush_compaction::{AllocFileId, Other, Result, StoreVersionEdit},
     manifest::{
         meta_edit::{MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta},
         ManifestRef,
     },
-    row_iter::IterOptions,
-    sst::{
-        factory::{FactoryRef, ObjectStorePickerRef, ScanOptions, SstWriteOptions},
-        file::FileMeta,
-        meta_data::cache::MetaCacheRef,
-    },
+    sst::{factory::SstWriteOptions, file::FileMeta},
     table::{
         data::TableData,
         version_edit::{AddFile, DeleteFile},
     },
-    ScanType, SstReadOptionsBuilder,
 };
 
 pub struct Compactor {

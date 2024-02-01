@@ -27,7 +27,6 @@ use analytic_engine::{
             SstReadOptions, SstWriteOptions,
         },
         file::Level,
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table_options::{Compression, StorageFormatHint},
 };

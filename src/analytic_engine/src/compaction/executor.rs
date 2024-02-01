@@ -46,7 +46,6 @@ use crate::{
         meta_data::{SstMetaData, SstMetaReader},
         writer::{MetaData, SstInfo},
     },
-    table::data::TableData,
     Config, ScanType, SstReadOptionsBuilder,
 };
 
@@ -103,7 +102,7 @@ impl CompactionExecutor {
         let row_projector_builder =
             RowProjectorBuilder::new(fetched_schema, table_schema, Some(primary_key_indexes));
 
-        let request_id = RequestId::from(task.request_id);
+        let request_id = task.request_id;
         let merge_iter = {
             let mut builder = MergeBuilder::new(MergeConfig {
                 request_id: request_id.clone(),
@@ -143,7 +142,7 @@ impl CompactionExecutor {
 
         // TODO: eliminate the duplicated building of `SstReadOptions`.
         let sst_read_options = sst_read_options_builder.build(row_projector_builder);
-        let (sst_meta, column_stats) = {
+        let (sst_meta, _column_stats) = {
             let meta_reader = SstMetaReader {
                 space_id: task.space_id,
                 table_id: task.table_id,
@@ -204,50 +203,6 @@ pub struct CompactionExecutorTask {
     pub(crate) output_ctx: OutputContext,
 }
 
-impl CompactionExecutorTask {
-    fn new(
-        request_id: RequestId,
-        input_files: CompactionInputFiles,
-        table_data: &TableData,
-        file_id: u64,
-        scan_options: &ScanOptions,
-        sst_write_options: SstWriteOptions,
-    ) -> Self {
-        let table_options = table_data.table_options();
-
-        let input_ctx = {
-            let iter_options = IterOptions {
-                batch_size: table_options.num_rows_per_row_group,
-            };
-
-            InputContext {
-                files: input_files,
-                num_rows_per_row_group: table_options.num_rows_per_row_group,
-                merge_iter_options: iter_options,
-                need_dedup: table_options.need_dedup(),
-            }
-        };
-
-        let output_ctx = {
-            let file_path = table_data.sst_file_path(file_id);
-            OutputContext {
-                file_path,
-                write_options: sst_write_options,
-            }
-        };
-
-        Self {
-            request_id,
-            schema: table_data.schema(),
-            space_id: table_data.space_id,
-            table_id: table_data.id,
-            sequence: table_data.last_sequence(),
-            input_ctx,
-            output_ctx,
-        }
-    }
-}
-
 pub struct CompactionExecutorResult {
     pub sst_info: SstInfo,
     pub sst_meta: MetaData,
@@ -304,4 +259,87 @@ fn collect_column_stats_from_meta_datas(metas: &[SstMetaData]) -> HashMap<String
             ))
         });
     HashMap::from_iter(low_cardinality_cols)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use bytes_ext::Bytes;
+    use common_types::{schema::Schema, tests::build_schema, time::TimeRange};
+
+    use crate::{
+        compaction::executor::collect_column_stats_from_meta_datas,
+        sst::{
+            meta_data::SstMetaData,
+            parquet::meta_data::{ColumnValueSet, ParquetMetaData},
+        },
+    };
+
+    fn check_collect_column_stats(
+        schema: &Schema,
+        expected_low_cardinality_col_indexes: Vec<usize>,
+        meta_datas: Vec<SstMetaData>,
+    ) {
+        let column_stats = collect_column_stats_from_meta_datas(&meta_datas);
+        assert_eq!(
+            column_stats.len(),
+            expected_low_cardinality_col_indexes.len()
+        );
+
+        for col_idx in expected_low_cardinality_col_indexes {
+            let col_schema = schema.column(col_idx);
+            assert!(column_stats.contains_key(&col_schema.name));
+        }
+    }
+
+    #[test]
+    fn test_collect_column_stats_from_metadata() {
+        let schema = build_schema();
+        let build_meta_data = |low_cardinality_col_indexes: Vec<usize>| {
+            let mut column_values = vec![None; 6];
+            for idx in low_cardinality_col_indexes {
+                column_values[idx] = Some(ColumnValueSet::StringValue(Default::default()));
+            }
+            let parquet_meta_data = ParquetMetaData {
+                min_key: Bytes::new(),
+                max_key: Bytes::new(),
+                time_range: TimeRange::empty(),
+                max_sequence: 0,
+                schema: schema.clone(),
+                parquet_filter: None,
+                column_values: Some(column_values),
+            };
+            SstMetaData::Parquet(Arc::new(parquet_meta_data))
+        };
+
+        // Normal case 0
+        let meta_datas = vec![
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0, 1]),
+            build_meta_data(vec![0, 2]),
+            build_meta_data(vec![0, 3]),
+        ];
+        check_collect_column_stats(&schema, vec![0], meta_datas);
+
+        // Normal case 1
+        let meta_datas = vec![
+            build_meta_data(vec![0]),
+            build_meta_data(vec![0]),
+            build_meta_data(vec![]),
+            build_meta_data(vec![1]),
+            build_meta_data(vec![3]),
+        ];
+        check_collect_column_stats(&schema, vec![], meta_datas);
+
+        // Normal case 2
+        let meta_datas = vec![
+            build_meta_data(vec![3, 5]),
+            build_meta_data(vec![0, 3, 5]),
+            build_meta_data(vec![0, 1, 2, 3, 5]),
+            build_meta_data(vec![1, 3, 5]),
+        ];
+        check_collect_column_stats(&schema, vec![3, 5], meta_datas);
+    }
 }

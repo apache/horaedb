@@ -51,7 +51,6 @@ use wal::{
 };
 
 use crate::{
-    instance::open::InstanceContext,
     setup::{EngineBuilder, TableEngineContext},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RecoverMode,

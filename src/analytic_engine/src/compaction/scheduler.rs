@@ -48,18 +48,16 @@ use tokio::{
 
 use crate::{
     compaction::{
-        compactor::{self, Compactor},
-        executor::CompactionExecutor,
-        metrics::COMPACTION_PENDING_REQUEST_GAUGE,
-        picker::PickerContext,
-        runner::{CompactionRunner, CompactionRunnerBuilder},
-        CompactionTask, PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
+        compactor::Compactor, executor::CompactionExecutor,
+        metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext,
+        runner::CompactionRunnerBuilder, CompactionTask, PickerManager, TableCompactionRequest,
+        WaitError, WaiterNotifier,
     },
     instance::{
         flush_compaction::{Flusher, TableFlushOptions},
         SpaceStore,
     },
-    sst::factory::{ScanOptions, SstWriteOptions},
+    sst::factory::SstWriteOptions,
     table::data::TableDataRef,
     TableOptions,
 };
@@ -503,7 +501,7 @@ impl ScheduleWorker {
         let keep_scheduling_compaction =
             self.is_pending_queue_hungry() && compaction_task.contains_min_level();
 
-        let runtime = self.runtime.clone();
+        let _runtime = self.runtime.clone();
         let compactor = self.compactor.clone();
         self.limit.start_task();
         let task = OngoingTask {

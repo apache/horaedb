@@ -23,7 +23,6 @@ use analytic_engine::{
     sst::{
         factory::{Factory, FactoryImpl, ObjectStorePickerRef, ScanOptions, SstReadHint},
         meta_data::cache::{MetaCache, MetaCacheRef},
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     ScanType, SstReadOptionsBuilder,
 };

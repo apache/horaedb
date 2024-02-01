@@ -641,7 +641,6 @@ mod tests {
             factory::{
                 Factory, FactoryImpl, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions,
             },
-            metrics::MaybeTableLevelMetrics,
             parquet::AsyncParquetReader,
             reader::{tests::check_stream, SstReader},
         },
