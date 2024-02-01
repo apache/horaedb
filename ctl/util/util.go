@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package operation
+package util
 
 import (
 	"encoding/json"
@@ -28,7 +28,7 @@ import (
 	"github.com/jedib0t/go-pretty/v6/table"
 )
 
-func tableWriter(headers []string) table.Writer {
+func TableWriter(headers []string) table.Writer {
 	header := table.Row{}
 	for _, s := range headers {
 		header = append(header, s)

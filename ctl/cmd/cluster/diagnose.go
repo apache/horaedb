@@ -17,20 +17,18 @@
  * under the License.
  */
 
-package cmd
+package cluster
 
 import (
-	"os"
-
+	"github.com/apache/incubator-horaedb/ctl/operation"
 	"github.com/spf13/cobra"
 )
 
-var quitCmd = &cobra.Command{
-	Use:     "quit",
-	Aliases: []string{"q", "exit"},
-	Short:   "Quit horaectl",
+var diagnoseCmd = &cobra.Command{
+	Use:     "diagnose",
+	Aliases: []string{"d"},
+	Short:   "Cluster diagnose",
 	Run: func(cmd *cobra.Command, args []string) {
-		println("Bye!")
-		os.Exit(0)
+		operation.ClusterDiagnose()
 	},
 }

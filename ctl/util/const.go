@@ -17,22 +17,20 @@
  * under the License.
  */
 
-package cmd
+package util
 
-import (
-	"github.com/apache/incubator-horaedb/ctl/operation"
-	"github.com/spf13/cobra"
+const (
+	HTTP     = "http://"
+	API      = "/api/v1"
+	DEBUG    = "/debug"
+	CLUSTERS = "/clusters"
+
+	RootMetaAddr = "meta_addr"
+	RootCluster  = "cluster_name"
 )
 
-var clusterCmd = &cobra.Command{
-	Use:     "cluster",
-	Aliases: []string{"c"},
-	Short:   "Operations on cluster",
-	Run: func(cmd *cobra.Command, args []string) {
-		operation.ClustersList()
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(clusterCmd)
-}
+var (
+	ClustersListHeader           = []string{"ID", "Name", "ShardTotal", "TopologyType", "ProcedureExecutingBatchSize", "CreatedAt", "ModifiedAt"}
+	ClustersDiagnoseHeader       = []string{"unregistered_shards", "unready_shards:shard_id", "unready_shards:node_name", "unready_shards:status"}
+	ClustersEnableScheduleHeader = []string{"enable_schedule"}
+)

@@ -20,8 +20,12 @@
 package operation
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/apache/incubator-horaedb/ctl/util"
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/spf13/viper"
@@ -48,30 +52,49 @@ type DiagnoseShardStatus struct {
 	Status   string `json:"status"`
 }
 
-type DiagnoseShardResponse struct {
+type EnableScheduleRequest struct {
+	Enable bool `json:"enable"`
+}
+
+type EnableScheduleResponse struct {
+	Status string `json:"status"`
+	Data   bool   `json:"data"`
+}
+
+type DiagnoseShard struct {
 	// shardID -> nodeName
 	UnregisteredShards []uint32                       `json:"unregisteredShards"`
 	UnreadyShards      map[uint32]DiagnoseShardStatus `json:"unreadyShards"`
 }
 
-func clusterUrl() string {
-	return HTTP + viper.GetString(RootMetaAddr) + APIClusters
+type DiagnoseShardResponse struct {
+	Status string        `json:"status"`
+	Data   DiagnoseShard `json:"data"`
 }
+
+func clusterUrl() string {
+	return util.HTTP + viper.GetString(util.RootMetaAddr) + util.API + util.CLUSTERS
+}
+
 func diagnoseUrl() string {
-	return HTTP + viper.GetString(RootMetaAddr) + APIClustersDiagnose + viper.GetString(RootCluster) + "/shards"
+	return util.HTTP + viper.GetString(util.RootMetaAddr) + util.DEBUG + "/diagnose" + "/" + viper.GetString(util.RootCluster) + "/shards"
+}
+
+func enableScheduleUrl() string {
+	return util.HTTP + viper.GetString(util.RootMetaAddr) + util.DEBUG + util.CLUSTERS + "/" + viper.GetString(util.RootCluster) + "/enableSchedule"
 }
 
 func ClustersList() {
 	url := clusterUrl()
 	var response ClusterResponse
-	err := HttpUtil(http.MethodGet, url, nil, &response)
+	err := util.HttpUtil(http.MethodGet, url, nil, &response)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	t := tableWriter(clustersListHeader)
+	t := util.TableWriter(util.ClustersListHeader)
 	for _, data := range response.Data {
-		row := table.Row{data.ID, data.Name, data.ShardTotal, data.TopologyType, data.ProcedureExecutingBatchSize, FormatTimeMilli(int64(data.CreatedAt)), FormatTimeMilli(int64(data.ModifiedAt))}
+		row := table.Row{data.ID, data.Name, data.ShardTotal, data.TopologyType, data.ProcedureExecutingBatchSize, util.FormatTimeMilli(int64(data.CreatedAt)), util.FormatTimeMilli(int64(data.ModifiedAt))}
 		t.AppendRow(row)
 	}
 	fmt.Println(t.Render())
@@ -81,18 +104,56 @@ func ClustersList() {
 func ClusterDiagnose() {
 	url := diagnoseUrl()
 	var response DiagnoseShardResponse
-	err := HttpUtil(http.MethodGet, url, nil, &response)
+	err := util.HttpUtil(http.MethodGet, url, nil, &response)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	t := tableWriter(clustersDiagnoseHeader)
-	row := table.Row{response.UnregisteredShards}
+	t := util.TableWriter(util.ClustersDiagnoseHeader)
+	row := table.Row{response.Data.UnregisteredShards}
 	t.AppendRow(row)
-	for shardID, data := range response.UnreadyShards {
+	for shardID, data := range response.Data.UnreadyShards {
 		row := table.Row{"", shardID, data.NodeName, data.Status}
 		t.AppendRow(row)
 	}
+	fmt.Println(t.Render())
+	t.Style()
+}
+
+func ClusterScheduleGet() {
+	url := enableScheduleUrl()
+	var response EnableScheduleResponse
+	err := util.HttpUtil(http.MethodGet, url, nil, &response)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	t := util.TableWriter(util.ClustersEnableScheduleHeader)
+	row := table.Row{response.Data}
+	t.AppendRow(row)
+	fmt.Println(t.Render())
+	t.Style()
+}
+
+func ClusterScheduleSet(enable bool) {
+	url := enableScheduleUrl()
+	request := EnableScheduleRequest{
+		Enable: enable,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	var response EnableScheduleResponse
+	err = util.HttpUtil(http.MethodPut, url, bytes.NewBuffer(body), &response)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	t := util.TableWriter(util.ClustersEnableScheduleHeader)
+	row := table.Row{response.Data}
+	t.AppendRow(row)
 	fmt.Println(t.Render())
 	t.Style()
 }

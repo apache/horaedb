@@ -17,18 +17,31 @@
  * under the License.
  */
 
-package operation
+package cluster
 
-const (
-	HTTP = "http://"
-	API  = "/api/v1"
-
-	APIClusters         = API + "/clusters"
-	APIClustersDiagnose = API + "/clusters/diagnose"
-
-	RootMetaAddr = "meta_addr"
-	RootCluster  = "cluster_name"
+import (
+	"github.com/apache/incubator-horaedb/ctl/operation"
+	"github.com/spf13/cobra"
 )
 
-var clustersListHeader = []string{"ID", "Name", "ShardTotal", "TopologyType", "ProcedureExecutingBatchSize", "CreatedAt", "ModifiedAt"}
-var clustersDiagnoseHeader = []string{"unregistered_shards", "unready_shards:shard_id", "unready_shards:node_name", "unready_shards:status"}
+var enable bool
+
+var scheduleCmd = &cobra.Command{
+	Use:     "schedule",
+	Aliases: []string{"s"},
+	Short:   "Cluster schedule",
+	Args:    cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		enableSet := cmd.Flags().Changed("enable")
+
+		if !enableSet {
+			operation.ClusterScheduleGet()
+		} else {
+			operation.ClusterScheduleSet(enable)
+		}
+	},
+}
+
+func init() {
+	scheduleCmd.Flags().BoolVarP(&enable, "enable", "e", false, "enable or disable schedule")
+}

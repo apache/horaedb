@@ -26,7 +26,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/apache/incubator-horaedb/ctl/operation"
+	"github.com/apache/incubator-horaedb/ctl/cmd/cluster"
+	"github.com/apache/incubator-horaedb/ctl/util"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -53,7 +54,7 @@ func Execute() {
 	}
 
 	for {
-		printPrompt(viper.GetString(operation.RootMetaAddr), viper.GetString(operation.RootCluster))
+		printPrompt(viper.GetString(util.RootMetaAddr), viper.GetString(util.RootCluster))
 		err = ReadArgs(os.Stdin)
 		if err != nil {
 			fmt.Println(err)
@@ -67,11 +68,13 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().String(operation.RootMetaAddr, "127.0.0.1:8080", "meta addr is used to connect to meta server")
-	viper.BindPFlag(operation.RootMetaAddr, rootCmd.PersistentFlags().Lookup(operation.RootMetaAddr))
+	rootCmd.PersistentFlags().StringP(util.RootMetaAddr, "m", "127.0.0.1:8080", "meta addr is used to connect to meta server")
+	viper.BindPFlag(util.RootMetaAddr, rootCmd.PersistentFlags().Lookup(util.RootMetaAddr))
 
-	rootCmd.PersistentFlags().StringP(operation.RootCluster, "c", "defaultCluster", "")
-	viper.BindPFlag(operation.RootCluster, rootCmd.PersistentFlags().Lookup(operation.RootCluster))
+	rootCmd.PersistentFlags().StringP(util.RootCluster, "c", "defaultCluster", "")
+	viper.BindPFlag(util.RootCluster, rootCmd.PersistentFlags().Lookup(util.RootCluster))
+
+	rootCmd.AddCommand(cluster.ClusterCmd, quitCmd)
 
 	rootCmd.CompletionOptions = cobra.CompletionOptions{
 		DisableDefaultCmd:   true,

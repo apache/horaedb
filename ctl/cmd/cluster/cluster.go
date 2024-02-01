@@ -17,22 +17,22 @@
  * under the License.
  */
 
-package cmd
+package cluster
 
 import (
 	"github.com/apache/incubator-horaedb/ctl/operation"
 	"github.com/spf13/cobra"
 )
 
-var diagnoseCmd = &cobra.Command{
-	Use:     "diagnose",
-	Aliases: []string{"d"},
-	Short:   "Cluster diagnose",
+var ClusterCmd = &cobra.Command{
+	Use:     "cluster",
+	Aliases: []string{"c"},
+	Short:   "Operations on cluster",
 	Run: func(cmd *cobra.Command, args []string) {
-		operation.ClusterDiagnose()
+		operation.ClustersList()
 	},
 }
 
 func init() {
-	clusterCmd.AddCommand(diagnoseCmd)
+	ClusterCmd.AddCommand(diagnoseCmd, scheduleCmd)
 }
