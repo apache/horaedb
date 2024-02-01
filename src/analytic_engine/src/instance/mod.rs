@@ -50,7 +50,11 @@ use wal::manager::{WalLocation, WalManagerRef};
 
 use self::flush_compaction::{Flusher, TableFlushOptions};
 use crate::{
-    compaction::{scheduler::CompactionSchedulerRef, TableCompactionRequest},
+    compaction::{
+        executor::CompactionExecutor, scheduler::CompactionSchedulerRef, TableCompactionRequest,
+    },
+    context::OpenContext,
+    instance::open::ManifestStorages,
     manifest::ManifestRef,
     row_iter::IterOptions,
     space::{SpaceId, SpaceRef, SpacesRef},
@@ -95,11 +99,12 @@ pub enum Error {
 
 define_result!(Error);
 
+// TODO: `SpaceStore` seems not a good name
 pub struct SpaceStore {
     /// All spaces of the engine.
     spaces: SpacesRef,
     /// Manifest (or meta) stores meta data of the engine instance.
-    manifest: ManifestRef,
+    pub(crate) manifest: ManifestRef,
     /// Wal of all tables
     wal_manager: WalManagerRef,
     /// Object store picker for persisting data.

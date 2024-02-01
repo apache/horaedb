@@ -19,7 +19,10 @@
 
 use std::sync::Arc;
 
-use analytic_engine::{self, setup::EngineBuilder};
+use analytic_engine::{
+    self,
+    setup::{EngineBuilder, TableEngineContext},
+};
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
@@ -41,7 +44,11 @@ use server::{
     local_tables::LocalTablesRecoverer,
     server::{Builder, DatafusionContext},
 };
-use table_engine::{engine::EngineRuntimes, memory::MemoryTableEngine, proxy::TableEngineProxy};
+use table_engine::{
+    engine::{EngineRuntimes, TableEngineRef},
+    memory::MemoryTableEngine,
+    proxy::TableEngineProxy,
+};
 use tracing_util::{
     self,
     tracing_appender::{non_blocking::WorkerGuard, rolling::Rotation},
@@ -259,19 +266,14 @@ async fn run_server_with_runtimes<T>(
 }
 
 // Build proxy for all table engines.
-async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<TableEngineProxy> {
+async fn build_table_engine_proxy(analytic_engine: TableEngineRef) -> Arc<TableEngineProxy> {
     // Create memory engine
     let memory = MemoryTableEngine;
-    // Create analytic engine
-    let analytic = engine_builder
-        .build()
-        .await
-        .expect("Failed to setup analytic engine");
 
     // Create table engine proxy
     Arc::new(TableEngineProxy {
         memory,
-        analytic: analytic.clone(),
+        analytic: analytic_engine.clone(),
     })
 }
 
@@ -335,7 +337,11 @@ async fn build_with_meta<T: WalsOpener>(
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };
-    let engine_proxy = build_table_engine_proxy(engine_builder).await;
+    let TableEngineContext { table_engine, .. } = engine_builder
+        .build()
+        .await
+        .expect("Failed to setup analytic engine");
+    let engine_proxy = build_table_engine_proxy(table_engine).await;
 
     let meta_based_manager_ref = Arc::new(volatile::ManagerImpl::new(
         shard_set,
@@ -370,12 +376,17 @@ async fn build_without_meta<T: WalsOpener>(
         .open_wals(&config.analytic.wal, make_wal_runtime(runtimes.clone()))
         .await
         .expect("Failed to setup analytic engine");
+
     let engine_builder = EngineBuilder {
         config: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };
-    let engine_proxy = build_table_engine_proxy(engine_builder).await;
+    let TableEngineContext { table_engine, .. } = engine_builder
+        .build()
+        .await
+        .expect("Failed to setup analytic engine");
+    let engine_proxy = build_table_engine_proxy(table_engine).await;
 
     // Create catalog manager, use analytic engine as backend.
     let analytic = engine_proxy.analytic.clone();

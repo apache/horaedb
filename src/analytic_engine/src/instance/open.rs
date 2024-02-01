@@ -30,7 +30,7 @@ use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
 
 use crate::{
-    compaction::scheduler::SchedulerImpl,
+    compaction::{executor::CompactionExecutor, scheduler::SchedulerImpl},
     context::OpenContext,
     engine,
     instance::{
@@ -38,7 +38,7 @@ use crate::{
         flush_compaction::Flusher,
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
-        Instance, SpaceStore,
+        Instance, InstanceRef, SpaceStore,
     },
     manifest::{details::ManifestImpl, LoadRequest, Manifest, ManifestRef},
     row_iter::IterOptions,
@@ -52,7 +52,43 @@ use crate::{
     RecoverMode,
 };
 
-const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
+pub(crate) struct InstanceContext {
+    pub instance: InstanceRef,
+    // TODO: unused now, will be used in remote compaction.
+    pub compaction_executor: Arc<CompactionExecutor>,
+}
+
+impl InstanceContext {
+    pub(crate) async fn new(
+        ctx: OpenContext,
+        manifest_storages: ManifestStorages,
+        wal_manager: WalManagerRef,
+        store_picker: ObjectStorePickerRef,
+        sst_factory: SstFactoryRef,
+    ) -> Result<Self> {
+        let compaction_executor = Arc::new(CompactionExecutor::new(
+            ctx.runtimes.compact_runtime.clone(),
+            &ctx.config,
+            sst_factory.clone(),
+            store_picker.clone(),
+        ));
+
+        let instance = Instance::open(
+            ctx,
+            manifest_storages,
+            wal_manager,
+            store_picker,
+            sst_factory,
+            compaction_executor.clone(),
+        )
+        .await?;
+
+        Ok(Self {
+            instance,
+            compaction_executor,
+        })
+    }
+}
 
 pub(crate) struct ManifestStorages {
     pub wal_manager: WalManagerRef,
@@ -67,6 +103,7 @@ impl Instance {
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
+        compaction_executor: Arc<CompactionExecutor>,
     ) -> Result<Arc<Self>> {
         let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
         let default_runtime = ctx.runtimes.default_runtime.clone();
@@ -102,19 +139,14 @@ impl Instance {
         });
 
         let scheduler_config = ctx.config.compaction.clone();
-        let scan_options_for_compaction = ScanOptions {
-            background_read_parallelism: 1,
-            max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
-            num_streams_to_prefetch: ctx.config.num_streams_to_prefetch,
-        };
         let compaction_runtime = ctx.runtimes.compact_runtime.clone();
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
+            compaction_executor,
             compaction_runtime,
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,
             ctx.config.min_flush_interval.as_millis(),
-            scan_options_for_compaction,
         ));
 
         let scan_options = ScanOptions {

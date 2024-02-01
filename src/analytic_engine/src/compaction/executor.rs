@@ -47,8 +47,10 @@ use crate::{
         writer::{MetaData, SstInfo},
     },
     table::data::TableData,
-    ScanType, SstReadOptionsBuilder,
+    Config, ScanType, SstReadOptionsBuilder,
 };
+
+const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
 /// Executor carrying for actual compaction work
 pub struct CompactionExecutor {
@@ -61,6 +63,26 @@ pub struct CompactionExecutor {
 }
 
 impl CompactionExecutor {
+    pub fn new(
+        runtime: Arc<Runtime>,
+        config: &Config,
+        sst_factory: FactoryRef,
+        store_picker: ObjectStorePickerRef,
+    ) -> Self {
+        let scan_options = ScanOptions {
+            background_read_parallelism: 1,
+            max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
+            num_streams_to_prefetch: config.num_streams_to_prefetch,
+        };
+
+        Self {
+            runtime,
+            scan_options,
+            sst_factory,
+            store_picker,
+        }
+    }
+
     pub async fn execute(&self, task: CompactionExecutorTask) -> Result<CompactionExecutorResult> {
         let projected_schema = ProjectedSchema::no_projection(task.schema.clone());
         let predicate = Arc::new(Predicate::empty());

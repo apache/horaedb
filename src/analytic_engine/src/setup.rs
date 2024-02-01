@@ -37,9 +37,13 @@ use table_kv::obkv::ObkvImpl;
 use wal::manager::{OpenedWals, WalManagerRef};
 
 use crate::{
+    compaction::executor::CompactionExecutor,
     context::OpenContext,
     engine::TableEngineImpl,
-    instance::{open::ManifestStorages, Instance, InstanceRef},
+    instance::{
+        open::{InstanceContext, ManifestStorages},
+        Instance, InstanceRef,
+    },
     sst::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
@@ -82,6 +86,11 @@ define_result!(Error);
 const STORE_DIR_NAME: &str = "store";
 const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 
+pub struct TableEngineContext {
+    pub table_engine: TableEngineRef,
+    pub compaction_executor: Arc<CompactionExecutor>,
+}
+
 /// Builder for [TableEngine].
 ///
 /// [TableEngine]: table_engine::engine::TableEngine
@@ -93,7 +102,7 @@ pub struct EngineBuilder<'a> {
 }
 
 impl<'a> EngineBuilder<'a> {
-    pub async fn build(self) -> Result<TableEngineRef> {
+    pub async fn build(self) -> Result<TableEngineContext> {
         let opened_storages =
             open_storage(self.config.storage.clone(), self.engine_runtimes.clone()).await?;
         let manifest_storages = ManifestStorages {
@@ -101,7 +110,10 @@ impl<'a> EngineBuilder<'a> {
             oss_storage: opened_storages.default_store().clone(),
         };
 
-        let instance = open_instance(
+        let InstanceContext {
+            instance,
+            compaction_executor,
+        } = build_instance_context(
             self.config.clone(),
             self.engine_runtimes,
             self.opened_wals.data_wal,
@@ -109,17 +121,23 @@ impl<'a> EngineBuilder<'a> {
             Arc::new(opened_storages),
         )
         .await?;
-        Ok(Arc::new(TableEngineImpl::new(instance)))
+
+        let table_engine = Arc::new(TableEngineImpl::new(instance));
+
+        Ok(TableEngineContext {
+            table_engine,
+            compaction_executor,
+        })
     }
 }
 
-async fn open_instance(
+async fn build_instance_context(
     config: Config,
     engine_runtimes: Arc<EngineRuntimes>,
     wal_manager: WalManagerRef,
     manifest_storages: ManifestStorages,
     store_picker: ObjectStorePickerRef,
-) -> Result<InstanceRef> {
+) -> Result<InstanceContext> {
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
         .map(|cap| Arc::new(MetaCache::new(cap)));
@@ -130,7 +148,7 @@ async fn open_instance(
         meta_cache,
     };
 
-    let instance = Instance::open(
+    let instance_ctx = InstanceContext::new(
         open_ctx,
         manifest_storages,
         wal_manager,
@@ -139,7 +157,8 @@ async fn open_instance(
     )
     .await
     .context(OpenInstance)?;
-    Ok(instance)
+
+    Ok(instance_ctx)
 }
 
 #[derive(Debug)]

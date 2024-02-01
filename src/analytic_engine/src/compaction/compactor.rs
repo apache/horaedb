@@ -53,22 +53,19 @@ use crate::{
     ScanType, SstReadOptionsBuilder,
 };
 
-struct Compactor {
-    /// Manifest (or meta) stores meta data of the engine instance.
-    manifest: ManifestRef,
-
+pub struct Compactor {
+    /// Sst files compaction runner
     runner: Box<dyn CompactionRunner>,
 
-    /// Object store picker for persisting data.
-    store_picker: ObjectStorePickerRef,
-
-    /// Sst factory.
-    sst_factory: FactoryRef,
-
-    meta_cache: Option<MetaCacheRef>,
+    /// Manifest (or meta) stores meta data of the engine instance.
+    manifest: ManifestRef,
 }
 
 impl Compactor {
+    pub(crate) fn new(runner: Box<dyn CompactionRunner>, manifest: ManifestRef) -> Self {
+        Self { runner, manifest }
+    }
+
     pub(crate) async fn compact_table(
         &self,
         request_id: RequestId,

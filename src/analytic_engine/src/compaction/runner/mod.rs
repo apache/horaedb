@@ -37,11 +37,21 @@ use crate::{
     table::data::TableData,
 };
 
+pub(crate) struct CompactionRunnerBuilder;
+
+impl CompactionRunnerBuilder {
+    pub fn build(&self, executor: Arc<CompactionExecutor>) -> CompactionRunnerPtr {
+        Box::new(LocalCompactionRunner { executor })
+    }
+}
+
 /// Compaction runner
 #[async_trait]
-pub(crate) trait CompactionRunner {
+pub(crate) trait CompactionRunner: Send + Sync + 'static {
     async fn run(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult>;
 }
+
+pub(crate) type CompactionRunnerPtr = Box<dyn CompactionRunner>;
 
 /// Compaction runner task
 #[derive(Debug, Clone)]
