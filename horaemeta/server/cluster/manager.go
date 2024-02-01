@@ -309,12 +309,9 @@ func (m *managerImpl) DropTable(ctx context.Context, clusterName, schemaName, ta
 
 	// If the table is partitioned, delete the table metadata directly.
 	if table.IsPartitioned() {
-		_, err = cluster.metadata.DropTableMetadata(ctx,
-			schemaName,
-			tableName,
-		)
+		_, err = cluster.metadata.DropTableMetadata(ctx, schemaName, tableName)
 		if err != nil {
-			return errors.WithMessage(err, "cluster drop table")
+			return errors.WithMessage(err, "cluster drop table metadata")
 		}
 		return nil
 	}
