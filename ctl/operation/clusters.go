@@ -44,14 +44,14 @@ type ClusterResponse struct {
 }
 
 type DiagnoseShardStatus struct {
-	NodeName string `json:"node_name"`
+	NodeName string `json:"nodeName"`
 	Status   string `json:"status"`
 }
 
 type DiagnoseShardResponse struct {
 	// shardID -> nodeName
-	UnregisteredShards []uint32                       `json:"unregistered_shards"`
-	UnreadyShards      map[uint32]DiagnoseShardStatus `json:"unready_shards"`
+	UnregisteredShards []uint32                       `json:"unregisteredShards"`
+	UnreadyShards      map[uint32]DiagnoseShardStatus `json:"unreadyShards"`
 }
 
 func clusterUrl() string {

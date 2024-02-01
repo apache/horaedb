@@ -80,14 +80,14 @@ type API struct {
 }
 
 type DiagnoseShardStatus struct {
-	NodeName string `json:"node_name"`
+	NodeName string `json:"nodeName"`
 	Status   string `json:"status"`
 }
 
 type DiagnoseShardResult struct {
 	// shardID -> nodeName
-	UnregisteredShards []storage.ShardID                       `json:"unregistered_shards"`
-	UnreadyShards      map[storage.ShardID]DiagnoseShardStatus `json:"unready_shards"`
+	UnregisteredShards []storage.ShardID                       `json:"unregisteredShards"`
+	UnreadyShards      map[storage.ShardID]DiagnoseShardStatus `json:"unreadyShards"`
 }
 
 type QueryTableRequest struct {
