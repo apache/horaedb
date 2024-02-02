@@ -134,10 +134,6 @@ impl<'a> Reader<'a> {
             ..Default::default()
         };
 
-        // let table_level_sst_metrics = matches!(options.frequency,
-        // ReadFrequency::Frequent)     .then(||
-        // options.maybe_table_level_metrics.clone());
-
         Self {
             path,
             store,
