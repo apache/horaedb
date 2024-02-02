@@ -17,18 +17,42 @@
  * under the License.
  */
 
-package cluster
+package cmd
 
 import (
 	"github.com/apache/incubator-horaedb/ctl/operation"
 	"github.com/spf13/cobra"
 )
 
-var diagnoseCmd = &cobra.Command{
-	Use:     "diagnose",
-	Aliases: []string{"d"},
-	Short:   "Cluster diagnose",
+var enable bool
+
+var scheduleCmd = &cobra.Command{
+	Use:     "schedule",
+	Aliases: []string{"s"},
+	Short:   "Cluster schedule",
 	Run: func(cmd *cobra.Command, args []string) {
-		operation.ClusterDiagnose()
+		cmd.Help()
 	},
+}
+
+var getCmd = &cobra.Command{
+	Use:   "get",
+	Short: "Get the schedule status",
+	Run: func(cmd *cobra.Command, args []string) {
+		operation.ClusterScheduleGet()
+	},
+}
+
+var setCmd = &cobra.Command{
+	Use:   "set",
+	Short: "Set the schedule status",
+	Run: func(cmd *cobra.Command, args []string) {
+		operation.ClusterScheduleSet(enable)
+	},
+}
+
+func init() {
+	setCmd.Flags().BoolVarP(&enable, "enable", "e", false, "enable or disable schedule")
+	scheduleCmd.AddCommand(getCmd, setCmd)
+	clusterCmd.AddCommand(scheduleCmd)
 }

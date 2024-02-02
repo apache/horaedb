@@ -20,21 +20,18 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 )
 
-var quitCmd = &cobra.Command{
-	Use:     "quit",
-	Aliases: []string{"q", "exit"},
-	Short:   "Quit horaectl",
+var clusterCmd = &cobra.Command{
+	Use:     "cluster",
+	Aliases: []string{"c"},
+	Short:   "Operations on cluster",
 	Run: func(cmd *cobra.Command, args []string) {
-		println("Bye!")
-		os.Exit(0)
+		cmd.Help()
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(quitCmd)
+	rootCmd.AddCommand(clusterCmd)
 }

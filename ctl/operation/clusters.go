@@ -52,15 +52,6 @@ type DiagnoseShardStatus struct {
 	Status   string `json:"status"`
 }
 
-type EnableScheduleRequest struct {
-	Enable bool `json:"enable"`
-}
-
-type EnableScheduleResponse struct {
-	Status string `json:"status"`
-	Data   bool   `json:"data"`
-}
-
 type DiagnoseShard struct {
 	// shardID -> nodeName
 	UnregisteredShards []uint32                       `json:"unregisteredShards"`
@@ -70,6 +61,15 @@ type DiagnoseShard struct {
 type DiagnoseShardResponse struct {
 	Status string        `json:"status"`
 	Data   DiagnoseShard `json:"data"`
+}
+
+type EnableScheduleRequest struct {
+	Enable bool `json:"enable"`
+}
+
+type EnableScheduleResponse struct {
+	Status string `json:"status"`
+	Data   bool   `json:"data"`
 }
 
 func clusterUrl() string {

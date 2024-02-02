@@ -26,8 +26,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/apache/incubator-horaedb/ctl/cmd/cluster"
 	"github.com/apache/incubator-horaedb/ctl/util"
+
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -73,8 +73,6 @@ func init() {
 
 	rootCmd.PersistentFlags().StringP(util.RootCluster, "c", "defaultCluster", "")
 	viper.BindPFlag(util.RootCluster, rootCmd.PersistentFlags().Lookup(util.RootCluster))
-
-	rootCmd.AddCommand(cluster.ClusterCmd, quitCmd)
 
 	rootCmd.CompletionOptions = cobra.CompletionOptions{
 		DisableDefaultCmd:   true,
