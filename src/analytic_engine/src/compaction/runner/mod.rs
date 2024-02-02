@@ -53,6 +53,7 @@ pub(crate) type CompactionRunnerPtr = Box<dyn CompactionRunner>;
 /// Compaction runner task
 #[derive(Debug, Clone)]
 pub struct CompactionRunnerTask {
+    // TODO: unused now, will be used in remote compaction.
     #[allow(unused)]
     task_key: String,
     executor_task: CompactionExecutorTask,

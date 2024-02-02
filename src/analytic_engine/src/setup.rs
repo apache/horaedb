@@ -85,6 +85,7 @@ const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 
 pub struct TableEngineContext {
     pub table_engine: TableEngineRef,
+    // TODO: unused now, will be used in remote compaction.
     pub compaction_executor: Arc<CompactionExecutor>,
 }
 
