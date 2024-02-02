@@ -501,7 +501,6 @@ impl ScheduleWorker {
         let keep_scheduling_compaction =
             self.is_pending_queue_hungry() && compaction_task.contains_min_level();
 
-        let _runtime = self.runtime.clone();
         let compactor = self.compactor.clone();
         self.limit.start_task();
         let task = OngoingTask {
