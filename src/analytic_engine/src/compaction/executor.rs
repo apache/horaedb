@@ -205,17 +205,17 @@ impl CompactionExecutor {
 #[derive(Debug, Clone)]
 pub struct CompactionExecutorTask {
     /// Trace id for this operation
-    pub(crate) request_id: RequestId,
+    pub request_id: RequestId,
 
-    pub(crate) schema: Schema,
-    pub(crate) space_id: SpaceId,
-    pub(crate) table_id: TableId,
-    pub(crate) sequence: SequenceNumber,
+    pub schema: Schema,
+    pub space_id: SpaceId,
+    pub table_id: TableId,
+    pub sequence: SequenceNumber,
 
     /// Input context
-    pub(crate) input_ctx: InputContext,
+    pub input_ctx: InputContext,
     /// Output context
-    pub(crate) output_ctx: OutputContext,
+    pub output_ctx: OutputContext,
 }
 
 pub struct CompactionExecutorResult {
@@ -225,20 +225,20 @@ pub struct CompactionExecutorResult {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct InputContext {
+pub struct InputContext {
     /// Input sst files in this compaction
-    pub(crate) files: CompactionInputFiles,
-    pub(crate) num_rows_per_row_group: usize,
-    pub(crate) merge_iter_options: IterOptions,
-    pub(crate) need_dedup: bool,
+    pub files: CompactionInputFiles,
+    pub num_rows_per_row_group: usize,
+    pub merge_iter_options: IterOptions,
+    pub need_dedup: bool,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct OutputContext {
+pub struct OutputContext {
     /// Output sst file path
-    pub(crate) file_path: Path,
+    pub file_path: Path,
     /// Output sst write context
-    pub(crate) write_options: SstWriteOptions,
+    pub write_options: SstWriteOptions,
 }
 
 /// Collect the column stats from a batch of sst meta data.

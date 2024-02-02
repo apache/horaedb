@@ -39,7 +39,7 @@ use crate::{
     },
 };
 
-pub struct Compactor {
+pub(crate) struct Compactor {
     /// Sst files compaction runner
     runner: Box<dyn CompactionRunner>,
 
@@ -48,11 +48,11 @@ pub struct Compactor {
 }
 
 impl Compactor {
-    pub(crate) fn new(runner: Box<dyn CompactionRunner>, manifest: ManifestRef) -> Self {
+    pub fn new(runner: Box<dyn CompactionRunner>, manifest: ManifestRef) -> Self {
         Self { runner, manifest }
     }
 
-    pub(crate) async fn compact_table(
+    pub async fn compact_table(
         &self,
         request_id: RequestId,
         table_data: &TableData,
@@ -128,7 +128,7 @@ impl Compactor {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn compact_input_files(
+    pub async fn compact_input_files(
         &self,
         request_id: RequestId,
         table_data: &TableData,
@@ -241,7 +241,7 @@ impl Compactor {
         Ok(())
     }
 
-    pub(crate) fn delete_expired_files(
+    pub fn delete_expired_files(
         &self,
         table_data: &TableData,
         request_id: &RequestId,
