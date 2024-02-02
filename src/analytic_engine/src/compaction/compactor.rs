@@ -63,6 +63,17 @@ impl Compactor {
             "Begin compact table, table_name:{}, id:{}, task:{:?}",
             table_data.name, table_data.id, task
         );
+
+        if task.is_empty() {
+            // Nothing to compact.
+            debug!(
+                "Nothing to compact, table_name:{}, id:{}, task:{:?}",
+                table_data.name, table_data.id, task
+            );
+
+            return Ok(());
+        }
+
         let inputs = task.inputs();
         let mut edit_meta = VersionEditMeta {
             space_id: table_data.space_id,
@@ -75,22 +86,9 @@ impl Compactor {
             max_file_id: 0,
         };
 
-        if task.is_empty() {
-            // Nothing to compact.
-            return Ok(());
-        }
-
         for files in task.expired() {
             self.delete_expired_files(table_data, &request_id, files, &mut edit_meta);
         }
-
-        info!(
-            "Try do compaction for table:{}#{}, estimated input files size:{}, input files number:{}",
-            table_data.name,
-            table_data.id,
-            task.estimated_total_input_file_size(),
-            task.num_compact_files(),
-        );
 
         for input in inputs {
             self.compact_input_files(
@@ -142,11 +140,12 @@ impl Compactor {
             "Compact input files, table_name:{}, id:{}, input::{:?}, edit_meta:{:?}",
             table_data.name, table_data.id, input, edit_meta
         );
+
         if input.files.is_empty() {
             return Ok(());
         }
 
-        // metrics
+        // Metrics
         let _timer = table_data.metrics.start_compaction_timer();
         table_data
             .metrics
@@ -164,6 +163,12 @@ impl Compactor {
             .metrics
             .compaction_observe_input_sst_row_num(sst_row_num);
 
+        // TODO: seems should be debug log
+        info!(
+            "Begin to compact files of table, request_id:{}, table:{}, table_id:{}, input_files:{:?}",
+            request_id, table_data.name, table_data.id, input.files,
+        );
+
         // Alloc file id for the merged sst.
         let file_id = table_data
             .alloc_file_id(&self.manifest)
@@ -171,7 +176,7 @@ impl Compactor {
             .context(AllocFileId)?;
 
         let task = CompactionRunnerTask::new(
-            request_id,
+            request_id.clone(),
             input.clone(),
             table_data,
             file_id,
@@ -179,7 +184,11 @@ impl Compactor {
         );
 
         let task_result = self.runner.run(task).await?;
-        let CompactionRunnerResult(CompactionExecutorResult { sst_info, sst_meta }) = task_result;
+        let CompactionRunnerResult(CompactionExecutorResult {
+            sst_info,
+            sst_meta,
+            output_file_path,
+        }) = task_result;
 
         let sst_file_size = sst_info.file_size as u64;
         let sst_row_num = sst_info.row_num as u64;
@@ -189,6 +198,18 @@ impl Compactor {
         table_data
             .metrics
             .compaction_observe_output_sst_row_num(sst_row_num);
+
+        // TODO: seems should be debug log
+        info!(
+            "Finish to compact files of table, request_id:{}, table:{}, table_id:{}, output_path:{}, input_files:{:?}, sst_meta:{:?}, sst_info:{:?}",
+            request_id,
+            table_data.name,
+            table_data.id,
+            output_file_path,
+            input.files,
+            sst_meta,
+            sst_info,
+        );
 
         // Update the flushed sequence number.
         edit_meta.flushed_sequence = cmp::max(sst_meta.max_sequence, edit_meta.flushed_sequence);

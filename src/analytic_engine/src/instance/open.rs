@@ -71,6 +71,7 @@ impl InstanceContext {
             &ctx.config,
             sst_factory.clone(),
             store_picker.clone(),
+            ctx.meta_cache.clone(),
         ));
 
         let instance = Instance::open(

@@ -43,7 +43,7 @@ use crate::{
     space::SpaceId,
     sst::{
         factory::{ColumnStats, FactoryRef, ObjectStorePickerRef, ScanOptions, SstWriteOptions},
-        meta_data::{SstMetaData, SstMetaReader},
+        meta_data::{cache::MetaCacheRef, SstMetaData, SstMetaReader},
         writer::{MetaData, SstInfo},
     },
     Config, ScanType, SstReadOptionsBuilder,
@@ -59,6 +59,8 @@ pub struct CompactionExecutor {
     sst_factory: FactoryRef,
     /// Store picker for persisting sst
     store_picker: ObjectStorePickerRef,
+    // TODO: maybe not needed in compaction
+    sst_meta_cache: Option<MetaCacheRef>,
 }
 
 impl CompactionExecutor {
@@ -67,6 +69,7 @@ impl CompactionExecutor {
         config: &Config,
         sst_factory: FactoryRef,
         store_picker: ObjectStorePickerRef,
+        sst_meta_cache: Option<MetaCacheRef>,
     ) -> Self {
         let scan_options = ScanOptions {
             background_read_parallelism: 1,
@@ -79,20 +82,20 @@ impl CompactionExecutor {
             scan_options,
             sst_factory,
             store_picker,
+            sst_meta_cache,
         }
     }
 
     pub async fn execute(&self, task: CompactionExecutorTask) -> Result<CompactionExecutorResult> {
         let projected_schema = ProjectedSchema::no_projection(task.schema.clone());
         let predicate = Arc::new(Predicate::empty());
-        // FIXME: draft tmp
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Compaction,
             self.scan_options.clone(),
             None,
             task.input_ctx.num_rows_per_row_group,
             predicate,
-            None,
+            self.sst_meta_cache.clone(),
             self.runtime.clone(),
         );
         let fetched_schema = projected_schema.to_record_schema_with_key();
@@ -142,7 +145,7 @@ impl CompactionExecutor {
 
         // TODO: eliminate the duplicated building of `SstReadOptions`.
         let sst_read_options = sst_read_options_builder.build(row_projector_builder);
-        let (sst_meta, _column_stats) = {
+        let (sst_meta, column_stats) = {
             let meta_reader = SstMetaReader {
                 space_id: task.space_id,
                 table_id: task.table_id,
@@ -161,10 +164,18 @@ impl CompactionExecutor {
             (merged_meta, column_stats)
         };
 
+        let sst_write_options = SstWriteOptions {
+            storage_format_hint: task.output_ctx.write_options.storage_format_hint,
+            num_rows_per_row_group: task.output_ctx.write_options.num_rows_per_row_group,
+            compression: task.output_ctx.write_options.compression,
+            max_buffer_size: task.output_ctx.write_options.max_buffer_size,
+            column_stats,
+        };
+
         let mut sst_writer = self
             .sst_factory
             .create_writer(
-                &task.output_ctx.write_options,
+                &sst_write_options,
                 &task.output_ctx.file_path,
                 &self.store_picker,
                 task.input_ctx.files.output_level,
@@ -182,7 +193,11 @@ impl CompactionExecutor {
                 path: task.output_ctx.file_path.to_string(),
             })?;
 
-        Ok(CompactionExecutorResult { sst_info, sst_meta })
+        Ok(CompactionExecutorResult {
+            sst_info,
+            sst_meta,
+            output_file_path: task.output_ctx.file_path.clone(),
+        })
     }
 }
 
@@ -204,6 +219,7 @@ pub struct CompactionExecutorTask {
 }
 
 pub struct CompactionExecutorResult {
+    pub output_file_path: Path,
     pub sst_info: SstInfo,
     pub sst_meta: MetaData,
 }
