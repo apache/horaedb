@@ -22,13 +22,13 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
+    optimizer::utils::conjunction,
     logical_expr::{
         avg, count,
         expr::{Alias, ScalarFunction},
         lit,
         logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
         max, min, sum,
-        utils::conjunction,
         Expr as DataFusionExpr,
     },
     prelude::ident,

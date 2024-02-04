@@ -472,7 +472,6 @@ dependencies = [
  "arrow-data 49.0.0",
  "arrow-schema 49.0.0",
  "flatbuffers",
- "lz4_flex",
 ]
 
 [[package]]
@@ -658,7 +657,7 @@ dependencies = [
 [[package]]
 name = "arrow_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "ahash 0.8.3",
  "arrow 49.0.0",
@@ -2007,13 +2006,12 @@ dependencies = [
 
 [[package]]
 name = "datafusion"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "ahash 0.8.3",
  "arrow 49.0.0",
  "arrow-array 49.0.0",
- "arrow-ipc 49.0.0",
  "arrow-schema 49.0.0",
  "async-compression",
  "async-trait",
@@ -2054,8 +2052,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-common"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "ahash 0.8.3",
  "arrow 49.0.0",
@@ -2073,8 +2071,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-execution"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "arrow 49.0.0",
  "chrono",
@@ -2093,8 +2091,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-expr"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "ahash 0.8.3",
  "arrow 49.0.0",
@@ -2108,8 +2106,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-optimizer"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "arrow 49.0.0",
  "async-trait",
@@ -2125,8 +2123,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-physical-expr"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "ahash 0.8.3",
  "arrow 49.0.0",
@@ -2158,8 +2156,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-physical-plan"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "ahash 0.8.3",
  "arrow 49.0.0",
@@ -2188,8 +2186,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-proto"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "arrow 49.0.0",
  "chrono",
@@ -2202,8 +2200,8 @@ dependencies = [
 
 [[package]]
 name = "datafusion-sql"
-version = "34.0.0"
-source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=2891cba41#2891cba41de31ea77b26ab8a2ef0d1bd23fe51da"
+version = "33.0.0"
+source = "git+https://github.com/CeresDB/arrow-datafusion.git?rev=e21b03154#e21b03154511cd61e03e299a595db6be6b1852c1"
 dependencies = [
  "arrow 49.0.0",
  "arrow-schema 49.0.0",
@@ -2216,7 +2214,7 @@ dependencies = [
 [[package]]
 name = "datafusion_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "async-trait",
  "datafusion",
@@ -2837,7 +2835,7 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "generated_types"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "pbjson",
  "pbjson-build",
@@ -3354,7 +3352,7 @@ dependencies = [
 [[package]]
 name = "influxdb_influxql_parser"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -3447,7 +3445,7 @@ dependencies = [
 [[package]]
 name = "iox_query"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "arrow 49.0.0",
  "arrow_util",
@@ -3471,7 +3469,7 @@ dependencies = [
 [[package]]
 name = "iox_query_influxql"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "arrow 49.0.0",
  "chrono",
@@ -4589,7 +4587,7 @@ dependencies = [
 [[package]]
 name = "observability_deps"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "tracing",
 ]
@@ -5590,7 +5588,7 @@ dependencies = [
 [[package]]
 name = "query_functions"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "arrow 49.0.0",
  "chrono",
@@ -6294,7 +6292,7 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "arrow 49.0.0",
  "hashbrown 0.13.2",
@@ -6784,9 +6782,9 @@ dependencies = [
 
 [[package]]
 name = "sqlparser"
-version = "0.41.0"
+version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cc2c25a6c66789625ef164b4c7d2e548d627902280c13710d33da8222169964"
+checksum = "743b4dc2cbde11890ccb254a8fc9d537fa41b36da00de2a1c5e9848c9bc42bd7"
 dependencies = [
  "log",
  "serde",
@@ -6795,13 +6793,13 @@ dependencies = [
 
 [[package]]
 name = "sqlparser_derive"
-version = "0.2.2"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01b2e185515564f15375f593fb966b5718bc624ba77fe49fa4616ad619690554"
+checksum = "55fe75cb4a364c7f7ae06c7dbbc8d84bddd85d6cdf9975963c3935bc1991761e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -7091,7 +7089,7 @@ dependencies = [
 [[package]]
 name = "test_helpers"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=5077dcc#5077dccb51d9c06d338748128585b160cbdbde1b"
+source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
 dependencies = [
  "dotenvy",
  "observability_deps",
@@ -7714,7 +7712,7 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
  "rand 0.8.5",
  "static_assertions",
 ]

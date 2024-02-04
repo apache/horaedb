@@ -197,14 +197,6 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
         None
     }
 
-    // TODO: support this.
-    fn contained(
-        &self,
-        _column: &Column,
-        _values: &std::collections::HashSet<ScalarValue>,
-    ) -> Option<arrow::array::BooleanArray> {
-        None
-    }
 }
 
 #[cfg(test)]

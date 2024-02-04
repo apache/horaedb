@@ -429,6 +429,7 @@ impl<'a> TimeRangeExtractor<'a> {
             | Expr::IsUnknown(_)
             | Expr::IsNotUnknown(_)
             | Expr::Negative(_)
+            | Expr::AggregateUDF(_)
             | Expr::Case { .. }
             | Expr::Cast { .. }
             | Expr::TryCast { .. }

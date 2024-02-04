@@ -24,13 +24,6 @@ use datafusion::{
         runtime_env::{RuntimeConfig, RuntimeEnv},
         FunctionRegistry,
     },
-    physical_optimizer::{
-        aggregate_statistics::AggregateStatistics, coalesce_batches::CoalesceBatches,
-        combine_partial_final_agg::CombinePartialFinalAggregate, enforce_sorting::EnforceSorting,
-        join_selection::JoinSelection, limited_distinct_aggregation::LimitedDistinctAggregation,
-        output_requirements::OutputRequirements, pipeline_checker::PipelineChecker,
-        projection_pushdown::ProjectionPushdown, topk_aggregation::TopKAggregation,
-    },
     prelude::{SessionConfig, SessionContext},
 };
 use df_engine_extensions::codec::PhysicalExtensionCodecImpl;
@@ -144,25 +137,8 @@ impl DfContextBuilder {
 
         // Using default logcial optimizer, if want to add more custom rule, using
         // `add_optimizer_rule` to add.
-        let mut state =
+        let state =
             SessionState::new_with_config_rt(df_session_config, self.runtime_env.clone());
-        state = state.with_physical_optimizer_rules(vec![
-            Arc::new(OutputRequirements::new_add_mode()),
-            Arc::new(AggregateStatistics::new()),
-            Arc::new(JoinSelection::new()),
-            Arc::new(LimitedDistinctAggregation::new()),
-            // TODO: this rule will throw this error
-            // Internal error: Children cannot be replaced in ScanTable
-            // Arc::new(EnforceDistribution::new()),
-            // Arc::new(EnforceSorting::new()),
-            Arc::new(CombinePartialFinalAggregate::new()),
-            Arc::new(CoalesceBatches::new()),
-            Arc::new(OutputRequirements::new_remove_mode()),
-            Arc::new(PipelineChecker::new()),
-            Arc::new(TopKAggregation::new()),
-            // TODO: This rule is not public, so we can't use it
-            Arc::new(ProjectionPushdown::new()),
-        ]);
         SessionContext::new_with_state(state)
     }
 }
