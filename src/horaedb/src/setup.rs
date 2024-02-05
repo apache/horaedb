@@ -266,14 +266,14 @@ async fn run_server_with_runtimes<T>(
 }
 
 // Build proxy for all table engines.
-async fn build_table_engine_proxy(analytic_engine: TableEngineRef) -> Arc<TableEngineProxy> {
+async fn build_table_engine_proxy(analytic: TableEngineRef) -> Arc<TableEngineProxy> {
     // Create memory engine
     let memory = MemoryTableEngine;
 
     // Create table engine proxy
     Arc::new(TableEngineProxy {
         memory,
-        analytic: analytic_engine.clone(),
+        analytic: analytic.clone(),
     })
 }
 
