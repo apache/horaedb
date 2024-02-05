@@ -22,15 +22,14 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
-    optimizer::utils::conjunction,
     logical_expr::{
         avg, count,
         expr::{Alias, ScalarFunction},
         lit,
         logical_plan::{Extension, LogicalPlan, LogicalPlanBuilder},
-        max, min, sum,
-        Expr as DataFusionExpr,
+        max, min, sum, Expr as DataFusionExpr,
     },
+    optimizer::utils::conjunction,
     prelude::ident,
     sql::planner::ContextProvider,
 };

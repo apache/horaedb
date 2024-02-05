@@ -24,7 +24,7 @@ use arrow::{
     compute,
     datatypes::{DataType, Field, Schema, SchemaRef as ArrowSchemaRef, TimeUnit},
     error::ArrowError,
-    record_batch::RecordBatch as ArrowRecordBatch,
+    record_batch::{RecordBatch as ArrowRecordBatch, RecordBatchOptions},
 };
 use arrow_ext::operation;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -128,10 +128,18 @@ impl RecordBatchData {
         let arrays = column_blocks
             .iter()
             .map(|column| column.to_arrow_array_ref())
-            .collect();
+            .collect::<Vec<_>>();
 
+        println!("debug column_blocks:{column_blocks:?}");
+        println!("debug column_blocks2:{:?}", column_blocks.len());
+        let mut options = RecordBatchOptions::new();
+        if let Some(len) =  arrays.first().map(|col| col.len()) {
+             options = options.with_row_count(Some(len));
+        } else {
+             options = options.with_row_count(Some(0));
+        }
         let arrow_record_batch =
-            ArrowRecordBatch::try_new(arrow_schema, arrays).context(CreateArrow)?;
+            ArrowRecordBatch::try_new_with_options(arrow_schema, arrays, &options).context(CreateArrow)?;
 
         Ok(RecordBatchData {
             arrow_record_batch,

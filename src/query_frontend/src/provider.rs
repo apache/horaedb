@@ -413,7 +413,6 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     fn get_window_meta(&self, _name: &str) -> Option<Arc<datafusion::logical_expr::WindowUDF>> {
         None
     }
-
 }
 
 struct SchemaProviderAdapter {

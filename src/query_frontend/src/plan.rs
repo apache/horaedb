@@ -210,7 +210,6 @@ impl QueryPlan {
     // TODO: Currently we only consider the time range, consider other factors, such
     // as the number of series, or slow log metrics.
     pub fn decide_query_priority(&self, ctx: PriorityContext) -> Result<Option<Priority>> {
-            // return Ok(Some(Priority::High));
         let threshold = ctx.time_range_threshold;
         let time_range = match self.extract_time_range()? {
             Some(v) => v,

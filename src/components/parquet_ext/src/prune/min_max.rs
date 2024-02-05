@@ -196,7 +196,6 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
     fn null_counts(&self, _column: &Column) -> Option<ArrayRef> {
         None
     }
-
 }
 
 #[cfg(test)]

@@ -212,8 +212,7 @@ impl<'a> TypeRewriter<'a> {
 
         let array = value.to_array()?;
         ScalarValue::try_from_array(
-            &compute::cast(&array, data_type)
-                .map_err(DataFusionError::ArrowError)?,
+            &compute::cast(&array, data_type).map_err(DataFusionError::ArrowError)?,
             // index: Converts a value in `array` at `index` into a ScalarValue
             0,
         )
