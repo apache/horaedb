@@ -22,16 +22,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use common_types::{request_id::RequestId, schema::Schema, SequenceNumber};
 use object_store::Path;
-
 use table_engine::table::TableId;
 
 use crate::{
-    compaction::{CompactionInputFiles},
+    compaction::CompactionInputFiles,
     instance::flush_compaction::Result,
     row_iter::IterOptions,
     space::SpaceId,
     sst::{
-        factory::{SstWriteOptions},
+        factory::SstWriteOptions,
         writer::{MetaData, SstInfo},
     },
     table::data::TableData,

@@ -18,19 +18,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use common_types::{
-    projected_schema::{ProjectedSchema, RowProjectorBuilder},
-};
+use common_types::projected_schema::{ProjectedSchema, RowProjectorBuilder};
 use generic_error::BoxError;
-
 use runtime::Runtime;
 use snafu::ResultExt;
-use table_engine::{predicate::Predicate};
+use table_engine::predicate::Predicate;
 
 use crate::{
-    compaction::{
-        runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
-    },
+    compaction::runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
     instance::flush_compaction::{
         BuildMergeIterator, CreateSstWriter, ReadSstMeta, Result, WriteSst,
     },
@@ -42,7 +37,7 @@ use crate::{
     sst::{
         factory::{ColumnStats, FactoryRef, ObjectStorePickerRef, ScanOptions, SstWriteOptions},
         meta_data::{cache::MetaCacheRef, SstMetaData, SstMetaReader},
-        writer::{MetaData},
+        writer::MetaData,
     },
     Config, ScanType, SstReadOptionsBuilder,
 };

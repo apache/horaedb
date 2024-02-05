@@ -31,10 +31,7 @@ use wal::manager::WalManagerRef;
 
 use crate::{
     compaction::{
-        runner::{
-            local_runner::LocalCompactionRunner, CompactionRunnerPtr,
-            CompactionRunnerRef,
-        },
+        runner::{local_runner::LocalCompactionRunner, CompactionRunnerPtr, CompactionRunnerRef},
         scheduler::SchedulerImpl,
     },
     context::OpenContext,
