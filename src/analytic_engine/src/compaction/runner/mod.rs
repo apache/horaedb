@@ -15,52 +15,59 @@
 // specific language governing permissions and limitations
 // under the License.
 
+pub mod local_runner;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::request_id::RequestId;
+use common_types::{request_id::RequestId, schema::Schema, SequenceNumber};
+use object_store::Path;
+
+use table_engine::table::TableId;
 
 use crate::{
-    compaction::{
-        executor::{
-            CompactionExecutor, CompactionExecutorResult, CompactionExecutorTask, InputContext,
-            OutputContext,
-        },
-        CompactionInputFiles,
-    },
+    compaction::{CompactionInputFiles},
     instance::flush_compaction::Result,
     row_iter::IterOptions,
-    sst::factory::SstWriteOptions,
+    space::SpaceId,
+    sst::{
+        factory::{SstWriteOptions},
+        writer::{MetaData, SstInfo},
+    },
     table::data::TableData,
 };
 
-pub(crate) struct CompactionRunnerBuilder;
-
-impl CompactionRunnerBuilder {
-    pub fn build(&self, executor: Arc<CompactionExecutor>) -> CompactionRunnerPtr {
-        Box::new(LocalCompactionRunner { executor })
-    }
-}
-
 /// Compaction runner
 #[async_trait]
-pub(crate) trait CompactionRunner: Send + Sync + 'static {
+pub trait CompactionRunner: Send + Sync + 'static {
     async fn run(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult>;
 }
 
-pub(crate) type CompactionRunnerPtr = Box<dyn CompactionRunner>;
+pub type CompactionRunnerPtr = Box<dyn CompactionRunner>;
+pub type CompactionRunnerRef = Arc<dyn CompactionRunner>;
 
 /// Compaction runner task
 #[derive(Debug, Clone)]
-pub(crate) struct CompactionRunnerTask {
+pub struct CompactionRunnerTask {
     // TODO: unused now, will be used in remote compaction.
     #[allow(unused)]
-    task_key: String,
-    executor_task: CompactionExecutorTask,
+    pub task_key: String,
+    /// Trace id for this operation
+    pub request_id: RequestId,
+
+    pub schema: Schema,
+    pub space_id: SpaceId,
+    pub table_id: TableId,
+    pub sequence: SequenceNumber,
+
+    /// Input context
+    pub input_ctx: InputContext,
+    /// Output context
+    pub output_ctx: OutputContext,
 }
 
 impl CompactionRunnerTask {
-    pub fn new(
+    pub(crate) fn new(
         request_id: RequestId,
         input_files: CompactionInputFiles,
         table_data: &TableData,
@@ -94,7 +101,8 @@ impl CompactionRunnerTask {
             }
         };
 
-        let executor_task = CompactionExecutorTask {
+        Self {
+            task_key,
             request_id,
             schema: table_data.schema(),
             space_id: table_data.space_id,
@@ -102,27 +110,29 @@ impl CompactionRunnerTask {
             sequence: table_data.last_sequence(),
             input_ctx,
             output_ctx,
-        };
-
-        Self {
-            task_key,
-            executor_task,
         }
     }
 }
 
-pub struct CompactionRunnerResult(pub CompactionExecutorResult);
-
-/// Local compaction runner impl
-pub(crate) struct LocalCompactionRunner {
-    executor: Arc<CompactionExecutor>,
+pub struct CompactionRunnerResult {
+    pub output_file_path: Path,
+    pub sst_info: SstInfo,
+    pub sst_meta: MetaData,
 }
 
-#[async_trait]
-impl CompactionRunner for LocalCompactionRunner {
-    async fn run(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
-        let exec_result = self.executor.execute(task.executor_task).await?;
+#[derive(Debug, Clone)]
+pub struct InputContext {
+    /// Input sst files in this compaction
+    pub files: CompactionInputFiles,
+    pub num_rows_per_row_group: usize,
+    pub merge_iter_options: IterOptions,
+    pub need_dedup: bool,
+}
 
-        Ok(CompactionRunnerResult(exec_result))
-    }
+#[derive(Debug, Clone)]
+pub struct OutputContext {
+    /// Output sst file path
+    pub file_path: Path,
+    /// Output sst write context
+    pub write_options: SstWriteOptions,
 }

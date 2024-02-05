@@ -30,7 +30,13 @@ use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
 
 use crate::{
-    compaction::{executor::CompactionExecutor, scheduler::SchedulerImpl},
+    compaction::{
+        runner::{
+            local_runner::LocalCompactionRunner, CompactionRunnerPtr,
+            CompactionRunnerRef,
+        },
+        scheduler::SchedulerImpl,
+    },
     context::OpenContext,
     engine,
     instance::{
@@ -55,18 +61,18 @@ use crate::{
 pub(crate) struct InstanceContext {
     pub instance: InstanceRef,
     // TODO: unused now, will be used in remote compaction.
-    pub compaction_executor: Arc<CompactionExecutor>,
+    pub local_compaction_runner: Option<CompactionRunnerRef>,
 }
 
 impl InstanceContext {
-    pub(crate) async fn new(
+    pub async fn new(
         ctx: OpenContext,
         manifest_storages: ManifestStorages,
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
     ) -> Result<Self> {
-        let compaction_executor = Arc::new(CompactionExecutor::new(
+        let compaction_runner = Box::new(LocalCompactionRunner::new(
             ctx.runtimes.compact_runtime.clone(),
             &ctx.config,
             sst_factory.clone(),
@@ -80,13 +86,13 @@ impl InstanceContext {
             wal_manager,
             store_picker,
             sst_factory,
-            compaction_executor.clone(),
+            compaction_runner,
         )
         .await?;
 
         Ok(Self {
             instance,
-            compaction_executor,
+            local_compaction_runner: None,
         })
     }
 }
@@ -104,7 +110,7 @@ impl Instance {
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
-        compaction_executor: Arc<CompactionExecutor>,
+        compaction_runner: CompactionRunnerPtr,
     ) -> Result<Arc<Self>> {
         let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
         let default_runtime = ctx.runtimes.default_runtime.clone();
@@ -142,7 +148,7 @@ impl Instance {
         let compaction_runtime = ctx.runtimes.compact_runtime.clone();
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
-            compaction_executor,
+            compaction_runner,
             compaction_runtime,
             scheduler_config,
             ctx.config.write_sst_max_buffer_size.as_byte() as usize,

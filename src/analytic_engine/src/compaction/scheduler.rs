@@ -48,9 +48,8 @@ use tokio::{
 
 use crate::{
     compaction::{
-        compactor::Compactor, executor::CompactionExecutor,
-        metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext,
-        runner::CompactionRunnerBuilder, CompactionTask, PickerManager, TableCompactionRequest,
+        compactor::Compactor, metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext,
+        runner::CompactionRunnerPtr, CompactionTask, PickerManager, TableCompactionRequest,
         WaitError, WaiterNotifier,
     },
     instance::{
@@ -308,7 +307,7 @@ pub struct SchedulerImpl {
 impl SchedulerImpl {
     pub fn new(
         space_store: Arc<SpaceStore>,
-        executor: Arc<CompactionExecutor>,
+        runner: CompactionRunnerPtr,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
         write_sst_max_buffer_size: usize,
@@ -317,10 +316,7 @@ impl SchedulerImpl {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
         let running = Arc::new(AtomicBool::new(true));
 
-        let runner_builder = CompactionRunnerBuilder;
-        let runner = runner_builder.build(executor);
         let compactor = Arc::new(Compactor::new(runner, space_store.manifest.clone()));
-
         let mut worker = ScheduleWorker {
             sender: tx.clone(),
             receiver: rx,

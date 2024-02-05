@@ -37,7 +37,7 @@ use table_kv::obkv::ObkvImpl;
 use wal::manager::{OpenedWals, WalManagerRef};
 
 use crate::{
-    compaction::executor::CompactionExecutor,
+    compaction::runner::CompactionRunnerRef,
     context::OpenContext,
     engine::TableEngineImpl,
     instance::open::{InstanceContext, ManifestStorages},
@@ -86,7 +86,7 @@ const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 pub struct TableEngineContext {
     pub table_engine: TableEngineRef,
     // TODO: unused now, will be used in remote compaction.
-    pub compaction_executor: Arc<CompactionExecutor>,
+    pub local_compaction_runner: Option<CompactionRunnerRef>,
 }
 
 /// Builder for [TableEngine].
@@ -110,7 +110,7 @@ impl<'a> EngineBuilder<'a> {
 
         let InstanceContext {
             instance,
-            compaction_executor,
+            local_compaction_runner,
         } = build_instance_context(
             self.config.clone(),
             self.engine_runtimes,
@@ -124,7 +124,7 @@ impl<'a> EngineBuilder<'a> {
 
         Ok(TableEngineContext {
             table_engine,
-            compaction_executor,
+            local_compaction_runner,
         })
     }
 }

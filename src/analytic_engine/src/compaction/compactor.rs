@@ -23,8 +23,9 @@ use snafu::ResultExt;
 
 use crate::{
     compaction::{
-        executor::CompactionExecutorResult,
-        runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
+        runner::{
+            CompactionRunner, CompactionRunnerPtr, CompactionRunnerResult, CompactionRunnerTask,
+        },
         CompactionInputFiles, CompactionTask, ExpiredFiles,
     },
     instance::flush_compaction::{AllocFileId, Other, Result, StoreVersionEdit},
@@ -48,7 +49,7 @@ pub(crate) struct Compactor {
 }
 
 impl Compactor {
-    pub fn new(runner: Box<dyn CompactionRunner>, manifest: ManifestRef) -> Self {
+    pub fn new(runner: CompactionRunnerPtr, manifest: ManifestRef) -> Self {
         Self { runner, manifest }
     }
 
@@ -184,11 +185,11 @@ impl Compactor {
         );
 
         let task_result = self.runner.run(task).await?;
-        let CompactionRunnerResult(CompactionExecutorResult {
+        let CompactionRunnerResult {
             sst_info,
             sst_meta,
             output_file_path,
-        }) = task_result;
+        } = task_result;
 
         let sst_file_size = sst_info.file_size as u64;
         let sst_row_num = sst_info.row_num as u64;

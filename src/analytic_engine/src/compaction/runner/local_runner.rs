@@ -17,20 +17,20 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use async_trait::async_trait;
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjectorBuilder},
-    request_id::RequestId,
-    schema::Schema,
-    SequenceNumber,
 };
 use generic_error::BoxError;
-use object_store::Path;
+
 use runtime::Runtime;
 use snafu::ResultExt;
-use table_engine::{predicate::Predicate, table::TableId};
+use table_engine::{predicate::Predicate};
 
 use crate::{
-    compaction::CompactionInputFiles,
+    compaction::{
+        runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
+    },
     instance::flush_compaction::{
         BuildMergeIterator, CreateSstWriter, ReadSstMeta, Result, WriteSst,
     },
@@ -38,13 +38,11 @@ use crate::{
         self,
         dedup::DedupIterator,
         merge::{MergeBuilder, MergeConfig},
-        IterOptions,
     },
-    space::SpaceId,
     sst::{
         factory::{ColumnStats, FactoryRef, ObjectStorePickerRef, ScanOptions, SstWriteOptions},
         meta_data::{cache::MetaCacheRef, SstMetaData, SstMetaReader},
-        writer::{MetaData, SstInfo},
+        writer::{MetaData},
     },
     Config, ScanType, SstReadOptionsBuilder,
 };
@@ -52,7 +50,7 @@ use crate::{
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
 /// Executor carrying for actual compaction work
-pub struct CompactionExecutor {
+pub struct LocalCompactionRunner {
     runtime: Arc<Runtime>,
     scan_options: ScanOptions,
     /// Sst factory
@@ -63,7 +61,7 @@ pub struct CompactionExecutor {
     sst_meta_cache: Option<MetaCacheRef>,
 }
 
-impl CompactionExecutor {
+impl LocalCompactionRunner {
     pub fn new(
         runtime: Arc<Runtime>,
         config: &Config,
@@ -85,8 +83,11 @@ impl CompactionExecutor {
             sst_meta_cache,
         }
     }
+}
 
-    pub async fn execute(&self, task: CompactionExecutorTask) -> Result<CompactionExecutorResult> {
+#[async_trait]
+impl CompactionRunner for LocalCompactionRunner {
+    async fn run(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
         let projected_schema = ProjectedSchema::no_projection(task.schema.clone());
         let predicate = Arc::new(Predicate::empty());
         let sst_read_options_builder = SstReadOptionsBuilder::new(
@@ -193,52 +194,12 @@ impl CompactionExecutor {
                 path: task.output_ctx.file_path.to_string(),
             })?;
 
-        Ok(CompactionExecutorResult {
+        Ok(CompactionRunnerResult {
             sst_info,
             sst_meta,
             output_file_path: task.output_ctx.file_path.clone(),
         })
     }
-}
-
-/// Compaction executor task
-#[derive(Debug, Clone)]
-pub struct CompactionExecutorTask {
-    /// Trace id for this operation
-    pub request_id: RequestId,
-
-    pub schema: Schema,
-    pub space_id: SpaceId,
-    pub table_id: TableId,
-    pub sequence: SequenceNumber,
-
-    /// Input context
-    pub input_ctx: InputContext,
-    /// Output context
-    pub output_ctx: OutputContext,
-}
-
-pub struct CompactionExecutorResult {
-    pub output_file_path: Path,
-    pub sst_info: SstInfo,
-    pub sst_meta: MetaData,
-}
-
-#[derive(Debug, Clone)]
-pub struct InputContext {
-    /// Input sst files in this compaction
-    pub files: CompactionInputFiles,
-    pub num_rows_per_row_group: usize,
-    pub merge_iter_options: IterOptions,
-    pub need_dedup: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct OutputContext {
-    /// Output sst file path
-    pub file_path: Path,
-    /// Output sst write context
-    pub write_options: SstWriteOptions,
 }
 
 /// Collect the column stats from a batch of sst meta data.
@@ -285,7 +246,7 @@ mod tests {
     use common_types::{schema::Schema, tests::build_schema, time::TimeRange};
 
     use crate::{
-        compaction::executor::collect_column_stats_from_meta_datas,
+        compaction::runner::local_runner::collect_column_stats_from_meta_datas,
         sst::{
             meta_data::SstMetaData,
             parquet::meta_data::{ColumnValueSet, ParquetMetaData},
