@@ -25,6 +25,7 @@ license = "Apache-2.0"
 resolver = "2"
 # In alphabetical order
 members = [
+    "horaectl",
     "integration_tests",
     "integration_tests/sdk/rust",
     "src/analytic_engine",
