@@ -432,7 +432,7 @@ pub fn support_pushdown(schema: &Schema, need_dedup: bool, col_names: &[String])
     // When table need dedup, only unique keys columns support pushdown
     col_names
         .iter()
-        .all(|col_name| schema.is_unique_column(col_name.as_str()))
+        .all(|col_name| !schema.is_unique_column(col_name.as_str()))
 }
 
 #[async_trait]

@@ -124,22 +124,18 @@ pub struct RecordBatchData {
 }
 
 impl RecordBatchData {
-    fn new(arrow_schema: ArrowSchemaRef, column_blocks: Vec<ColumnBlock>) -> Result<Self> {
+    fn new(
+        arrow_schema: ArrowSchemaRef,
+        column_blocks: Vec<ColumnBlock>,
+        options: RecordBatchOptions,
+    ) -> Result<Self> {
         let arrays = column_blocks
             .iter()
             .map(|column| column.to_arrow_array_ref())
             .collect::<Vec<_>>();
-
-        println!("debug column_blocks:{column_blocks:?}");
-        println!("debug column_blocks2:{:?}", column_blocks.len());
-        let mut options = RecordBatchOptions::new();
-        if let Some(len) =  arrays.first().map(|col| col.len()) {
-             options = options.with_row_count(Some(len));
-        } else {
-             options = options.with_row_count(Some(0));
-        }
         let arrow_record_batch =
-            ArrowRecordBatch::try_new_with_options(arrow_schema, arrays, &options).context(CreateArrow)?;
+            ArrowRecordBatch::try_new_with_options(arrow_schema, arrays, &options)
+                .context(CreateArrow)?;
 
         Ok(RecordBatchData {
             arrow_record_batch,
@@ -148,10 +144,7 @@ impl RecordBatchData {
     }
 
     fn num_rows(&self) -> usize {
-        self.column_blocks
-            .first()
-            .map(|column| column.num_rows())
-            .unwrap_or(0)
+        self.arrow_record_batch.num_rows()
     }
 
     fn take_column_block(&mut self, index: usize) -> ColumnBlock {
@@ -238,6 +231,11 @@ impl RecordBatch {
     pub fn new(schema: RecordSchema, column_blocks: Vec<ColumnBlock>) -> Result<Self> {
         ensure!(schema.num_columns() == column_blocks.len(), SchemaLen);
 
+        let num_rows = column_blocks
+            .first()
+            .map(|block| block.num_rows())
+            .unwrap_or_default();
+        let options = RecordBatchOptions::new().with_row_count(Some(num_rows));
         // Validate schema and column_blocks.
         for (column_schema, column_block) in schema.columns().iter().zip(column_blocks.iter()) {
             ensure!(
@@ -251,7 +249,7 @@ impl RecordBatch {
         }
 
         let arrow_schema = schema.to_arrow_schema_ref();
-        let data = RecordBatchData::new(arrow_schema, column_blocks)?;
+        let data = RecordBatchData::new(arrow_schema, column_blocks, options)?;
 
         Ok(Self { schema, data })
     }
@@ -396,6 +394,7 @@ impl FetchedRecordBatch {
         let mut column_blocks = Vec::with_capacity(fetched_schema.num_columns());
         let num_rows = arrow_record_batch.num_rows();
         let num_columns = arrow_record_batch.num_columns();
+        let options = RecordBatchOptions::new().with_row_count(Some(num_rows));
         for (col_idx_opt, col_schema) in column_indexes.iter().zip(fetched_schema.columns()) {
             match col_idx_opt {
                 Some(col_idx) => {
@@ -427,7 +426,8 @@ impl FetchedRecordBatch {
             }
         }
 
-        let data = RecordBatchData::new(fetched_schema.to_arrow_schema_ref(), column_blocks)?;
+        let data =
+            RecordBatchData::new(fetched_schema.to_arrow_schema_ref(), column_blocks, options)?;
 
         Ok(FetchedRecordBatch {
             schema: fetched_schema,
@@ -479,6 +479,8 @@ impl FetchedRecordBatch {
         // Get the schema after projection.
         let record_schema = projected_schema.to_record_schema();
         let mut column_blocks = Vec::with_capacity(record_schema.num_columns());
+        let num_rows = self.data.num_rows();
+        let options = RecordBatchOptions::new().with_row_count(Some(num_rows));
 
         for column_schema in record_schema.columns() {
             let column_index =
@@ -493,8 +495,8 @@ impl FetchedRecordBatch {
             column_blocks.push(column_block);
         }
 
-        let data = RecordBatchData::new(record_schema.to_arrow_schema_ref(), column_blocks)?;
-
+        let data =
+            RecordBatchData::new(record_schema.to_arrow_schema_ref(), column_blocks, options)?;
         Ok(RecordBatch {
             schema: record_schema,
             data,
@@ -733,11 +735,16 @@ impl FetchedRecordBatchBuilder {
             .map(|builder| builder.build())
             .collect();
         let arrow_schema = self.fetched_schema.to_arrow_schema_ref();
+        let num_rows = column_blocks
+            .first()
+            .map(|block| block.num_rows())
+            .unwrap_or_default();
+        let options = RecordBatchOptions::new().with_row_count(Some(num_rows));
 
         Ok(FetchedRecordBatch {
             schema: self.fetched_schema.clone(),
             primary_key_indexes: self.primary_key_indexes.clone(),
-            data: RecordBatchData::new(arrow_schema, column_blocks)?,
+            data: RecordBatchData::new(arrow_schema, column_blocks, options)?,
         })
     }
 }
