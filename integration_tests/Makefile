@@ -16,7 +16,7 @@ export HORAEDB_STDOUT_FILE ?= /tmp/horaedb-stdout.log
 export HORAEDB_CONFIG_FILE ?= $(ROOT)/../docs/minimal.toml
 
 # Environment variables for cluster
-export HORAEMETA_BINARY_PATH ?= $(ROOT)/horaemeta/horaemeta-server
+export HORAEMETA_BINARY_PATH ?= $(ROOT)/../target/horaemeta-server
 export HORAEMETA_CONFIG_PATH ?= $(ROOT)/config/horaemeta.toml
 export HORAEMETA_STDOUT_FILE ?= /tmp/horaemeta-stdout.log
 export HORAEDB_CONFIG_FILE_0 ?= $(ROOT)/config/horaedb-cluster-0.toml

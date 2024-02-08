@@ -306,6 +306,17 @@ pub struct TableDef {
 
 pub type CloseShardRequest = OpenShardRequest;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ShardStats {
+    pub num_written_bytes: u64,
+    pub num_fetched_bytes: u64,
+}
+
+#[derive(Debug, Default)]
+pub struct TableEngineStats {
+    pub shard_stats: HashMap<ShardId, ShardStats>,
+}
+
 /// Table engine
 // TODO(yingwen): drop table support to release resource owned by the table
 #[async_trait]
@@ -339,6 +350,11 @@ pub trait TableEngine: Send + Sync {
 
     /// Close tables on same shard.
     async fn close_shard(&self, request: CloseShardRequest) -> Vec<Result<String>>;
+
+    /// Report the statistics of the table engine.
+    async fn report_statistics(&self) -> Result<Option<TableEngineStats>> {
+        Ok(None)
+    }
 }
 
 pub type OpenShardResult = HashMap<TableId, GenericResult<Option<TableRef>>>;

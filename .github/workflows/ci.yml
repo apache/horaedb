@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: CI
+name: HoraeDB CI
 
 on:
   merge_group:
@@ -24,19 +24,17 @@ on:
     branches:
       - main
       - dev
-    paths-ignore:
-      - 'docs/**'
-      - 'etc/**'
-      - '**.md'
-      - '.dockerignore'
-      - 'docker/**'
+    paths:
+      - 'src/**'
+      - 'integration_tests/**'
+      - 'Cargo.toml'
+      - '.github/workflows/ci.yml'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'etc/**'
-      - '**.md'
-      - '.dockerignore'
-      - 'docker/**'
+    paths:
+      - 'src/**'
+      - 'integration_tests/**'
+      - 'Cargo.toml'
+      - '.github/workflows/ci.yml'
 
 # Common environment variables
 env:

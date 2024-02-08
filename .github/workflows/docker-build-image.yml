@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Test Docker image build
+name: Test HoraeDB Docker image build
 
 on:
   workflow_dispatch:

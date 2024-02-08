@@ -25,12 +25,13 @@ use std::{
     time::Duration,
 };
 
+use common_types::table::ShardId;
 use lazy_static::lazy_static;
 use prometheus::{
     exponential_buckets,
     local::{LocalHistogram, LocalHistogramTimer},
-    register_histogram, register_histogram_vec, register_int_counter, Histogram, HistogramTimer,
-    HistogramVec, IntCounter,
+    register_histogram, register_histogram_vec, register_int_counter, register_int_counter_vec,
+    Histogram, HistogramTimer, HistogramVec, IntCounter, IntCounterVec,
 };
 use table_engine::{partition::maybe_extract_partitioned_table_name, table::TableStats};
 
@@ -47,10 +48,10 @@ lazy_static! {
     )
     .unwrap();
 
-    static ref TABLE_WRITE_BATCH_HISTOGRAM: Histogram = register_histogram!(
-        "table_write_batch_size",
-        "Histogram of write batch size",
-        vec![10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0]
+    pub static ref TABLE_WRITE_BYTES_COUNTER: IntCounterVec = register_int_counter_vec!(
+        "table_write_bytes_counter",
+        "Write bytes counter of table",
+        &["shard_id", "table"]
     )
     .unwrap();
 
@@ -68,6 +69,13 @@ lazy_static! {
     // End of counters.
 
     // Histograms:
+    static ref TABLE_WRITE_BATCH_HISTOGRAM: Histogram = register_histogram!(
+        "table_write_batch_size",
+        "Histogram of write batch size",
+        vec![10.0, 50.0, 100.0, 500.0, 1000.0, 5000.0]
+    )
+    .unwrap();
+
     // Buckets: 0, 0.002, .., 0.002 * 4^9
     static ref TABLE_FLUSH_DURATION_HISTOGRAM: Histogram = register_histogram!(
         "table_flush_duration",
@@ -170,6 +178,8 @@ impl From<&AtomicTableStats> for TableStats {
 pub struct Metrics {
     /// The table name used for metric label
     maybe_table_name: String,
+    /// The label for shard id
+    shard_id_label: String,
     /// Stats of a single table.
     stats: Arc<AtomicTableStats>,
 
@@ -190,12 +200,79 @@ pub struct Metrics {
     table_write_queue_waiter_duration: Histogram,
     table_write_queue_writer_duration: Histogram,
     table_write_total_duration: Histogram,
+    table_write_bytes_counter: IntCounter,
 }
 
-impl Default for Metrics {
-    fn default() -> Self {
+pub struct MaybeTableLevelMetrics {
+    // TODO: maybe `query_time_range` and `duration_since_query_query_start_time`
+    // should place on a higher level such `TableEngine`.
+    // I do so originally, but I found no reasonable place to keep related contexts...
+    pub query_time_range: Histogram,
+    pub duration_since_query_query_start_time: Histogram,
+
+    pub sst_metrics: Arc<SstMaybeTableLevelMetrics>,
+}
+
+impl MaybeTableLevelMetrics {
+    pub fn new(maybe_table_name: &str, shard_id_label: &str) -> Self {
+        let sst_metrics = Arc::new(SstMaybeTableLevelMetrics::new(
+            maybe_table_name,
+            shard_id_label,
+        ));
+
         Self {
-            maybe_table_name: DEFAULT_METRICS_KEY.to_string(),
+            query_time_range: QUERY_TIME_RANGE.with_label_values(&[maybe_table_name]),
+            duration_since_query_query_start_time: DURATION_SINCE_QUERY_START_TIME
+                .with_label_values(&[maybe_table_name]),
+            sst_metrics,
+        }
+    }
+}
+
+pub struct MetricsContext<'a> {
+    /// If enable table level metrics, it should be a table name,
+    /// Otherwise it should be `DEFAULT_METRICS_KEY`.
+    table_name: &'a str,
+    shard_id: ShardId,
+    metric_opt: MetricsOptions,
+    maybe_partitioned_table_name: Option<String>,
+}
+
+impl<'a> MetricsContext<'a> {
+    pub fn new(table_name: &'a str, shard_id: ShardId, metric_opt: MetricsOptions) -> Self {
+        Self {
+            table_name,
+            shard_id,
+            metric_opt,
+            maybe_partitioned_table_name: None,
+        }
+    }
+
+    fn maybe_table_name(&mut self) -> &str {
+        if !self.metric_opt.enable_table_level_metrics {
+            DEFAULT_METRICS_KEY
+        } else {
+            let maybe_partition_table = maybe_extract_partitioned_table_name(self.table_name);
+            match maybe_partition_table {
+                Some(partitioned) => {
+                    self.maybe_partitioned_table_name = Some(partitioned);
+                    self.maybe_partitioned_table_name.as_ref().unwrap()
+                }
+                None => self.table_name,
+            }
+        }
+    }
+}
+
+impl Metrics {
+    pub fn new(mut metric_ctx: MetricsContext) -> Self {
+        let shard_id_label = metric_ctx.shard_id.to_string();
+        let maybe_table_name = metric_ctx.maybe_table_name().to_string();
+        let table_write_bytes_counter =
+            TABLE_WRITE_BYTES_COUNTER.with_label_values(&[&shard_id_label, &maybe_table_name]);
+        Self {
+            maybe_table_name,
+            shard_id_label,
             stats: Arc::new(AtomicTableStats::default()),
             compaction_input_sst_size_histogram: TABLE_COMPACTION_SST_SIZE_HISTOGRAM
                 .with_label_values(&["input"]),
@@ -229,78 +306,17 @@ impl Default for Metrics {
                 .with_label_values(&["queue_writer"]),
             table_write_total_duration: TABLE_WRITE_DURATION_HISTOGRAM
                 .with_label_values(&["total"]),
-        }
-    }
-}
-
-pub struct MaybeTableLevelMetrics {
-    // TODO: maybe `query_time_range` and `duration_since_query_query_start_time`
-    // should place on a higher level such `TableEngine`.
-    // I do so originally, but I found no reasonable place to keep related contexts...
-    pub query_time_range: Histogram,
-    pub duration_since_query_query_start_time: Histogram,
-
-    pub sst_metrics: Arc<SstMaybeTableLevelMetrics>,
-}
-
-impl MaybeTableLevelMetrics {
-    pub fn new(maybe_table_name: &str) -> Self {
-        let sst_metrics = Arc::new(SstMaybeTableLevelMetrics::new(maybe_table_name));
-
-        Self {
-            query_time_range: QUERY_TIME_RANGE.with_label_values(&[maybe_table_name]),
-            duration_since_query_query_start_time: DURATION_SINCE_QUERY_START_TIME
-                .with_label_values(&[maybe_table_name]),
-            sst_metrics,
-        }
-    }
-}
-
-pub struct MetricsContext<'a> {
-    /// If enable table level metrics, it should be a table name,
-    /// Otherwise it should be `DEFAULT_METRICS_KEY`.
-    table_name: &'a str,
-    metric_opt: MetricsOptions,
-    maybe_partitioned_table_name: Option<String>,
-}
-
-impl<'a> MetricsContext<'a> {
-    pub fn new(table_name: &'a str, metric_opt: MetricsOptions) -> Self {
-        Self {
-            table_name,
-            metric_opt,
-            maybe_partitioned_table_name: None,
-        }
-    }
-
-    fn maybe_table_name(&mut self) -> &str {
-        if !self.metric_opt.enable_table_level_metrics {
-            DEFAULT_METRICS_KEY
-        } else {
-            let maybe_partition_table = maybe_extract_partitioned_table_name(self.table_name);
-            match maybe_partition_table {
-                Some(partitioned) => {
-                    self.maybe_partitioned_table_name = Some(partitioned);
-                    self.maybe_partitioned_table_name.as_ref().unwrap()
-                }
-                None => self.table_name,
-            }
-        }
-    }
-}
-
-impl Metrics {
-    pub fn new(mut metric_ctx: MetricsContext) -> Self {
-        Self {
-            maybe_table_name: metric_ctx.maybe_table_name().to_string(),
-            ..Default::default()
+            table_write_bytes_counter,
         }
     }
 
     /// Generate a table-level metric observer.
     #[inline]
     pub fn maybe_table_level_metrics(&self) -> Arc<MaybeTableLevelMetrics> {
-        Arc::new(MaybeTableLevelMetrics::new(&self.maybe_table_name))
+        Arc::new(MaybeTableLevelMetrics::new(
+            &self.maybe_table_name,
+            &self.shard_id_label,
+        ))
     }
 
     #[inline]
@@ -315,9 +331,10 @@ impl Metrics {
     }
 
     #[inline]
-    pub fn on_write_request_done(&self, num_rows: usize, num_columns: usize) {
+    pub fn on_write_request_done(&self, num_rows: usize, num_columns: usize, num_bytes: usize) {
         TABLE_WRITE_BATCH_HISTOGRAM.observe(num_rows as f64);
         TABLE_WRITE_FIELDS_COUNTER.inc_by((num_columns * num_rows) as u64);
+        self.table_write_bytes_counter.inc_by(num_bytes as u64);
     }
 
     #[inline]
