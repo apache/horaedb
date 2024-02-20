@@ -228,13 +228,12 @@ impl RecordBatch {
         }
     }
 
-    pub fn new(schema: RecordSchema, column_blocks: Vec<ColumnBlock>) -> Result<Self> {
+    pub fn new(
+        schema: RecordSchema,
+        column_blocks: Vec<ColumnBlock>,
+        num_rows: usize,
+    ) -> Result<Self> {
         ensure!(schema.num_columns() == column_blocks.len(), SchemaLen);
-
-        let num_rows = column_blocks
-            .first()
-            .map(|block| block.num_rows())
-            .unwrap_or_default();
         let options = RecordBatchOptions::new().with_row_count(Some(num_rows));
         // Validate schema and column_blocks.
         for (column_schema, column_block) in schema.columns().iter().zip(column_blocks.iter()) {

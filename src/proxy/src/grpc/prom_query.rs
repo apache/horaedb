@@ -471,7 +471,7 @@ mod tests {
         let schema = build_schema();
         let record_schema = schema.to_record_schema();
         let column_blocks = build_column_block();
-        let record_batch = RecordBatch::new(record_schema, column_blocks).unwrap();
+        let record_batch = RecordBatch::new(record_schema, column_blocks, 4).unwrap();
 
         let column_name = ColumnNames {
             timestamp: "timestamp".to_string(),

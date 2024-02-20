@@ -156,8 +156,8 @@ where
             .default_catalog_and_schema(DEFAULT_CATALOG.to_string(), DEFAULT_SCHEMA.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
-        let sql = format!("explain analyze select * from {table_name}");
-        let output = self.sql_to_output_with_context(&sql, ctx).await?;
+        let sql = format!("select * from {table_name}");
+        let output = self.sql_to_output_with_context(&sql, ctx.clone()).await?;
         let records = output.try_into().unwrap();
         let expected = vec![
             "+------------+---------------------+--------+--------+------------+--------------+",
@@ -169,15 +169,15 @@ where
         ];
         test_util::assert_record_batches_eq(&expected, records);
 
-        let sql = "explain analyze select count(*) from test_table";
-        let output = self.sql_to_output(sql).await?;
+        let sql = format!("select count(*) from {table_name}");
+        let output = self.sql_to_output_with_context(&sql, ctx).await?;
         let records = output.try_into().unwrap();
         let expected = vec![
-            "+-----------------+",
-            "| COUNT(UInt8(1)) |",
-            "+-----------------+",
-            "| 2               |",
-            "+-----------------+",
+            "+----------+",
+            "| COUNT(*) |",
+            "+----------+",
+            "| 2        |",
+            "+----------+",
         ];
         test_util::assert_record_batches_eq(&expected, records);
 

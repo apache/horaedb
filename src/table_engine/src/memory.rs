@@ -260,7 +260,7 @@ fn row_group_to_record_batch(
         column_blocks.push(column_block);
     }
 
-    RecordBatch::new(record_schema.clone(), column_blocks)
+    RecordBatch::new(record_schema.clone(), column_blocks, rows.num_rows())
         .box_err()
         .context(ErrWithSource {
             msg: "failed to create RecordBatch",
