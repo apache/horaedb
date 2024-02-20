@@ -70,7 +70,7 @@ jobs:
         run: |
           rustup component add clippy
           rustup component add rustfmt
-          cargo install cargo-sort
+          cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
       - name: Run Style Check
         run: |
           make clippy
