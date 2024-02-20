@@ -42,6 +42,7 @@ bench_measurement_time = "30s"
 bench_sample_size = 30
 max_projections = 5
 read_batch_row_num = 500
+sst_level = 0
 
 [merge_sst_bench.predicate]
 start_time_ms = 0

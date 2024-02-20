@@ -59,6 +59,7 @@ pub struct MergeSstBench {
     file_handles: Vec<FileHandle>,
     _receiver: UnboundedReceiver<Request>,
     dedup: bool,
+    sst_level: Level,
 }
 
 impl MergeSstBench {
@@ -121,6 +122,7 @@ impl MergeSstBench {
             file_handles,
             _receiver: rx,
             dedup: true,
+            sst_level: config.sst_level.into(),
         }
     }
 
@@ -168,7 +170,7 @@ impl MergeSstBench {
 
         builder
             // TODO: make level configurable
-            .mut_ssts_of_level(Level::MIN)
+            .mut_ssts_of_level(self.sst_level)
             .extend_from_slice(&self.file_handles);
 
         self.runtime.block_on(async {
