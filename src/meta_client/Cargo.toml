@@ -43,7 +43,7 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
-table_engine =  { workspace = true }
+table_engine = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
