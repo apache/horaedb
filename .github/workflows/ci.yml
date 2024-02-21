@@ -58,8 +58,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Check License Header
         uses: korandoru/hawkeye@v3
       - name: Setup Build Environment
@@ -70,17 +69,12 @@ jobs:
         run: |
           rustup component add clippy
           rustup component add rustfmt
-          cargo install cargo-sort
+          cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
       - name: Run Style Check
         run: |
           make clippy
           make fmt
           make check-cargo-toml
-      - name: Report Disk Usage
-        if: always()
-        run: |
-          du -sh ./target
-          df -h
 
   unit-test:
     name: unit-test
@@ -95,8 +89,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -128,8 +121,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -166,8 +158,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -227,8 +218,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -261,8 +251,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update

@@ -80,7 +80,7 @@ members = [
     "src/system_catalog",
     "src/table_engine",
     "src/tools",
-    "src/wal",
+    "src/wal"
 ]
 
 [workspace.dependencies]
