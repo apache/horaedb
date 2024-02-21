@@ -429,10 +429,11 @@ pub fn support_pushdown(schema: &Schema, need_dedup: bool, col_names: &[String])
         return true;
     }
 
-    // When table need dedup, only non-unique keys columns support pushdown
+    // When table need dedup, only unique keys columns support pushdown
+    // See https://github.com/apache/incubator-horaedb/issues/605
     col_names
         .iter()
-        .all(|col_name| !schema.is_unique_column(col_name.as_str()))
+        .all(|col_name| schema.is_unique_column(col_name.as_str()))
 }
 
 #[async_trait]

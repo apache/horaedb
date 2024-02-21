@@ -304,7 +304,7 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
                 if support_pushdown {
                     TableProviderFilterPushDown::Exact
                 } else {
-                    TableProviderFilterPushDown::Inexact
+                    TableProviderFilterPushDown::Unsupported
                 }
             })
             .collect()
