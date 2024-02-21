@@ -19,6 +19,7 @@
 
 use std::{
     any::Any,
+    collections::HashSet,
     fmt,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -28,6 +29,7 @@ use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
+    common::tree_node::{TreeNode, VisitRecursion},
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
     datasource::TableProvider,
     error::{DataFusionError, Result},
@@ -230,9 +232,17 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             priority,
         );
 
+        let all_projections = if let Some(proj) = projection {
+            let mut all_projections =
+                collect_projection_from_expr(filters, &self.current_table_schema);
+            all_projections.extend(proj);
+            Some(all_projections.into_iter().collect::<Vec<_>>())
+        } else {
+            None
+        };
         let predicate = self.check_and_build_predicate_from_filters(filters);
         let projected_schema =
-            ProjectedSchema::new(self.current_table_schema.clone(), projection.cloned()).map_err(
+            ProjectedSchema::new(self.current_table_schema.clone(), all_projections).map_err(
                 |e| {
                     DataFusionError::Internal(format!(
                         "Invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}"
@@ -498,4 +508,22 @@ impl fmt::Debug for ScanTable {
             .field("predicate", &self.request.predicate)
             .finish()
     }
+}
+
+fn collect_projection_from_expr(exprs: &[Expr], schema: &Schema) -> HashSet<usize> {
+    let mut projections = HashSet::new();
+    exprs.iter().for_each(|expr| {
+        _ = expr.apply(&mut |expr| match &expr {
+            Expr::Column(column) => {
+                if let Some(idx) = schema.index_of(&column.name) {
+                    projections.insert(idx);
+                }
+                Ok(VisitRecursion::Stop)
+            }
+            Expr::ScalarVariable(_, _) | Expr::Literal(_) => Ok(VisitRecursion::Stop),
+            _ => Ok(VisitRecursion::Continue),
+        });
+    });
+
+    projections
 }
