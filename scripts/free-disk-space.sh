@@ -15,7 +15,7 @@
 # limitations under the License.
 
 
-# Copy from https://github.com/apache/flink/blob/master/tools/azure-pipelines/free_disk_space.sh
+# Copy from https://github.com/apache/flink/blob/release-1.18.1/tools/azure-pipelines/free_disk_space.sh
 echo "=============================================================================="
 echo "Freeing up disk space on CI system"
 echo "=============================================================================="
@@ -32,7 +32,12 @@ sudo apt-get remove -y azure-cli google-cloud-sdk hhvm google-chrome-stable fire
 sudo apt-get autoremove -y
 sudo apt-get clean
 df -h
+
 echo "Removing large directories"
-rm -rf /usr/local/lib/android # release about 10 GB
-rm -rf /usr/share/dotnet # release about 20GB
+rm -rf /usr/local/lib/android
+rm -rf /usr/share/dotnet
+rm -rf /usr/local/graalvm/
+rm -rf /usr/local/.ghcup/
+rm -rf /usr/local/share/powershell
+rm -rf /usr/local/share/chromium
 df -h
