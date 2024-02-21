@@ -35,5 +35,4 @@ df -h
 echo "Removing large directories"
 rm -rf /usr/local/lib/android # release about 10 GB
 rm -rf /usr/share/dotnet # release about 20GB
-rm -rf /opt/hostedtoolcache
 df -h
