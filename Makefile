@@ -96,8 +96,7 @@ miri:
 	cd $(DIR); cargo miri test --package arena
 
 ensure-disk-quota:
-	# ensure the target directory not to exceed 30GB
-	python3 ./scripts/clean-large-folder.py ./target 30
+	bash ./scripts/free-disk-space.sh
 
 tsbs: build
 	cd $(DIR); sh scripts/run-tsbs.sh
