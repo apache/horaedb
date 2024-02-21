@@ -58,8 +58,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Check License Header
         uses: korandoru/hawkeye@v3
       - name: Setup Build Environment
@@ -90,8 +89,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -123,8 +121,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -161,8 +158,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -222,8 +218,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
@@ -256,8 +251,7 @@ jobs:
           rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
-          sudo rm -rf /usr/local/lib/android # release about 10 GB
-          sudo rm -rf /usr/share/dotnet # release about 20GB
+          sudo make ensure-disk-quota
       - name: Setup Build Environment
         run: |
           sudo apt update
