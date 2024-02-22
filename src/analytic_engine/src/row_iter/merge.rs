@@ -486,7 +486,6 @@ impl BufferedStream {
                 Ok(false)
             }
             Some(record_batch) => {
-                logger::info!("if necessary: {record_batch:?}");
                 self.state.as_mut().unwrap().reset(record_batch);
                 Ok(true)
             }
@@ -845,7 +844,6 @@ impl MergeIterator {
 
             None
         };
-        logger::info!("debug fetch rows:{record_batch:?}");
 
         self.reheap(buffered_stream).await?;
 
@@ -875,7 +873,6 @@ impl MergeIterator {
 
         self.record_batch_builder.clear();
 
-        logger::info!("fetch next batch, {}", self.record_batch_builder.len());
         while !self.hot.is_empty() && self.record_batch_builder.len() < self.iter_options.batch_size
         {
             // no need to do merge sort if only one batch in the hot heap.

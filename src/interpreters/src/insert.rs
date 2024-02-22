@@ -373,6 +373,6 @@ fn get_or_extract_column_from_row_groups(
             cached_column_values.insert(column_idx, columnar_value.clone());
             Ok(columnar_value)
         })?;
-    // TODO: solve unwarp
-    Ok(column.into_array(num_rows).unwrap())
+
+    column.into_array(num_rows).context(DatafusionExecutor)
 }
