@@ -591,6 +591,7 @@ pub struct FetchedRecordBatchBuilder {
     fetched_schema: RecordSchema,
     primary_key_indexes: Option<Vec<usize>>,
     builders: Vec<ColumnBlockBuilder>,
+    num_rows: usize,
 }
 
 impl FetchedRecordBatchBuilder {
@@ -610,6 +611,7 @@ impl FetchedRecordBatchBuilder {
             fetched_schema,
             primary_key_indexes,
             builders,
+            num_rows: 0,
         }
     }
 
@@ -633,6 +635,7 @@ impl FetchedRecordBatchBuilder {
             fetched_schema: record_schema,
             primary_key_indexes,
             builders,
+            num_rows: 0,
         }
     }
 
@@ -680,6 +683,13 @@ impl FetchedRecordBatchBuilder {
         Ok(())
     }
 
+    /// When the record batch contains no column, its row num may not be 0, so
+    /// we need to inc row num explicitly in this case.
+    /// See: https://github.com/apache/arrow-datafusion/pull/7920
+    pub fn inc_row_num(&mut self, n: usize) {
+        self.num_rows += n;
+    }
+
     /// Append `len` from `start` (inclusive) to this builder.
     ///
     /// REQUIRE:
@@ -711,7 +721,7 @@ impl FetchedRecordBatchBuilder {
         self.builders
             .first()
             .map(|builder| builder.len())
-            .unwrap_or(0)
+            .unwrap_or(self.num_rows)
     }
 
     /// Returns true if the builder is empty.
@@ -737,7 +747,7 @@ impl FetchedRecordBatchBuilder {
         let num_rows = column_blocks
             .first()
             .map(|block| block.num_rows())
-            .unwrap_or_default();
+            .unwrap_or(self.num_rows);
         let options = RecordBatchOptions::new().with_row_count(Some(num_rows));
 
         Ok(FetchedRecordBatch {
