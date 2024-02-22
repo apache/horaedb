@@ -38,6 +38,7 @@ use datafusion::{
     physical_plan::{
         expressions,
         metrics::{Count, MetricValue, MetricsSet},
+        projection::ProjectionExec,
         DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning, PhysicalExpr,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
@@ -240,14 +241,16 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             for proj in projections_from_filter {
                 if !original_projections.contains(&proj) {
                     original_projections.push(proj);
-                    // If the projection from filter has columns not in the original projection,
-                    // we need to add a ProjectionExec plan to project the orignal columns. Eg:
-                    // ```
+                    // If the projection from filters have columns not in the original projection,
+                    // we need to add it to projection, and add a ProjectionExec plan to project the
+                    // orignal columns. Eg:
+                    // ```text
                     // select a from table where b > 1
                     // ```
                     // The original projection only contains a, but the filter has column b, so we
                     // need to query both a and b column from table but only
-                    // output a column.
+                    // output a column. More details can be found in:
+                    // https://github.com/apache/arrow-datafusion/pull/9131#pullrequestreview-1865020767
                     need_reprojection = true;
                 }
             }
@@ -265,6 +268,22 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
                 },
             )?;
 
+        let projection_exprs = if need_reprojection {
+            let original_projection = projection.unwrap();
+            let exprs = (0..original_projection.len())
+                .map(|i| {
+                    let column = projected_schema.target_column_schema(i);
+                    (
+                        Arc::new(expressions::Column::new(&column.name, i))
+                            as Arc<dyn PhysicalExpr>,
+                        column.name.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            Some(exprs)
+        } else {
+            None
+        };
         let opts = ReadOptions {
             deadline,
             read_parallelism,
@@ -275,31 +294,18 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         let request = ReadRequest {
             request_id,
             opts,
-            projected_schema: projected_schema.clone(),
+            projected_schema,
             predicate,
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
             priority,
         };
 
-        if need_reprojection {
-            let original_projection = projection.unwrap();
-            let projection = (0..original_projection.len())
-                .map(|proj| {
-                    let column = projected_schema.target_column_schema(proj);
-
-                    (
-                        Arc::new(expressions::Column::new(&column.name, proj))
-                            as Arc<dyn PhysicalExpr>,
-                        column.name.clone(),
-                    )
-                })
-                .collect::<Vec<_>>();
-            let scan = self.builder.build(request).await?;
-            let plan =
-                datafusion::physical_plan::projection::ProjectionExec::try_new(projection, scan)?;
+        let scan = self.builder.build(request).await?;
+        if let Some(expr) = projection_exprs {
+            let plan = ProjectionExec::try_new(expr, scan)?;
             Ok(Arc::new(plan))
         } else {
-            self.builder.build(request).await
+            Ok(scan)
         }
     }
 
