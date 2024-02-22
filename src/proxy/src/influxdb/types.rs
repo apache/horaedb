@@ -744,7 +744,7 @@ mod tests {
     fn test_influxql_result() {
         let record_schema = build_test_record_schema();
         let column_blocks = build_test_column_blocks();
-        let record_batch = RecordBatch::new(record_schema, column_blocks, 4).unwrap();
+        let record_batch = RecordBatch::new(record_schema, column_blocks, 7).unwrap();
 
         let mut builder = InfluxqlResultBuilder::new(record_batch.schema(), 0).unwrap();
         builder.add_record_batch(record_batch).unwrap();
