@@ -29,7 +29,6 @@ use arrow::datatypes::SchemaRef;
 use async_trait::async_trait;
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use datafusion::{
-    common::tree_node::{TreeNode, VisitRecursion},
     config::{ConfigEntry, ConfigExtension, ExtensionOptions},
     datasource::TableProvider,
     error::{DataFusionError, Result},
@@ -37,8 +36,9 @@ use datafusion::{
     logical_expr::{Expr, TableProviderFilterPushDown, TableSource, TableType},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
+        expressions,
         metrics::{Count, MetricValue, MetricsSet},
-        DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning,
+        DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning, PhysicalExpr,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
@@ -232,11 +232,26 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             priority,
         );
 
+        let mut need_reprojection = false;
         let all_projections = if let Some(proj) = projection {
-            let mut all_projections =
+            let mut original_projections = proj.clone();
+            let projections_from_filter =
                 collect_projection_from_expr(filters, &self.current_table_schema);
-            all_projections.extend(proj);
-            Some(all_projections.into_iter().collect::<Vec<_>>())
+            for proj in projections_from_filter {
+                if !original_projections.contains(&proj) {
+                    original_projections.push(proj);
+                    // If the projection from filter has columns not in the original projection,
+                    // we need to add a ProjectionExec plan to project the orignal columns. Eg:
+                    // ```
+                    // select a from table where b > 1
+                    // ```
+                    // The original projection only contains a, but the filter has column b, so we
+                    // need to query both a and b column from table but only
+                    // output a column.
+                    need_reprojection = true;
+                }
+            }
+            Some(original_projections)
         } else {
             None
         };
@@ -260,13 +275,32 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
         let request = ReadRequest {
             request_id,
             opts,
-            projected_schema,
+            projected_schema: projected_schema.clone(),
             predicate,
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
             priority,
         };
 
-        self.builder.build(request).await
+        if need_reprojection {
+            let original_projection = projection.unwrap();
+            let projection = (0..original_projection.len())
+                .map(|proj| {
+                    let column = projected_schema.target_column_schema(proj);
+
+                    (
+                        Arc::new(expressions::Column::new(&column.name, proj))
+                            as Arc<dyn PhysicalExpr>,
+                        column.name.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let scan = self.builder.build(request).await?;
+            let plan =
+                datafusion::physical_plan::projection::ProjectionExec::try_new(projection, scan)?;
+            Ok(Arc::new(plan))
+        } else {
+            self.builder.build(request).await
+        }
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
@@ -513,16 +547,11 @@ impl fmt::Debug for ScanTable {
 fn collect_projection_from_expr(exprs: &[Expr], schema: &Schema) -> HashSet<usize> {
     let mut projections = HashSet::new();
     exprs.iter().for_each(|expr| {
-        _ = expr.apply(&mut |expr| match &expr {
-            Expr::Column(column) => {
-                if let Some(idx) = schema.index_of(&column.name) {
-                    projections.insert(idx);
-                }
-                Ok(VisitRecursion::Stop)
+        for col_name in visitor::find_columns_by_expr(expr) {
+            if let Some(idx) = schema.index_of(&col_name) {
+                projections.insert(idx);
             }
-            Expr::ScalarVariable(_, _) | Expr::Literal(_) => Ok(VisitRecursion::Stop),
-            _ => Ok(VisitRecursion::Continue),
-        });
+        }
     });
 
     projections
