@@ -57,7 +57,7 @@ struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
 impl<'a, P: MetaProvider> SchemaProvider for InfluxQLSchemaProvider<'a, P> {
     fn get_table_provider(&self, name: &str) -> datafusion::error::Result<Arc<dyn TableSource>> {
         self.context_provider
-            .get_table_provider(name.into())
+            .get_table_source(name.into())
             .map_err(|e| {
                 DataFusionError::Plan(format!(
                     "measurement does not exist, measurement:{name}, source:{e}"

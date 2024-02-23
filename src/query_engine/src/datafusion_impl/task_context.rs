@@ -40,7 +40,6 @@ use df_engine_extensions::dist_sql_query::{
 };
 use futures::future::BoxFuture;
 use generic_error::BoxError;
-use prost::Message;
 use runtime::Priority;
 use snafu::ResultExt;
 use table_engine::{
@@ -116,7 +115,7 @@ impl Preprocessor {
         ctx: &Context,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // Decode to datafusion physical plan.
-        let protobuf = protobuf::PhysicalPlanNode::decode(encoded_plan)
+        let protobuf = protobuf::PhysicalPlanNode::try_decode(encoded_plan)
             .box_err()
             .with_context(|| ExecutorWithCause {
                 msg: Some("failed to decode plan".to_string()),
