@@ -37,7 +37,7 @@ use common_types::{
     schema::SchemaEncoder,
     table::{ShardId, ShardVersion},
 };
-use future_ext::RetryConfig;
+use future_ext::{RetryConfig, BackoffConfig};
 use generic_error::BoxError;
 use horaedbproto::meta_event::{
     meta_event_service_server::MetaEventService, ChangeShardRoleRequest, ChangeShardRoleResponse,
@@ -101,7 +101,11 @@ macro_rules! extract_updated_table_info {
 // TODO: configure retry
 const RETRY: RetryConfig = RetryConfig {
     max_retries: 10,
-    interval: Duration::from_secs(5),
+    backoff: BackoffConfig { 
+        init_backoff: Duration::from_secs(1),
+        max_backoff: Duration::from_secs(5),
+        base: 2.0
+    }
 };
 
 /// Builder for [MetaServiceImpl].

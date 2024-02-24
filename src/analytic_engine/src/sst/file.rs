@@ -34,7 +34,7 @@ use common_types::{
     time::{TimeRange, Timestamp},
     SequenceNumber,
 };
-use future_ext::{retry_async, RetryConfig};
+use future_ext::{retry_async, RetryConfig, BackoffConfig};
 use logger::{error, info, trace, warn};
 use macros::define_result;
 use metric_ext::Meter;
@@ -540,7 +540,11 @@ pub struct FilePurger {
 impl FilePurger {
     const RETRY_CONFIG: RetryConfig = RetryConfig {
         max_retries: 3,
-        interval: Duration::from_millis(500),
+        backoff: BackoffConfig {
+            init_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_millis(500),
+            base: 3.,
+        }
     };
 
     pub fn start(runtime: &Runtime, store: ObjectStoreRef) -> Self {
