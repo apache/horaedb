@@ -137,7 +137,7 @@ impl DfContextBuilder {
 
         // Using default logcial optimizer, if want to add more custom rule, using
         // `add_optimizer_rule` to add.
-        let state = SessionState::with_config_rt(df_session_config, self.runtime_env.clone());
-        SessionContext::with_state(state)
+        let state = SessionState::new_with_config_rt(df_session_config, self.runtime_env.clone());
+        SessionContext::new_with_state(state)
     }
 }
