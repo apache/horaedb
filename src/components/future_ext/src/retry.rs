@@ -36,6 +36,9 @@ impl Default for RetryConfig {
     }
 }
 
+
+// This backoff implementation is ported from 
+// https://github.com/apache/arrow-rs/blob/dfb642809e93c2c1b8343692f4e4b3080000f988/object_store/src/client/backoff.rs#L26
 pub struct BackoffConfig {
     /// The initial backoff duration
     pub init_backoff: Duration,
@@ -49,8 +52,8 @@ impl Default for BackoffConfig {
     fn default() -> Self {
         Self {
             init_backoff: Duration::from_millis(100),
-            max_backoff: Duration::from_millis(500),
-            base: 3.,
+            max_backoff: Duration::from_secs(15),
+            base: 2.,
         }
     }
 }
@@ -107,7 +110,7 @@ where
 {
     let mut backoff = Backoff::new(&config.backoff);
     for _ in 0..config.max_retries {
-        let result: Result<T, E> = f().await;
+        let result = f().await;
 
         if result.is_ok() {
             return result;
@@ -178,9 +181,9 @@ mod tests {
 
     #[test]
     fn test_backoff() {
-        let init_backoff_secs = 1.;
-        let max_backoff_secs = 500.;
-        let base = 3.;
+        let init_backoff_secs = 1.0;
+        let max_backoff_secs = 500.0;
+        let base = 3.0;
 
         let config = BackoffConfig {
             init_backoff: Duration::from_secs_f64(init_backoff_secs),

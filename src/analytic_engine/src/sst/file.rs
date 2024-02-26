@@ -541,8 +541,8 @@ impl FilePurger {
     const RETRY_CONFIG: RetryConfig = RetryConfig {
         max_retries: 3,
         backoff: BackoffConfig {
-            init_backoff: Duration::from_millis(100),
-            max_backoff: Duration::from_millis(500),
+            init_backoff: Duration::from_millis(500),
+            max_backoff: Duration::from_secs(5),
             base: 3.,
         },
     };
