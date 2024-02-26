@@ -105,7 +105,50 @@ COUNT(DISTINCT 02_function_aggregate_table1.arch),
 Int64(2),
 
 
+CREATE TABLE `02_function_aggregate_table2` (
+    `timestamp` timestamp NOT NULL,
+    `arch` string TAG,
+    `datacenter` string TAG,
+    `value` int,
+    `uvalue` uint64,
+    timestamp KEY (timestamp)) ENGINE=Analytic
+WITH(
+	 enable_ttl='false',
+     update_mode = 'append'
+);
+
+affected_rows: 0
+
+INSERT INTO `02_function_aggregate_table2`
+    (`timestamp`, `arch`, `datacenter`, `value`, `uvalue`)
+VALUES
+    (1658304762, 'x86-64', 'china', 100, 10),
+    (1658304763, 'x86-64', 'china', 200, 10),
+    (1658304762, 'arm64', 'china', 110, 0),
+    (1658304763, 'arm64', 'china', 210, 0);
+
+affected_rows: 4
+
+-- The should select empty column
+SELECT count(*) FROM `02_function_aggregate_table1`;
+
+COUNT(*),
+Int64(4),
+
+
+-- Same with before, but query from sst
+-- SQLNESS ARG pre_cmd=flush
+SELECT count(*) FROM `02_function_aggregate_table1`;
+
+COUNT(*),
+Int64(4),
+
+
 DROP TABLE `02_function_aggregate_table1`;
+
+affected_rows: 0
+
+DROP TABLE `02_function_aggregate_table2`;
 
 affected_rows: 0
 

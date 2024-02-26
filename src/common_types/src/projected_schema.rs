@@ -105,7 +105,7 @@ pub struct RowProjector {
     /// For example:
     ///   source columns in sst: 0,1,2,3,4
     ///   target projection columns: 2,1,3
-    ///   
+    ///
     ///   the actual columns in fetched record: 1,2,3
     ///   relative columns indexes in fetched record: 0,1,2
     ///
@@ -346,6 +346,10 @@ impl ProjectedSchema {
 
     pub fn table_schema(&self) -> &Schema {
         &self.0.table_schema
+    }
+
+    pub fn target_column_schema(&self, i: usize) -> &ColumnSchema {
+        self.0.target_record_schema.column(i)
     }
 }
 

@@ -192,8 +192,8 @@ pub async fn file_handles_from_ssts(
 
         let file_meta = FileMeta {
             id: *file_id,
-            size: 0,
-            row_num: 0,
+            size: store.head(&path).await.unwrap().size as u64,
+            row_num: parquet_metadata.file_metadata().num_rows() as u64,
             time_range: sst_meta.time_range,
             max_seq: sst_meta.max_sequence,
             storage_format: StorageFormat::Columnar,

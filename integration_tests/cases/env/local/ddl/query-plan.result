@@ -27,48 +27,53 @@ affected_rows: 3
 
 -- This query should include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t]:\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t]:\n=0]\n"),
 
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
 where t >= 1695348001000 and t < 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t]:\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t]:\n=0]\n"),
 
 
 -- This query should not include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n=0]\n"),
 
 
 -- SQLNESS ARG pre_cmd=flush
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE project_record_batch=\d+.?\d*(µ|m|n) project_record_batch=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 -- This query should include SST
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=1\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_sst_1, fetched_columns:[tsid,t]:\n            meta_data_cache_hit=false\n            parallelism=1\n            project_record_batch=xxs\n            read_meta_data_duration=xxs\n            row_mem=320\n            row_num=3\n            prune_row_groups:\n                pruned_by_custom_filter=0\n                pruned_by_min_max=0\n                row_groups_after_prune=1\n                total_row_groups=1\n                use_custom_filter=false\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=0\n        num_ssts=1\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_sst_1, fetched_columns:[tsid,t]:\n            meta_data_cache_hit=false\n            parallelism=1\n            project_record_batch=xxs\n            read_meta_data_duration=xxs\n            row_mem=320\n            row_num=3\n            prune_row_groups:\n                pruned_by_custom_filter=0\n                pruned_by_min_max=0\n                row_groups_after_prune=1\n                total_row_groups=1\n                use_custom_filter=false\n=0]\n"),
 
 
 -- This query should not include SST
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348002001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=0\n=0]\n"),
 
 
 -- Table with an 'append' update mode
@@ -97,11 +102,12 @@ affected_rows: 3
 -- SQLNESS REPLACE since_create=\d+.?\d*(µ|m|n) since_create=xx
 -- SQLNESS REPLACE since_init=\d+.?\d*(µ|m|n) since_init=xx
 -- SQLNESS REPLACE elapsed_compute=\d+.?\d*(µ|m|n) elapsed_compute=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_append_mode_table`
 where t >= 1695348001000 and name = 'ceresdb';
 
 plan_type,plan,
-String("Plan with Metrics"),String("ProjectionExec: expr=[t@0 as t], metrics=[output_rows=2, elapsed_compute=xxs]\n  ScanTable: table=03_append_mode_table, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), name = Utf8(\"ceresdb\")], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n    chain_iter_0:\n        num_memtables=1\n        num_ssts=0\n        scan_duration=xxs\n        since_create=xxs\n        since_init=xxs\n        total_batch_fetched=1\n        total_rows_fetched=2\n        scan_memtable_1, fetched_columns:[t,name]:\n=0]\n"),
+String("Plan with Metrics"),String("ProjectionExec: expr=[t@0 as t], metrics=xx\n  ScanTable: table=03_append_mode_table, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), name = Utf8(\"ceresdb\")], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n    chain_iter_0:\n        num_memtables=1\n        num_ssts=0\n        scan_duration=xxs\n        since_create=xxs\n        since_init=xxs\n        total_batch_fetched=1\n        total_rows_fetched=2\n        scan_memtable_1, fetched_columns:[t,name]:\n=0]\n"),
 
 
 -- Should just fetch projected columns from SST
@@ -111,11 +117,12 @@ String("Plan with Metrics"),String("ProjectionExec: expr=[t@0 as t], metrics=[ou
 -- SQLNESS REPLACE since_init=\d+.?\d*(µ|m|n) since_init=xx
 -- SQLNESS REPLACE elapsed_compute=\d+.?\d*(µ|m|n) elapsed_compute=xx
 -- SQLNESS REPLACE project_record_batch=\d+.?\d*(µ|m|n) project_record_batch=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_append_mode_table`
 where t >= 1695348001000 and name = 'ceresdb';
 
 plan_type,plan,
-String("Plan with Metrics"),String("ProjectionExec: expr=[t@0 as t], metrics=[output_rows=2, elapsed_compute=xxs]\n  ScanTable: table=03_append_mode_table, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), name = Utf8(\"ceresdb\")], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n    chain_iter_0:\n        num_memtables=0\n        num_ssts=1\n        scan_duration=xxs\n        since_create=xxs\n        since_init=xxs\n        total_batch_fetched=1\n        total_rows_fetched=2\n        scan_sst_1, fetched_columns:[t,name]:\n            meta_data_cache_hit=false\n            parallelism=1\n            project_record_batch=xxs\n            read_meta_data_duration=xxs\n            row_mem=408\n            row_num=3\n            prune_row_groups:\n                pruned_by_custom_filter=0\n                pruned_by_min_max=0\n                row_groups_after_prune=1\n                total_row_groups=1\n                use_custom_filter=false\n=0]\n"),
+String("Plan with Metrics"),String("ProjectionExec: expr=[t@0 as t], metrics=xx\n  ScanTable: table=03_append_mode_table, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), name = Utf8(\"ceresdb\")], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n    chain_iter_0:\n        num_memtables=0\n        num_ssts=1\n        scan_duration=xxs\n        since_create=xxs\n        since_init=xxs\n        total_batch_fetched=1\n        total_rows_fetched=2\n        scan_sst_1, fetched_columns:[t,name]:\n            meta_data_cache_hit=false\n            parallelism=1\n            project_record_batch=xxs\n            read_meta_data_duration=xxs\n            row_mem=408\n            row_num=3\n            prune_row_groups:\n                pruned_by_custom_filter=0\n                pruned_by_min_max=0\n                row_groups_after_prune=1\n                total_row_groups=1\n                use_custom_filter=false\n=0]\n"),
 
 
 CREATE TABLE `TEST_QUERY_PRIORITY` (
@@ -132,20 +139,22 @@ affected_rows: 0
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select TS from `TEST_QUERY_PRIORITY`
 where TS >= 1695348001000 and TS < 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=TEST_QUERY_PRIORITY, parallelism=8, priority=High, metrics=[\nPredicate { exprs:[TS >= TimestampMillisecond(1695348001000, None), TS < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=false\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=TEST_QUERY_PRIORITY, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[TS >= TimestampMillisecond(1695348001000, None), TS < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=false\n=0]\n"),
 
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select TS from `TEST_QUERY_PRIORITY`
 where TS >= 1695348001000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=TEST_QUERY_PRIORITY, parallelism=8, priority=Low, metrics=[\nPredicate { exprs:[TS >= TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=TEST_QUERY_PRIORITY, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[TS >= TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n=0]\n"),
 
 
 DROP TABLE `03_dml_select_real_time_range`;

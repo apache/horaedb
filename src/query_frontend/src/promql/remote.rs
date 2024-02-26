@@ -64,7 +64,7 @@ pub fn remote_query_to_plan<P: MetaProvider>(
     let (metric, field, mut filters) = normalize_matchers(query.matchers)?;
 
     let table_provider = meta_provider
-        .get_table_provider(TableReference::bare(&metric))
+        .get_table_source(TableReference::bare(&metric))
         .context(TableProviderNotFound { name: &metric })?;
     let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
     let timestamp_col_name = schema.timestamp_name();

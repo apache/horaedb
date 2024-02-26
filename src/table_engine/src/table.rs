@@ -421,6 +421,7 @@ impl fmt::Debug for ReadRequest {
             .field("projected", &projected)
             .field("predicate", &predicate)
             .field("priority", &self.priority)
+            .field("projected_schema", &self.projected_schema)
             .finish()
     }
 }
