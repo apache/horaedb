@@ -161,7 +161,7 @@ fn new_memory_tester() -> TableKvTester<MemoryImpl> {
 
 fn random_table_name(prefix: &str) -> String {
     let mut rng = thread_rng();
-    let v: u32 = rng.gen_range(0, MAX_TABLE_ID);
+    let v: u32 = rng.gen_range(0..MAX_TABLE_ID);
 
     format!("{prefix}_{v}")
 }

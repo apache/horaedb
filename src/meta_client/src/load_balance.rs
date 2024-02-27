@@ -46,7 +46,7 @@ impl LoadBalancer for RandomLoadBalancer {
             return Ok(&addresses[0]);
         }
         let mut rng = rand::thread_rng();
-        let idx = rng.gen_range(0, len);
+        let idx = rng.gen_range(0..len);
 
         Ok(&addresses[idx])
     }

@@ -154,7 +154,7 @@ prost = "0.11"
 proxy = { path = "src/proxy" }
 query_engine = { path = "src/query_engine" }
 query_frontend = { path = "src/query_frontend" }
-rand = "0.7"
+rand = "0.8.5"
 regex = "1"
 remote_engine_client = { path = "src/remote_engine_client" }
 reqwest = { version = "0.11", default-features = false, features = [
