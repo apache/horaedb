@@ -20,20 +20,85 @@
 use std::time::Duration;
 
 use futures::Future;
+use rand::prelude::*;
 
-// TODO: add backoff
-// https://github.com/apache/arrow-rs/blob/dfb642809e93c2c1b8343692f4e4b3080000f988/object_store/src/client/backoff.rs#L26
 pub struct RetryConfig {
     pub max_retries: usize,
-    pub interval: Duration,
+    pub backoff: BackoffConfig,
 }
 
 impl Default for RetryConfig {
     fn default() -> Self {
         Self {
             max_retries: 3,
-            interval: Duration::from_millis(500),
+            backoff: Default::default(),
         }
+    }
+}
+
+// This backoff implementation is ported from
+// https://github.com/apache/arrow-rs/blob/dfb642809e93c2c1b8343692f4e4b3080000f988/object_store/src/client/backoff.rs#L26
+pub struct BackoffConfig {
+    /// The initial backoff duration
+    pub init_backoff: Duration,
+    /// The maximum backoff duration
+    pub max_backoff: Duration,
+    /// The base of the exponential to use
+    pub base: f64,
+}
+
+impl Default for BackoffConfig {
+    fn default() -> Self {
+        Self {
+            init_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(15),
+            base: 2.,
+        }
+    }
+}
+
+pub struct Backoff {
+    init_backoff: f64,
+    next_backoff_secs: f64,
+    max_backoff_secs: f64,
+    base: f64,
+    rng: Option<Box<dyn RngCore + Sync + Send>>,
+}
+
+impl Backoff {
+    /// Create a new [`Backoff`] from the provided [`BackoffConfig`]
+    pub fn new(config: &BackoffConfig) -> Self {
+        Self::new_with_rng(config, None)
+    }
+
+    /// Creates a new `Backoff` with the optional `rng`
+    ///
+    /// Used [`rand::thread_rng()`] if no rng provided
+    pub fn new_with_rng(
+        config: &BackoffConfig,
+        rng: Option<Box<dyn RngCore + Sync + Send>>,
+    ) -> Self {
+        let init_backoff = config.init_backoff.as_secs_f64();
+        Self {
+            init_backoff,
+            next_backoff_secs: init_backoff,
+            max_backoff_secs: config.max_backoff.as_secs_f64(),
+            base: config.base,
+            rng,
+        }
+    }
+
+    /// Returns the next backoff duration to wait for
+    pub fn next(&mut self) -> Duration {
+        let range = self.init_backoff..(self.next_backoff_secs * self.base);
+
+        let rand_backoff = match self.rng.as_mut() {
+            Some(rng) => rng.gen_range(range),
+            None => thread_rng().gen_range(range),
+        };
+
+        let next_backoff = self.max_backoff_secs.min(rand_backoff);
+        Duration::from_secs_f64(std::mem::replace(&mut self.next_backoff_secs, next_backoff))
     }
 }
 
@@ -42,13 +107,14 @@ where
     F: Fn() -> Fut,
     Fut: Future<Output = Result<T, E>>,
 {
+    let mut backoff = Backoff::new(&config.backoff);
     for _ in 0..config.max_retries {
         let result = f().await;
 
         if result.is_ok() {
             return result;
         }
-        tokio::time::sleep(config.interval).await;
+        tokio::time::sleep(backoff.next()).await;
     }
 
     f().await
@@ -58,13 +124,15 @@ where
 mod tests {
     use std::sync::atomic::{AtomicU8, Ordering};
 
+    use rand::rngs::mock::StepRng;
+
     use super::*;
 
     #[tokio::test]
     async fn test_retry_async() {
         let config = RetryConfig {
             max_retries: 3,
-            interval: Duration::from_millis(5),
+            backoff: Default::default(),
         };
 
         // always fails
@@ -107,6 +175,49 @@ mod tests {
             let ret = retry_async(f, &config).await;
             assert_eq!(2, ret.unwrap());
             assert_eq!(3, runs.load(Ordering::Relaxed));
+        }
+    }
+
+    #[test]
+    fn test_backoff() {
+        let init_backoff_secs = 1.0;
+        let max_backoff_secs = 500.0;
+        let base = 3.0;
+
+        let config = BackoffConfig {
+            init_backoff: Duration::from_secs_f64(init_backoff_secs),
+            max_backoff: Duration::from_secs_f64(max_backoff_secs),
+            base,
+        };
+
+        let assert_fuzzy_eq = |a: f64, b: f64| assert!((b - a).abs() < 0.0001, "{a} != {b}");
+
+        // Create a static rng that takes the minimum of the range
+        let rng = Box::new(StepRng::new(0, 0));
+        let mut backoff = Backoff::new_with_rng(&config, Some(rng));
+
+        for _ in 0..20 {
+            assert_eq!(backoff.next().as_secs_f64(), init_backoff_secs);
+        }
+
+        // Create a static rng that takes the maximum of the range
+        let rng = Box::new(StepRng::new(u64::MAX, 0));
+        let mut backoff = Backoff::new_with_rng(&config, Some(rng));
+
+        for i in 0..20 {
+            let value = (base.powi(i) * init_backoff_secs).min(max_backoff_secs);
+            assert_fuzzy_eq(backoff.next().as_secs_f64(), value);
+        }
+
+        // Create a static rng that takes the mid point of the range
+        let rng = Box::new(StepRng::new(u64::MAX / 2, 0));
+        let mut backoff = Backoff::new_with_rng(&config, Some(rng));
+
+        let mut value = init_backoff_secs;
+        for _ in 0..20 {
+            assert_fuzzy_eq(backoff.next().as_secs_f64(), value);
+            value =
+                (init_backoff_secs + (value * base - init_backoff_secs) / 2.).min(max_backoff_secs);
         }
     }
 }

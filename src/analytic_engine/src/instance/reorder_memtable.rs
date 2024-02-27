@@ -147,8 +147,11 @@ impl ExecutionPlan for ScanMemIter {
         }))
     }
 
-    fn statistics(&self) -> Statistics {
-        Statistics::default()
+    fn statistics(
+        &self,
+    ) -> std::result::Result<datafusion::common::Statistics, datafusion::error::DataFusionError>
+    {
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 
@@ -259,8 +262,8 @@ impl Reorder {
     pub async fn into_stream(self) -> Result<SendableFetchingRecordBatchStream> {
         // 1. Init datafusion context
         let runtime = Arc::new(RuntimeEnv::default());
-        let state = SessionState::with_config_rt(SessionConfig::new(), runtime);
-        let ctx = SessionContext::with_state(state);
+        let state = SessionState::new_with_config_rt(SessionConfig::new(), runtime);
+        let ctx = SessionContext::new_with_state(state);
         let table_provider = Arc::new(MemIterProvider {
             arrow_schema: self.schema.to_arrow_schema_ref(),
             iter: Mutex::new(Some(self.iter)),

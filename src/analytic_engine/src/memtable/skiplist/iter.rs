@@ -154,6 +154,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         assert!(self.batch_size > 0);
 
         let record_schema = self.row_projector.fetched_schema().clone();
+        let is_empty_projection = record_schema.columns().is_empty();
         let primary_key_indexes = self
             .row_projector
             .primary_key_indexes()
@@ -181,6 +182,10 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 self.finish();
                 break;
             }
+        }
+
+        if is_empty_projection {
+            builder.inc_row_num(num_rows);
         }
 
         if num_rows > 0 {

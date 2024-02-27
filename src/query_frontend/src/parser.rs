@@ -352,7 +352,7 @@ impl<'a> Parser<'a> {
                     is_dictionary = true;
                 }
             }
-            if c.data_type != DataType::String && is_dictionary {
+            if !matches!(c.data_type, DataType::String(_)) && is_dictionary {
                 return parser_err!(format!(
                     "Only string column can be dictionary encoded: {:?}",
                     c.to_string()
@@ -1001,7 +1001,7 @@ mod tests {
         let columns = vec![
             make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
             make_column_def("c2", DataType::Double),
-            make_column_def("c3", DataType::String),
+            make_column_def("c3", DataType::String(None)),
         ];
 
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double, c3 string,) ENGINE = XX";
@@ -1027,7 +1027,7 @@ mod tests {
         let columns = vec![
             make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
             make_comment_column_def("c2", DataType::Double, "id".to_string()),
-            make_comment_column_def("c3", DataType::String, "name".to_string()),
+            make_comment_column_def("c3", DataType::String(None), "name".to_string()),
         ];
 
         let sql = "CREATE TABLE mytbl(c1 timestamp, c2 double comment 'id', c3 string comment 'name',) ENGINE = XX";
@@ -1053,7 +1053,7 @@ mod tests {
         let columns = vec![
             make_column_def("c1", DataType::Timestamp(None, TimezoneInfo::None)),
             make_column_def("c2", DataType::Timestamp(None, TimezoneInfo::None)),
-            make_column_def("c3", DataType::String),
+            make_column_def("c3", DataType::String(None)),
             make_column_def("c4", DataType::Double),
         ];
 
@@ -1253,7 +1253,7 @@ mod tests {
                 table_name: make_table_name("t"),
                 columns: vec![
                     make_column_def("c1", DataType::Double),
-                    make_column_def("c2", DataType::String),
+                    make_column_def("c2", DataType::String(None)),
                 ],
             });
             expect_parse_ok(sql, expected).unwrap();
@@ -1277,7 +1277,7 @@ mod tests {
                 table_name: make_table_name("t"),
                 columns: vec![
                     make_column_def("c1", DataType::Double),
-                    make_tag_column_def("c2", DataType::String),
+                    make_tag_column_def("c2", DataType::String(None)),
                 ],
             });
             expect_parse_ok(sql, expected).unwrap();
@@ -1287,7 +1287,7 @@ mod tests {
             let sql = "ALTER TABLE t ADD COLUMN c1 string tag";
             let expected = Statement::AlterAddColumn(AlterAddColumn {
                 table_name: make_table_name("t"),
-                columns: vec![make_tag_column_def("c1", DataType::String)],
+                columns: vec![make_tag_column_def("c1", DataType::String(None))],
             });
             expect_parse_ok(sql, expected).unwrap();
         }

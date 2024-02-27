@@ -30,7 +30,7 @@ use datafusion::{
     logical_expr::{
         expr::{Expr, InList},
         logical_plan::{Filter, LogicalPlan, TableScan},
-        utils, Between, BinaryExpr, ExprSchemable, Operator,
+        Between, BinaryExpr, ExprSchemable, Operator,
     },
     optimizer::analyzer::AnalyzerRule,
     scalar::ScalarValue,
@@ -113,17 +113,18 @@ impl AnalyzerRule for TypeConversion {
                     .map(|plan| self.analyze(plan.clone(), config))
                     .collect::<Result<Vec<_>>>()?;
 
-                let expr = plan
+                let exprs = plan
                     .expressions()
                     .into_iter()
                     .map(|e| e.rewrite(&mut rewriter))
                     .collect::<Result<Vec<_>>>()?;
 
-                Ok(utils::from_plan(&plan, &expr, &new_inputs)?)
+                Ok(LogicalPlan::with_new_exprs(&plan, exprs, &new_inputs)?)
             }
             LogicalPlan::Subquery(_)
             | LogicalPlan::Statement { .. }
             | LogicalPlan::SubqueryAlias(_)
+            | LogicalPlan::Copy(_)
             | LogicalPlan::Unnest(_)
             | LogicalPlan::EmptyRelation { .. } => Ok(plan.clone()),
         }
@@ -209,7 +210,7 @@ impl<'a> TypeRewriter<'a> {
             }
         }
 
-        let array = value.to_array();
+        let array = value.to_array()?;
         ScalarValue::try_from_array(
             &compute::cast(&array, data_type).map_err(DataFusionError::ArrowError)?,
             // index: Converts a value in `array` at `index` into a ScalarValue

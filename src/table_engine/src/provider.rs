@@ -19,6 +19,7 @@
 
 use std::{
     any::Any,
+    collections::HashSet,
     fmt,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -35,8 +36,10 @@ use datafusion::{
     logical_expr::{Expr, TableProviderFilterPushDown, TableSource, TableType},
     physical_expr::PhysicalSortExpr,
     physical_plan::{
+        expressions,
         metrics::{Count, MetricValue, MetricsSet},
-        DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning,
+        projection::ProjectionExec,
+        DisplayAs, DisplayFormatType, ExecutionPlan, Metric, Partitioning, PhysicalExpr,
         SendableRecordBatchStream as DfSendableRecordBatchStream, Statistics,
     },
 };
@@ -230,9 +233,34 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             priority,
         );
 
+        let mut need_reprojection = false;
+        let all_projections = if let Some(proj) = projection {
+            let mut original_projections = proj.clone();
+            let projections_from_filter =
+                collect_projection_from_expr(filters, &self.current_table_schema);
+            for proj in projections_from_filter {
+                if !original_projections.contains(&proj) {
+                    original_projections.push(proj);
+                    // If the projection from filters have columns not in the original projection,
+                    // we need to add it to projection, and add a ProjectionExec plan to project the
+                    // orignal columns. Eg:
+                    // ```text
+                    // select a from table where b > 1
+                    // ```
+                    // The original projection only contains a, but the filter has column b, so we
+                    // need to query both a and b column from table but only
+                    // output a column. More details can be found in:
+                    // https://github.com/apache/arrow-datafusion/pull/9131#pullrequestreview-1865020767
+                    need_reprojection = true;
+                }
+            }
+            Some(original_projections)
+        } else {
+            None
+        };
         let predicate = self.check_and_build_predicate_from_filters(filters);
         let projected_schema =
-            ProjectedSchema::new(self.current_table_schema.clone(), projection.cloned()).map_err(
+            ProjectedSchema::new(self.current_table_schema.clone(), all_projections).map_err(
                 |e| {
                     DataFusionError::Internal(format!(
                         "Invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}"
@@ -240,6 +268,22 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
                 },
             )?;
 
+        let projection_exprs = if need_reprojection {
+            let original_projection = projection.unwrap();
+            let exprs = (0..original_projection.len())
+                .map(|i| {
+                    let column = projected_schema.target_column_schema(i);
+                    (
+                        Arc::new(expressions::Column::new(&column.name, i))
+                            as Arc<dyn PhysicalExpr>,
+                        column.name.clone(),
+                    )
+                })
+                .collect::<Vec<_>>();
+            Some(exprs)
+        } else {
+            None
+        };
         let opts = ReadOptions {
             deadline,
             read_parallelism,
@@ -256,7 +300,13 @@ impl<B: TableScanBuilder> TableProviderAdapter<B> {
             priority,
         };
 
-        self.builder.build(request).await
+        let scan = self.builder.build(request).await?;
+        if let Some(expr) = projection_exprs {
+            let plan = ProjectionExec::try_new(expr, scan)?;
+            Ok(Arc::new(plan))
+        } else {
+            Ok(scan)
+        }
     }
 
     fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
@@ -410,7 +460,7 @@ impl ExecutionPlan for ScanTable {
         // However, we have no inputs here, so `UnknownPartitioning` is suitable.
         // In datafusion, always set it to `UnknownPartitioning` in the scan plan, for
         // example:  https://github.com/apache/arrow-datafusion/blob/cf152af6515f0808d840e1fe9c63b02802595826/datafusion/core/src/datasource/physical_plan/csv.rs#L175
-        Partitioning::UnknownPartitioning(self.parallelism)
+        Partitioning::UnknownPartitioning(self.parallelism.max(1))
     }
 
     fn output_ordering(&self) -> Option<&[PhysicalSortExpr]> {
@@ -467,9 +517,12 @@ impl ExecutionPlan for ScanTable {
         Some(metric_set)
     }
 
-    fn statistics(&self) -> Statistics {
+    fn statistics(
+        &self,
+    ) -> std::result::Result<datafusion::common::Statistics, datafusion::error::DataFusionError>
+    {
         // TODO(yingwen): Implement this
-        Statistics::default()
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 
@@ -477,10 +530,11 @@ impl DisplayAs for ScanTable {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "ScanTable: table={}, parallelism={}, priority={:?}",
+            "ScanTable: table={}, parallelism={}, priority={:?}, partition_count={:?}",
             self.table.name(),
             self.request.opts.read_parallelism,
-            self.request.priority
+            self.request.priority,
+            self.output_partitioning()
         )
     }
 }
@@ -494,4 +548,17 @@ impl fmt::Debug for ScanTable {
             .field("predicate", &self.request.predicate)
             .finish()
     }
+}
+
+fn collect_projection_from_expr(exprs: &[Expr], schema: &Schema) -> HashSet<usize> {
+    let mut projections = HashSet::new();
+    exprs.iter().for_each(|expr| {
+        for col_name in visitor::find_columns_by_expr(expr) {
+            if let Some(idx) = schema.index_of(&col_name) {
+                projections.insert(idx);
+            }
+        }
+    });
+
+    projections
 }
