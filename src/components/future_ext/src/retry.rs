@@ -36,8 +36,7 @@ impl Default for RetryConfig {
     }
 }
 
-
-// This backoff implementation is ported from 
+// This backoff implementation is ported from
 // https://github.com/apache/arrow-rs/blob/dfb642809e93c2c1b8343692f4e4b3080000f988/object_store/src/client/backoff.rs#L26
 pub struct BackoffConfig {
     /// The initial backoff duration
