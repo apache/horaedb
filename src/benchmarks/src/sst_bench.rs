@@ -23,7 +23,6 @@ use analytic_engine::{
     sst::{
         factory::{Factory, FactoryImpl, ObjectStorePickerRef, ScanOptions, SstReadHint},
         meta_data::cache::{MetaCache, MetaCacheRef},
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     ScanType, SstReadOptionsBuilder,
 };
@@ -64,11 +63,10 @@ impl SstBench {
             max_record_batches_in_flight: 1024,
             num_streams_to_prefetch: 0,
         };
-        let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             ScanType::Query,
             scan_options,
-            maybe_table_level_metrics,
+            None,
             config.num_rows_per_row_group,
             predicate,
             meta_cache,

@@ -48,14 +48,15 @@ use tokio::{
 
 use crate::{
     compaction::{
-        metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext, CompactionTask,
-        PickerManager, TableCompactionRequest, WaitError, WaiterNotifier,
+        compactor::Compactor, metrics::COMPACTION_PENDING_REQUEST_GAUGE, picker::PickerContext,
+        runner::CompactionRunnerPtr, CompactionTask, PickerManager, TableCompactionRequest,
+        WaitError, WaiterNotifier,
     },
     instance::{
         flush_compaction::{Flusher, TableFlushOptions},
         SpaceStore,
     },
-    sst::factory::{ScanOptions, SstWriteOptions},
+    sst::factory::SstWriteOptions,
     table::data::TableDataRef,
     TableOptions,
 };
@@ -306,18 +307,20 @@ pub struct SchedulerImpl {
 impl SchedulerImpl {
     pub fn new(
         space_store: Arc<SpaceStore>,
+        runner: CompactionRunnerPtr,
         runtime: Arc<Runtime>,
         config: SchedulerConfig,
         write_sst_max_buffer_size: usize,
         min_flush_interval_ms: u64,
-        scan_options: ScanOptions,
     ) -> Self {
         let (tx, rx) = mpsc::channel(config.schedule_channel_len);
         let running = Arc::new(AtomicBool::new(true));
 
+        let compactor = Arc::new(Compactor::new(runner, space_store.manifest.clone()));
         let mut worker = ScheduleWorker {
             sender: tx.clone(),
             receiver: rx,
+            compactor,
             space_store,
             runtime: runtime.clone(),
             schedule_interval: config.schedule_interval.0,
@@ -326,7 +329,6 @@ impl SchedulerImpl {
             max_unflushed_duration: config.max_unflushed_duration.0,
             write_sst_max_buffer_size,
             min_flush_interval_ms,
-            scan_options,
             limit: Arc::new(OngoingTaskLimit {
                 ongoing_tasks: AtomicUsize::new(0),
                 request_buf: RwLock::new(RequestQueue::default()),
@@ -398,6 +400,7 @@ struct ScheduleWorker {
     sender: Sender<ScheduleTask>,
     receiver: Receiver<ScheduleTask>,
     space_store: Arc<SpaceStore>,
+    compactor: Arc<Compactor>,
     runtime: Arc<Runtime>,
     schedule_interval: Duration,
     max_unflushed_duration: Duration,
@@ -405,7 +408,6 @@ struct ScheduleWorker {
     max_ongoing_tasks: usize,
     write_sst_max_buffer_size: usize,
     min_flush_interval_ms: u64,
-    scan_options: ScanOptions,
     limit: Arc<OngoingTaskLimit>,
     running: Arc<AtomicBool>,
     memory_limit: MemoryLimit,
@@ -495,8 +497,7 @@ impl ScheduleWorker {
         let keep_scheduling_compaction =
             self.is_pending_queue_hungry() && compaction_task.contains_min_level();
 
-        let runtime = self.runtime.clone();
-        let space_store = self.space_store.clone();
+        let compactor = self.compactor.clone();
         self.limit.start_task();
         let task = OngoingTask {
             sender: self.sender.clone(),
@@ -513,7 +514,6 @@ impl ScheduleWorker {
             max_buffer_size: self.write_sst_max_buffer_size,
             column_stats: Default::default(),
         };
-        let scan_options = self.scan_options.clone();
 
         // Do actual costly compact job in background.
         self.runtime.spawn(async move {
@@ -528,14 +528,12 @@ impl ScheduleWorker {
                 )
                 .await;
             }
-            let res = space_store
+            let res = compactor
                 .compact_table(
                     request_id.clone(),
                     &table_data,
                     &compaction_task,
-                    scan_options,
                     &sst_write_options,
-                    runtime,
                 )
                 .await;
 

@@ -32,7 +32,6 @@ use analytic_engine::{
         factory::{FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table::sst_util,
     ScanType, SstReadOptionsBuilder,
@@ -84,12 +83,11 @@ impl MergeSstBench {
             num_streams_to_prefetch: 0,
         };
 
-        let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
         let scan_type = ScanType::Query;
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             scan_type,
             scan_options,
-            maybe_table_level_metrics,
+            None,
             config.num_rows_per_row_group,
             predicate,
             meta_cache.clone(),

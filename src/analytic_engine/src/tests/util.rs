@@ -51,7 +51,7 @@ use wal::{
 };
 
 use crate::{
-    setup::EngineBuilder,
+    setup::{EngineBuilder, TableEngineContext},
     tests::table::{self, FixedSchemaTable, RowTuple},
     Config, RecoverMode,
 };
@@ -143,7 +143,9 @@ impl<T: WalsOpener> TestContext<T> {
             opened_wals: opened_wals.clone(),
         };
         self.opened_wals = Some(opened_wals);
-        self.engine = Some(engine_builder.build().await.unwrap());
+
+        let TableEngineContext { table_engine, .. } = engine_builder.build().await.unwrap();
+        self.engine = Some(table_engine);
     }
 
     pub async fn reopen(&mut self) {

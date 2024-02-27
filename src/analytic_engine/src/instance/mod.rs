@@ -95,19 +95,18 @@ pub enum Error {
 
 define_result!(Error);
 
+// TODO: `SpaceStore` seems not a good name
 pub struct SpaceStore {
     /// All spaces of the engine.
     spaces: SpacesRef,
     /// Manifest (or meta) stores meta data of the engine instance.
-    manifest: ManifestRef,
+    pub(crate) manifest: ManifestRef,
     /// Wal of all tables
     wal_manager: WalManagerRef,
     /// Object store picker for persisting data.
     store_picker: ObjectStorePickerRef,
     /// Sst factory.
     sst_factory: SstFactoryRef,
-
-    meta_cache: Option<MetaCacheRef>,
 }
 
 pub type SpaceStoreRef = Arc<SpaceStore>;
@@ -335,7 +334,7 @@ impl Instance {
 pub struct SstReadOptionsBuilder {
     scan_type: ScanType,
     scan_options: ScanOptions,
-    maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
+    maybe_table_level_metrics: Option<Arc<MaybeTableLevelMetrics>>,
     num_rows_per_row_group: usize,
     predicate: PredicateRef,
     meta_cache: Option<MetaCacheRef>,
@@ -346,7 +345,7 @@ impl SstReadOptionsBuilder {
     pub fn new(
         scan_type: ScanType,
         scan_options: ScanOptions,
-        maybe_table_level_metrics: Arc<MaybeTableLevelMetrics>,
+        maybe_table_level_metrics: Option<Arc<MaybeTableLevelMetrics>>,
         num_rows_per_row_group: usize,
         predicate: PredicateRef,
         meta_cache: Option<MetaCacheRef>,
@@ -365,7 +364,7 @@ impl SstReadOptionsBuilder {
 
     pub fn build(self, row_projector_builder: RowProjectorBuilder) -> SstReadOptions {
         SstReadOptions {
-            maybe_table_level_metrics: self.maybe_table_level_metrics,
+            maybe_table_level_metrics: self.maybe_table_level_metrics.clone(),
             num_rows_per_row_group: self.num_rows_per_row_group,
             frequency: self.scan_type.into(),
             row_projector_builder,

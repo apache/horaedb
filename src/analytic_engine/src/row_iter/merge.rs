@@ -108,6 +108,7 @@ pub struct MergeConfig<'a> {
     pub space_id: SpaceId,
     pub table_id: TableId,
     /// Max visible sequence (inclusive)
+    // TODO: remove it? seems useless.
     pub sequence: SequenceNumber,
     /// The projected schema to read.
     pub projected_schema: ProjectedSchema,
