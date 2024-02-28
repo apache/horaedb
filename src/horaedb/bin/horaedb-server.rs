@@ -19,7 +19,7 @@
 
 use std::env;
 
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use horaedb::{
     config::{ClusterDeployment, Config},
     setup,
@@ -65,20 +65,20 @@ fn fetch_version() -> String {
 }
 
 fn main() {
-    let version = fetch_version();
-    let matches = App::new("HoraeDB Server")
-        .version(version.as_str())
+    let version: &'static str = Box::leak(fetch_version().into_boxed_str());
+    let matches = Command::new("HoraeDB Server")
+        .version(version)
         .arg(
-            Arg::with_name("config")
+            Arg::new("config")
                 .short('c')
                 .long("config")
                 .required(false)
-                .takes_value(true)
+                .num_args(1)
                 .help("Set configuration file, eg: \"/path/server.toml\""),
         )
         .get_matches();
 
-    let mut config = match matches.value_of("config") {
+    let mut config = match matches.get_one::<String>("config") {
         Some(path) => {
             let mut toml_buf = String::new();
             toml_ext::parse_toml_from_path(path, &mut toml_buf).expect("Failed to parse config.")

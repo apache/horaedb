@@ -53,7 +53,7 @@ struct Args {
     sort: SortBy,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SortBy {
     /// Max Sequence number
     Seq,
