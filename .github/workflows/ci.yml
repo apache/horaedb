@@ -29,6 +29,7 @@ on:
       - 'integration_tests/**'
       - 'Cargo.toml'
       - '.github/workflows/ci.yml'
+      - 'licenserc.toml'
   pull_request:
     paths:
       - 'src/**'

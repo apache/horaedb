@@ -18,7 +18,9 @@
 headerPath = "Apache-2.0-ASF.txt"
 
 includes = [
+    "*.go",
     "*.rs",
     "*.toml",
-    "*.yml"
+    "*.yml",
+    "Makefile",
 ]
