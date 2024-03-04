@@ -319,10 +319,9 @@ fn string_to_timestamp_ms_workaround(string: &str) -> Result<ScalarValue> {
         return Ok(ScalarValue::TimestampMillisecond(Some(mills), None));
     }
 
-    Err(ArrowError::CastError(format!(
+    Err(DataFusionError::from(ArrowError::CastError(format!(
         "Error parsing '{string}' as timestamp: local time representation is invalid"
-    )))
-    .map_err(DataFusionError::from)
+    ))))
 }
 
 /// Converts the naive datetime (which has no specific timezone) to a

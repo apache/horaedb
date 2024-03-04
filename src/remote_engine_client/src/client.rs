@@ -155,13 +155,16 @@ impl Client {
 
         let result = result.and_then(|response| {
             let response = response.into_inner();
-            if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+            if let Some(header) = &response.header
+                && !status_code::is_ok(header.code)
+            {
                 Server {
                     endpoint,
                     table_idents: vec![table_ident.clone()],
                     code: header.code,
                     msg: header.error.clone(),
-                }.fail()
+                }
+                .fail()
             } else {
                 Ok(response.affected_rows as usize)
             }
@@ -236,13 +239,17 @@ impl Client {
             let result = batch_result.and_then(|result| {
                 let (response, endpoint) = result;
                 let response = response.into_inner();
-                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                if let Some(header) = &response.header
+                    && !status_code::is_ok(header.code)
+                {
                     Server {
                         endpoint,
                         table_idents: table_idents.clone(),
                         code: header.code,
                         msg: header.error.clone(),
-                    }.fail().box_err()
+                    }
+                    .fail()
+                    .box_err()
                 } else {
                     Ok(response.affected_rows)
                 }
@@ -286,13 +293,16 @@ impl Client {
 
             let resp = resp.and_then(|response| {
                 let response = response.into_inner();
-                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                if let Some(header) = &response.header
+                    && !status_code::is_ok(header.code)
+                {
                     Server {
-                        endpoint:endpoint.clone(),
+                        endpoint: endpoint.clone(),
                         table_idents: vec![table_ident.clone()],
                         code: header.code,
                         msg: header.error.clone(),
-                    }.fail()
+                    }
+                    .fail()
                 } else {
                     Ok(())
                 }
@@ -345,13 +355,16 @@ impl Client {
 
             let resp = resp.and_then(|response| {
                 let response = response.into_inner();
-                if let Some(header) = &response.header && !status_code::is_ok(header.code) {
+                if let Some(header) = &response.header
+                    && !status_code::is_ok(header.code)
+                {
                     Server {
-                        endpoint:endpoint.clone(),
+                        endpoint: endpoint.clone(),
                         table_idents: vec![table_ident.clone()],
                         code: header.code,
                         msg: header.error.clone(),
-                    }.fail()
+                    }
+                    .fail()
                 } else {
                     Ok(())
                 }
@@ -402,13 +415,16 @@ impl Client {
 
         let result = result.and_then(|response| {
             let response = response.into_inner();
-            if let Some(header) = &response.header && !status_code::is_ok(header.code) {
-                    Server {
-                        endpoint:endpoint.clone(),
-                        table_idents: vec![table_ident.clone()],
-                        code: header.code,
-                        msg: header.error.clone(),
-                    }.fail()
+            if let Some(header) = &response.header
+                && !status_code::is_ok(header.code)
+            {
+                Server {
+                    endpoint: endpoint.clone(),
+                    table_idents: vec![table_ident.clone()],
+                    code: header.code,
+                    msg: header.error.clone(),
+                }
+                .fail()
             } else {
                 Ok(response)
             }
@@ -477,11 +493,7 @@ impl Client {
         let plan_schema = request.plan_schema;
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb =
-            horaedbproto::remote_engine::ExecutePlanRequest::try_from(request.remote_request)
-                .box_err()
-                .context(Convert {
-                    msg: "Failed to convert RemoteExecuteRequest to pb",
-                })?;
+            horaedbproto::remote_engine::ExecutePlanRequest::from(request.remote_request);
 
         let result = rpc_client
             .execute_physical_plan(Request::new(request_pb))
@@ -559,13 +571,18 @@ impl Stream for ClientReadRecordBatchStream {
         match this.response_stream.poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(response))) => {
                 // Check header.
-                if let Some(header) = response.header && !status_code::is_ok(header.code) {
-                    return Poll::Ready(Some(Server {
-                        endpoint: this.endpoint.clone(),
-                        table_idents: vec![this.table_ident.clone()],
-                        code: header.code,
-                        msg: header.error,
-                    }.fail()));
+                if let Some(header) = response.header
+                    && !status_code::is_ok(header.code)
+                {
+                    return Poll::Ready(Some(
+                        Server {
+                            endpoint: this.endpoint.clone(),
+                            table_idents: vec![this.table_ident.clone()],
+                            code: header.code,
+                            msg: header.error,
+                        }
+                        .fail(),
+                    ));
                 }
 
                 match response.output {

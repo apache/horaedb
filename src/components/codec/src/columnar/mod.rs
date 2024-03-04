@@ -751,7 +751,7 @@ mod tests {
 
     #[test]
     fn test_overflow_timestamp() {
-        let datums = vec![
+        let datums = [
             Datum::from(Timestamp::new(i64::MIN)),
             Datum::from(Timestamp::new(10)),
             Datum::from(Timestamp::new(1024)),
@@ -823,7 +823,7 @@ mod tests {
 
     #[test]
     fn test_large_string() {
-        let large_string_bytes = vec![
+        let large_string_bytes = [
             vec![b'a'; 500],
             vec![b'x'; 5000],
             vec![b'x'; 5],

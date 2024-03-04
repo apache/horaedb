@@ -374,7 +374,7 @@ mod test {
 
             let vec = recorder.stat.pop_read_hots().unwrap();
             assert_eq!(1, vec.len());
-            assert_eq!("public/table1", vec.get(0).unwrap().0);
+            assert_eq!("public/table1", vec.first().unwrap().0);
         })
     }
 
