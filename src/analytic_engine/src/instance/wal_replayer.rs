@@ -389,13 +389,14 @@ impl RegionBasedReplay {
                 .into_iter()
                 .filter(|table_batch| !failed_tables.contains_key(&table_batch.table_id)),
         )
-        .for_each_concurrent(100, |table_batch| {
+        .for_each_concurrent(None, |table_batch| {
             let alter_failed_tables_ref = Arc::clone(&alter_failed_tables_ref);
             let serial_exec_ctxs_dash_map_ref = Arc::clone(&serial_exec_ctxs_dash_map_ref);
             async move {
                 // Replay all log entries of current table.
                 // Some tables may have been moved to other shards or dropped, ignore such logs.
-                if let Some(mut ctx) = serial_exec_ctxs_dash_map_ref.get_mut(&table_batch.table_id) {
+                if let Some(mut ctx) = serial_exec_ctxs_dash_map_ref.get_mut(&table_batch.table_id)
+                {
                     let ctx = RefMut::value_mut(&mut ctx);
 
                     let result = replay_table_log_entries(
@@ -409,14 +410,19 @@ impl RegionBasedReplay {
 
                     // If occur error, mark this table as failed and store the cause.
                     if let Err(e) = result {
-                        alter_failed_tables_ref.lock().await.insert(table_batch.table_id, e);
+                        alter_failed_tables_ref
+                            .lock()
+                            .await
+                            .insert(table_batch.table_id, e);
                     }
                 }
             }
-        }
-        ).await;
+        })
+        .await;
 
-        let alter_failed_tables = Arc::try_unwrap(alter_failed_tables_ref).unwrap().into_inner();
+        let alter_failed_tables = Arc::try_unwrap(alter_failed_tables_ref)
+            .unwrap()
+            .into_inner();
         failed_tables.extend(alter_failed_tables);
 
         Ok(())
