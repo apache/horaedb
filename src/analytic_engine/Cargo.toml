@@ -48,6 +48,7 @@ base64 = { workspace = true }
 bytes_ext = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
+dashmap = { workspace = true }
 datafusion = { workspace = true }
 future_ext = { workspace = true }
 futures = { workspace = true }
