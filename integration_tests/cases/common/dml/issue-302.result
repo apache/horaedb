@@ -12,7 +12,7 @@ affected_rows: 1
 
 select `t`, count(distinct name) from issue302 group by `t`;
 
-issue302.t,COUNT(DISTINCT issue302.name),
+t,COUNT(DISTINCT issue302.name),
 Timestamp(1651737067000),Int64(0),
 
 

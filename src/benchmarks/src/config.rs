@@ -85,6 +85,7 @@ pub struct MergeSstBenchConfig {
     pub max_projections: usize,
     pub num_rows_per_row_group: usize,
     pub predicate: BenchPredicate,
+    pub sst_level: u16,
 }
 
 #[derive(Deserialize)]

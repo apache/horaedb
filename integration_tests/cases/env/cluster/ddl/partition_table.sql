@@ -37,11 +37,15 @@ SELECT * from partition_table_t where name in ("horaedb5", "horaedb6", "horaedb7
 
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+-- SQLNESS REPLACE time=\d+.?\d*(µ|m|n) time=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb0";
 
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
 -- SQLNESS REPLACE __partition_table_t_\d __partition_table_t_x
+-- SQLNESS REPLACE time=\d+.?\d*(µ|m|n) time=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 EXPLAIN ANALYZE SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4");
 
 ALTER TABLE partition_table_t ADD COLUMN (b string);
