@@ -76,13 +76,13 @@ fn bench_read_write_skiplist_frac(b: &mut Bencher<'_>, frac: &usize) {
         let mut rng = rand::thread_rng();
         while !s.load(Ordering::SeqCst) {
             let key = random_key(&mut rng);
-            let case = (key, frac > rng.gen_range(0, 11));
+            let case = (key, frac > rng.gen_range(0..11));
             skiplist_round(&l, &case, &v);
         }
     });
     let mut rng = rand::thread_rng();
     b.iter_batched_ref(
-        || (random_key(&mut rng), frac > rng.gen_range(0, 11)),
+        || (random_key(&mut rng), frac > rng.gen_range(0..11)),
         |case| skiplist_round(&list, case, &value),
         BatchSize::SmallInput,
     );
@@ -127,7 +127,7 @@ fn bench_read_write_map_frac(b: &mut Bencher<'_>, frac: &usize) {
     let handle = thread::spawn(move || {
         let mut rng = rand::thread_rng();
         while !thread_stop.load(Ordering::SeqCst) {
-            let f = rng.gen_range(0, 11);
+            let f = rng.gen_range(0..11);
             let case = (random_key(&mut rng), f < frac);
             map_round(&map_in_thread, &case, &v);
         }
@@ -135,7 +135,7 @@ fn bench_read_write_map_frac(b: &mut Bencher<'_>, frac: &usize) {
     let mut rng = rand::thread_rng();
     b.iter_batched_ref(
         || {
-            let f = rng.gen_range(0, 11);
+            let f = rng.gen_range(0..11);
             (random_key(&mut rng), f < frac)
         },
         |case| map_round(&map, case, &value),
