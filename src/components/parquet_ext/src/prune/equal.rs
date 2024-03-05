@@ -457,7 +457,7 @@ mod tests {
         // | 0  | 1  | 2  |
         // | 1  | 2  | 3  |
         // | 2  | 3  | 4  |
-        let row_groups = vec![vec![0, 1, 2], vec![1, 2, 3], vec![2, 3, 4]];
+        let row_groups = [vec![0, 1, 2], vec![1, 2, 3], vec![2, 3, 4]];
         let is_equal = |pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
             let expect_val = row_groups[pos.row_group_idx][pos.column_idx];
             let val = if let ScalarValue::Int32(v) = val {

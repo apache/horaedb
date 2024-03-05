@@ -1369,7 +1369,7 @@ fn ensure_column_default_value_valid<P: MetaProvider>(
         }
 
         // Add evaluated column to schema
-        let new_arrow_field = ArrowField::try_from(column_def).unwrap();
+        let new_arrow_field = ArrowField::from(column_def);
         let to_merged_df_schema = &DFSchema::new_with_metadata(
             vec![DFField::from(new_arrow_field.clone())],
             HashMap::new(),

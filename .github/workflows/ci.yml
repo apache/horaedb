@@ -44,7 +44,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
   LOCK_FILE: Cargo.lock
-  RUST_VERSION: nightly-2023-08-28
+  RUST_VERSION: nightly-2024-01-28
 
 jobs:
   style-check:

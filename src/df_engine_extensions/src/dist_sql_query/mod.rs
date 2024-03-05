@@ -122,11 +122,7 @@ impl TryFrom<TableScanContext> for horaedbproto::remote_engine::TableScanContext
     type Error = datafusion::error::DataFusionError;
 
     fn try_from(value: TableScanContext) -> DfResult<Self> {
-        let pb_projected_schema = value
-            .projected_schema
-            .try_into()
-            .box_err()
-            .map_err(DataFusionError::External)?;
+        let pb_projected_schema = value.projected_schema.into();
 
         let pb_predicate = value
             .predicate
