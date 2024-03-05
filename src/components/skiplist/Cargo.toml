@@ -35,7 +35,7 @@ rand = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
-yatp = { git = "https://github.com/tikv/yatp.git", rev = "4b71f8abd86890f0d1e95778c2b6bf5a9ee4c502" }
+yatp = { git = "https://github.com/tikv/yatp.git", rev = "793be4d789d4bd15292fe4d06e38063b4ec9d48e" }
 
 [[bench]]
 name = "bench"

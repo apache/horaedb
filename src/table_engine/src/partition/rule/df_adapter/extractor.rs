@@ -157,7 +157,7 @@ mod tests {
             column: "col1".to_string(),
             condition: PartitionCondition::Eq(Datum::Int32(42)),
         };
-        assert_eq!(partition_filter.get(0).unwrap(), &expected);
+        assert_eq!(partition_filter.first().unwrap(), &expected);
 
         // Other expr will be rejected now.
         let rejected_expr = col("col1").gt(Expr::Literal(ScalarValue::Int32(Some(42))));
@@ -182,7 +182,7 @@ mod tests {
             column: "col1".to_string(),
             condition: PartitionCondition::In(vec![Datum::Int32(42), Datum::Int32(38)]),
         };
-        assert_eq!(partition_filter.get(0).unwrap(), &expected);
+        assert_eq!(partition_filter.first().unwrap(), &expected);
     }
 
     #[test]

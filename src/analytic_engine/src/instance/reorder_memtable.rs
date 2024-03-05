@@ -24,8 +24,7 @@ use std::{
 };
 
 pub use arrow::{
-    datatypes::{DataType, Field, Schema as ArrowSchema, SchemaRef as ArrowSchemaRef},
-    record_batch::RecordBatch as ArrowRecordBatch,
+    datatypes::SchemaRef as ArrowSchemaRef, record_batch::RecordBatch as ArrowRecordBatch,
 };
 use async_trait::async_trait;
 use common_types::{
