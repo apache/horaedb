@@ -657,7 +657,7 @@ dependencies = [
 [[package]]
 name = "arrow_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "ahash 0.8.3",
  "arrow 49.0.0",
@@ -2214,7 +2214,7 @@ dependencies = [
 [[package]]
 name = "datafusion_util"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "async-trait",
  "datafusion",
@@ -2836,7 +2836,7 @@ checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 [[package]]
 name = "generated_types"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "pbjson",
  "pbjson-build",
@@ -3353,7 +3353,7 @@ dependencies = [
 [[package]]
 name = "influxdb_influxql_parser"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -3446,7 +3446,7 @@ dependencies = [
 [[package]]
 name = "iox_query"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "arrow 49.0.0",
  "arrow_util",
@@ -3470,7 +3470,7 @@ dependencies = [
 [[package]]
 name = "iox_query_influxql"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "arrow 49.0.0",
  "chrono",
@@ -4588,7 +4588,7 @@ dependencies = [
 [[package]]
 name = "observability_deps"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "tracing",
 ]
@@ -5589,7 +5589,7 @@ dependencies = [
 [[package]]
 name = "query_functions"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "arrow 49.0.0",
  "chrono",
@@ -6293,7 +6293,7 @@ dependencies = [
 [[package]]
 name = "schema"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "arrow 49.0.0",
  "hashbrown 0.13.2",
@@ -7090,7 +7090,7 @@ dependencies = [
 [[package]]
 name = "test_helpers"
 version = "0.1.0"
-source = "git+https://github.com/CeresDB/influxql.git?rev=b9fb3ca#b9fb3ca59fda99997a51cab7a56d34fb2126dd08"
+source = "git+https://github.com/CeresDB/influxql.git?rev=05a8a9f#05a8a9f79c5b8e3c6d324b214e7ccf910c2f6b73"
 dependencies = [
  "dotenvy",
  "observability_deps",

@@ -28,6 +28,12 @@ where t > 1695348001000;
 explain analyze select t from `03_dml_select_real_time_range`
 where t >= 1695348001000 and t < 1695348002000;
 
+-- This query should have higher priority
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
+explain analyze select name from `03_dml_select_real_time_range`
+where t >= 1695348001000 and t < 1695348002000;
+
 -- This query should not include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
