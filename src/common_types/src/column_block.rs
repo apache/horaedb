@@ -1266,7 +1266,7 @@ mod tests {
     #[test]
     fn test_column_block_string_dictionary_builder() {
         let schema = build_schema_with_dictionary();
-        let rows = vec![
+        let rows = [
             build_row_for_dictionary(
                 b"a",
                 1,

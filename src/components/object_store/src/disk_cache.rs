@@ -1166,7 +1166,7 @@ mod test {
             }
             store.inner.put(&location, buf.freeze()).await.unwrap();
 
-            let testcases = vec![
+            let testcases = [
                 (0..6, "a b c "),
                 (0..16, "a b c d e f g h "),
                 (0..17, "a b c d e f g h i"),

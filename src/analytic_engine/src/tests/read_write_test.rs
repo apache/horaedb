@@ -670,7 +670,7 @@ fn test_write_buffer_size_overflow<T: WalsOpener>(
         .await;
 
         // TODO(lee) a better way to wait table flushing finishes.
-        // https://github.com/CeresDB/horaedb/issues/1241
+        // https://github.com/apache/incubator-horaedb/issues/1241
         thread::sleep(time::Duration::from_millis(10000));
 
         let stats = table.stats();

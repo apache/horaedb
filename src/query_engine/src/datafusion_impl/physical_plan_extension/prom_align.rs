@@ -652,7 +652,7 @@ impl Stepper for FixedStepper {
             }
             // [mint, self.timestamp] has no data, skip to next step.
             let skip = {
-                if let Some(first_entry) = self.entries.get(0) {
+                if let Some(first_entry) = self.entries.front() {
                     first_entry.timestamp > self.timestamp
                 } else {
                     true

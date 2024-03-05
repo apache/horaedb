@@ -53,7 +53,7 @@ struct Args {
     sort: SortBy,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SortBy {
     /// Max Sequence number
     Seq,
@@ -215,7 +215,7 @@ async fn run(args: Args) -> Result<()> {
         file_stats.row_num += row_num;
 
         let fields = file_metadata.schema().get_fields();
-        for (_, row_group) in parquet_meta.row_groups().iter().enumerate() {
+        for row_group in parquet_meta.row_groups().iter() {
             for i in 0..fields.len() {
                 let column_meta = row_group.column(i);
                 let field_name = fields.get(i).unwrap().get_basic_info().name().to_string();
