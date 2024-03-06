@@ -17,22 +17,17 @@
 
 headerPath = "Apache-2.0-ASF.txt"
 
+includes = [
+    "*.go",
+    "*.rs",
+    "*.toml",
+    "*.yml",
+    "Makefile",
+]
+
 excludes = [
     # Derived
     "horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform_test.go",
     "horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform.go",
-    "horaemeta/server/service/http/route.go",
-    "src/server/src/federated.rs",
-    "src/server/src/session.rs",
-    "src/components/skiplist/benches/bench.rs",
-    "src/components/skiplist/src/lib.rs",
-    "src/components/skiplist/src/key.rs",
-    "src/components/skiplist/src/list.rs",
-    "src/components/skiplist/tests/tests.rs",
-    "src/components/skiplist/Cargo.toml",
-    "src/components/size_ext/src/lib.rs",
-    "src/components/future_ext/src/cancel.rs",
-    "src/components/tracing_util/src/lib.rs",
-    "src/components/tracing_util/src/logging.rs",
-    "src/components/tracing_util/Cargo.toml"
+    "horaemeta/server/service/http/route.go"
 ]
