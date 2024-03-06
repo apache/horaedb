@@ -30,6 +30,7 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/ci.yml'
+      - 'licenserc.toml'
   pull_request:
     paths:
       - 'src/**'

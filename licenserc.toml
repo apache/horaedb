@@ -18,7 +18,16 @@
 headerPath = "Apache-2.0-ASF.txt"
 
 includes = [
+    "*.go",
     "*.rs",
     "*.toml",
-    "*.yml"
+    "*.yml",
+    "Makefile",
+]
+
+excludes = [
+    # Derived
+    "horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform_test.go",
+    "horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform.go",
+    "horaemeta/server/service/http/route.go"
 ]
