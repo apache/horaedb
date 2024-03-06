@@ -28,12 +28,14 @@ on:
       - 'src/**'
       - 'integration_tests/**'
       - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/ci.yml'
   pull_request:
     paths:
       - 'src/**'
       - 'integration_tests/**'
       - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/ci.yml'
 
 # Common environment variables

@@ -121,10 +121,10 @@ hash_ext = { path = "src/components/hash_ext" }
 hex = "0.4.3"
 hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
 id_allocator = { path = "src/components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "schema" }
 interpreters = { path = "src/interpreters" }
 itertools = "0.10.5"
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }

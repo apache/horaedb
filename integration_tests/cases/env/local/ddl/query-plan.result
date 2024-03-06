@@ -45,6 +45,16 @@ plan_type,plan,
 String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t]:\n=0]\n"),
 
 
+-- This query should have higher priority
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
+explain analyze select name from `03_dml_select_real_time_range`
+where t >= 1695348001000 and t < 1695348002000;
+
+plan_type,plan,
+String("Plan with Metrics"),String("ProjectionExec: expr=[name@0 as name], metrics=xx\n  ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t,name]:\n=0]\n"),
+
+
 -- This query should not include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
