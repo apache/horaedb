@@ -33,7 +33,6 @@ use analytic_engine::{
     sst::{
         factory::{FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         meta_data::cache::MetaCacheRef,
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table::{
         sst_util,
@@ -219,12 +218,11 @@ fn mock_sst_read_options_builder(
         max_record_batches_in_flight: 1024,
         num_streams_to_prefetch: 0,
     };
-    let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
 
     SstReadOptionsBuilder::new(
         ScanType::Query,
         scan_options,
-        maybe_table_level_metrics,
+        None,
         500,
         Arc::new(Predicate::empty()),
         None,

@@ -16,7 +16,7 @@
 # under the License.
 
 [workspace.package]
-version = "1.2.6-alpha"
+version = "2.0.0"
 authors = ["HoraeDB Authors"]
 edition = "2021"
 license = "Apache-2.0"
@@ -101,7 +101,7 @@ catalog_impls = { path = "src/catalog_impls" }
 horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "19ece8f771fc0b3e8e734072cc3d8040de6c74cb" }
 codec = { path = "src/components/codec" }
 chrono = "0.4"
-clap = "3.0"
+clap = "4.5.1"
 clru = "0.6.1"
 cluster = { path = "src/cluster" }
 criterion = "0.5"
@@ -121,10 +121,10 @@ hash_ext = { path = "src/components/hash_ext" }
 hex = "0.4.3"
 hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
 id_allocator = { path = "src/components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "b9fb3ca", package = "schema" }
+influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "iox_query_influxql" }
+influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "influxdb_influxql_parser" }
+influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "iox_query" }
+influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "schema" }
 interpreters = { path = "src/interpreters" }
 itertools = "0.10.5"
 lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
@@ -154,7 +154,7 @@ prost = "0.11"
 proxy = { path = "src/proxy" }
 query_engine = { path = "src/query_engine" }
 query_frontend = { path = "src/query_frontend" }
-rand = "0.7"
+rand = "0.8.5"
 regex = "1"
 remote_engine_client = { path = "src/remote_engine_client" }
 reqwest = { version = "0.11", default-features = false, features = [

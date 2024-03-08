@@ -124,7 +124,7 @@ impl RuleBasedRouter {
             }
         }
 
-        if let Some(hash_rule) = rule_list.hash_rules.get(0) {
+        if let Some(hash_rule) = rule_list.hash_rules.first() {
             let total_shards = hash_rule.shards.len();
             let hash_value = hash::hash_table(table);
             let index = hash_value as usize % total_shards;

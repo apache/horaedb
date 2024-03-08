@@ -27,7 +27,6 @@ use analytic_engine::{
             SstReadOptions, SstWriteOptions,
         },
         file::Level,
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table_options::{Compression, StorageFormatHint},
 };
@@ -104,7 +103,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let table_schema = projected_schema.table_schema().clone();
     let row_projector_builder = RowProjectorBuilder::new(fetched_schema, table_schema, None);
     let reader_opts = SstReadOptions {
-        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("tool", "")),
+        maybe_table_level_metrics: None,
         frequency: ReadFrequency::Once,
         num_rows_per_row_group: 8192,
         predicate: Arc::new(Predicate::empty()),

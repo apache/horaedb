@@ -120,7 +120,7 @@ mod tests {
             .locate_partitions_for_read(&valid_filters_1)
             .unwrap();
 
-        let partition_keys = vec![
+        let partition_keys = [
             Datum::Int32(1),
             Datum::String(StringBytes::from("test")),
             Datum::UInt64(42),
@@ -189,7 +189,7 @@ mod tests {
         };
 
         // Build `RowGroup`
-        let test_datums = vec![
+        let test_datums = [
             vec![
                 Datum::Int32(1),
                 Datum::String(StringBytes::from("test1")),

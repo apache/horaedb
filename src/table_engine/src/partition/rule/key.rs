@@ -387,7 +387,7 @@ mod tests {
     /// as much as possible.
     #[test]
     fn test_partition_keys_read_adapter() {
-        let datums = vec![
+        let datums = [
             Datum::Int32(1),
             Datum::String(StringBytes::copy_from_str(
                 "test_partition_keys_read_adapter_key0",

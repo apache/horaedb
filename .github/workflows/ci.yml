@@ -28,12 +28,15 @@ on:
       - 'src/**'
       - 'integration_tests/**'
       - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/ci.yml'
+      - 'licenserc.toml'
   pull_request:
     paths:
       - 'src/**'
       - 'integration_tests/**'
       - 'Cargo.toml'
+      - 'Cargo.lock'
       - '.github/workflows/ci.yml'
 
 # Common environment variables
@@ -42,7 +45,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
   LOCK_FILE: Cargo.lock
-  RUST_VERSION: nightly-2023-08-28
+  RUST_VERSION: nightly-2024-01-28
 
 jobs:
   style-check:

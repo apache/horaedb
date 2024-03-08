@@ -67,6 +67,7 @@ fn dump_profile() -> Result<()> {
         .map_err(Error::Jemalloc)
 }
 
+#[allow(dead_code)]
 struct ProfLockGuard<'a>(MutexGuard<'a, ()>);
 
 /// ProfLockGuard hold the profile lock and take responsibilities for

@@ -200,6 +200,7 @@ impl PendingWrites {
 enum QueueResult {
     /// This request is rejected because the queue is full or the schema is
     /// different.
+    #[allow(dead_code)]
     Reject(WriteRequest),
     /// This request is the first one in the queue.
     First,
