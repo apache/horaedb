@@ -398,11 +398,9 @@ impl RegionBasedReplay {
             });
         }
 
-        for (table_id, ret) in futures::stream::iter(replay_tasks)
-            .buffer_unordered(20) // at most 20 tasks in parallel
-            .collect::<Vec<_>>()
-            .await
-        {
+        // Run at most 20 tasks in parallel
+        let mut replay_tasks = futures::stream::iter(replay_tasks).buffer_unordered(20);
+        while let Some((table_id, ret)) = replay_tasks.next().await {
             if let Some(Err(e)) = ret {
                 // If occur error, mark this table as failed and store the cause.
                 failed_tables.insert(table_id, e);
