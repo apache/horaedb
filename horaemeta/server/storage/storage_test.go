@@ -347,7 +347,7 @@ func newTestStorage(t *testing.T) Storage {
 
 	<-etcd.Server.ReadyNotify()
 
-	endpoint := cfg.LCUrls[0].String()
+	endpoint := cfg.ListenClientUrls[0].String()
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints: []string{endpoint},
 	})
