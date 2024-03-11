@@ -381,6 +381,7 @@ impl RegionBasedReplay {
 
             let serial_exec_ctxs = serial_exec_ctxs.clone();
             replay_tasks.push(async move {
+                // Some tables may have been moved to other shards or dropped, ignore such logs.
                 if let Some(ctx) = serial_exec_ctxs.lock().await.get_mut(&table_batch.table_id) {
                     let result = replay_table_log_entries(
                         &context.flusher,
@@ -390,21 +391,20 @@ impl RegionBasedReplay {
                         log_batch.range(table_batch.range),
                     )
                     .await;
-                    (table_batch.table_id, result)
+                    (table_batch.table_id, Some(result))
                 } else {
-                    (table_batch.table_id, Ok(()))
+                    (table_batch.table_id, None)
                 }
             });
         }
 
         for (table_id, ret) in futures::stream::iter(replay_tasks)
-            // at most 20 tasks in parallel
-            .buffer_unordered(20)
+            .buffer_unordered(20) // at most 20 tasks in parallel
             .collect::<Vec<_>>()
             .await
         {
-            // If occur error, mark this table as failed and store the cause.
-            if let Err(e) = ret {
+            if let Some(Err(e)) = ret {
+                // If occur error, mark this table as failed and store the cause.
                 failed_tables.insert(table_id, e);
             }
         }
