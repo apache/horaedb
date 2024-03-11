@@ -107,7 +107,6 @@ cluster = { path = "src/cluster" }
 criterion = "0.5"
 horaedb-client = "1.0.2"
 common_types = { path = "src/common_types" }
-dashmap = "5.5.3"
 datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "e21b03154" }
 datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "e21b03154" }
 derive_builder = "0.12"

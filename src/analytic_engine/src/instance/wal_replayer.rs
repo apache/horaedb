@@ -29,7 +29,6 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
     table::ShardId,
 };
-use dashmap::{mapref::one::RefMut, DashMap};
 use futures::StreamExt;
 use generic_error::BoxError;
 use lazy_static::lazy_static;
@@ -337,6 +336,7 @@ impl RegionBasedReplay {
         let schema_provider = TableSchemaProviderAdapter {
             table_datas: table_datas_by_id.clone(),
         };
+        let serial_exec_ctxs = Arc::new(Mutex::new(serial_exec_ctxs));
         // Split and replay logs.
         loop {
             let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
@@ -354,13 +354,8 @@ impl RegionBasedReplay {
             }
 
             let _timer = APPLY_LOGS_DURATION_HISTOGRAM.start_timer();
-            Self::replay_single_batch(
-                context,
-                &log_entry_buf,
-                &mut serial_exec_ctxs,
-                failed_tables,
-            )
-            .await?;
+            Self::replay_single_batch(context, &log_entry_buf, &serial_exec_ctxs, failed_tables)
+                .await?;
         }
 
         Ok(())
@@ -369,36 +364,24 @@ impl RegionBasedReplay {
     async fn replay_single_batch(
         context: &ReplayContext,
         log_batch: &VecDeque<LogEntry<ReadPayload>>,
-        serial_exec_ctxs: &mut HashMap<TableId, SerialExecContext<'_>>,
+        serial_exec_ctxs: &Arc<Mutex<HashMap<TableId, SerialExecContext<'_>>>>,
         failed_tables: &mut FailedTables,
     ) -> Result<()> {
         let mut table_batches = Vec::new();
         // TODO: No `group_by` method in `VecDeque`, so implement it manually here...
         Self::split_log_batch_by_table(log_batch, &mut table_batches);
 
-        let alter_failed_tables = HashMap::new();
-        let alter_failed_tables_ref = Arc::new(Mutex::new(alter_failed_tables));
+        // TODO: Replay logs of different tables in parallel.
+        let mut replay_tasks = Vec::with_capacity(table_batches.len());
+        for table_batch in table_batches {
+            // Some tables may have failed in previous replay, ignore them.
+            if failed_tables.contains_key(&table_batch.table_id) {
+                continue;
+            }
 
-        let mut serial_exec_ctxs_dash_map = DashMap::new();
-        serial_exec_ctxs_dash_map.extend(serial_exec_ctxs);
-        let serial_exec_ctxs_dash_map_ref = Arc::new(serial_exec_ctxs_dash_map);
-
-        // Some tables may have failed in previous replay, ignore them.
-        futures::stream::iter(
-            table_batches
-                .into_iter()
-                .filter(|table_batch| !failed_tables.contains_key(&table_batch.table_id)),
-        )
-        .for_each_concurrent(None, |table_batch| {
-            let alter_failed_tables_ref = Arc::clone(&alter_failed_tables_ref);
-            let serial_exec_ctxs_dash_map_ref = Arc::clone(&serial_exec_ctxs_dash_map_ref);
-            async move {
-                // Replay all log entries of current table.
-                // Some tables may have been moved to other shards or dropped, ignore such logs.
-                if let Some(mut ctx) = serial_exec_ctxs_dash_map_ref.get_mut(&table_batch.table_id)
-                {
-                    let ctx = RefMut::value_mut(&mut ctx);
-
+            let serial_exec_ctxs = serial_exec_ctxs.clone();
+            replay_tasks.push(async move {
+                if let Some(ctx) = serial_exec_ctxs.lock().await.get_mut(&table_batch.table_id) {
                     let result = replay_table_log_entries(
                         &context.flusher,
                         context.max_retry_flush_limit,
@@ -407,23 +390,24 @@ impl RegionBasedReplay {
                         log_batch.range(table_batch.range),
                     )
                     .await;
-
-                    // If occur error, mark this table as failed and store the cause.
-                    if let Err(e) = result {
-                        alter_failed_tables_ref
-                            .lock()
-                            .await
-                            .insert(table_batch.table_id, e);
-                    }
+                    (table_batch.table_id, result)
+                } else {
+                    (table_batch.table_id, Ok(()))
                 }
-            }
-        })
-        .await;
+            });
+        }
 
-        let alter_failed_tables = Arc::try_unwrap(alter_failed_tables_ref)
-            .unwrap()
-            .into_inner();
-        failed_tables.extend(alter_failed_tables);
+        for (table_id, ret) in futures::stream::iter(replay_tasks)
+            // at most 20 tasks in parallel
+            .buffer_unordered(20)
+            .collect::<Vec<_>>()
+            .await
+        {
+            // If occur error, mark this table as failed and store the cause.
+            if let Err(e) = ret {
+                failed_tables.insert(table_id, e);
+            }
+        }
 
         Ok(())
     }

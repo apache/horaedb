@@ -89,7 +89,6 @@ dependencies = [
  "bytes_ext",
  "codec",
  "common_types",
- "dashmap",
  "datafusion",
  "env_logger",
  "future_ext",
