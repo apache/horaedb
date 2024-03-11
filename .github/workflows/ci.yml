@@ -62,8 +62,6 @@ jobs:
       - name: Release Disk Quota
         run: |
           sudo make ensure-disk-quota
-      - name: Check License Header
-        uses: korandoru/hawkeye@v3
       - name: Setup Build Environment
         run: |
           sudo apt update
