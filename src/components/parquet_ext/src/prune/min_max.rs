@@ -87,10 +87,15 @@ fn filter_row_groups_inner(
     results
 }
 
-fn logical2physical(expr: &Expr, schema: &ArrowSchema, execution_props: &ExecutionProps) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
-    schema.clone().to_dfschema().and_then(|df_schema| {
-        create_physical_expr(expr, &df_schema, schema, execution_props)
-    })
+fn logical2physical(
+    expr: &Expr,
+    schema: &ArrowSchema,
+    execution_props: &ExecutionProps,
+) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
+    schema
+        .clone()
+        .to_dfschema()
+        .and_then(|df_schema| create_physical_expr(expr, &df_schema, schema, execution_props))
 }
 
 fn build_row_group_predicate(
