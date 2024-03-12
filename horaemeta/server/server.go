@@ -196,8 +196,8 @@ func (srv *Server) initEtcdClient(enableEmbedEtcd bool) error {
 		tlsConfig = clientConfig
 	}
 
-	etcdEndpoints := make([]string, 0, len(srv.etcdCfg.ACUrls))
-	for _, url := range srv.etcdCfg.ACUrls {
+	etcdEndpoints := make([]string, 0, len(srv.etcdCfg.AdvertiseClientUrls))
+	for _, url := range srv.etcdCfg.AdvertiseClientUrls {
 		etcdEndpoints = append(etcdEndpoints, url.String())
 	}
 	lgc := log.GetLoggerConfig()
@@ -214,7 +214,7 @@ func (srv *Server) initEtcdClient(enableEmbedEtcd bool) error {
 
 	if srv.etcdSrv != nil {
 		etcdLeaderGetter := &etcdutil.LeaderGetterWrapper{Server: srv.etcdSrv.Server}
-		srv.member = member.NewMember(srv.cfg.StorageRootPath, uint64(srv.etcdSrv.Server.ID()), srv.cfg.NodeName, srv.etcdCfg.ACUrls[0].String(), client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
+		srv.member = member.NewMember(srv.cfg.StorageRootPath, uint64(srv.etcdSrv.Server.ID()), srv.cfg.NodeName, srv.etcdCfg.AdvertiseClientUrls[0].String(), client, etcdLeaderGetter, srv.cfg.EtcdCallTimeout())
 	} else {
 		endpoint := fmt.Sprintf("http://%s:%d", srv.cfg.Addr, srv.cfg.GrpcPort)
 		srv.member = member.NewMember(srv.cfg.StorageRootPath, 0, srv.cfg.NodeName, endpoint, client, nil, srv.cfg.EtcdCallTimeout())

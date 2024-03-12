@@ -376,8 +376,7 @@ pub struct Options {
     pub scan_timeout: ReadableDuration,
 
     /// Batch size to read manifest entries
-    // TODO: use NonZeroUsize
-    pub scan_batch_size: usize,
+    pub scan_batch_size: NonZeroUsize,
 
     /// Timeout to store manifest entries
     pub store_timeout: ReadableDuration,
@@ -388,7 +387,7 @@ impl Default for Options {
         Self {
             snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
             scan_timeout: ReadableDuration::secs(5),
-            scan_batch_size: 100,
+            scan_batch_size: NonZeroUsize::new(100).unwrap(),
             store_timeout: ReadableDuration::secs(5),
         }
     }
@@ -690,7 +689,7 @@ impl MetaUpdateLogStore for WalBasedLogStore {
     async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
         let ctx = ReadContext {
             timeout: self.opts.scan_timeout.0,
-            batch_size: self.opts.scan_batch_size,
+            batch_size: self.opts.scan_batch_size.into(),
         };
 
         let read_req = ReadRequest {

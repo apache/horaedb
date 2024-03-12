@@ -126,10 +126,6 @@ pub fn init_tracing_with_file(config: &Config, node_addr: &str, rotation: Rotati
         .with_span_events(FmtSpan::ENTER | FmtSpan::CLOSE);
 
     let subscriber = Registry::default().with(f_layer);
-    // TODO: subscriber.with(layer1) has the different type with
-    // subscriber.with(layer1).with(layer2)...
-    // So left some duplicated codes here. Maybe we can use marco to simplify
-    // it.
     match &config.console {
         Some(console) => {
             let console_addr = format!("{}:{}", node_addr, console.port);
