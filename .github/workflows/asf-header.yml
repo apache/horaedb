@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -16,21 +15,25 @@
 # specific language governing permissions and limitations
 # under the License.
 
+name: Check ASF check
 
-set -o errexit
-set -o nounset
-set -o pipefail
+on:
+  merge_group:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
 
-SCRIPT_DIR=$(cd "$(dirname "$0")"; pwd)
-TARGET="${SCRIPT_DIR}/../target"
-
-META_BIN_PATH=${META_BIN_PATH:-""}
-
-if [[ -z "${META_BIN_PATH}" ]]; then
-  echo "Build horaemeta-server..."
-  make -C "${SCRIPT_DIR}/../horaemeta" build
-  META_BIN_PATH="${SCRIPT_DIR}/../horaemeta/bin/horaemeta-server"
-fi
-
-mkdir -p ${TARGET}
-cp ${META_BIN_PATH} ${TARGET}/horaemeta-server
+jobs:
+  style-check:
+    name: style-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Check License Header
+        uses: korandoru/hawkeye@v4
