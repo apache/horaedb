@@ -59,8 +59,9 @@ fn filter_row_groups_inner(
     row_groups: &[RowGroupMetaData],
 ) -> Vec<bool> {
     let mut results = vec![true; row_groups.len()];
+    let execution_props = ExecutionProps::new();
     for expr in exprs {
-        match logical2physical(expr, &schema)
+        match logical2physical(expr, &schema, &execution_props)
             .and_then(|physical_expr| PruningPredicate::try_new(physical_expr, schema.clone()))
         {
             Ok(pruning_predicate) => {
@@ -86,12 +87,15 @@ fn filter_row_groups_inner(
     results
 }
 
-fn logical2physical(expr: &Expr, schema: &ArrowSchema) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
-    schema.clone().to_dfschema().and_then(|df_schema| {
-        // TODO: props should be an argument
-        let execution_props = ExecutionProps::new();
-        create_physical_expr(expr, &df_schema, schema, &execution_props)
-    })
+fn logical2physical(
+    expr: &Expr,
+    schema: &ArrowSchema,
+    execution_props: &ExecutionProps,
+) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
+    schema
+        .clone()
+        .to_dfschema()
+        .and_then(|df_schema| create_physical_expr(expr, &df_schema, schema, execution_props))
 }
 
 fn build_row_group_predicate(
