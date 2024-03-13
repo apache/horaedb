@@ -16,80 +16,84 @@
 // under the License.
 
 mod cluster;
-mod cluster_diagnose;
-mod cluster_list;
 mod cluster_schedule;
-pub mod quit;
-
 use std::{io, io::Write};
 
-use clap::{Arg, Command};
+use clap::{Parser, Subcommand};
 
 use crate::{
-    cmd::{
-        cluster::{cluster, cluster_resolve},
-        quit::quit,
-    },
+    cmd::cluster::{cluster_resolve, ClusterCommands},
     util::{CLUSTER_NAME, META_ADDR},
 };
 
-fn cmd() -> Command {
-    let horaectl = Command::new("horaectl")
-        .about("horaectl is a command line tool for HoraeDB")
-        .arg(
-            Arg::new("meta_addr")
-                .short('m')
-                .long("meta")
-                .value_name("META_ADDR")
-                .default_value("127.0.0.1:8080")
-                .help("meta addr is used to connect to meta server"),
-        )
-        .arg(
-            Arg::new("cluster_name")
-                .short('c')
-                .long("cluster")
-                .value_name("CLUSTER_NAME")
-                .default_value("defaultCluster")
-                .help("Cluster to connect to"),
-        );
+#[derive(Parser)]
+#[clap(name = "horaectl")]
+#[clap(about = "horaectl is a command line tool for HoraeDB", long_about = None)]
+pub struct Horaectl {
+    #[clap(
+        short = 'm',
+        long = "meta",
+        default_value = "127.0.0.1:8080",
+        help = "meta addr is used to connect to meta server"
+    )]
+    pub meta_addr: String,
 
-    let matches = horaectl.clone().get_matches();
-    META_ADDR
-        .set(matches.get_one::<String>("meta_addr").unwrap().to_string())
-        .unwrap();
-    CLUSTER_NAME
-        .set(
-            matches
-                .get_one::<String>("cluster_name")
-                .unwrap()
-                .to_string(),
-        )
-        .unwrap();
+    #[clap(
+        short = 'c',
+        long = "cluster",
+        default_value = "defaultCluster",
+        help = "Cluster to connect to"
+    )]
+    pub cluster_name: String,
 
-    horaectl.subcommand(cluster()).subcommand(quit())
+    #[clap(subcommand)]
+    pub commands: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+pub enum Commands {
+    #[clap(about = "Quit horaectl", long_about = None)]
+    #[clap(alias = "q")]
+    #[clap(alias = "exit")]
+    Quit,
+
+    #[clap(about = "Operations on cluster", long_about = None)]
+    #[clap(alias = "c")]
+    Cluster {
+        #[clap(short = 'c', long = "cluster", help = "Cluster to connect to")]
+        cluster_name: Option<String>,
+
+        #[clap(subcommand)]
+        commands: Option<ClusterCommands>,
+    },
 }
 
 pub async fn execute() {
-    let horaectl = cmd();
     loop {
-        print_prompt(META_ADDR.get().unwrap(), CLUSTER_NAME.get().unwrap());
+        print_prompt(
+            META_ADDR.lock().unwrap().as_str(),
+            CLUSTER_NAME.lock().unwrap().as_str(),
+        );
 
         let args = match read_args() {
             Ok(args) => args,
             Err(e) => {
-                println!("{}", e);
+                println!("Read input failed, err:{}", e);
                 continue;
             }
         };
 
-        match horaectl.clone().try_get_matches_from(args) {
-            Ok(arg_matches) => match arg_matches.subcommand() {
-                Some(("quit", _)) => {
+        match Horaectl::try_parse_from(args) {
+            Ok(horaectl) => match horaectl.commands {
+                Some(Commands::Quit) => {
                     println!("bye");
                     break;
                 }
-                Some(("cluster", sub_matches)) => cluster_resolve(sub_matches).await,
-                _ => {}
+                Some(Commands::Cluster {
+                    cluster_name,
+                    commands,
+                }) => cluster_resolve(cluster_name, commands).await,
+                None => {}
             },
             Err(e) => {
                 println!("{}", e)

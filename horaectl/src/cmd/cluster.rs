@@ -15,31 +15,41 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use clap::{ArgMatches, Command};
+use clap::Subcommand;
 
 use crate::{
-    cmd::{
-        cluster_diagnose::diagnose,
-        cluster_list::list,
-        cluster_schedule::{schedule, schedule_resolve},
-    },
+    cmd::cluster_schedule::{schedule_resolve, ScheduleCommands},
     operation::cluster::{clusters_diagnose, clusters_list},
+    util::CLUSTER_NAME,
 };
 
-pub fn cluster() -> Command {
-    Command::new("cluster")
-        .about("Operations on cluster")
-        .alias("c")
-        .subcommand(list())
-        .subcommand(diagnose())
-        .subcommand(schedule())
+#[derive(Subcommand)]
+pub enum ClusterCommands {
+    #[clap(about = "Cluster list", long_about = None)]
+    #[clap(alias = "l")]
+    List,
+
+    #[clap(about = "Cluster diagnose", long_about = None)]
+    #[clap(alias = "d")]
+    Diagnose,
+
+    #[clap(about = "Cluster schedule", long_about = None)]
+    #[clap(alias = "s")]
+    Schedule {
+        #[clap(subcommand)]
+        commands: Option<ScheduleCommands>,
+    },
 }
 
-pub async fn cluster_resolve(arg_matches: &ArgMatches) {
-    match arg_matches.subcommand() {
-        Some(("list", _)) => clusters_list().await,
-        Some(("diagnose", _)) => clusters_diagnose().await,
-        Some(("schedule", sub_matches)) => schedule_resolve(sub_matches).await,
-        _ => {}
+pub async fn cluster_resolve(cluster_name: Option<String>, command: Option<ClusterCommands>) {
+    if let Some(name) = cluster_name {
+        let mut cluster_name = CLUSTER_NAME.lock().unwrap();
+        *cluster_name = name;
+    }
+    match command {
+        Some(ClusterCommands::List) => clusters_list().await,
+        Some(ClusterCommands::Diagnose) => clusters_diagnose().await,
+        Some(ClusterCommands::Schedule { commands }) => schedule_resolve(commands).await,
+        None => {}
     }
 }

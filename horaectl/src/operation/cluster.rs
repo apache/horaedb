@@ -29,26 +29,26 @@ use crate::{
 };
 
 fn list_url() -> String {
-    HTTP.to_string() + META_ADDR.get().unwrap() + API + CLUSTERS
+    HTTP.to_string() + META_ADDR.lock().unwrap().as_str() + API + CLUSTERS
 }
 
 fn diagnose_url() -> String {
     HTTP.to_string()
-        + META_ADDR.get().unwrap()
+        + META_ADDR.lock().unwrap().as_str()
         + DEBUG
         + "/diagnose"
         + "/"
-        + CLUSTER_NAME.get().unwrap()
+        + CLUSTER_NAME.lock().unwrap().as_str()
         + "/shards"
 }
 
 fn schedule_url() -> String {
     HTTP.to_string()
-        + META_ADDR.get().unwrap()
+        + META_ADDR.lock().unwrap().as_str()
         + DEBUG
         + CLUSTERS
         + "/"
-        + CLUSTER_NAME.get().unwrap()
+        + CLUSTER_NAME.lock().unwrap().as_str()
         + "/enableSchedule"
 }
 

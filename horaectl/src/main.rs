@@ -19,9 +19,23 @@ mod cmd;
 mod operation;
 mod util;
 
-use crate::cmd::execute;
+use clap::Parser;
+
+use crate::{
+    cmd::{execute, Horaectl},
+    util::{CLUSTER_NAME, META_ADDR},
+};
 
 #[tokio::main]
 async fn main() {
-    execute().await;
+    let horaectl = Horaectl::parse();
+    {
+        let mut meta_addr = META_ADDR.lock().unwrap();
+        *meta_addr = horaectl.meta_addr;
+    }
+    {
+        let mut cluster_name = CLUSTER_NAME.lock().unwrap();
+        *cluster_name = horaectl.cluster_name;
+    }
+    execute().await
 }

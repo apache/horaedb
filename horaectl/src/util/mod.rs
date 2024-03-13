@@ -15,9 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::sync::Mutex;
+
 use chrono::{TimeZone, Utc};
-use once_cell::sync::OnceCell;
+use lazy_static::lazy_static;
 use prettytable::{Cell, Row, Table};
+
+lazy_static! {
+    pub static ref META_ADDR: Mutex<String> = Mutex::new(String::new());
+    pub static ref CLUSTER_NAME: Mutex<String> = Mutex::new(String::new());
+}
 
 pub const HTTP: &str = "http://";
 pub const API: &str = "/api/v1";
@@ -39,8 +46,6 @@ pub static CLUSTERS_DIAGNOSE_HEADER: [&str; 4] = [
     "unready_shards:status",
 ];
 pub static CLUSTERS_ENABLE_SCHEDULE_HEADER: [&str; 1] = ["enable_schedule"];
-pub static META_ADDR: OnceCell<String> = OnceCell::new();
-pub static CLUSTER_NAME: OnceCell<String> = OnceCell::new();
 
 pub fn table_writer(header: &[&str]) -> Table {
     let mut table = Table::new();
