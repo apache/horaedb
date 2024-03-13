@@ -18,7 +18,7 @@
 //! Partitioned locks
 
 use std::{
-    hash::{BuildHasher, Hash, Hasher},
+    hash::{BuildHasher, Hash},
     sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -65,11 +65,7 @@ where
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &RwLock<T> {
-        let mut hasher = self.hash_builder.build_hasher();
-
-        key.hash(&mut hasher);
-
-        &self.partitions[(hasher.finish() as usize) & self.partition_mask]
+        &self.partitions[(self.hash_builder.hash_one(key) as usize) & self.partition_mask]
     }
 
     #[cfg(test)]
@@ -116,9 +112,7 @@ where
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
-        let mut hasher = self.hash_builder.build_hasher();
-        key.hash(&mut hasher);
-        &self.partitions[(hasher.finish() as usize) & self.partition_mask]
+        &self.partitions[(self.hash_builder.hash_one(key) as usize) & self.partition_mask]
     }
 
     #[cfg(test)]
@@ -169,9 +163,7 @@ where
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &tokio::sync::Mutex<T> {
-        let mut hasher = self.hash_builder.build_hasher();
-        key.hash(&mut hasher);
-        &self.partitions[(hasher.finish() as usize) & self.partition_mask]
+        &self.partitions[(self.hash_builder.hash_one(key) as usize) & self.partition_mask]
     }
 
     #[cfg(test)]

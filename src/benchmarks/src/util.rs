@@ -30,7 +30,6 @@ use analytic_engine::{
         file::{FileHandle, FileMeta, FilePurgeQueue},
         manager::FileId,
         meta_data::cache::{self, MetaCacheRef},
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
         writer::MetaData,
     },
     table::sst_util,
@@ -132,7 +131,7 @@ pub async fn load_sst_to_memtable(
     let table_schema = projected_schema.table_schema().clone();
     let row_projector_builder = RowProjectorBuilder::new(fetched_schema, table_schema, None);
     let sst_read_options = SstReadOptions {
-        maybe_table_level_metrics: Arc::new(SstMaybeTableLevelMetrics::new("bench", "")),
+        maybe_table_level_metrics: None,
         frequency: ReadFrequency::Frequent,
         num_rows_per_row_group: 8192,
         predicate: Arc::new(Predicate::empty()),
@@ -192,8 +191,8 @@ pub async fn file_handles_from_ssts(
 
         let file_meta = FileMeta {
             id: *file_id,
-            size: 0,
-            row_num: 0,
+            size: store.head(&path).await.unwrap().size as u64,
+            row_num: parquet_metadata.file_metadata().num_rows() as u64,
             time_range: sst_meta.time_range,
             max_seq: sst_meta.max_sequence,
             storage_format: StorageFormat::Columnar,

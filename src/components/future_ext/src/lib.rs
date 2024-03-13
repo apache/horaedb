@@ -21,4 +21,4 @@ mod cancel;
 mod retry;
 
 pub use cancel::CancellationSafeFuture;
-pub use retry::{retry_async, RetryConfig};
+pub use retry::{retry_async, BackoffConfig, RetryConfig};

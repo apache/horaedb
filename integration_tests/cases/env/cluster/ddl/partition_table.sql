@@ -1,3 +1,22 @@
+--
+-- Licensed to the Apache Software Foundation (ASF) under one
+-- or more contributor license agreements.  See the NOTICE file
+-- distributed with this work for additional information
+-- regarding copyright ownership.  The ASF licenses this file
+-- to you under the Apache License, Version 2.0 (the
+-- "License"); you may not use this file except in compliance
+-- with the License.  You may obtain a copy of the License at
+--
+--   http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing,
+-- software distributed under the License is distributed on an
+-- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+-- KIND, either express or implied.  See the License for the
+-- specific language governing permissions and limitations
+-- under the License.
+--
+
 DROP TABLE IF EXISTS `partition_table_t`;
 
 CREATE TABLE `partition_table_t`(
@@ -37,11 +56,15 @@ SELECT * from partition_table_t where name in ("horaedb5", "horaedb6", "horaedb7
 
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
+-- SQLNESS REPLACE time=\d+.?\d*(µ|m|n) time=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 EXPLAIN ANALYZE SELECT * from partition_table_t where name = "ceresdb0";
 
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE compute=\d+.?\d*(µ|m|n) compute=xx
 -- SQLNESS REPLACE __partition_table_t_\d __partition_table_t_x
+-- SQLNESS REPLACE time=\d+.?\d*(µ|m|n) time=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 EXPLAIN ANALYZE SELECT * from partition_table_t where name in ("ceresdb0", "ceresdb1", "ceresdb2", "ceresdb3", "ceresdb4");
 
 ALTER TABLE partition_table_t ADD COLUMN (b string);

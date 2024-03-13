@@ -1,3 +1,21 @@
+--
+-- Licensed to the Apache Software Foundation (ASF) under one
+-- or more contributor license agreements.  See the NOTICE file
+-- distributed with this work for additional information
+-- regarding copyright ownership.  The ASF licenses this file
+-- to you under the Apache License, Version 2.0 (the
+-- "License"); you may not use this file except in compliance
+-- with the License.  You may obtain a copy of the License at
+--
+--   http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing,
+-- software distributed under the License is distributed on an
+-- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+-- KIND, either express or implied.  See the License for the
+-- specific language governing permissions and limitations
+-- under the License.
+--
 DROP TABLE `07_optimizer_t`;
 
 Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to create plan. Caused by: Failed to create plan, err:Table not found, table:07_optimizer_t sql:DROP TABLE `07_optimizer_t`;" })
@@ -10,7 +28,7 @@ EXPLAIN SELECT max(value) AS c1, avg(value) AS c2 FROM `07_optimizer_t` GROUP BY
 
 plan_type,plan,
 String("logical_plan"),String("Projection: MAX(07_optimizer_t.value) AS c1, AVG(07_optimizer_t.value) AS c2\n  Aggregate: groupBy=[[07_optimizer_t.name]], aggr=[[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]]\n    TableScan: 07_optimizer_t projection=[name, value]"),
-String("physical_plan"),String("ProjectionExec: expr=[MAX(07_optimizer_t.value)@1 as c1, AVG(07_optimizer_t.value)@2 as c2]\n  AggregateExec: mode=FinalPartitioned, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n    CoalesceBatchesExec: target_batch_size=8192\n      RepartitionExec: partitioning=Hash([name@0], 8), input_partitions=8\n        AggregateExec: mode=Partial, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n          ScanTable: table=07_optimizer_t, parallelism=8, priority=Low\n"),
+String("physical_plan"),String("ProjectionExec: expr=[MAX(07_optimizer_t.value)@1 as c1, AVG(07_optimizer_t.value)@2 as c2]\n  AggregateExec: mode=FinalPartitioned, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n    CoalesceBatchesExec: target_batch_size=8192\n      RepartitionExec: partitioning=Hash([name@0], 8), input_partitions=8\n        AggregateExec: mode=Partial, gby=[name@0 as name], aggr=[MAX(07_optimizer_t.value), AVG(07_optimizer_t.value)]\n          ScanTable: table=07_optimizer_t, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8)\n"),
 
 
 DROP TABLE `07_optimizer_t`;

@@ -490,8 +490,10 @@ impl ExecutionPlan for MockScan {
         unimplemented!()
     }
 
-    fn statistics(&self) -> datafusion::physical_plan::Statistics {
-        unimplemented!()
+    fn statistics(&self) -> DfResult<datafusion::physical_plan::Statistics> {
+        Ok(datafusion::physical_plan::Statistics::new_unknown(
+            &self.schema(),
+        ))
     }
 }
 

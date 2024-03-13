@@ -117,7 +117,7 @@ where
             .enable_partition_table_access(enable_partition_table_access)
             .build();
         let sql= format!("CREATE TABLE IF NOT EXISTS {table_name}(c1 string tag not null,ts timestamp not null, c3 string, timestamp key(ts),primary key(c1, ts)) \
-        ENGINE=Analytic WITH (ttl='70d',update_mode='overwrite',arena_block_size='1KB')");
+        ENGINE=Analytic WITH (enable_ttl='false',update_mode='overwrite',arena_block_size='1KB')");
 
         let output = self.sql_to_output_with_context(&sql, ctx).await?;
         assert!(
@@ -157,7 +157,7 @@ where
             .enable_partition_table_access(enable_partition_table_access)
             .build();
         let sql = format!("select * from {table_name}");
-        let output = self.sql_to_output_with_context(&sql, ctx).await?;
+        let output = self.sql_to_output_with_context(&sql, ctx.clone()).await?;
         let records = output.try_into().unwrap();
         let expected = vec![
             "+------------+---------------------+--------+--------+------------+--------------+",
@@ -169,15 +169,15 @@ where
         ];
         test_util::assert_record_batches_eq(&expected, records);
 
-        let sql = "select count(*) from test_table";
-        let output = self.sql_to_output(sql).await?;
+        let sql = format!("select count(*) from {table_name}");
+        let output = self.sql_to_output_with_context(&sql, ctx).await?;
         let records = output.try_into().unwrap();
         let expected = vec![
-            "+-----------------+",
-            "| COUNT(UInt8(1)) |",
-            "+-----------------+",
-            "| 2               |",
-            "+-----------------+",
+            "+----------+",
+            "| COUNT(*) |",
+            "+----------+",
+            "| 2        |",
+            "+----------+",
         ];
         test_util::assert_record_batches_eq(&expected, records);
 

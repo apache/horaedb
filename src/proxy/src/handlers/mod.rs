@@ -21,15 +21,7 @@ pub mod admin;
 mod error;
 
 mod prelude {
-    pub use catalog::manager::Manager as CatalogManager;
-    pub use query_engine::executor::Executor as QueryExecutor;
     pub use serde::{Deserialize, Serialize};
-    pub use snafu::ResultExt;
-    pub use warp::Filter;
 
-    pub use crate::{
-        context::RequestContext,
-        handlers::error::{Error, Result},
-        instance::InstanceRef,
-    };
+    pub use crate::{context::RequestContext, handlers::error::Result, instance::InstanceRef};
 }

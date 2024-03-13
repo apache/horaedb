@@ -374,5 +374,5 @@ fn get_or_extract_column_from_row_groups(
             Ok(columnar_value)
         })?;
 
-    Ok(column.into_array(num_rows))
+    column.into_array(num_rows).context(DatafusionExecutor)
 }

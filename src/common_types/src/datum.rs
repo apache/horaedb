@@ -292,9 +292,11 @@ impl TryFrom<&SqlDataType> for DatumKind {
             SqlDataType::Double => Ok(Self::Double),
             SqlDataType::Boolean => Ok(Self::Boolean),
             SqlDataType::BigInt(_) => Ok(Self::Int64),
+            SqlDataType::Int64 => Ok(Self::Int64),
             SqlDataType::Int(_) => Ok(Self::Int32),
+            SqlDataType::Int8(_) => Ok(Self::Int8),
             SqlDataType::SmallInt(_) => Ok(Self::Int16),
-            SqlDataType::String => Ok(Self::String),
+            SqlDataType::String(_) => Ok(Self::String),
             SqlDataType::Varbinary(_) => Ok(Self::Varbinary),
             SqlDataType::Date => Ok(Self::Date),
             SqlDataType::Time(_, _) => Ok(Self::Time),
@@ -1453,7 +1455,7 @@ impl Datum {
             ScalarValue::Date32(v) => v.map(Datum::Date),
             ScalarValue::Time64Nanosecond(v) => v.map(Datum::Time),
             ScalarValue::Dictionary(_, literal) => Datum::from_scalar_value(literal),
-            ScalarValue::List(_, _)
+            ScalarValue::List(_)
             | ScalarValue::Date64(_)
             | ScalarValue::Time32Second(_)
             | ScalarValue::Time32Millisecond(_)
@@ -1467,10 +1469,12 @@ impl Datum {
             | ScalarValue::Decimal128(_, _, _)
             | ScalarValue::Null
             | ScalarValue::IntervalMonthDayNano(_)
-            | ScalarValue::Fixedsizelist(_, _, _)
+            | ScalarValue::FixedSizeList(_)
             | ScalarValue::DurationSecond(_)
             | ScalarValue::DurationMillisecond(_)
             | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::Decimal256(_, _, _)
+            | ScalarValue::LargeList(_)
             | ScalarValue::DurationNanosecond(_) => None,
         }
     }
@@ -1502,7 +1506,7 @@ impl<'a> DatumView<'a> {
                 v.map(|v| DatumView::Timestamp(Timestamp::new(v)))
             }
             ScalarValue::Dictionary(_, literal) => DatumView::from_scalar_value(literal),
-            ScalarValue::List(_, _)
+            ScalarValue::List(_)
             | ScalarValue::Date64(_)
             | ScalarValue::Time32Second(_)
             | ScalarValue::Time32Millisecond(_)
@@ -1516,10 +1520,12 @@ impl<'a> DatumView<'a> {
             | ScalarValue::Decimal128(_, _, _)
             | ScalarValue::Null
             | ScalarValue::IntervalMonthDayNano(_)
-            | ScalarValue::Fixedsizelist(_, _, _)
+            | ScalarValue::FixedSizeList(_)
             | ScalarValue::DurationSecond(_)
             | ScalarValue::DurationMillisecond(_)
             | ScalarValue::DurationMicrosecond(_)
+            | ScalarValue::Decimal256(_, _, _)
+            | ScalarValue::LargeList(_)
             | ScalarValue::DurationNanosecond(_) => None,
         }
     }

@@ -186,11 +186,11 @@ impl Default for Config {
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),
             max_rows_in_write_queue: 0,
-            /// Zero means disabling this param, give a positive value to enable
-            /// it.
+            // Zero means disabling this param, give a positive value to enable
+            // it.
             space_write_buffer_size: 0,
-            /// Zero means disabling this param, give a positive value to enable
-            /// it.
+            // Zero means disabling this param, give a positive value to enable
+            // it.
             db_write_buffer_size: 0,
             preflush_write_buffer_size_ratio: 0.75,
             enable_primary_key_sampling: false,

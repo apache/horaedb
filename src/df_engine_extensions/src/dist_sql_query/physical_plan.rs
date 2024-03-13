@@ -129,8 +129,10 @@ impl ExecutionPlan for UnresolvedPartitionedScan {
         ))
     }
 
-    fn statistics(&self) -> Statistics {
-        Statistics::default()
+    fn statistics(
+        &self,
+    ) -> Result<datafusion::common::Statistics, datafusion::error::DataFusionError> {
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 
@@ -367,8 +369,10 @@ impl ExecutionPlan for ResolvedPartitionedScan {
         Ok(Box::pin(record_stream))
     }
 
-    fn statistics(&self) -> Statistics {
-        Statistics::default()
+    fn statistics(
+        &self,
+    ) -> Result<datafusion::common::Statistics, datafusion::error::DataFusionError> {
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 
     fn metrics(&self) -> Option<MetricsSet> {
@@ -578,8 +582,10 @@ impl ExecutionPlan for UnresolvedSubTableScan {
         ))
     }
 
-    fn statistics(&self) -> Statistics {
-        Statistics::default()
+    fn statistics(
+        &self,
+    ) -> Result<datafusion::common::Statistics, datafusion::error::DataFusionError> {
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 

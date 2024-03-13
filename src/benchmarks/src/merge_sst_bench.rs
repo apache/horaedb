@@ -32,7 +32,6 @@ use analytic_engine::{
         factory::{FactoryImpl, FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::{FileHandle, FilePurgeQueue, Level, Request},
         meta_data::cache::MetaCacheRef,
-        metrics::MaybeTableLevelMetrics as SstMaybeTableLevelMetrics,
     },
     table::sst_util,
     ScanType, SstReadOptionsBuilder,
@@ -59,6 +58,7 @@ pub struct MergeSstBench {
     file_handles: Vec<FileHandle>,
     _receiver: UnboundedReceiver<Request>,
     dedup: bool,
+    sst_level: Level,
 }
 
 impl MergeSstBench {
@@ -83,12 +83,11 @@ impl MergeSstBench {
             num_streams_to_prefetch: 0,
         };
 
-        let maybe_table_level_metrics = Arc::new(SstMaybeTableLevelMetrics::new("bench", ""));
         let scan_type = ScanType::Query;
         let sst_read_options_builder = SstReadOptionsBuilder::new(
             scan_type,
             scan_options,
-            maybe_table_level_metrics,
+            None,
             config.num_rows_per_row_group,
             predicate,
             meta_cache.clone(),
@@ -121,6 +120,7 @@ impl MergeSstBench {
             file_handles,
             _receiver: rx,
             dedup: true,
+            sst_level: config.sst_level.into(),
         }
     }
 
@@ -168,7 +168,7 @@ impl MergeSstBench {
 
         builder
             // TODO: make level configurable
-            .mut_ssts_of_level(Level::MIN)
+            .mut_ssts_of_level(self.sst_level)
             .extend_from_slice(&self.file_handles);
 
         self.runtime.block_on(async {

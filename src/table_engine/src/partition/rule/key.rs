@@ -237,8 +237,6 @@ fn expand_partition_keys_group<'a>(
     for filter_idx in group {
         let filter = &filters[*filter_idx];
         let datums = match &filter.condition {
-            // Only `Eq` is supported now.
-            // TODO: to support `In`'s extracting.
             PartitionCondition::Eq(datum) => vec![datum.as_view()],
             PartitionCondition::In(datums) => datums.iter().map(Datum::as_view).collect_vec(),
             _ => {
@@ -387,7 +385,7 @@ mod tests {
     /// as much as possible.
     #[test]
     fn test_partition_keys_read_adapter() {
-        let datums = vec![
+        let datums = [
             Datum::Int32(1),
             Datum::String(StringBytes::copy_from_str(
                 "test_partition_keys_read_adapter_key0",

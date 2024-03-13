@@ -1,3 +1,22 @@
+--
+-- Licensed to the Apache Software Foundation (ASF) under one
+-- or more contributor license agreements.  See the NOTICE file
+-- distributed with this work for additional information
+-- regarding copyright ownership.  The ASF licenses this file
+-- to you under the Apache License, Version 2.0 (the
+-- "License"); you may not use this file except in compliance
+-- with the License.  You may obtain a copy of the License at
+--
+--   http://www.apache.org/licenses/LICENSE-2.0
+--
+-- Unless required by applicable law or agreed to in writing,
+-- software distributed under the License is distributed on an
+-- "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+-- KIND, either express or implied.  See the License for the
+-- specific language governing permissions and limitations
+-- under the License.
+--
+
 DROP TABLE IF EXISTS `03_dml_select_real_time_range`;
 DROP TABLE IF EXISTS `03_append_mode_table`;
 
@@ -18,27 +37,38 @@ INSERT INTO `03_dml_select_real_time_range` (t, name, value)
 
 -- This query should include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
+where t >= 1695348001000 and t < 1695348002000;
+
+-- This query should have higher priority
+-- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
+explain analyze select name from `03_dml_select_real_time_range`
 where t >= 1695348001000 and t < 1695348002000;
 
 -- This query should not include memtable
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
 -- SQLNESS ARG pre_cmd=flush
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
 -- SQLNESS REPLACE project_record_batch=\d+.?\d*(µ|m|n) project_record_batch=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 -- This query should include SST
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
 -- This query should not include SST
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348002000;
 
@@ -64,6 +94,7 @@ INSERT INTO `03_append_mode_table` (t, name, value)
 -- SQLNESS REPLACE since_create=\d+.?\d*(µ|m|n) since_create=xx
 -- SQLNESS REPLACE since_init=\d+.?\d*(µ|m|n) since_init=xx
 -- SQLNESS REPLACE elapsed_compute=\d+.?\d*(µ|m|n) elapsed_compute=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_append_mode_table`
 where t >= 1695348001000 and name = 'ceresdb';
 
@@ -74,6 +105,7 @@ where t >= 1695348001000 and name = 'ceresdb';
 -- SQLNESS REPLACE since_init=\d+.?\d*(µ|m|n) since_init=xx
 -- SQLNESS REPLACE elapsed_compute=\d+.?\d*(µ|m|n) elapsed_compute=xx
 -- SQLNESS REPLACE project_record_batch=\d+.?\d*(µ|m|n) project_record_batch=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select t from `03_append_mode_table`
 where t >= 1695348001000 and name = 'ceresdb';
 
@@ -89,11 +121,13 @@ CREATE TABLE `TEST_QUERY_PRIORITY` (
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select TS from `TEST_QUERY_PRIORITY`
 where TS >= 1695348001000 and TS < 1695348002000;
 
 -- This query should have higher priority
 -- SQLNESS REPLACE duration=\d+.?\d*(µ|m|n) duration=xx
+-- SQLNESS REPLACE metrics=\[.*?s\] metrics=xx
 explain analyze select TS from `TEST_QUERY_PRIORITY`
 where TS >= 1695348001000;
 

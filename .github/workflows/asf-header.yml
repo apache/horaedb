@@ -15,8 +15,25 @@
 # specific language governing permissions and limitations
 # under the License.
 
-headerPath = "Apache-2.0-ASF.txt"
+name: Check ASF check
 
-excludes = [
-    # Derived
-]
+on:
+  merge_group:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+jobs:
+  style-check:
+    name: style-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Check License Header
+        uses: korandoru/hawkeye@v4

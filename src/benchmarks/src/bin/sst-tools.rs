@@ -21,7 +21,7 @@ use benchmarks::{
     sst_tools::{self, MergeSstConfig, RebuildSstConfig},
     util,
 };
-use clap::{App, Arg};
+use clap::{Arg, Command};
 use logger::info;
 use serde::Deserialize;
 
@@ -51,19 +51,19 @@ fn config_from_path(path: &str) -> Config {
 fn main() {
     env_logger::init();
 
-    let matches = App::new("SST Tools")
+    let matches = Command::new("SST Tools")
         .arg(
-            Arg::with_name("config")
+            Arg::new("config")
                 .short('c')
                 .long("config")
                 .required(true)
-                .takes_value(true)
+                .num_args(1)
                 .help("Set configuration file, eg: \"/path/server.toml\""),
         )
         .get_matches();
 
     let config_path = matches
-        .value_of("config")
+        .get_one::<String>("config")
         .expect("Config file is required.");
     let config = config_from_path(config_path);
 

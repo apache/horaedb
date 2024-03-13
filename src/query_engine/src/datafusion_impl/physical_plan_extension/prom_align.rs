@@ -37,7 +37,7 @@ use common_types::{
     time::{TimeRange, Timestamp},
 };
 use datafusion::{
-    error::{DataFusionError, Result as ArrowResult},
+    error::{DataFusionError, Result as DataFusionResult},
     execution::context::TaskContext,
     physical_expr::PhysicalSortExpr,
     physical_plan::{
@@ -93,15 +93,15 @@ impl PhysicalExpr for ExtractTsidExpr {
         self
     }
 
-    fn data_type(&self, _input_schema: &ArrowSchema) -> ArrowResult<DataType> {
+    fn data_type(&self, _input_schema: &ArrowSchema) -> DataFusionResult<DataType> {
         Ok(DataType::UInt64)
     }
 
-    fn nullable(&self, _input_schema: &ArrowSchema) -> ArrowResult<bool> {
+    fn nullable(&self, _input_schema: &ArrowSchema) -> DataFusionResult<bool> {
         Ok(false)
     }
 
-    fn evaluate(&self, batch: &RecordBatch) -> ArrowResult<ColumnarValue> {
+    fn evaluate(&self, batch: &RecordBatch) -> DataFusionResult<ColumnarValue> {
         let tsid_idx = batch
             .schema()
             .index_of(TSID_COLUMN)
@@ -116,7 +116,7 @@ impl PhysicalExpr for ExtractTsidExpr {
     fn with_new_children(
         self: Arc<Self>,
         _children: Vec<Arc<dyn PhysicalExpr>>,
-    ) -> ArrowResult<Arc<dyn PhysicalExpr>> {
+    ) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
         Ok(self)
     }
 
@@ -204,7 +204,7 @@ impl ExecutionPlan for PromAlignExec {
     fn with_new_children(
         self: Arc<Self>,
         children: Vec<Arc<dyn ExecutionPlan>>,
-    ) -> ArrowResult<Arc<dyn ExecutionPlan>> {
+    ) -> DataFusionResult<Arc<dyn ExecutionPlan>> {
         match children.len() {
             1 => Ok(Arc::new(PromAlignExec {
                 input: children[0].clone(),
@@ -222,7 +222,7 @@ impl ExecutionPlan for PromAlignExec {
         &self,
         partition: usize,
         context: Arc<TaskContext>,
-    ) -> ArrowResult<DfSendableRecordBatchStream> {
+    ) -> DataFusionResult<DfSendableRecordBatchStream> {
         debug!("PromAlignExec: partition:{}", partition);
         Ok(Box::pin(PromAlignReader {
             input: self.input.execute(partition, context)?,
@@ -236,9 +236,9 @@ impl ExecutionPlan for PromAlignExec {
         }))
     }
 
-    fn statistics(&self) -> Statistics {
+    fn statistics(&self) -> DataFusionResult<Statistics> {
         // TODO(chenxiang)
-        Statistics::default()
+        Ok(Statistics::new_unknown(&self.schema()))
     }
 }
 
@@ -652,7 +652,7 @@ impl Stepper for FixedStepper {
             }
             // [mint, self.timestamp] has no data, skip to next step.
             let skip = {
-                if let Some(first_entry) = self.entries.get(0) {
+                if let Some(first_entry) = self.entries.front() {
                     first_entry.timestamp > self.timestamp
                 } else {
                     true
