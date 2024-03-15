@@ -15,28 +15,26 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use anyhow::Result;
 use clap::Subcommand;
 
 use crate::operation::cluster::{clusters_schedule_get, clusters_schedule_set};
 
 #[derive(Subcommand)]
 pub enum ScheduleCommands {
-    #[clap(about = "Get the schedule status", long_about = None)]
+    /// Get the schedule status
     Get,
 
-    #[clap(about = "Set the schedule status", long_about = None)]
+    /// Set the schedule status
     Set {
-        #[clap(long = "enable", short = 'e', default_value = "false", value_parser = clap::value_parser!(bool))]
+        #[clap(long, short, default_value = "false", value_parser = clap::value_parser!(bool))]
         enable: bool,
     },
 }
 
-pub async fn schedule_resolve(command: Option<ScheduleCommands>) {
+pub async fn run(command: ScheduleCommands) -> Result<()> {
     match command {
-        Some(ScheduleCommands::Get) => clusters_schedule_get().await,
-        Some(ScheduleCommands::Set { enable }) => {
-            clusters_schedule_set(enable).await;
-        }
-        None => {}
+        ScheduleCommands::Get => clusters_schedule_get().await,
+        ScheduleCommands::Set { enable } => clusters_schedule_set(enable).await,
     }
 }

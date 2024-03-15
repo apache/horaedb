@@ -3039,6 +3039,7 @@ dependencies = [
 name = "horaectl"
 version = "2.0.0"
 dependencies = [
+ "anyhow",
  "chrono",
  "clap",
  "lazy_static",

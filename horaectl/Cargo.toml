@@ -28,8 +28,9 @@ workspace = true
 workspace = true
 
 [dependencies]
+anyhow = { workspace = true, features = ["backtrace"] }
 chrono = { workspace = true }
-clap = { workspace = true }
+clap = { workspace = true, features = ["env", "derive"] }
 lazy_static = { workspace = true }
 prettytable = "0.10.0"
 reqwest = { workspace = true }

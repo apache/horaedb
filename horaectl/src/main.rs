@@ -19,23 +19,36 @@ mod cmd;
 mod operation;
 mod util;
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 
 use crate::{
-    cmd::{execute, Horaectl},
+    cmd::{repl_loop, run_command, App},
     util::{CLUSTER_NAME, META_ADDR},
 };
 
 #[tokio::main]
 async fn main() {
-    let horaectl = Horaectl::parse();
+    let app = App::parse();
     {
         let mut meta_addr = META_ADDR.lock().unwrap();
-        *meta_addr = horaectl.meta_addr;
+        *meta_addr = app.global_opts.meta_addr;
     }
     {
         let mut cluster_name = CLUSTER_NAME.lock().unwrap();
-        *cluster_name = horaectl.cluster_name;
+        *cluster_name = app.global_opts.cluster_name;
     }
-    execute().await
+
+    if app.interactive {
+        repl_loop().await;
+        return;
+    }
+
+    if let Some(cmd) = app.command {
+        if let Err(e) = run_command(cmd).await {
+            println!("Run command failed, err:{e}");
+            std::process::exit(1);
+        }
+    } else {
+        App::command().print_help().expect("print help failed");
+    }
 }

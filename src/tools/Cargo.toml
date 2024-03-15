@@ -32,7 +32,7 @@ workspace = true
 
 [dependencies]
 analytic_engine = { workspace = true }
-anyhow = { version = "1.0", features = ["backtrace"] }
+anyhow = { workspace = true, features = ["backtrace"] }
 clap = { workspace = true, features = ["derive"] }
 common_types = { workspace = true }
 futures = { workspace = true }

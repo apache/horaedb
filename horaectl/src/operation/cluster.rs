@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use anyhow::Result;
 use prettytable::row;
 
 use crate::{
@@ -52,21 +53,9 @@ fn schedule_url() -> String {
         + "/enableSchedule"
 }
 
-pub async fn clusters_list() {
-    let res = match reqwest::get(list_url()).await {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
-    let response: ClusterResponse = match res.json().await {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
+pub async fn clusters_list() -> Result<()> {
+    let res = reqwest::get(list_url()).await?;
+    let response: ClusterResponse = res.json().await?;
 
     let mut table = table_writer(&CLUSTERS_LIST_HEADER);
     for cluster in response.data {
@@ -81,23 +70,13 @@ pub async fn clusters_list() {
         ]);
     }
     table.printstd();
+
+    Ok(())
 }
 
-pub async fn clusters_diagnose() {
-    let res = match reqwest::get(diagnose_url()).await {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
-    let response: DiagnoseShardResponse = match res.json().await {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
+pub async fn clusters_diagnose() -> Result<()> {
+    let res = reqwest::get(diagnose_url()).await?;
+    let response: DiagnoseShardResponse = res.json().await?;
     let mut table = table_writer(&CLUSTERS_DIAGNOSE_HEADER);
     table.add_row(row![response
         .data
@@ -110,23 +89,13 @@ pub async fn clusters_diagnose() {
         table.add_row(row!["", shard_id, data.node_name, data.status]);
     }
     table.printstd();
+
+    Ok(())
 }
 
-pub async fn clusters_schedule_get() {
-    let res = match reqwest::get(schedule_url()).await {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
-    let response: EnableScheduleResponse = match res.json().await {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
+pub async fn clusters_schedule_get() -> Result<()> {
+    let res = reqwest::get(schedule_url()).await?;
+    let response: EnableScheduleResponse = res.json().await?;
     let mut table = table_writer(&CLUSTERS_ENABLE_SCHEDULE_HEADER);
     let row = match response.data {
         Some(data) => row![data],
@@ -134,30 +103,19 @@ pub async fn clusters_schedule_get() {
     };
     table.add_row(row);
     table.printstd();
+
+    Ok(())
 }
 
-pub async fn clusters_schedule_set(enable: bool) {
+pub async fn clusters_schedule_set(enable: bool) -> Result<()> {
     let request = EnableScheduleRequest { enable };
 
-    let res = match reqwest::Client::new()
+    let res = reqwest::Client::new()
         .put(schedule_url())
         .json(&request)
         .send()
-        .await
-    {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
-    let response: EnableScheduleResponse = match res.json().await {
-        Ok(res) => res,
-        Err(e) => {
-            println!("{}", e);
-            return;
-        }
-    };
+        .await?;
+    let response: EnableScheduleResponse = res.json().await?;
     let mut table = table_writer(&CLUSTERS_ENABLE_SCHEDULE_HEADER);
     let row = match response.data {
         Some(data) => row![data],
@@ -165,4 +123,6 @@ pub async fn clusters_schedule_set(enable: bool) {
     };
     table.add_row(row);
     table.printstd();
+
+    Ok(())
 }

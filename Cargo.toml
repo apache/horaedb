@@ -90,6 +90,7 @@ arrow = { version = "49.0.0", features = ["prettyprint"] }
 arrow_ipc = { version = "49.0.0" }
 arrow_ext = { path = "src/components/arrow_ext" }
 analytic_engine = { path = "src/analytic_engine" }
+anyhow = { version = "1.0" }
 arena = { path = "src/components/arena" }
 async-stream = "0.3.4"
 async-trait = "0.1.72"
