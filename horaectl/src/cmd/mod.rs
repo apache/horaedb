@@ -16,20 +16,19 @@
 // under the License.
 
 mod cluster;
-mod cluster_schedule;
 use std::{io, io::Write};
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 
 use crate::{
-    cmd::cluster::ClusterCommands,
+    cmd::cluster::ClusterCommand,
     util::{CLUSTER_NAME, META_ADDR},
 };
 
 #[derive(Parser)]
 #[clap(name = "horaectl")]
-#[clap(about = "HoraeCTL is a command line tool for HoraeDB", long_about = None)]
+#[clap(about = "HoraeCTL is a command line tool for HoraeDB", version)]
 pub struct App {
     #[clap(flatten)]
     pub global_opts: GlobalOpts,
@@ -71,7 +70,7 @@ pub enum SubCommand {
     #[clap(alias = "c")]
     Cluster {
         #[clap(subcommand)]
-        commands: ClusterCommands,
+        commands: ClusterCommand,
     },
 }
 

@@ -18,13 +18,12 @@
 use anyhow::Result;
 use clap::Subcommand;
 
-use crate::{
-    cmd::cluster_schedule::{self, ScheduleCommands},
-    operation::cluster::{clusters_diagnose, clusters_list},
+use crate::operation::cluster::{
+    clusters_diagnose, clusters_list, clusters_schedule_get, clusters_schedule_set,
 };
 
 #[derive(Subcommand)]
-pub enum ClusterCommands {
+pub enum ClusterCommand {
     /// List cluster
     List,
 
@@ -34,14 +33,36 @@ pub enum ClusterCommands {
     /// Schedule cluster
     Schedule {
         #[clap(subcommand)]
-        commands: ScheduleCommands,
+        cmd: Option<ScheduleCommand>,
     },
 }
 
-pub async fn run(command: ClusterCommands) -> Result<()> {
-    match command {
-        ClusterCommands::List => clusters_list().await,
-        ClusterCommands::Diagnose => clusters_diagnose().await,
-        ClusterCommands::Schedule { commands } => cluster_schedule::run(commands).await,
+#[derive(Subcommand)]
+pub enum ScheduleCommand {
+    /// Get the schedule status
+    Get,
+
+    /// Enable schedule
+    On,
+
+    /// Disable schedule
+    Off,
+}
+
+pub async fn run(cmd: ClusterCommand) -> Result<()> {
+    match cmd {
+        ClusterCommand::List => clusters_list().await,
+        ClusterCommand::Diagnose => clusters_diagnose().await,
+        ClusterCommand::Schedule { cmd } => {
+            if let Some(cmd) = cmd {
+                match cmd {
+                    ScheduleCommand::Get => clusters_schedule_get().await,
+                    ScheduleCommand::On => clusters_schedule_set(true).await,
+                    ScheduleCommand::Off => clusters_schedule_set(false).await,
+                }
+            } else {
+                clusters_schedule_get().await
+            }
+        }
     }
 }
