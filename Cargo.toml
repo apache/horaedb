@@ -103,7 +103,7 @@ catalog_impls = { path = "src/catalog_impls" }
 horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "19ece8f771fc0b3e8e734072cc3d8040de6c74cb" }
 codec = { path = "src/components/codec" }
 chrono = "0.4"
-clap = "4.5.1"
+clap = { version = "4.5.1", features = ["derive"] }
 clru = "0.6.1"
 cluster = { path = "src/cluster" }
 criterion = "0.5"
