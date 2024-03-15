@@ -18,9 +18,7 @@
 use anyhow::Result;
 use clap::Subcommand;
 
-use crate::operation::cluster::{
-    clusters_diagnose, clusters_list, clusters_schedule_get, clusters_schedule_set,
-};
+use crate::operation::cluster::ClusterOp;
 
 #[derive(Subcommand)]
 pub enum ClusterCommand {
@@ -50,18 +48,19 @@ pub enum ScheduleCommand {
 }
 
 pub async fn run(cmd: ClusterCommand) -> Result<()> {
+    let op = ClusterOp::try_new()?;
     match cmd {
-        ClusterCommand::List => clusters_list().await,
-        ClusterCommand::Diagnose => clusters_diagnose().await,
+        ClusterCommand::List => op.list().await,
+        ClusterCommand::Diagnose => op.diagnose().await,
         ClusterCommand::Schedule { cmd } => {
             if let Some(cmd) = cmd {
                 match cmd {
-                    ScheduleCommand::Get => clusters_schedule_get().await,
-                    ScheduleCommand::On => clusters_schedule_set(true).await,
-                    ScheduleCommand::Off => clusters_schedule_set(false).await,
+                    ScheduleCommand::Get => op.get_schedule_status().await,
+                    ScheduleCommand::On => op.update_schedule_status(true).await,
+                    ScheduleCommand::Off => op.update_schedule_status(false).await,
                 }
             } else {
-                clusters_schedule_get().await
+                op.get_schedule_status().await
             }
         }
     }

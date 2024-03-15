@@ -15,8 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::time::Duration;
+
 use anyhow::Result;
 use prettytable::row;
+use reqwest::Client;
 
 use crate::{
     operation::{
@@ -53,76 +56,92 @@ fn schedule_url() -> String {
         + "/enableSchedule"
 }
 
-pub async fn clusters_list() -> Result<()> {
-    let res = reqwest::get(list_url()).await?;
-    let response: ClusterResponse = res.json().await?;
+pub struct ClusterOp {
+    http_client: Client,
+}
 
-    let mut table = table_writer(&CLUSTERS_LIST_HEADER);
-    for cluster in response.data {
-        table.add_row(row![
-            cluster.id,
-            cluster.name,
-            cluster.shard_total.to_string(),
-            cluster.topology_type,
-            cluster.procedure_executing_batch_size.to_string(),
-            format_time_milli(cluster.created_at),
-            format_time_milli(cluster.modified_at)
-        ]);
+impl ClusterOp {
+    pub fn try_new() -> Result<Self> {
+        let hc = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .user_agent("horaectl")
+            .build()?;
+
+        Ok(Self { http_client: hc })
     }
-    table.printstd();
 
-    Ok(())
-}
+    pub async fn list(&self) -> Result<()> {
+        let res = self.http_client.get(list_url()).send().await?;
+        let response: ClusterResponse = res.json().await?;
 
-pub async fn clusters_diagnose() -> Result<()> {
-    let res = reqwest::get(diagnose_url()).await?;
-    let response: DiagnoseShardResponse = res.json().await?;
-    let mut table = table_writer(&CLUSTERS_DIAGNOSE_HEADER);
-    table.add_row(row![response
-        .data
-        .unregistered_shards
-        .iter()
-        .map(|shard_id| shard_id.to_string())
-        .collect::<Vec<_>>()
-        .join(", ")]);
-    for (shard_id, data) in response.data.unready_shards {
-        table.add_row(row!["", shard_id, data.node_name, data.status]);
+        let mut table = table_writer(&CLUSTERS_LIST_HEADER);
+        for cluster in response.data {
+            table.add_row(row![
+                cluster.id,
+                cluster.name,
+                cluster.shard_total.to_string(),
+                cluster.topology_type,
+                cluster.procedure_executing_batch_size.to_string(),
+                format_time_milli(cluster.created_at),
+                format_time_milli(cluster.modified_at)
+            ]);
+        }
+        table.printstd();
+
+        Ok(())
     }
-    table.printstd();
 
-    Ok(())
-}
+    pub async fn diagnose(&self) -> Result<()> {
+        let res = self.http_client.get(diagnose_url()).send().await?;
+        let response: DiagnoseShardResponse = res.json().await?;
+        let mut table = table_writer(&CLUSTERS_DIAGNOSE_HEADER);
+        table.add_row(row![response
+            .data
+            .unregistered_shards
+            .iter()
+            .map(|shard_id| shard_id.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")]);
+        for (shard_id, data) in response.data.unready_shards {
+            table.add_row(row!["", shard_id, data.node_name, data.status]);
+        }
+        table.printstd();
 
-pub async fn clusters_schedule_get() -> Result<()> {
-    let res = reqwest::get(schedule_url()).await?;
-    let response: EnableScheduleResponse = res.json().await?;
-    let mut table = table_writer(&CLUSTERS_ENABLE_SCHEDULE_HEADER);
-    let row = match response.data {
-        Some(data) => row![data],
-        None => row!["topology should in dynamic mode"],
-    };
-    table.add_row(row);
-    table.printstd();
+        Ok(())
+    }
 
-    Ok(())
-}
+    pub async fn get_schedule_status(&self) -> Result<()> {
+        let res = self.http_client.get(schedule_url()).send().await?;
+        let response: EnableScheduleResponse = res.json().await?;
+        let mut table = table_writer(&CLUSTERS_ENABLE_SCHEDULE_HEADER);
+        let row = match response.data {
+            Some(data) => row![data],
+            None => row!["topology should in dynamic mode"],
+        };
+        table.add_row(row);
+        table.printstd();
 
-pub async fn clusters_schedule_set(enable: bool) -> Result<()> {
-    let request = EnableScheduleRequest { enable };
+        Ok(())
+    }
 
-    let res = reqwest::Client::new()
-        .put(schedule_url())
-        .json(&request)
-        .send()
-        .await?;
-    let response: EnableScheduleResponse = res.json().await?;
-    let mut table = table_writer(&CLUSTERS_ENABLE_SCHEDULE_HEADER);
-    let row = match response.data {
-        Some(data) => row![data],
-        None => row!["topology should in dynamic mode"],
-    };
-    table.add_row(row);
-    table.printstd();
+    pub async fn update_schedule_status(&self, enable: bool) -> Result<()> {
+        let request = EnableScheduleRequest { enable };
 
-    Ok(())
+        let res = self
+            .http_client
+            .put(schedule_url())
+            .json(&request)
+            .send()
+            .await?;
+        let response: EnableScheduleResponse = res.json().await?;
+        let mut table = table_writer(&CLUSTERS_ENABLE_SCHEDULE_HEADER);
+        let row = match response.data {
+            Some(data) => row![data],
+            None => row!["topology should in dynamic mode"],
+        };
+        table.add_row(row);
+        table.printstd();
+
+        Ok(())
+    }
 }
