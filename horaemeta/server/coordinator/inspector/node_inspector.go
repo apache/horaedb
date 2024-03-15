@@ -22,77 +22,102 @@ package inspector
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 
+	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"go.uber.org/zap"
 )
 
+var ErrStartAgain = coderr.NewCodeError(coderr.Internal, "try to start again")
+var ErrStopNotStart = coderr.NewCodeError(coderr.Internal, "try to stop a not-started inspector")
+
 const inspectInterval = time.Second * 5
 
 // NodeInspector will inspect node status and remove expired data.
 type NodeInspector struct {
 	logger          *zap.Logger
-	clusterMetadata *metadata.ClusterMetadata
+	clusterMetadata ClusterMetaDataManipulator
 
-	// This lock is used to protect the following field.
-	lock      sync.RWMutex
-	isRunning atomic.Bool
+	starter sync.Once
+	// After `Start` is called, the following fields will be initialized
+	stopCtx     context.Context
+	bgJobCancel context.CancelFunc
 }
 
-func NewNodeInspector(logger *zap.Logger, clusterMetadata *metadata.ClusterMetadata) *NodeInspector {
+// ClusterMetaDataManipulator provides the snapshot for NodeInspector to check and utilities of drop expired shard nodes.
+type ClusterMetaDataManipulator interface {
+	GetClusterSnapshot() metadata.Snapshot
+	DropShardNode(context.Context, []storage.ShardNode) error
+}
+
+func NewNodeInspector(logger *zap.Logger, clusterMetadata ClusterMetaDataManipulator) *NodeInspector {
 	return &NodeInspector{
 		logger:          logger,
 		clusterMetadata: clusterMetadata,
-		lock:            sync.RWMutex{},
-		isRunning:       atomic.Bool{},
+		starter:         sync.Once{},
+		stopCtx:         nil,
+		bgJobCancel:     nil,
 	}
 }
 
 func (i *NodeInspector) Start(ctx context.Context) error {
-	i.lock.Lock()
-	defer i.lock.Unlock()
+	started := false
+	i.starter.Do(func() {
+		log.Info("node inspector start")
+		started = true
+		i.stopCtx, i.bgJobCancel = context.WithCancel(ctx)
+		go func() {
+			for {
+				t := time.NewTimer(inspectInterval)
+				select {
+				case <-i.stopCtx.Done():
+					i.logger.Info("node inspector is stopped, cancel the bg inspecting")
+					if !t.Stop() {
+						<-t.C
+					}
+					return
+				case <-t.C:
+				}
 
-	if i.isRunning.Load() {
-		return nil
-	}
-
-	log.Info("node inspector start")
-
-	go func() {
-		i.isRunning.Store(true)
-		for {
-			if !i.isRunning.Load() {
-				i.logger.Info("scheduler manager is canceled")
-				return
+				i.inspect(ctx)
 			}
+		}()
+	})
 
-			time.Sleep(inspectInterval)
-
-			// Get latest cluster snapshot.
-			snapshot := i.clusterMetadata.GetClusterSnapshot()
-			i.inspect(ctx, snapshot)
-		}
-	}()
+	if !started {
+		return ErrStartAgain
+	}
 
 	return nil
 }
 
 func (i *NodeInspector) Stop(_ context.Context) error {
-	i.lock.Lock()
-	defer i.lock.Unlock()
-
-	if i.isRunning.Load() {
-		i.isRunning.Store(false)
+	if i.bgJobCancel != nil {
+		i.bgJobCancel()
+		return nil
 	}
 
-	return nil
+	return ErrStopNotStart
 }
 
-func (i *NodeInspector) inspect(ctx context.Context, snapshot metadata.Snapshot) {
+func (i *NodeInspector) inspect(ctx context.Context) {
+	// Get latest cluster snapshot.
+	snapshot := i.clusterMetadata.GetClusterSnapshot()
+	expiredShardNodes := findExpiredShardNodes(snapshot)
+	if len(expiredShardNodes) == 0 {
+		return
+	}
+
+	// Try to remove useless data if it exists.
+	if err := i.clusterMetadata.DropShardNode(ctx, expiredShardNodes); err != nil {
+		log.Error("drop shard node failed", zap.Error(err))
+	}
+}
+
+func findExpiredShardNodes(snapshot metadata.Snapshot) []storage.ShardNode {
 	shardNodeMapping := make(map[string][]storage.ShardNode, len(snapshot.RegisteredNodes))
 	for _, shardNode := range snapshot.Topology.ClusterView.ShardNodes {
 		if _, exists := shardNodeMapping[shardNode.NodeName]; !exists {
@@ -101,7 +126,8 @@ func (i *NodeInspector) inspect(ctx context.Context, snapshot metadata.Snapshot)
 		shardNodeMapping[shardNode.NodeName] = append(shardNodeMapping[shardNode.NodeName], shardNode)
 	}
 
-	expiredShardNodes := make([]storage.ShardNode, 0, len(snapshot.RegisteredNodes))
+	// In most cases, there is no expired shard nodes so don't pre-allocate the memory.
+	expiredShardNodes := make([]storage.ShardNode, 0)
 	// Check node status.
 	now := time.Now()
 	for _, node := range snapshot.RegisteredNodes {
@@ -115,8 +141,5 @@ func (i *NodeInspector) inspect(ctx context.Context, snapshot metadata.Snapshot)
 		}
 	}
 
-	// Try to remove useless data if it exists.
-	if err := i.clusterMetadata.DropShardNode(ctx, expiredShardNodes); err != nil {
-		log.Error("drop shard node failed", zap.Error(err))
-	}
+	return expiredShardNodes
 }
