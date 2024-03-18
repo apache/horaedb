@@ -34,12 +34,13 @@ import (
 var ErrStartAgain = coderr.NewCodeError(coderr.Internal, "try to start again")
 var ErrStopNotStart = coderr.NewCodeError(coderr.Internal, "try to stop a not-started inspector")
 
-const inspectInterval = time.Second * 5
+const defaultInspectInterval = time.Second * 5
 
 // NodeInspector will inspect node status and remove expired data.
 type NodeInspector struct {
 	logger          *zap.Logger
 	clusterMetadata ClusterMetaDataManipulator
+	interval        time.Duration
 
 	starter sync.Once
 	// After `Start` is called, the following fields will be initialized
@@ -53,14 +54,19 @@ type ClusterMetaDataManipulator interface {
 	DropShardNode(context.Context, []storage.ShardNode) error
 }
 
-func NewNodeInspector(logger *zap.Logger, clusterMetadata ClusterMetaDataManipulator) *NodeInspector {
+func NewNodeInspectorWithInterval(logger *zap.Logger, clusterMetadata ClusterMetaDataManipulator, inspectInterval time.Duration) *NodeInspector {
 	return &NodeInspector{
 		logger:          logger,
 		clusterMetadata: clusterMetadata,
+		interval:        inspectInterval,
 		starter:         sync.Once{},
 		stopCtx:         nil,
 		bgJobCancel:     nil,
 	}
+}
+
+func NewNodeInspector(logger *zap.Logger, clusterMetadata ClusterMetaDataManipulator) *NodeInspector {
+	return NewNodeInspectorWithInterval(logger, clusterMetadata, defaultInspectInterval)
 }
 
 func (i *NodeInspector) Start(ctx context.Context) error {
@@ -71,7 +77,7 @@ func (i *NodeInspector) Start(ctx context.Context) error {
 		i.stopCtx, i.bgJobCancel = context.WithCancel(ctx)
 		go func() {
 			for {
-				t := time.NewTimer(inspectInterval)
+				t := time.NewTimer(i.interval)
 				select {
 				case <-i.stopCtx.Done():
 					i.logger.Info("node inspector is stopped, cancel the bg inspecting")
@@ -118,26 +124,22 @@ func (i *NodeInspector) inspect(ctx context.Context) {
 }
 
 func findExpiredShardNodes(snapshot metadata.Snapshot) []storage.ShardNode {
-	shardNodeMapping := make(map[string][]storage.ShardNode, len(snapshot.RegisteredNodes))
-	for _, shardNode := range snapshot.Topology.ClusterView.ShardNodes {
-		if _, exists := shardNodeMapping[shardNode.NodeName]; !exists {
-			shardNodeMapping[shardNode.NodeName] = []storage.ShardNode{}
-		}
-		shardNodeMapping[shardNode.NodeName] = append(shardNodeMapping[shardNode.NodeName], shardNode)
-	}
-
-	// In most cases, there is no expired shard nodes so don't pre-allocate the memory.
-	expiredShardNodes := make([]storage.ShardNode, 0)
+	// In most cases, there is no expired shard nodes so don't pre-allocate the memory here.
+	expiredNodes := make(map[string]struct{}, 0)
 	// Check node status.
 	now := time.Now()
-	for _, node := range snapshot.RegisteredNodes {
+	for i := range snapshot.RegisteredNodes {
+		node := &snapshot.RegisteredNodes[i]
 		if node.IsExpired(now) {
-			expired, exists := shardNodeMapping[node.Node.Name]
-			if !exists {
-				log.Debug("try to remove non-existent node")
-				continue
-			}
-			expiredShardNodes = append(expiredShardNodes, expired...)
+			expiredNodes[node.Node.Name] = struct{}{}
+		}
+	}
+
+	expiredShardNodes := make([]storage.ShardNode, 0, len(expiredNodes))
+	for _, shardNode := range snapshot.Topology.ClusterView.ShardNodes {
+		_, ok := expiredNodes[shardNode.NodeName]
+		if ok {
+			expiredShardNodes = append(expiredShardNodes, shardNode)
 		}
 	}
 
