@@ -230,7 +230,7 @@ func (a *API) dropNodeShards(req *http.Request) apiFuncResult {
 		}
 	}
 
-	if err := c.GetMetadata().DropShardNode(req.Context(), targetShardNodes); err != nil {
+	if err := c.GetMetadata().DropShardNodes(req.Context(), targetShardNodes); err != nil {
 		log.Error("drop node shards failed", zap.Error(err))
 		return errResult(ErrDropNodeShards, err.Error())
 	}

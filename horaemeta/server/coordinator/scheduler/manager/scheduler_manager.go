@@ -203,7 +203,7 @@ func (callback *schedulerWatchCallback) OnShardRegistered(_ context.Context, _ w
 func (callback *schedulerWatchCallback) OnShardExpired(ctx context.Context, event watch.ShardExpireEvent) error {
 	oldLeader := event.OldLeaderNode
 	shardID := event.ShardID
-	return callback.c.DropShardNode(ctx, []storage.ShardNode{
+	return callback.c.DropShardNodes(ctx, []storage.ShardNode{
 		{
 			ID:        shardID,
 			ShardRole: storage.ShardRoleLeader,
