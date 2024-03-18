@@ -39,6 +39,7 @@ RUN apt update && \
     apt clean
 
 ENV RUST_BACKTRACE 1
+ENV TINI_VERSION v0.19.0
 
 COPY --from=build /horaedb/target/release/horaedb-server /usr/bin/horaedb-server
 RUN chmod +x /usr/bin/horaedb-server
@@ -46,7 +47,7 @@ RUN chmod +x /usr/bin/horaedb-server
 COPY ./docker/entrypoint.sh /entrypoint.sh
 COPY ./docs/minimal.toml /etc/horaedb/horaedb.toml
 
-COPY ./docker/tini /tini
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
 RUN chmod +x /tini
 
 ARG USER=horae
