@@ -46,7 +46,8 @@ RUN chmod +x /usr/bin/horaedb-server
 COPY ./docker/entrypoint.sh /entrypoint.sh
 COPY ./docs/minimal.toml /etc/horaedb/horaedb.toml
 
-COPY ./docker/tini /tini
+ARG TINI_VERSION=v0.19.0
+ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
 RUN chmod +x /tini
 
 ARG USER=horae

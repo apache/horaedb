@@ -10,3 +10,4 @@ integration_tests/dist_query/output
 .tools
 bin
 coverage.txt
+tini
