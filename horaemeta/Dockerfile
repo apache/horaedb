@@ -44,9 +44,8 @@ RUN chmod +x /usr/bin/horaemeta-server
 COPY ./docker/entrypoint.sh /entrypoint.sh
 COPY ./config/example-standalone.toml /etc/horaemeta/horaemeta.toml
 
-ENV TINI_VERSION v0.19.0
+ARG TINI_VERSION v0.19.0
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
-RUN chmod +x /tini
 RUN chmod +x /tini
 
 ARG USER horae
