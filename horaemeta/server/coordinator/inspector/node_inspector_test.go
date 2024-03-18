@@ -61,7 +61,7 @@ func (n *mockClusterMetaDataManipulator) GetClusterSnapshot() metadata.Snapshot 
 	return n.snapshot
 }
 
-func (n *mockClusterMetaDataManipulator) DropShardNode(_ context.Context, shardNodes []storage.ShardNode) error {
+func (n *mockClusterMetaDataManipulator) DropShardNodes(_ context.Context, shardNodes []storage.ShardNode) error {
 	n.lock.Lock()
 	defer n.lock.Unlock()
 

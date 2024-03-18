@@ -51,7 +51,7 @@ type NodeInspector struct {
 // ClusterMetaDataManipulator provides the snapshot for NodeInspector to check and utilities of drop expired shard nodes.
 type ClusterMetaDataManipulator interface {
 	GetClusterSnapshot() metadata.Snapshot
-	DropShardNode(context.Context, []storage.ShardNode) error
+	DropShardNodes(context.Context, []storage.ShardNode) error
 }
 
 func NewNodeInspectorWithInterval(logger *zap.Logger, clusterMetadata ClusterMetaDataManipulator, inspectInterval time.Duration) *NodeInspector {
@@ -69,18 +69,18 @@ func NewNodeInspector(logger *zap.Logger, clusterMetadata ClusterMetaDataManipul
 	return NewNodeInspectorWithInterval(logger, clusterMetadata, defaultInspectInterval)
 }
 
-func (i *NodeInspector) Start(ctx context.Context) error {
+func (ni *NodeInspector) Start(ctx context.Context) error {
 	started := false
-	i.starter.Do(func() {
+	ni.starter.Do(func() {
 		log.Info("node inspector start")
 		started = true
-		i.stopCtx, i.bgJobCancel = context.WithCancel(ctx)
+		ni.stopCtx, ni.bgJobCancel = context.WithCancel(ctx)
 		go func() {
 			for {
-				t := time.NewTimer(i.interval)
+				t := time.NewTimer(ni.interval)
 				select {
-				case <-i.stopCtx.Done():
-					i.logger.Info("node inspector is stopped, cancel the bg inspecting")
+				case <-ni.stopCtx.Done():
+					ni.logger.Info("node inspector is stopped, cancel the bg inspecting")
 					if !t.Stop() {
 						<-t.C
 					}
@@ -88,7 +88,7 @@ func (i *NodeInspector) Start(ctx context.Context) error {
 				case <-t.C:
 				}
 
-				i.inspect(ctx)
+				ni.inspect(ctx)
 			}
 		}()
 	})
@@ -100,25 +100,25 @@ func (i *NodeInspector) Start(ctx context.Context) error {
 	return nil
 }
 
-func (i *NodeInspector) Stop(_ context.Context) error {
-	if i.bgJobCancel != nil {
-		i.bgJobCancel()
+func (ni *NodeInspector) Stop(_ context.Context) error {
+	if ni.bgJobCancel != nil {
+		ni.bgJobCancel()
 		return nil
 	}
 
 	return ErrStopNotStart
 }
 
-func (i *NodeInspector) inspect(ctx context.Context) {
+func (ni *NodeInspector) inspect(ctx context.Context) {
 	// Get latest cluster snapshot.
-	snapshot := i.clusterMetadata.GetClusterSnapshot()
+	snapshot := ni.clusterMetadata.GetClusterSnapshot()
 	expiredShardNodes := findExpiredShardNodes(snapshot)
 	if len(expiredShardNodes) == 0 {
 		return
 	}
 
 	// Try to remove useless data if it exists.
-	if err := i.clusterMetadata.DropShardNode(ctx, expiredShardNodes); err != nil {
+	if err := ni.clusterMetadata.DropShardNodes(ctx, expiredShardNodes); err != nil {
 		log.Error("drop shard node failed", zap.Error(err))
 	}
 }
