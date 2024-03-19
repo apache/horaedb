@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 	"github.com/apache/incubator-horaedb-meta/server/id"
@@ -115,7 +116,7 @@ func (m *managerImpl) ListClusters(_ context.Context) ([]*Cluster, error) {
 func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opts metadata.CreateClusterOpts) (*Cluster, error) {
 	if opts.NodeCount < 1 {
 		log.Error("cluster's nodeCount must > 0", zap.String("clusterName", clusterName))
-		return nil, metadata.ErrCreateCluster.WithCausef("nodeCount must > 0")
+		return nil, metadata.ErrCreateCluster.WithMessagef("nodeCount must > 0")
 	}
 
 	m.lock.Lock()
@@ -123,7 +124,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 
 	cluster, ok := m.clusters[clusterName]
 	if ok {
-		return cluster, metadata.ErrClusterAlreadyExists
+		return cluster, metadata.ErrClusterAlreadyExists.WithMessagef("clusterName:%s", clusterName)
 	}
 
 	clusterID, err := m.allocClusterID(ctx)
@@ -216,7 +217,7 @@ func (m *managerImpl) GetCluster(_ context.Context, clusterName string) (*Cluste
 	if exist {
 		return cluster, nil
 	}
-	return nil, metadata.ErrClusterNotFound
+	return nil, metadata.ErrClusterNotFound.WithMessagef("")
 }
 
 func (m *managerImpl) AllocSchemaID(ctx context.Context, clusterName, schemaName string) (storage.SchemaID, bool, error) {
@@ -296,34 +297,34 @@ func (m *managerImpl) GetTablesByShardIDs(clusterName, _ string, shardIDs []stor
 func (m *managerImpl) DropTable(ctx context.Context, clusterName, schemaName, tableName string) error {
 	cluster, err := m.getCluster(clusterName)
 	if err != nil {
-		return errors.WithMessage(err, "get cluster")
+		return coderr.Wrapf(err, "get cluster")
 	}
 
 	table, ok, err := cluster.metadata.GetTable(schemaName, tableName)
 	if !ok {
-		return metadata.ErrTableNotFound
+		return metadata.ErrTableNotFound.WithMessagef("table:%s", tableName)
 	}
 	if err != nil {
-		return errors.WithMessage(err, "get table")
+		return coderr.Wrapf(err, "failed to get table %s", tableName)
 	}
 
 	getShardNodeResult, err := cluster.metadata.GetShardNodeByTableIDs([]storage.TableID{table.ID})
 	if err != nil {
-		return errors.WithMessage(err, "get shard node by tableID")
+		return coderr.Wrapf(err, "get shard node by tableID, tableName:%s, tableID:%d", tableName, table.ID)
 	}
 
 	if _, ok := getShardNodeResult.ShardNodes[table.ID]; !ok {
-		return metadata.ErrShardNotFound
+		return metadata.ErrShardNotFound.WithMessagef("table's shard, table:%s", tableName)
 	}
 
 	if len(getShardNodeResult.ShardNodes[table.ID]) != 1 || len(getShardNodeResult.Version) != 1 {
-		return metadata.ErrShardNotFound
+		return metadata.ErrShardNotFound.WithMessagef("multiple shards for one table is found, table:%s", tableName)
 	}
 
 	shardID := getShardNodeResult.ShardNodes[table.ID][0].ID
 	version, ok := getShardNodeResult.Version[shardID]
 	if !ok {
-		return metadata.ErrVersionNotFound
+		return metadata.ErrVersionNotFound.WithMessagef("table:%s", tableName)
 	}
 
 	err = cluster.metadata.DropTable(ctx, metadata.DropTableRequest{
@@ -333,7 +334,7 @@ func (m *managerImpl) DropTable(ctx context.Context, clusterName, schemaName, ta
 		LatestVersion: version,
 	})
 	if err != nil {
-		return errors.WithMessage(err, "cluster drop table")
+		return coderr.Wrapf(err, "failed to cluster drop table %s", tableName)
 	}
 
 	return nil
@@ -371,7 +372,7 @@ func (m *managerImpl) GetRegisteredNode(_ context.Context, clusterName string, n
 
 	registeredNode, ok := cluster.metadata.GetRegisteredNodeByName(nodeName)
 	if !ok {
-		return registeredNode, metadata.ErrNodeNotFound.WithCausef("registeredNode is not found, registeredNode:%s, cluster:%s", nodeName, clusterName)
+		return registeredNode, metadata.ErrNodeNotFound.WithMessagef("registeredNode is not found, registeredNode:%s, cluster:%s", nodeName, clusterName)
 	}
 
 	return registeredNode, nil
@@ -392,7 +393,7 @@ func (m *managerImpl) getCluster(clusterName string) (*Cluster, error) {
 	cluster, ok := m.clusters[clusterName]
 	m.lock.RUnlock()
 	if !ok {
-		return nil, metadata.ErrClusterNotFound.WithCausef("cluster name:%s", clusterName)
+		return nil, metadata.ErrClusterNotFound.WithMessagef("cluster name:%s", clusterName)
 	}
 	return cluster, nil
 }

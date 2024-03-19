@@ -258,7 +258,7 @@ func (p *Parser) Parse(arguments []string) (*Config, error) {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil, ErrHelpRequested.WithCause(err)
 		}
-		return nil, ErrInvalidCommandArgs.WithCausef("fail to parse flag arguments:%v, err:%v", arguments, err)
+		return nil, ErrInvalidCommandArgs.WithMessagef("fail to parse flag arguments:%v, err:%v", arguments, err)
 	}
 	return p.cfg, nil
 }

@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"sync"
 
+	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/eventdispatch"
@@ -123,7 +124,7 @@ func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionIn
 
 	shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[params.ShardID]
 	if !exists {
-		return procedure.RelatedVersionInfo{}, errors.WithMessagef(metadata.ErrShardNotFound, "shard not found in topology, shardID:%d", params.ShardID)
+		return procedure.RelatedVersionInfo{}, metadata.ErrShardNotFound.WithMessagef("build related version info, shardID:%d", params.ShardID)
 	}
 	shardWithVersion[params.ShardID] = shardView.Version
 	shardWithVersion[params.NewShardID] = 0
@@ -140,15 +141,12 @@ func validateClusterTopology(topology metadata.Topology, shardID storage.ShardID
 	// Validate cluster state.
 	curState := topology.ClusterView.State
 	if curState != storage.ClusterStateStable {
-		log.Error("cluster state must be stable", zap.Error(metadata.ErrClusterStateInvalid))
-		return metadata.ErrClusterStateInvalid
+		return metadata.ErrClusterStateInvalid.WithMessagef("create procedure on unstable cluster")
 	}
 
 	_, found := topology.ShardViewsMapping[shardID]
-
 	if !found {
-		log.Error("shard not found", zap.Uint64("shardID", uint64(shardID)), zap.Error(metadata.ErrShardNotFound))
-		return metadata.ErrShardNotFound
+		return metadata.ErrShardNotFound.WithMessagef("create procedure on non-existent shard, shardID:%d", shardID)
 	}
 
 	found = false
@@ -158,8 +156,7 @@ func validateClusterTopology(topology metadata.Topology, shardID storage.ShardID
 		}
 	}
 	if !found {
-		log.Error("shard leader not found", zap.Error(procedure.ErrShardLeaderNotFound))
-		return procedure.ErrShardLeaderNotFound
+		return procedure.ErrShardLeaderNotFound.WithMessagef("create procedure on a shard without leader, shardID:%d", shardID)
 	}
 	return nil
 }
@@ -259,7 +256,7 @@ func (p *Procedure) updateStateWithLock(state procedure.State) {
 func createShardViewCallback(event *fsm.Event) {
 	req, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		procedure.CancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, coderr.Wrapf(err, "get request from event"))
 		return
 	}
 
@@ -267,7 +264,7 @@ func createShardViewCallback(event *fsm.Event) {
 		ShardID: req.p.params.NewShardID,
 		Tables:  []storage.TableID{},
 	}}); err != nil {
-		procedure.CancelEventWithLog(event, err, "create shard views")
+		procedure.CancelEventWithLog(event, coderr.Wrapf(err, "create shard views"))
 		return
 	}
 }
@@ -275,7 +272,7 @@ func createShardViewCallback(event *fsm.Event) {
 func updateShardTablesCallback(event *fsm.Event) {
 	request, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		procedure.CancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, coderr.Wrapf(err, "get request from event"))
 		return
 	}
 
@@ -285,7 +282,7 @@ func updateShardTablesCallback(event *fsm.Event) {
 		OldShardID: request.p.params.ShardID,
 		NewShardID: request.p.params.NewShardID,
 	}); err != nil {
-		procedure.CancelEventWithLog(event, err, "update shard tables")
+		procedure.CancelEventWithLog(event, coderr.Wrapf(err, "update shard tables"))
 		return
 	}
 }
@@ -293,7 +290,7 @@ func updateShardTablesCallback(event *fsm.Event) {
 func openShardCallback(event *fsm.Event) {
 	request, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		procedure.CancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, coderr.Wrapf(err, "get request from event"))
 		return
 	}
 	ctx := request.ctx
@@ -307,7 +304,7 @@ func openShardCallback(event *fsm.Event) {
 			Status:  storage.ShardStatusUnknown,
 		},
 	}); err != nil {
-		procedure.CancelEventWithLog(event, err, "open shard failed")
+		procedure.CancelEventWithLog(event, coderr.Wrapf(err, "open shard failed"))
 		return
 	}
 }
@@ -315,7 +312,7 @@ func openShardCallback(event *fsm.Event) {
 func finishCallback(event *fsm.Event) {
 	request, err := procedure.GetRequestFromEvent[callbackRequest](event)
 	if err != nil {
-		procedure.CancelEventWithLog(event, err, "get request from event")
+		procedure.CancelEventWithLog(event, coderr.Wrapf(err, "get request from event"))
 		return
 	}
 	log.Info("split procedure finish", zap.Uint32("shardID", uint32(request.p.params.ShardID)), zap.Uint32("newShardID", uint32(request.p.params.NewShardID)))
@@ -355,7 +352,7 @@ func (p *Procedure) convertToMeta() (procedure.Meta, error) {
 	rawDataBytes, err := json.Marshal(rawData)
 	if err != nil {
 		var emptyMeta procedure.Meta
-		return emptyMeta, procedure.ErrEncodeRawData.WithCausef("marshal raw data, procedureID:%v, err:%v", p.params.ShardID, err)
+		return emptyMeta, procedure.ErrEncodeRawData.WithMessagef("decode procedure.Meta, procedureID:%v, err:%v", p.params.ShardID, err)
 	}
 
 	meta := procedure.Meta{
