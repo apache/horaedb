@@ -87,12 +87,13 @@ func BuildCreateTableRequest(table storage.Table, shardVersionUpdate metadata.Sh
 }
 
 func GetTableMetadata(clusterMetadata *metadata.ClusterMetadata, schemaName, tableName string) (storage.Table, error) {
+	var emptyTable storage.Table
 	table, exists, err := clusterMetadata.GetTable(schemaName, tableName)
 	if err != nil {
-		return storage.Table{}, err
+		return emptyTable, err
 	}
 	if !exists {
-		return storage.Table{}, procedure.ErrTableNotExists.WithMessagef("get table metadata, table:%s", tableName)
+		return emptyTable, procedure.ErrTableNotExists.WithMessagef("get table metadata, table:%s", tableName)
 	}
 	return table, nil
 }

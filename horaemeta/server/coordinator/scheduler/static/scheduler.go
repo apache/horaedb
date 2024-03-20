@@ -163,7 +163,8 @@ func findOnlineNodeByName(nodeName string, nodes []metadata.RegisteredNode) (met
 		}
 	}
 
-	return metadata.RegisteredNode{}, metadata.ErrNodeNotFound.WithMessagef("node:%s not found in topology", nodeName)
+	var node metadata.RegisteredNode
+	return node, metadata.ErrNodeNotFound.WithMessagef("node:%s not found in topology", nodeName)
 }
 
 func containsShard(shardInfos []metadata.ShardInfo, shardID storage.ShardID) bool {

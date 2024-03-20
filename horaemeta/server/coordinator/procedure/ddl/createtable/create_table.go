@@ -248,15 +248,19 @@ func (p *Procedure) RelatedVersionInfo() procedure.RelatedVersionInfo {
 func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionInfo, error) {
 	shardWithVersion := make(map[storage.ShardID]uint64, 1)
 	shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[params.ShardID]
+
+	var info procedure.RelatedVersionInfo
 	if !exists {
-		return procedure.RelatedVersionInfo{}, metadata.ErrShardNotFound.WithMessagef("build related version info, shardID:%d", params.ShardID)
+		return info, metadata.ErrShardNotFound.WithMessagef("build related version info, shardID:%d", params.ShardID)
 	}
+
 	shardWithVersion[params.ShardID] = shardView.Version
-	return procedure.RelatedVersionInfo{
+	info = procedure.RelatedVersionInfo{
 		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardWithVersion,
 		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
-	}, nil
+	}
+	return info, nil
 }
 
 func (p *Procedure) Priority() procedure.Priority {

@@ -203,15 +203,19 @@ func NewDropTableProcedure(params ProcedureParams) (procedure.Procedure, bool, e
 func buildRelatedVersionInfo(params ProcedureParams, shardID storage.ShardID) (procedure.RelatedVersionInfo, error) {
 	shardWithVersion := make(map[storage.ShardID]uint64, 1)
 	shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[shardID]
+
+	var info procedure.RelatedVersionInfo
 	if !exists {
-		return procedure.RelatedVersionInfo{}, metadata.ErrShardNotFound.WithMessagef("build related version info, shardID:%d", shardID)
+		return info, metadata.ErrShardNotFound.WithMessagef("build related version info, shardID:%d", shardID)
 	}
+
 	shardWithVersion[shardID] = shardView.Version
-	return procedure.RelatedVersionInfo{
+	info = procedure.RelatedVersionInfo{
 		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardWithVersion,
 		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
-	}, nil
+	}
+	return info, nil
 }
 
 func findShardID(tableID storage.TableID, params ProcedureParams) (storage.ShardID, error) {
@@ -265,7 +269,7 @@ func (p *Procedure) Start(ctx context.Context) error {
 		err1 := p.fsm.Event(eventFailed, req)
 		p.updateState(procedure.StateFailed)
 		if err1 != nil {
-			err = errors.WithMessagef(err, "send eventFailed, err:%v", err1)
+			err = coderr.Wrapf(err, "send eventFailed, err:%v", err1)
 		}
 		return errors.WithMessage(err, "send eventPrepare")
 	}

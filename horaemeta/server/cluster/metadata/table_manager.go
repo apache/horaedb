@@ -213,7 +213,7 @@ func (m *TableManagerImpl) DropTable(ctx context.Context, schemaName string, tab
 		TableName: tableName,
 	})
 	if err != nil {
-		return errors.WithMessagef(err, "storage delete table")
+		return coderr.Wrapf(err, "storage delete table")
 	}
 
 	tables := m.schemaTables[schema.ID]

@@ -128,7 +128,7 @@ func (a *AllocatorImpl) firstDoRebaseLocked(ctx context.Context) error {
 		Then(opPutEnd).
 		Commit()
 	if err != nil {
-		return errors.WithMessagef(err, "put end id failed, key:%s", a.key)
+		return coderr.Wrapf(err, "put end id failed, key:%s", a.key)
 	} else if !resp.Succeeded {
 		return ErrTxnPutEndID.WithMessagef("txn put end id failed, key is exist, key:%s, resp:%v", a.key, resp)
 	}
@@ -154,7 +154,7 @@ func (a *AllocatorImpl) doRebaseLocked(ctx context.Context, currEnd uint64) erro
 		Then(opPutEnd).
 		Commit()
 	if err != nil {
-		return errors.WithMessagef(err, "put end id failed, key:%s, old value:%d, new value:%d", a.key, currEnd, newEnd)
+		return coderr.Wrapf(err, "put end id failed, key:%s, old value:%d, new value:%d", a.key, currEnd, newEnd)
 	} else if !resp.Succeeded {
 		return ErrTxnPutEndID.WithMessagef("txn put end id failed, endEquals failed, key:%s, value:%d, resp:%v", a.key, currEnd, resp)
 	}

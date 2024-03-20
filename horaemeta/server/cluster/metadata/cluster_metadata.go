@@ -287,30 +287,31 @@ func (c *ClusterMetadata) GetTableShard(ctx context.Context, table storage.Table
 func (c *ClusterMetadata) CreateTableMetadata(ctx context.Context, request CreateTableMetadataRequest) (CreateTableMetadataResult, error) {
 	c.logger.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
+	var createRes CreateTableMetadataResult
 	if !c.ensureClusterStable() {
-		return CreateTableMetadataResult{}, ErrClusterStateInvalid.WithMessagef("create tables on an unstable cluster:%s", c.metaData.Name)
+		return createRes, ErrClusterStateInvalid.WithMessagef("create tables on an unstable cluster:%s", c.metaData.Name)
 	}
 
 	_, exists, err := c.tableManager.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
-		return CreateTableMetadataResult{}, err
+		return createRes, err
 	}
 	if exists {
-		return CreateTableMetadataResult{}, ErrTableAlreadyExists.WithMessagef("table to create already exists, table:%s", request.TableName)
+		return createRes, ErrTableAlreadyExists.WithMessagef("table to create already exists, table:%s", request.TableName)
 	}
 
 	// Create table in table manager.
 	table, err := c.tableManager.CreateTable(ctx, request.SchemaName, request.TableName, request.PartitionInfo)
 	if err != nil {
-		return CreateTableMetadataResult{}, errors.WithMessage(err, "table manager create table")
+		return createRes, errors.WithMessage(err, "table manager create table")
 	}
 
 	c.logger.Info("create table metadata succeed", zap.String("cluster", c.Name()), zap.String("table", fmt.Sprintf("%+v", table)))
 
-	res := CreateTableMetadataResult{
+	createRes = CreateTableMetadataResult{
 		Table: table,
 	}
-	return res, nil
+	return createRes, nil
 }
 
 func (c *ClusterMetadata) AddTableTopology(ctx context.Context, shardVersionUpdate ShardVersionUpdate, table storage.Table) error {
@@ -359,39 +360,40 @@ func (c *ClusterMetadata) DropTableMetadata(ctx context.Context, schemaName, tab
 func (c *ClusterMetadata) CreateTable(ctx context.Context, request CreateTableRequest) (CreateTableResult, error) {
 	c.logger.Info("create table start", zap.String("cluster", c.Name()), zap.String("schemaName", request.SchemaName), zap.String("tableName", request.TableName))
 
+	var createRes CreateTableResult
 	if !c.ensureClusterStable() {
-		return CreateTableResult{}, ErrClusterStateInvalid.WithMessagef("create table on an unstable cluster, table:%s", request.TableName)
+		return createRes, ErrClusterStateInvalid.WithMessagef("create table on an unstable cluster, table:%s", request.TableName)
 	}
 
 	_, exists, err := c.tableManager.GetTable(request.SchemaName, request.TableName)
 	if err != nil {
-		return CreateTableResult{}, err
+		return createRes, err
 	}
 	if exists {
-		return CreateTableResult{}, ErrTableAlreadyExists.WithMessagef("create an tableName:%s", request.TableName)
+		return createRes, ErrTableAlreadyExists.WithMessagef("create an tableName:%s", request.TableName)
 	}
 
 	// Create table in table manager.
 	table, err := c.tableManager.CreateTable(ctx, request.SchemaName, request.TableName, request.PartitionInfo)
 	if err != nil {
-		return CreateTableResult{}, coderr.Wrapf(err, "table manager fails to create table:%s", request.TableName)
+		return createRes, coderr.Wrapf(err, "table manager fails to create table:%s", request.TableName)
 	}
 
 	// Add table to topology manager.
 	err = c.topologyManager.AddTable(ctx, request.ShardID, request.LatestVersion, []storage.Table{table})
 	if err != nil {
-		return CreateTableResult{}, coderr.Wrapf(err, "topology manager add table failed when creating table:%s", request.TableName)
+		return createRes, coderr.Wrapf(err, "topology manager add table failed when creating table:%s", request.TableName)
 	}
 
-	ret := CreateTableResult{
+	createRes = CreateTableResult{
 		Table: table,
 		ShardVersionUpdate: ShardVersionUpdate{
 			ShardID:       request.ShardID,
 			LatestVersion: request.LatestVersion,
 		},
 	}
-	c.logger.Info("create table succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", ret)))
-	return ret, nil
+	c.logger.Info("create table succeed", zap.String("cluster", c.Name()), zap.String("result", fmt.Sprintf("%+v", createRes)))
+	return createRes, nil
 }
 
 func (c *ClusterMetadata) GetTableAssignedShard(ctx context.Context, schemaName string, tableName string) (storage.ShardID, bool, error) {

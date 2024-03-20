@@ -114,11 +114,13 @@ func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionIn
 			tableShardMapping[tableID] = shardID
 		}
 	}
+
+	var relatedVersionInfo procedure.RelatedVersionInfo
 	shardViewWithVersion := make(map[storage.ShardID]uint64, 0)
 	for _, subTableName := range params.SourceReq.PartitionTableInfo.GetSubTableNames() {
 		table, exists, err := params.ClusterMetadata.GetTable(params.SourceReq.GetSchemaName(), subTableName)
 		if err != nil {
-			return procedure.RelatedVersionInfo{}, errors.WithMessagef(err, "get sub table, tableName:%s", subTableName)
+			return relatedVersionInfo, coderr.Wrapf(err, "get sub table, tableName:%s", subTableName)
 		}
 		if !exists {
 			continue
@@ -129,12 +131,12 @@ func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionIn
 		}
 		shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[shardID]
 		if !exists {
-			return procedure.RelatedVersionInfo{}, metadata.ErrShardNotFound.WithMessagef("shard not found in topology, shardID:%d", shardID)
+			return relatedVersionInfo, metadata.ErrShardNotFound.WithMessagef("shard not found in topology, shardID:%d", shardID)
 		}
 		shardViewWithVersion[shardID] = shardView.Version
 	}
 
-	relatedVersionInfo := procedure.RelatedVersionInfo{
+	relatedVersionInfo = procedure.RelatedVersionInfo{
 		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardViewWithVersion,
 		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
@@ -318,7 +320,7 @@ func dropDataTablesCallback(event *fsm.Event) {
 		shardVersionUpdate, shardExists, err := ddl.BuildShardVersionUpdate(table, params.ClusterMetadata, shardVersions)
 		if err != nil {
 			log.Error("get shard version by table", zap.String("tableName", tableName), zap.Error(err))
-			procedure.CancelEventWithLog(event, coderr.Wrapf(err, "build shard version update", tableName))
+			procedure.CancelEventWithLog(event, coderr.Wrapf(err, "build shard version update, table:%s", tableName))
 			return
 		}
 		// If the shard corresponding to this table does not exist, it means that the actual table creation failed.
@@ -395,7 +397,7 @@ func dispatchDropDataTable(req *callbackRequest, dispatch eventdispatch.Dispatch
 	for _, tableName := range tableNames {
 		table, err := ddl.GetTableMetadata(clusterMetadata, req.schemaName(), tableName)
 		if err != nil {
-			return errors.WithMessagef(err, "get table metadata, table:%s", tableName)
+			return coderr.Wrapf(err, "get table metadata, table:%s", tableName)
 		}
 
 		shardVersionUpdate := metadata.ShardVersionUpdate{
@@ -405,7 +407,7 @@ func dispatchDropDataTable(req *callbackRequest, dispatch eventdispatch.Dispatch
 
 		latestShardVersion, err := ddl.DropTableOnShard(req.ctx, clusterMetadata, dispatch, schema, table, shardVersionUpdate)
 		if err != nil {
-			return errors.WithMessagef(err, "drop table, table:%s", tableName)
+			return coderr.Wrapf(err, "drop table, table:%s", tableName)
 		}
 
 		err = clusterMetadata.DropTable(req.ctx, metadata.DropTableRequest{
@@ -415,7 +417,7 @@ func dispatchDropDataTable(req *callbackRequest, dispatch eventdispatch.Dispatch
 			LatestVersion: latestShardVersion,
 		})
 		if err != nil {
-			return errors.WithMessagef(err, "drop table, table:%s", tableName)
+			return coderr.Wrapf(err, "drop table, table:%s", tableName)
 		}
 
 		shardVersion++

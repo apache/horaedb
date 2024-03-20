@@ -130,7 +130,7 @@ func (m *managerImpl) CreateCluster(ctx context.Context, clusterName string, opt
 	clusterID, err := m.allocClusterID(ctx)
 	if err != nil {
 		log.Error("fail to alloc cluster id", zap.Error(err), zap.String("clusterName", clusterName))
-		return nil, errors.WithMessagef(err, "cluster manager CreateCluster, clusterName:%s", clusterName)
+		return nil, coderr.Wrapf(err, "cluster manager CreateCluster, clusterName:%s", clusterName)
 	}
 
 	createTime := time.Now().UnixMilli()
@@ -401,7 +401,7 @@ func (m *managerImpl) getCluster(clusterName string) (*Cluster, error) {
 func (m *managerImpl) allocClusterID(ctx context.Context) (storage.ClusterID, error) {
 	ID, err := m.alloc.Alloc(ctx)
 	if err != nil {
-		return 0, errors.WithMessagef(err, "alloc cluster id")
+		return 0, coderr.Wrapf(err, "alloc cluster id")
 	}
 	return storage.ClusterID(ID), nil
 }
@@ -445,7 +445,7 @@ func (m *managerImpl) Start(ctx context.Context) error {
 				},
 			}
 			if err := m.storage.UpdateCluster(ctx, req); err != nil {
-				return errors.WithMessagef(err, "update cluster topology type failed, clusterName:%s", clusterMetadata.Name())
+				return coderr.Wrapf(err, "update cluster topology type failed, clusterName:%s", clusterMetadata.Name())
 			}
 			log.Info("update cluster topology type successfully", zap.String("request", fmt.Sprintf("%v", req)))
 			if err := clusterMetadata.LoadMetadata(ctx); err != nil {

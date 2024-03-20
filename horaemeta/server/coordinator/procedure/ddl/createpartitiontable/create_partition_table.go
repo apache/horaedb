@@ -113,19 +113,22 @@ func NewProcedure(params ProcedureParams) (procedure.Procedure, error) {
 
 func buildRelatedVersionInfo(params ProcedureParams) (procedure.RelatedVersionInfo, error) {
 	shardWithVersion := make(map[storage.ShardID]uint64, len(params.SubTablesShards))
+
+	var info procedure.RelatedVersionInfo
 	for _, subTableShard := range params.SubTablesShards {
 		shardView, exists := params.ClusterSnapshot.Topology.ShardViewsMapping[subTableShard.ShardInfo.ID]
 		if !exists {
-			return procedure.RelatedVersionInfo{}, metadata.ErrShardNotFound.WithMessagef("build related version info, shardID:%d", subTableShard.ShardInfo.ID)
+			return info, metadata.ErrShardNotFound.WithMessagef("build related version info, shardID:%d", subTableShard.ShardInfo.ID)
 		}
 		shardWithVersion[shardView.ShardID] = shardView.Version
 	}
 
-	return procedure.RelatedVersionInfo{
+	info = procedure.RelatedVersionInfo{
 		ClusterID:        params.ClusterSnapshot.Topology.ClusterView.ClusterID,
 		ShardWithVersion: shardWithVersion,
 		ClusterVersion:   params.ClusterSnapshot.Topology.ClusterView.Version,
-	}, nil
+	}
+	return info, nil
 }
 
 func (p *Procedure) ID() uint64 {
