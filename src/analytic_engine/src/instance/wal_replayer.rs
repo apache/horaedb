@@ -182,13 +182,28 @@ impl Replay for TableBasedReplay {
         debug!("Replay wal logs on table mode, context:{context}, tables:{table_datas:?}",);
 
         let mut failed_tables = HashMap::new();
-        let read_ctx = ReadContext {
+        let read_ctx = Arc::new(ReadContext {
             batch_size: context.wal_replay_batch_size,
             ..Default::default()
-        };
-        for table_data in table_datas {
-            let table_id = table_data.id;
-            if let Err(e) = Self::recover_table_logs(context, table_data, &read_ctx).await {
+        });
+
+        let mut tasks = futures::stream::iter(
+            table_datas
+                .iter()
+                .map(|table_data| {
+                    let table_id = table_data.id;
+                    let read_ctx = read_ctx.clone();
+                    async move {
+                        let ret = Self::recover_table_logs(context, table_data, &read_ctx).await;
+                        (table_id, ret)
+                    }
+                })
+                .collect::<Vec<_>>(),
+        )
+        .buffer_unordered(20);
+        while let Some((table_id, ret)) = tasks.next().await {
+            if let Err(e) = ret {
+                // If occur error, mark this table as failed and store the cause.
                 failed_tables.insert(table_id, e);
             }
         }
