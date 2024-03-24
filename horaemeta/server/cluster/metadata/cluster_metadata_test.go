@@ -213,7 +213,7 @@ func testShardOperation(ctx context.Context, re *require.Assertions, m *metadata
 	_, err = m.GetShardNodeByTableIDs([]storage.TableID{})
 	re.NoError(err)
 
-	err = m.DropShardNode(ctx, []storage.ShardNode{{
+	err = m.DropShardNodes(ctx, []storage.ShardNode{{
 		ID:        shardNodeResult.NodeShards[0].ShardNode.ID,
 		ShardRole: shardNodeResult.NodeShards[0].ShardNode.ShardRole,
 		NodeName:  shardNodeResult.NodeShards[0].ShardNode.NodeName,

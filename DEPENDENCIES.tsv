@@ -1,0 +1,726 @@
+crate	0BSD	Apache-2.0	Apache-2.0 WITH LLVM-exception	BSD-2-Clause	BSD-3-Clause	BSL-1.0	CC0-1.0	CDDL-1.0	ISC	MIT	MIT-0	MPL-2.0	MulanPSL-2.0	Unicode-DFS-2016	Unlicense	Zlib	Unlicensed
+addr2line@0.19.0		X								X						
+adler@1.0.2	X	X								X						
+ahash@0.7.6		X								X						
+ahash@0.8.3		X								X						
+aho-corasick@1.0.1										X					X	
+alloc-no-stdlib@2.0.4					X											
+alloc-stdlib@0.2.2					X											
+alloc_tracker@2.0.0		X														
+allocator-api2@0.2.16		X								X						
+analytic_engine@2.0.0		X														
+android-tzdata@0.1.1		X								X						
+android_system_properties@0.1.5		X								X						
+anes@0.1.6		X								X						
+ansi_term@0.12.1										X						
+anstream@0.6.13		X								X						
+anstyle@1.0.1		X								X						
+anstyle-parse@0.2.3		X								X						
+anstyle-query@1.0.2		X								X						
+anstyle-wincon@3.0.2		X								X						
+anyhow@1.0.70		X								X						
+arc-swap@0.4.8		X								X						
+arc-swap@1.6.0		X								X						
+arena@2.0.0		X														
+array-init@2.1.0		X								X						
+arrayref@0.3.7				X												
+arrayvec@0.7.2		X								X						
+arrow@38.0.0		X														
+arrow@49.0.0		X														
+arrow-arith@38.0.0		X														
+arrow-arith@49.0.0		X														
+arrow-array@38.0.0		X														
+arrow-array@49.0.0		X														
+arrow-buffer@38.0.0		X														
+arrow-buffer@49.0.0		X														
+arrow-cast@38.0.0		X														
+arrow-cast@49.0.0		X														
+arrow-csv@38.0.0		X														
+arrow-csv@49.0.0		X														
+arrow-data@38.0.0		X														
+arrow-data@49.0.0		X														
+arrow-ipc@38.0.0		X														
+arrow-ipc@49.0.0		X														
+arrow-json@38.0.0		X														
+arrow-json@49.0.0		X														
+arrow-ord@38.0.0		X														
+arrow-ord@49.0.0		X														
+arrow-row@38.0.0		X														
+arrow-row@49.0.0		X														
+arrow-schema@38.0.0		X														
+arrow-schema@49.0.0		X														
+arrow-select@38.0.0		X														
+arrow-select@49.0.0		X														
+arrow-string@38.0.0		X														
+arrow-string@49.0.0		X														
+arrow_ext@2.0.0		X														
+arrow_util@0.1.0		X								X						
+async-compression@0.4.1		X								X						
+async-io@1.13.0		X								X						
+async-lock@2.7.0		X								X						
+async-recursion@1.0.4		X								X						
+async-stream@0.3.4										X						
+async-stream-impl@0.3.4										X						
+async-trait@0.1.77		X								X						
+atomic_enum@0.2.0										X						
+atty@0.2.14										X						
+autocfg@1.1.0		X								X						
+axum@0.6.12										X						
+axum-core@0.3.3										X						
+backtrace@0.3.67		X								X						
+base64@0.13.1		X								X						
+base64@0.21.0		X								X						
+bcder@0.7.3					X											
+benchmarks@2.0.0		X														
+bigdecimal@0.3.0		X								X						
+bincode@1.3.3										X						
+bindgen@0.59.2					X											
+bindgen@0.65.1					X											
+bitflags@1.3.2		X								X						
+bitflags@2.3.3		X								X						
+bitvec@1.0.1										X						
+blake2@0.10.6		X								X						
+blake3@1.3.3		X					X									
+block-buffer@0.10.4		X								X						
+brotli@3.3.4					X					X						
+brotli-decompressor@2.3.4					X					X						
+buf_redux@0.8.4		X								X						
+bufstream@0.1.4		X								X						
+bumpalo@3.12.0		X								X						
+bytecount@0.6.3		X								X						
+bytemuck@1.13.1		X								X						X
+byteorder@1.4.3										X					X	
+bytes@1.5.0										X						
+bytes_ext@2.0.0		X														
+bzip2@0.4.4		X								X						
+bzip2-sys@0.1.11+1.0.8		X								X						
+camino@1.1.4		X								X						
+cargo-platform@0.1.2		X								X						
+cargo_metadata@0.14.2										X						
+cast@0.3.0		X								X						
+catalog@2.0.0		X														
+catalog_impls@2.0.0		X														
+cc@1.0.83		X								X						
+cexpr@0.6.0		X								X						
+cfg-if@0.1.10		X								X						
+cfg-if@1.0.0		X								X						
+chrono@0.4.31		X								X						
+chrono-tz@0.8.1		X								X						
+chrono-tz-build@0.1.0		X								X						
+ciborium@0.2.1		X														
+ciborium-io@0.2.1		X														
+ciborium-ll@0.2.1		X														
+clang-sys@1.6.1		X														
+clap@4.5.1		X								X						
+clap_builder@4.5.1		X								X						
+clap_derive@4.5.0		X								X						
+clap_lex@0.7.0		X								X						
+clru@0.6.1										X						
+cluster@2.0.0		X														
+cmake@0.1.50		X								X						
+codec@2.0.0		X														
+codespan-reporting@0.11.1		X														
+colorchoice@1.0.0		X								X						
+comfy-table@6.1.4										X						
+comfy-table@7.0.1										X						
+common_types@2.0.0		X														
+concurrent-queue@2.1.0		X								X						
+console-api@0.5.0										X						
+console-subscriber@0.1.9										X						
+const-oid@0.9.4		X								X						
+constant_time_eq@0.2.5		X					X				X					
+core-foundation-sys@0.8.3		X								X						
+cpp_demangle@0.4.2		X								X						
+cpufeatures@0.2.6		X								X						
+crc@3.0.1		X								X						
+crc-catalog@2.2.0		X								X						
+crc32c@0.6.3		X								X						
+crc32fast@1.3.2		X								X						
+criterion@0.5.1		X								X						
+criterion-plot@0.5.0		X								X						
+crossbeam@0.8.2		X								X						
+crossbeam-channel@0.5.7		X								X						
+crossbeam-deque@0.8.3		X								X						
+crossbeam-epoch@0.9.14		X								X						
+crossbeam-queue@0.3.8		X								X						
+crossbeam-utils@0.8.15		X								X						
+crunchy@0.2.2										X						
+crypto-common@0.1.6		X								X						
+csv@1.2.1										X					X	
+csv-core@0.1.10										X					X	
+cxx@1.0.94		X								X						
+cxx-build@1.0.94		X								X						
+cxxbridge-flags@1.0.94		X								X						
+cxxbridge-macro@1.0.94		X								X						
+darling@0.14.4										X						
+darling@0.20.3										X						
+darling_core@0.14.4										X						
+darling_core@0.20.3										X						
+darling_macro@0.14.4										X						
+darling_macro@0.20.3										X						
+dashmap@5.5.3										X						
+datafusion@33.0.0		X														
+datafusion-common@33.0.0		X														
+datafusion-execution@33.0.0		X														
+datafusion-expr@33.0.0		X														
+datafusion-optimizer@33.0.0		X														
+datafusion-physical-expr@33.0.0		X														
+datafusion-physical-plan@33.0.0		X														
+datafusion-proto@33.0.0		X														
+datafusion-sql@33.0.0		X														
+datafusion_util@0.1.0		X								X						
+debugid@0.8.0		X														
+der@0.7.8		X								X						
+derive-new@0.6.0										X						
+derive_builder@0.11.2		X								X						
+derive_builder@0.12.0		X								X						
+derive_builder_core@0.11.2		X								X						
+derive_builder_core@0.12.0		X								X						
+derive_builder_macro@0.11.2		X								X						
+derive_builder_macro@0.12.0		X								X						
+derive_utils@0.13.2		X								X						
+df_engine_extensions@2.0.0		X														
+df_operator@2.0.0		X														
+digest@0.10.7		X								X						
+dirs-next@2.0.0		X								X						
+dirs-sys-next@0.1.2		X								X						
+doc-comment@0.3.3										X						
+dotenvy@0.15.7										X						
+dtoa@1.0.6		X								X						
+either@1.8.1		X								X						
+encoding_rs@0.8.32		X			X					X						
+env_logger@0.6.2		X								X						
+equivalent@1.0.1		X								X						
+error-chain@0.12.4		X								X						
+etcd-client@0.10.4										X						
+event-listener@2.5.3		X								X						
+fallible-iterator@0.2.0		X								X						
+fastrand@1.9.0		X								X						
+findshlibs@0.10.2		X								X						
+fixedbitset@0.4.2		X								X						
+flatbuffers@23.1.21		X														
+flate2@1.0.25		X								X						
+fnv@1.0.7		X								X						
+form_urlencoded@1.1.0		X								X						
+frunk@0.4.1										X						
+frunk_core@0.4.1										X						
+frunk_derives@0.4.1										X						
+frunk_proc_macro_helpers@0.1.1										X						
+frunk_proc_macros@0.1.1										X						
+frunk_proc_macros_impl@0.1.1										X						
+fs_extra@1.3.0										X						
+fuchsia-cprng@0.1.1					X											
+funty@2.0.0										X						
+future_ext@2.0.0		X														
+futures@0.1.31		X								X						
+futures@0.3.28		X								X						
+futures-channel@0.3.28		X								X						
+futures-core@0.3.28		X								X						
+futures-cpupool@0.1.8		X								X						
+futures-executor@0.3.28		X								X						
+futures-io@0.3.28		X								X						
+futures-lite@1.12.0		X								X						
+futures-macro@0.3.28		X								X						
+futures-sink@0.3.28		X								X						
+futures-task@0.3.28		X								X						
+futures-util@0.3.28		X								X						
+gcc@0.3.55		X								X						
+generated_types@0.1.0		X								X						
+generic-array@0.14.7										X						
+generic_error@2.0.0		X														
+getrandom@0.2.12		X								X						
+gimli@0.27.2		X								X						
+glob@0.3.1		X								X						
+h2@0.3.24										X						
+half@1.8.2		X								X						
+half@2.2.1		X								X						
+hash_ext@2.0.0		X														
+hashbrown@0.12.3		X								X						
+hashbrown@0.13.2		X								X						
+hashbrown@0.14.0		X								X						
+hdrhistogram@7.5.2		X								X						
+headers@0.3.8										X						
+headers-core@0.2.0										X						
+heck@0.4.1		X								X						
+hermit-abi@0.1.19		X								X						
+hermit-abi@0.2.6		X								X						
+hermit-abi@0.3.1		X								X						
+hex@0.4.3		X								X						
+hmac@0.12.1		X								X						
+horaedb@2.0.0		X														
+horaedb-client@1.0.2		X														
+horaedb-test@2.0.0		X														
+horaedbproto@1.0.24		X														
+horaedbproto@2.0.0		X														
+http@0.2.9		X								X						
+http-body@0.4.5										X						
+httparse@1.8.0		X								X						
+httpdate@1.0.2		X								X						
+humantime@1.3.0		X								X						
+humantime@2.1.0		X								X						
+hyper@0.14.25										X						
+hyper-rustls@0.23.2		X							X	X						
+hyper-timeout@0.4.1		X								X						
+hyperloglog@1.0.2									X							
+iana-time-zone@0.1.55		X								X						
+iana-time-zone-haiku@0.1.1		X								X						
+id_allocator@2.0.0		X														
+ident_case@1.0.1		X								X						
+idna@0.3.0		X								X						
+indexmap@1.9.3		X								X						
+indexmap@2.0.0		X								X						
+inferno@0.11.15								X								
+influxdb-line-protocol@1.0.0		X								X						
+influxdb_influxql_parser@0.1.0		X								X						
+instant@0.1.12					X											
+integer-encoding@3.0.4										X						
+interpreters@2.0.0		X														
+io-enum@1.1.1		X								X						
+io-lifetimes@1.0.9		X	X							X						
+iox_query@0.1.0		X								X						
+iox_query_influxql@0.1.0		X								X						
+ipnet@2.7.2		X								X						
+is-terminal@0.4.6										X						
+itertools@0.10.5		X								X						
+itertools@0.11.0		X								X						
+itertools@0.12.0		X								X						
+itoa@1.0.6		X								X						
+jemalloc-ctl@0.3.3		X								X						
+jemalloc-sys@0.3.2		X								X						
+jemallocator@0.3.2		X								X						
+jobserver@0.1.26		X								X						
+js-sys@0.3.61		X								X						
+lazy_static@1.4.0		X								X						
+lazycell@1.3.0		X								X						
+lexical@6.1.1		X								X						
+lexical-core@0.8.5		X								X						
+lexical-parse-float@0.8.5		X								X						
+lexical-parse-integer@0.8.6		X								X						
+lexical-util@0.8.5		X								X						
+lexical-write-float@0.8.5		X								X						
+lexical-write-integer@0.8.5		X								X						
+libc@0.2.152		X								X						
+libloading@0.7.4									X							
+libm@0.2.6		X								X						
+librocksdb_sys@0.1.0																	X
+libtitan_sys@0.0.1																	X
+libz-sys@1.1.8		X								X						
+link-cplusplus@1.0.8		X								X						
+linux-raw-sys@0.3.1		X	X							X						
+local-ip-address@0.5.4		X								X						
+lock_api@0.4.11		X								X						
+log@0.4.17		X								X						
+logger@2.0.0		X														
+lru@0.10.1										X						
+lru@0.7.8										X						
+lz4@1.24.0										X						
+lz4-sys@1.9.4										X						
+lz4_flex@0.11.1										X						
+lzma-sys@0.1.20		X								X						
+mach@0.3.2				X												
+macros@2.0.0		X														
+matchers@0.1.0										X						
+matchit@0.7.0										X						
+md-5@0.10.5		X								X						
+md5@0.7.0		X								X						
+memchr@2.5.0										X					X	
+memmap2@0.5.10		X								X						
+memoffset@0.8.0										X						
+message_queue@2.0.0		X														
+meta_client@2.0.0		X														
+metric_ext@2.0.0		X														
+mime@0.3.17		X								X						
+mime_guess@2.0.4										X						
+minimal-lexical@0.2.1		X								X						
+miniz_oxide@0.6.2		X								X						X
+mio@0.8.11										X						
+moka@0.10.1		X								X						
+multimap@0.8.3		X								X						
+multipart@0.18.0		X								X						
+murmur2@0.1.0		X														
+murmur3@0.4.1		X								X						
+mysql@24.0.0		X								X						
+mysql-common-derive@0.30.2		X								X						
+mysql_common@0.29.2		X								X						
+mysql_common@0.30.6		X								X						
+named_pipe@0.4.1		X								X						
+neli@0.6.4					X											
+neli-proc-macros@0.1.3					X											
+net2@0.2.38		X								X						
+nix@0.26.2										X						
+nom@7.1.3										X						
+notifier@2.0.0		X														
+ntapi@0.4.1		X								X						
+nu-ansi-term@0.46.0										X						
+num@0.4.1		X								X						
+num-bigint@0.4.3		X								X						
+num-complex@0.4.3		X								X						
+num-format@0.4.4		X								X						
+num-integer@0.1.45		X								X						
+num-iter@0.1.43		X								X						
+num-rational@0.4.1		X								X						
+num-traits@0.2.15		X								X						
+num_cpus@1.15.0		X								X						
+num_threads@0.1.6		X								X						
+object@0.30.3		X								X						
+object_store@0.5.6		X								X						
+object_store@0.8.0		X								X						
+object_store@2.0.0		X														
+obkv-table-client-rs@0.1.0													X			
+observability_deps@0.1.0		X								X						
+once_cell@1.19.0		X								X						
+oorandom@11.1.3										X						
+opensrv-mysql@0.1.0		X														
+ordered-float@2.10.0										X						
+overload@0.1.1										X						
+panic_ext@2.0.0		X														
+parking@2.0.0		X								X						
+parking_lot@0.11.2		X								X						
+parking_lot@0.12.1		X								X						
+parking_lot_core@0.8.6		X								X						
+parking_lot_core@0.9.9		X								X						
+parquet@49.0.0		X														
+parquet_ext@2.0.0		X														
+parse-zoneinfo@0.3.0										X						
+partition_table_engine@2.0.0		X														
+partitioned_lock@2.0.0		X														
+paste@0.1.18		X								X						
+paste@1.0.12		X								X						
+paste-impl@0.1.18		X								X						
+pbjson@0.5.1										X						
+pbjson-build@0.5.1										X						
+pbjson-types@0.5.1										X						
+peeking_take_while@0.1.2		X								X						
+pem@2.0.1										X						
+pem@3.0.3										X						
+percent-encoding@2.2.0		X								X						
+petgraph@0.6.3		X								X						
+pgwire@0.19.1		X								X						
+phf@0.11.1										X						
+phf_codegen@0.11.1										X						
+phf_generator@0.11.1										X						
+phf_shared@0.11.1										X						
+pin-project@1.0.12		X								X						
+pin-project-internal@1.0.12		X								X						
+pin-project-lite@0.2.9		X								X						
+pin-utils@0.1.0		X								X						
+pkg-config@0.3.26		X								X						
+plotters@0.3.4										X						
+plotters-backend@0.3.4										X						
+plotters-svg@0.3.3										X						
+polling@2.6.0		X								X						
+postgres-protocol@0.6.5		X								X						
+postgres-types@0.2.5		X								X						
+pprof@0.12.1		X														
+ppv-lite86@0.2.17		X								X						
+prettydiff@0.6.2										X						
+prettyplease@0.1.25		X								X						
+prettyplease@0.2.12		X								X						
+proc-macro-crate@1.3.1		X								X						
+proc-macro-error@1.0.4		X								X						
+proc-macro-error-attr@1.0.4		X								X						
+proc-macro-hack@0.5.20+deprecated		X								X						
+proc-macro2@1.0.76		X								X						
+profile@2.0.0		X														
+prom-remote-api@0.2.2		X														
+prometheus@0.12.0		X														
+prometheus-client@0.21.1		X								X						
+prometheus-client-derive-encode@0.4.1		X								X						
+prometheus-static-metric@0.5.1		X														
+prost@0.11.8		X														
+prost@0.12.3		X														
+prost-build@0.11.7		X														
+prost-derive@0.11.8		X														
+prost-derive@0.12.3		X														
+prost-types@0.11.8		X														
+protobuf@2.28.0										X						
+protoc-bin-vendored@3.0.0										X						
+protoc-bin-vendored-linux-aarch_64@3.0.0										X						
+protoc-bin-vendored-linux-ppcle_64@3.0.0										X						
+protoc-bin-vendored-linux-x86_32@3.0.0										X						
+protoc-bin-vendored-linux-x86_64@3.0.0										X						
+protoc-bin-vendored-macos-x86_64@3.0.0										X						
+protoc-bin-vendored-win32@3.0.0										X						
+proxy@2.0.0		X														
+pulldown-cmark@0.9.2										X						
+quanta@0.10.1										X						
+query_engine@2.0.0		X														
+query_frontend@2.0.0		X														
+query_functions@0.1.0		X								X						
+quick-error@1.2.3		X								X						
+quick-xml@0.26.0										X						
+quick-xml@0.28.2										X						
+quote@1.0.35		X								X						
+r2d2@0.8.10		X								X						
+radium@0.7.0										X						
+rand@0.3.23		X								X						
+rand@0.4.6		X								X						
+rand@0.8.5		X								X						
+rand_chacha@0.3.1		X								X						
+rand_core@0.3.1		X								X						
+rand_core@0.4.2		X								X						
+rand_core@0.6.4		X								X						
+raw-cpuid@10.7.0										X						
+rayon@1.8.0		X								X						
+rayon-core@1.12.0		X								X						
+rdrand@0.4.0									X							
+redox_syscall@0.2.16										X						
+redox_syscall@0.3.5										X						
+redox_syscall@0.4.1										X						
+redox_users@0.4.3										X						
+regex@1.8.1		X								X						
+regex-automata@0.1.10										X					X	
+regex-syntax@0.6.29		X								X						
+regex-syntax@0.7.1		X								X						
+regex-syntax@0.8.2		X								X						
+remote_engine_client@2.0.0		X														
+reqwest@0.11.16		X								X						
+rgb@0.8.36										X						
+ring@0.16.20																	X
+ring@0.17.7																	X
+rocksdb@0.3.0		X														
+router@2.0.0		X														
+rskafka@0.4.0		X								X						
+runtime@2.0.0		X														
+rust-crypto@0.2.36		X								X						
+rust-sdk-test@2.0.0		X														
+rust_decimal@1.29.1										X						
+rustc-demangle@0.1.22		X								X						
+rustc-hash@1.1.0		X								X						
+rustc-serialize@0.3.25		X								X						
+rustc_version@0.4.0		X								X						
+rustix@0.37.5		X	X							X						
+rustls@0.20.8		X							X	X						
+rustls@0.21.6		X							X	X						
+rustls@0.22.2		X							X	X						
+rustls-pemfile@0.2.1		X							X	X						
+rustls-pemfile@1.0.2		X							X	X						
+rustls-pki-types@1.1.0		X								X						
+rustls-webpki@0.100.2									X							
+rustls-webpki@0.101.2									X							
+rustls-webpki@0.102.1									X							
+rustversion@1.0.12		X								X						
+ryu@1.0.13		X				X										
+safemem@0.3.3		X								X						
+same-file@1.0.6										X					X	
+sampling_cache@2.0.0		X														
+saturating@0.1.0										X						
+scheduled-thread-pool@0.2.7		X								X						
+schema@0.1.0		X								X						
+scoped-tls@1.0.1		X								X						
+scopeguard@1.1.0		X								X						
+scratch@1.0.5		X								X						
+sct@0.7.0		X							X	X						
+seahash@4.1.0										X						
+semver@1.0.17		X								X						
+seq-macro@0.3.3		X								X						
+serde@1.0.159		X								X						
+serde_bytes@0.11.9		X								X						
+serde_derive@1.0.159		X								X						
+serde_json@1.0.95		X								X						
+serde_spanned@0.6.1		X								X						
+serde_urlencoded@0.7.1		X								X						
+server@2.0.0		X														
+sha-1@0.10.1		X								X						
+sha1@0.10.5		X								X						
+sha2@0.10.6		X								X						
+sharded-slab@0.1.4										X						
+shlex@1.3.0		X								X						
+signal-hook@0.3.15		X								X						
+signal-hook-registry@1.4.1		X								X						
+signature@2.1.0		X								X						
+siphasher@0.3.10		X								X						
+size_ext@2.0.0		X														
+skeptic@0.13.7		X								X						
+skiplist@2.0.0		X														
+slab@0.4.8										X						
+slog@2.7.0		X								X		X				
+slog-async@2.7.0		X								X		X				
+slog-global@0.1.0										X						
+slog-term@2.9.0		X								X		X				
+smallvec@1.10.0		X								X						
+snafu@0.6.10		X								X						
+snafu@0.7.4		X								X						
+snafu-derive@0.6.10		X								X						
+snafu-derive@0.7.4		X								X						
+snap@1.1.0					X											
+snappy-sys@0.1.0										X						
+socket2@0.4.9		X								X						
+socket2@0.5.3		X								X						
+spin@0.5.2										X						
+spin@0.9.8										X						
+spki@0.7.2		X								X						
+sqlness@0.5.0		X														
+sqlparser@0.39.0		X														
+sqlparser_derive@0.1.1		X														
+stable_deref_trait@1.2.0		X								X						
+static_assertions@1.1.0		X								X						
+str_stack@0.1.0		X								X						
+stringprep@0.1.3		X								X						
+strsim@0.10.0										X						
+strsim@0.11.0										X						
+strum@0.24.1										X						
+strum@0.25.0										X						
+strum_macros@0.24.3										X						
+strum_macros@0.25.1										X						
+subprocess@0.2.9		X								X						
+subtle@2.5.0					X											
+symbolic-common@12.3.0										X						
+symbolic-demangle@12.3.0										X						
+syn@1.0.109		X								X						
+syn@2.0.48		X								X						
+sync_wrapper@0.1.2		X														
+sysinfo@0.30.5										X						
+system_catalog@2.0.0		X														
+system_stats@2.0.0		X														
+table_engine@2.0.0		X														
+table_kv@2.0.0		X														
+tagptr@0.2.0		X								X						
+take_mut@0.2.2										X						
+tap@1.0.1										X						
+tempfile@3.5.0		X								X						
+term@0.7.0		X								X						
+termcolor@1.2.0										X					X	
+test_helpers@0.1.0		X								X						
+test_util@2.0.0		X														
+thiserror@1.0.56		X								X						
+thiserror-impl@1.0.56		X								X						
+thread_local@1.1.7		X								X						
+thrift@0.17.0		X														
+time@0.1.43		X								X						
+time@0.3.20		X								X						
+time-core@0.1.0		X								X						
+time-macros@0.2.8		X								X						
+time_ext@2.0.0		X														
+timed_task@2.0.0		X														
+tinytemplate@1.2.1		X								X						
+tinyvec@1.6.0		X								X						X
+tinyvec_macros@0.1.1		X								X						X
+tokio@1.29.1										X						
+tokio-io-timeout@1.2.0		X								X						
+tokio-macros@2.1.0										X						
+tokio-rustls@0.23.4		X								X						
+tokio-rustls@0.25.0		X								X						
+tokio-stream@0.1.12										X						
+tokio-tungstenite@0.17.2										X						
+tokio-util@0.7.7										X						
+toml@0.5.11		X								X						
+toml@0.7.3		X								X						
+toml_datetime@0.6.1		X								X						
+toml_edit@0.19.8		X								X						
+toml_ext@2.0.0		X														
+tonic@0.8.3										X						
+tonic@0.9.2										X						
+tonic-build@0.8.4										X						
+tools@2.0.0		X														
+tower@0.4.13										X						
+tower-layer@0.3.2										X						
+tower-service@0.3.2										X						
+trace_metric@2.0.0		X														
+trace_metric_derive@2.0.0		X														
+trace_metric_derive_tests@2.0.0		X														
+tracing@0.1.37										X						
+tracing-appender@0.2.2										X						
+tracing-attributes@0.1.23										X						
+tracing-core@0.1.30										X						
+tracing-futures@0.2.5										X						
+tracing-log@0.1.3										X						
+tracing-subscriber@0.3.17										X						
+tracing_util@2.0.0		X														
+triomphe@0.1.8		X								X						
+try-lock@0.2.4										X						
+tungstenite@0.17.3		X								X						
+twoway@0.1.8		X								X						
+twox-hash@1.6.3										X						
+typenum@1.16.0		X								X						
+unicase@2.6.0		X								X						
+unicode-bidi@0.3.13		X								X						
+unicode-ident@1.0.8		X								X				X		
+unicode-normalization@0.1.22		X								X						
+unicode-segmentation@1.10.1		X								X						
+unicode-width@0.1.10		X								X						
+untrusted@0.7.1									X							
+untrusted@0.9.0									X							
+url@2.3.1		X								X						
+utf-8@0.7.6		X								X						
+utf8parse@0.2.1		X								X						
+uuid@1.6.1		X								X						
+uuid-macro-internal@1.6.1		X								X						
+valuable@0.1.0										X						
+vcpkg@0.2.15		X								X						
+vergen@8.2.1		X								X						
+version_check@0.9.4		X								X						
+waker-fn@1.1.0		X								X						
+wal@2.0.0		X														
+walkdir@2.3.3										X					X	
+want@0.3.0										X						
+warp@0.3.3										X						
+wasi@0.10.2+wasi-snapshot-preview1		X	X							X						
+wasi@0.11.0+wasi-snapshot-preview1		X	X							X						
+wasm-bindgen@0.2.84		X								X						
+wasm-bindgen-backend@0.2.84		X								X						
+wasm-bindgen-futures@0.4.34		X								X						
+wasm-bindgen-macro@0.2.84		X								X						
+wasm-bindgen-macro-support@0.2.84		X								X						
+wasm-bindgen-shared@0.2.84		X								X						
+wasm-streams@0.2.3		X								X						
+web-sys@0.3.61		X								X						
+webpki@0.22.2									X							
+webpki-roots@0.22.6												X				
+webpki-roots@0.23.1												X				
+which@4.4.0										X						
+winapi@0.3.9		X								X						
+winapi-i686-pc-windows-gnu@0.4.0		X								X						
+winapi-util@0.1.5										X					X	
+winapi-x86_64-pc-windows-gnu@0.4.0		X								X						
+windows@0.47.0		X								X						
+windows@0.52.0		X								X						
+windows-core@0.52.0		X								X						
+windows-sys@0.45.0		X								X						
+windows-sys@0.48.0		X								X						
+windows-sys@0.52.0		X								X						
+windows-targets@0.42.2		X								X						
+windows-targets@0.47.0		X								X						
+windows-targets@0.48.1		X								X						
+windows-targets@0.52.0		X								X						
+windows_aarch64_gnullvm@0.42.2		X								X						
+windows_aarch64_gnullvm@0.47.0		X								X						
+windows_aarch64_gnullvm@0.48.0		X								X						
+windows_aarch64_gnullvm@0.52.0		X								X						
+windows_aarch64_msvc@0.42.2		X								X						
+windows_aarch64_msvc@0.47.0		X								X						
+windows_aarch64_msvc@0.48.0		X								X						
+windows_aarch64_msvc@0.52.0		X								X						
+windows_i686_gnu@0.42.2		X								X						
+windows_i686_gnu@0.47.0		X								X						
+windows_i686_gnu@0.48.0		X								X						
+windows_i686_gnu@0.52.0		X								X						
+windows_i686_msvc@0.42.2		X								X						
+windows_i686_msvc@0.47.0		X								X						
+windows_i686_msvc@0.48.0		X								X						
+windows_i686_msvc@0.52.0		X								X						
+windows_x86_64_gnu@0.42.2		X								X						
+windows_x86_64_gnu@0.47.0		X								X						
+windows_x86_64_gnu@0.48.0		X								X						
+windows_x86_64_gnu@0.52.0		X								X						
+windows_x86_64_gnullvm@0.42.2		X								X						
+windows_x86_64_gnullvm@0.47.0		X								X						
+windows_x86_64_gnullvm@0.48.0		X								X						
+windows_x86_64_gnullvm@0.52.0		X								X						
+windows_x86_64_msvc@0.42.2		X								X						
+windows_x86_64_msvc@0.47.0		X								X						
+windows_x86_64_msvc@0.48.0		X								X						
+windows_x86_64_msvc@0.52.0		X								X						
+winnow@0.4.1										X						
+winreg@0.10.1										X						
+wyz@0.5.1										X						
+x509-certificate@0.23.1												X				
+xorfilter-rs@0.6.0		X														
+xz2@0.1.7		X								X						
+zeroize@1.6.0		X								X						
+zeroize_derive@1.4.2		X								X						
+zstd@0.12.3+zstd.1.5.2										X						
+zstd@0.13.0										X						
+zstd-safe@6.0.4+zstd.1.5.4		X								X						
+zstd-safe@7.0.0		X								X						
+zstd-sys@2.0.7+zstd.1.5.4		X								X						
