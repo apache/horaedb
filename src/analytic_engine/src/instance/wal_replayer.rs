@@ -186,13 +186,13 @@ impl Replay for TableBasedReplay {
             batch_size: context.wal_replay_batch_size,
             ..Default::default()
         };
-        let read_ctx = &read_ctx;
 
         let mut tasks = futures::stream::iter(
             table_datas
                 .iter()
                 .map(|table_data| {
                     let table_id = table_data.id;
+                    let read_ctx = &read_ctx;
                     async move {
                         let ret = Self::recover_table_logs(context, table_data, read_ctx).await;
                         (table_id, ret)
