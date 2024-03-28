@@ -510,7 +510,7 @@ impl Proxy {
         // TODO: concurrently run the insert plan here
         for plan in plan_vec {
             // check limit first
-            // TODO: if one table is in blocked, maybe should not lead to failure of whole
+            // TODO: if one table is blocked, maybe should not lead to failure of whole
             // batch?
             self.instance
                 .limiter
