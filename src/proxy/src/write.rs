@@ -518,7 +518,7 @@ impl Proxy {
                 .box_err()
                 .context(ErrWithCause {
                     code: StatusCode::INTERNAL_SERVER_ERROR,
-                    msg: format!("table is blocked"),
+                    msg: "table is blocked",
                 })?;
 
             let insert_plan = match plan {
