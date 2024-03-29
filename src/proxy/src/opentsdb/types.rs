@@ -232,6 +232,9 @@ pub struct QueryResponse {
     pub(crate) dps: BTreeMap<String, f64>,
 }
 
+#[derive(Hash, Debug, Clone, Eq, PartialEq, PartialOrd, Ord)]
+struct GroupKey(Vec<String>);
+
 #[derive(Default)]
 struct QueryConverter {
     metric: String,
@@ -241,9 +244,9 @@ struct QueryConverter {
     tags_idx: Vec<(String, usize)>,
     aggregated_tags: Vec<String>,
     // (time_series, (tagk, tagv))
-    tags: BTreeMap<String, BTreeMap<String, String>>,
+    tags: BTreeMap<GroupKey, BTreeMap<String, String>>,
     // (time_series, (timestamp, value))
-    values: BTreeMap<String, BTreeMap<String, f64>>,
+    values: BTreeMap<GroupKey, BTreeMap<String, f64>>,
 
     resp: Vec<QueryResponse>,
 }
@@ -321,7 +324,7 @@ impl QueryConverter {
         for row_idx in 0..row_num {
             let mut tags = BTreeMap::new();
             // tags_key is used to identify a time series
-            let mut tags_key = String::new();
+            let mut group_keys = Vec::with_capacity(self.tags_idx.len());
             for (tag_key, idx) in &self.tags_idx {
                 let tag_value = record_batch
                     .column(*idx)
@@ -331,9 +334,10 @@ impl QueryConverter {
                         msg: "Tag must be String compatible type".to_string(),
                     })?
                     .to_string();
-                tags_key += &tag_value;
+                group_keys.push(tag_value.clone());
                 tags.insert(tag_key.clone(), tag_value);
             }
+            let group_keys = GroupKey(group_keys);
 
             let timestamp = record_batch
                 .column(self.timestamp_idx)
@@ -353,12 +357,12 @@ impl QueryConverter {
                     msg: "Value must be f64 compatible type".to_string(),
                 })?;
 
-            if let Some(values) = self.values.get_mut(&tags_key) {
+            if let Some(values) = self.values.get_mut(&group_keys) {
                 values.insert(timestamp, value);
             } else {
-                self.tags.insert(tags_key.clone(), tags);
+                self.tags.insert(group_keys.clone(), tags);
                 self.values
-                    .entry(tags_key)
+                    .entry(group_keys)
                     .or_default()
                     .insert(timestamp, value);
             }

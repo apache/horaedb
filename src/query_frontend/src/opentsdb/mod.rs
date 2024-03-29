@@ -35,6 +35,7 @@ use self::types::{Filter, OpentsdbQueryPlan, OpentsdbSubPlan, QueryRequest, SubQ
 use crate::{
     config::DynamicConfig,
     datafusion_util::{default_sort_exprs, timerange_to_expr},
+    logical_optimizer::optimize_plan,
     plan::{Plan, QueryPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
@@ -140,7 +141,7 @@ pub fn subquery_to_plan<P: MetaProvider>(
 ) -> Result<OpentsdbSubPlan> {
     let metric = sub_query.metric;
     let table_provider = meta_provider
-        .get_table_provider(TableReference::bare(&metric))
+        .get_table_source(TableReference::bare(&metric))
         .context(TableProviderNotFound { name: &metric })?;
     let schema = Schema::try_from(table_provider.schema()).context(BuildTableSchema)?;
 
@@ -159,6 +160,7 @@ pub fn subquery_to_plan<P: MetaProvider>(
     };
     let sort_exprs = default_sort_exprs(timestamp_col_name);
 
+    // TODO: support projection since there are multiple field columns.
     let mut builder = LogicalPlanBuilder::scan(metric.clone(), table_provider, None)?
         .filter(filter_exprs)?
         .sort(sort_exprs)?;
@@ -174,6 +176,8 @@ pub fn subquery_to_plan<P: MetaProvider>(
     }
 
     let df_plan = builder.build().context(BuildPlanError)?;
+    let df_plan = optimize_plan(&df_plan).context(BuildPlanError)?;
+
     let tables = Arc::new(
         meta_provider
             .try_into_container()

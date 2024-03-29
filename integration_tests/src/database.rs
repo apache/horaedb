@@ -243,6 +243,7 @@ pub struct HoraeDB<T> {
 enum Protocol {
     Sql,
     InfluxQL,
+    OpenTSDB,
 }
 
 impl TryFrom<&str> for Protocol {
@@ -252,6 +253,7 @@ impl TryFrom<&str> for Protocol {
         let protocol = match s {
             "influxql" => Protocol::InfluxQL,
             "sql" => Protocol::Sql,
+            "opentsdb" => Protocol::OpenTSDB,
             _ => return Err(format!("unknown protocol:{s}")),
         };
 
@@ -311,6 +313,10 @@ impl<T: Send + Sync> Database for HoraeDB<T> {
             Protocol::InfluxQL => {
                 let http_client = self.http_client.clone();
                 Self::execute_influxql(query, http_client, context.context).await
+            }
+            Protocol::OpenTSDB => {
+                let http_client = self.http_client.clone();
+                Self::execute_opentsdb(query, http_client, context.context).await
             }
         }
     }
@@ -376,6 +382,28 @@ impl<T> HoraeDB<T> {
                 .await
                 .unwrap(),
         };
+        let query_res = match resp.text().await {
+            Ok(text) => text,
+            Err(e) => format!("Failed to do influxql query, err:{e:?}"),
+        };
+        Box::new(query_res)
+    }
+
+    async fn execute_opentsdb(
+        query: String,
+        http_client: HttpClient,
+        _params: HashMap<String, String>,
+    ) -> Box<dyn Display> {
+        let query = query.trim().trim_end_matches(";");
+        let url = format!("http://{}/opentsdb/api/query", http_client.endpoint);
+        let resp = http_client
+            .client
+            .post(url)
+            .header("content-type", "application/json")
+            .body(query.to_string())
+            .send()
+            .await
+            .unwrap();
         let query_res = match resp.text().await {
             Ok(text) => text,
             Err(e) => format!("Failed to do influxql query, err:{e:?}"),
