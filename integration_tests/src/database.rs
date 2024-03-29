@@ -394,7 +394,7 @@ impl<T> HoraeDB<T> {
         http_client: HttpClient,
         _params: HashMap<String, String>,
     ) -> Box<dyn Display> {
-        let query = query.trim().trim_end_matches(";");
+        let query = query.trim().trim_end_matches(';');
         let url = format!("http://{}/opentsdb/api/query", http_client.endpoint);
         let resp = http_client
             .client
