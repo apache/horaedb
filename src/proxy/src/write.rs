@@ -61,6 +61,11 @@ use crate::{
 
 type WriteResponseFutures<'a> = Vec<BoxFuture<'a, runtime::Result<Result<WriteResponse>>>>;
 
+struct PlanWithTable {
+    plan: Plan,
+    table: TableRef,
+}
+
 #[derive(Debug)]
 pub struct WriteContext {
     pub request_id: RequestId,
@@ -501,14 +506,16 @@ impl Proxy {
             auto_create_table: self.auto_create_table,
         };
 
-        let plan_vec = self
+        let plans = self
             .write_request_to_insert_plan(req.table_requests, write_context)
             .await?;
 
         let mut success = 0;
 
         // TODO: concurrently run the insert plan here
-        for plan in plan_vec {
+        for plan_with_table in plans {
+            let PlanWithTable { plan, table } = plan_with_table;
+
             // check limit first
             // TODO: if one table is blocked, maybe should not lead to failure of whole
             // batch?
@@ -521,27 +528,12 @@ impl Proxy {
                     msg: "table is blocked",
                 })?;
 
-            let insert_plan = match plan {
-                Plan::Insert(p) => p,
-                other => {
-                    return ErrNoCause {
-                        msg: format!(
-                            "found invalid plan type, expected:insert, actual:{}",
-                            other.plan_type()
-                        ),
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                    }
-                    .fail()
-                }
-            };
-
-            let table = insert_plan.table.clone();
             match self
                 .execute_insert_plan(
                     request_id.clone(),
                     catalog_name,
                     &schema_name,
-                    insert_plan,
+                    plan,
                     deadline,
                 )
                 .await
@@ -572,8 +564,8 @@ impl Proxy {
         &self,
         table_requests: Vec<WriteTableRequest>,
         write_context: WriteContext,
-    ) -> Result<Vec<Plan>> {
-        let mut plan_vec = Vec::with_capacity(table_requests.len());
+    ) -> Result<Vec<PlanWithTable>> {
+        let mut plans = Vec::with_capacity(table_requests.len());
 
         let WriteContext {
             request_id,
@@ -630,10 +622,16 @@ impl Proxy {
                 }
                 Ok(v) => v,
             };
-            plan_vec.push(Plan::Insert(plan));
+            let plan = Plan::Insert(plan);
+            let plan_with_table = PlanWithTable {
+                plan,
+                table: table_clone,
+            };
+
+            plans.push(plan_with_table);
         }
 
-        Ok(plan_vec)
+        Ok(plans)
     }
 
     async fn execute_insert_plan(
@@ -641,15 +639,9 @@ impl Proxy {
         request_id: RequestId,
         catalog_name: &str,
         schema_name: &str,
-        insert_plan: InsertPlan,
+        plan: Plan,
         deadline: Option<Instant>,
     ) -> Result<usize> {
-        debug!(
-            "Execute insert plan begin, table:{}, row_num:{}",
-            insert_plan.table.name(),
-            insert_plan.rows.num_rows()
-        );
-        let plan = Plan::Insert(insert_plan);
         let output = self
             .execute_plan(request_id, catalog_name, schema_name, plan, deadline)
             .await;
