@@ -685,7 +685,7 @@ func (c *ClusterMetadata) UpdateClusterViewByNode(ctx context.Context, shardNode
 	return nil
 }
 
-func (c *ClusterMetadata) DropShardNode(ctx context.Context, shardNodes []storage.ShardNode) error {
+func (c *ClusterMetadata) DropShardNodes(ctx context.Context, shardNodes []storage.ShardNode) error {
 	if err := c.topologyManager.DropShardNodes(ctx, shardNodes); err != nil {
 		return errors.WithMessage(err, "drop shard nodes")
 	}

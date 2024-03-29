@@ -26,6 +26,7 @@ import (
 	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/eventdispatch"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/inspector"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/scheduler/manager"
 	"github.com/apache/incubator-horaedb-meta/server/id"
@@ -47,6 +48,7 @@ type Cluster struct {
 	procedureFactory *coordinator.Factory
 	procedureManager procedure.Manager
 	schedulerManager manager.SchedulerManager
+	nodeInspector    *inspector.NodeInspector
 }
 
 func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *clientv3.Client, rootPath string) (*Cluster, error) {
@@ -62,12 +64,15 @@ func NewCluster(logger *zap.Logger, metadata *metadata.ClusterMetadata, client *
 
 	schedulerManager := manager.NewManager(logger, procedureManager, procedureFactory, metadata, client, rootPath, metadata.GetTopologyType(), metadata.GetProcedureExecutingBatchSize())
 
+	nodeInspector := inspector.NewNodeInspector(logger, metadata)
+
 	return &Cluster{
 		logger:           logger,
 		metadata:         metadata,
 		procedureFactory: procedureFactory,
 		procedureManager: procedureManager,
 		schedulerManager: schedulerManager,
+		nodeInspector:    nodeInspector,
 	}, nil
 }
 
@@ -78,6 +83,9 @@ func (c *Cluster) Start(ctx context.Context) error {
 	if err := c.schedulerManager.Start(ctx); err != nil {
 		return errors.WithMessage(err, "start scheduler manager")
 	}
+	if err := c.nodeInspector.Start(ctx); err != nil {
+		return errors.WithMessage(err, "start node inspector")
+	}
 	return nil
 }
 
@@ -87,6 +95,9 @@ func (c *Cluster) Stop(ctx context.Context) error {
 	}
 	if err := c.schedulerManager.Stop(ctx); err != nil {
 		return errors.WithMessage(err, "stop scheduler manager")
+	}
+	if err := c.nodeInspector.Stop(ctx); err != nil {
+		return errors.WithMessage(err, "stop node inspector")
 	}
 	return nil
 }

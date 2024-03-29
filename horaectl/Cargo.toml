@@ -16,7 +16,7 @@
 # under the License.
 
 [package]
-name = "tools"
+name = "horaectl"
 
 [package.license]
 workspace = true
@@ -24,24 +24,16 @@ workspace = true
 [package.version]
 workspace = true
 
-[package.authors]
-workspace = true
-
 [package.edition]
 workspace = true
 
 [dependencies]
-analytic_engine = { workspace = true }
 anyhow = { workspace = true, features = ["backtrace"] }
-clap = { workspace = true, features = ["derive"] }
-common_types = { workspace = true }
-futures = { workspace = true }
-generic_error = { workspace = true }
-num_cpus = "1.15.0"
-object_store = { workspace = true }
-parquet = { workspace = true }
-parquet_ext = { workspace = true }
-runtime = { workspace = true }
-table_engine = { workspace = true }
-time_ext = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true, features = ["env", "derive"] }
+lazy_static = { workspace = true }
+prettytable = "0.10.0"
+reqwest = { workspace = true }
+serde = { workspace = true }
+shell-words = "1.1.0"
 tokio = { workspace = true }

@@ -152,3 +152,9 @@ fix:
 	cargo fmt
 	cargo sort --workspace
 	cargo clippy --fix --allow-staged --all-targets --all-features --workspace -- -D warnings
+
+update-licenses:
+	# Update Horaedb dependencies
+	cargo install --locked cargo-deny && cargo deny list -f tsv -l crate > DEPENDENCIES.tsv
+	# Update Horaemeta dependencies
+	cd $(DIR)/horaemeta; go install github.com/google/go-licenses@latest && go-licenses report ./... > DEPENDENCIES.csv
