@@ -29,7 +29,7 @@ workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-async-trait =  { workspace = true }
+async-trait = { workspace = true }
 horaedb-client = { workspace = true }
 local-ip-address = "0.5"
 reqwest = { workspace = true }
