@@ -60,9 +60,11 @@ toml_ext = { workspace = true }
 trace_metric = { workspace = true }
 wal = { workspace = true, features = ["wal-rocksdb", "wal-message-queue", "wal-table-kv"] }
 zstd = { workspace = true }
+tempfile = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
+tempfile = { workspace = true }
 
 [[bench]]
 name = "bench"
