@@ -14,6 +14,12 @@ pub struct ReplayBench {
     table: FixedSchemaTable,
 }
 
+impl Default for ReplayBench {
+    fn default() -> Self {
+        ReplayBench::new()
+    }
+}
+
 impl ReplayBench {
     pub fn new() -> Self {
         let runtime = util::new_runtime(1);
@@ -42,7 +48,7 @@ impl ReplayBench {
 
         ReplayBench {
             runtime: Arc::new(runtime),
-            test_ctx: test_ctx,
+            test_ctx,
             table: fixed_schema_table,
         }
     }
