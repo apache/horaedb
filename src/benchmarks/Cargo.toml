@@ -54,13 +54,13 @@ size_ext = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
 table_kv = { workspace = true }
+tempfile = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
 toml_ext = { workspace = true }
 trace_metric = { workspace = true }
 wal = { workspace = true, features = ["wal-rocksdb", "wal-message-queue", "wal-table-kv"] }
 zstd = { workspace = true }
-tempfile = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
