@@ -939,6 +939,7 @@ dependencies = [
  "snafu 0.6.10",
  "table_engine",
  "table_kv",
+ "tempfile",
  "time_ext",
  "tokio",
  "toml_ext",

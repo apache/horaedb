@@ -71,3 +71,8 @@ bench_measurement_time = "60s"
 bench_sample_size = 60
 batch_size = 512
 value_size = 1024
+
+[replay_bench]
+bench_measurement_time = "3s"
+bench_sample_size = 10
+batch_size = 10000

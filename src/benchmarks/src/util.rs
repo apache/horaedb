@@ -17,10 +17,11 @@
 
 //! Utilities.
 
-use std::sync::Arc;
+use std::{collections::HashMap, future::Future, sync::Arc};
 
 use analytic_engine::{
     memtable::{key::KeySequence, MemTableRef, PutContext},
+    setup::{EngineBuilder, TableEngineContext},
     space::SpaceId,
     sst::{
         factory::{
@@ -34,19 +35,42 @@ use analytic_engine::{
     },
     table::sst_util,
     table_options::StorageFormat,
+    Config, RecoverMode,
 };
 use bytes_ext::{BufMut, SafeBufMut};
 use common_types::{
     projected_schema::{ProjectedSchema, RowProjectorBuilder},
+    record_batch::RecordBatch,
+    row::RowGroup,
     schema::{IndexInWriterSchema, Schema},
+    table::{ShardId, DEFAULT_SHARD_ID},
+    time::Timestamp,
 };
+use futures::stream::StreamExt;
 use macros::define_result;
-use object_store::{ObjectStoreRef, Path};
+use object_store::{
+    config::{LocalOptions, ObjectStoreOptions, StorageOptions},
+    ObjectStoreRef, Path,
+};
 use parquet::file::footer;
-use runtime::Runtime;
+use runtime::{PriorityRuntime, Runtime};
+use size_ext::ReadableSize;
 use snafu::{ResultExt, Snafu};
-use table_engine::{predicate::Predicate, table::TableId};
-use wal::log_batch::Payload;
+use table_engine::{
+    engine::{CreateTableRequest, EngineRuntimes, OpenShardRequest, TableDef, TableEngineRef},
+    predicate::Predicate,
+    table::{ReadRequest, SchemaId, TableId, TableRef, WriteRequest},
+};
+use tempfile::TempDir;
+use time_ext::ReadableDuration;
+use wal::{
+    config::{Config as WalConfig, StorageConfig},
+    log_batch::Payload,
+    manager::{OpenedWals, WalRuntimes, WalsOpener},
+    rocksdb_impl::{config::RocksDBStorageConfig, manager::RocksDBWalsOpener},
+};
+
+use crate::{table, table::FixedSchemaTable};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -246,5 +270,394 @@ impl<'a> Payload for WritePayload<'a> {
 impl<'a> From<&'a Vec<u8>> for WritePayload<'a> {
     fn from(data: &'a Vec<u8>) -> Self {
         Self(data)
+    }
+}
+
+const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+/// 3 days ago.
+pub fn start_ms() -> i64 {
+    Timestamp::now().as_i64() - 3 * DAY_MS
+}
+#[derive(Clone, Copy, Debug)]
+pub enum OpenTablesMethod {
+    WithOpenTable,
+    WithOpenShard,
+}
+
+pub struct TestEnv {
+    _dir: TempDir,
+    pub config: Config,
+    pub runtimes: Arc<EngineRuntimes>,
+}
+
+pub struct Builder {
+    num_workers: usize,
+}
+
+impl Builder {
+    pub fn build(self) -> TestEnv {
+        let dir = tempfile::tempdir().unwrap();
+
+        let config = Config {
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                disk_cache_dir: "".to_string(),
+                disk_cache_capacity: ReadableSize::mb(0),
+                disk_cache_page_size: ReadableSize::mb(0),
+                disk_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_dir: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
+            wal: WalConfig {
+                storage: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
+                    data_dir: dir.path().to_str().unwrap().to_string(),
+                    ..Default::default()
+                })),
+                disable_data: false,
+            },
+            ..Default::default()
+        };
+
+        let runtime = Arc::new(
+            runtime::Builder::default()
+                .worker_threads(self.num_workers)
+                .enable_all()
+                .build()
+                .unwrap(),
+        );
+
+        TestEnv {
+            _dir: dir,
+            config,
+            runtimes: Arc::new(EngineRuntimes {
+                read_runtime: PriorityRuntime::new(runtime.clone(), runtime.clone()),
+                write_runtime: runtime.clone(),
+                meta_runtime: runtime.clone(),
+                compact_runtime: runtime.clone(),
+                default_runtime: runtime.clone(),
+                io_runtime: runtime,
+            }),
+        }
+    }
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Self { num_workers: 2 }
+    }
+}
+
+pub trait EngineBuildContext: Clone + Default {
+    type WalsOpener: WalsOpener;
+
+    fn wals_opener(&self) -> Self::WalsOpener;
+    fn config(&self) -> Config;
+    fn open_method(&self) -> OpenTablesMethod;
+}
+
+pub struct RocksDBEngineBuildContext {
+    config: Config,
+    open_method: OpenTablesMethod,
+}
+
+impl RocksDBEngineBuildContext {
+    pub fn new(mode: RecoverMode, open_method: OpenTablesMethod) -> Self {
+        let mut context = Self::default();
+        context.config.recover_mode = mode;
+        context.open_method = open_method;
+
+        context
+    }
+}
+
+impl Default for RocksDBEngineBuildContext {
+    fn default() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+
+        let config = Config {
+            storage: StorageOptions {
+                mem_cache_capacity: ReadableSize::mb(0),
+                mem_cache_partition_bits: 0,
+                disk_cache_dir: "".to_string(),
+                disk_cache_capacity: ReadableSize::mb(0),
+                disk_cache_page_size: ReadableSize::mb(0),
+                disk_cache_partition_bits: 0,
+                object_store: ObjectStoreOptions::Local(LocalOptions {
+                    data_dir: dir.path().to_str().unwrap().to_string(),
+                }),
+            },
+            wal: WalConfig {
+                storage: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
+                    data_dir: dir.path().to_str().unwrap().to_string(),
+                    ..Default::default()
+                })),
+                disable_data: false,
+            },
+            ..Default::default()
+        };
+
+        Self {
+            config,
+            open_method: OpenTablesMethod::WithOpenTable,
+        }
+    }
+}
+
+impl Clone for RocksDBEngineBuildContext {
+    fn clone(&self) -> Self {
+        let mut config = self.config.clone();
+
+        let dir = tempfile::tempdir().unwrap();
+        let storage = StorageOptions {
+            mem_cache_capacity: ReadableSize::mb(0),
+            mem_cache_partition_bits: 0,
+            disk_cache_dir: "".to_string(),
+            disk_cache_capacity: ReadableSize::mb(0),
+            disk_cache_page_size: ReadableSize::mb(0),
+            disk_cache_partition_bits: 0,
+            object_store: ObjectStoreOptions::Local(LocalOptions {
+                data_dir: dir.path().to_str().unwrap().to_string(),
+            }),
+        };
+
+        config.storage = storage;
+        config.wal = WalConfig {
+            storage: StorageConfig::RocksDB(Box::new(RocksDBStorageConfig {
+                data_dir: dir.path().to_str().unwrap().to_string(),
+                ..Default::default()
+            })),
+            disable_data: false,
+        };
+        Self {
+            config,
+            open_method: self.open_method,
+        }
+    }
+}
+
+impl EngineBuildContext for RocksDBEngineBuildContext {
+    type WalsOpener = RocksDBWalsOpener;
+
+    fn wals_opener(&self) -> Self::WalsOpener {
+        RocksDBWalsOpener
+    }
+
+    fn config(&self) -> Config {
+        self.config.clone()
+    }
+
+    fn open_method(&self) -> OpenTablesMethod {
+        self.open_method
+    }
+}
+
+pub struct TestContext<T> {
+    config: Config,
+    wals_opener: T,
+    runtimes: Arc<EngineRuntimes>,
+    engine: Option<TableEngineRef>,
+    opened_wals: Option<OpenedWals>,
+    schema_id: SchemaId,
+    last_table_seq: u32,
+
+    name_to_tables: HashMap<String, TableRef>,
+}
+
+impl TestEnv {
+    pub fn builder() -> Builder {
+        Builder::default()
+    }
+
+    pub fn new_context<T: EngineBuildContext>(
+        &self,
+        build_context: &T,
+    ) -> TestContext<T::WalsOpener> {
+        let config = build_context.config();
+        let wals_opener = build_context.wals_opener();
+
+        TestContext {
+            config,
+            wals_opener,
+            runtimes: self.runtimes.clone(),
+            engine: None,
+            opened_wals: None,
+            schema_id: SchemaId::from_u32(100),
+            last_table_seq: 1,
+            name_to_tables: HashMap::new(),
+        }
+    }
+
+    pub fn block_on<F: Future>(&self, future: F) -> F::Output {
+        self.runtimes.default_runtime.block_on(future)
+    }
+}
+
+impl<T: WalsOpener> TestContext<T> {
+    pub async fn open(&mut self) {
+        let opened_wals = if let Some(opened_wals) = self.opened_wals.take() {
+            opened_wals
+        } else {
+            self.wals_opener
+                .open_wals(
+                    &self.config.wal,
+                    WalRuntimes {
+                        read_runtime: self.runtimes.read_runtime.high().clone(),
+                        write_runtime: self.runtimes.write_runtime.clone(),
+                        default_runtime: self.runtimes.default_runtime.clone(),
+                    },
+                )
+                .await
+                .unwrap()
+        };
+
+        let engine_builder = EngineBuilder {
+            config: &self.config,
+            engine_runtimes: self.runtimes.clone(),
+            opened_wals: opened_wals.clone(),
+        };
+        self.opened_wals = Some(opened_wals);
+
+        let TableEngineContext { table_engine, .. } = engine_builder.build().await.unwrap();
+        self.engine = Some(table_engine);
+    }
+
+    pub async fn create_fixed_schema_table(&mut self, table_name: &str) -> FixedSchemaTable {
+        let fixed_schema_table = FixedSchemaTable::builder()
+            .schema_id(self.schema_id)
+            .table_name(table_name.to_string())
+            .table_id(self.next_table_id())
+            .ttl("7d".parse::<ReadableDuration>().unwrap())
+            .build_fixed();
+
+        self.create_table(fixed_schema_table.create_request().clone())
+            .await;
+
+        fixed_schema_table
+    }
+
+    fn next_table_id(&mut self) -> TableId {
+        self.last_table_seq += 1;
+        table::new_table_id(2, self.last_table_seq)
+    }
+
+    async fn create_table(&mut self, create_request: CreateTableRequest) {
+        let table_name = create_request.params.table_name.clone();
+        let table = self.engine().create_table(create_request).await.unwrap();
+
+        self.name_to_tables.insert(table_name.to_string(), table);
+    }
+
+    #[inline]
+    pub fn engine(&self) -> &TableEngineRef {
+        self.engine.as_ref().unwrap()
+    }
+
+    pub async fn write_to_table(&self, table_name: &str, row_group: RowGroup) {
+        let table = self.table(table_name);
+
+        table.write(WriteRequest { row_group }).await.unwrap();
+    }
+
+    pub fn table(&self, table_name: &str) -> TableRef {
+        self.name_to_tables.get(table_name).cloned().unwrap()
+    }
+
+    pub async fn read_table(
+        &self,
+        table_name: &str,
+        read_request: ReadRequest,
+    ) -> Vec<RecordBatch> {
+        let table = self.table(table_name);
+
+        let mut stream = table.read(read_request).await.unwrap();
+        let mut record_batches = Vec::new();
+        while let Some(batch) = stream.next().await {
+            let batch = batch.unwrap();
+
+            record_batches.push(batch);
+        }
+
+        record_batches
+    }
+
+    pub async fn partitioned_read_table(
+        &self,
+        table_name: &str,
+        read_request: ReadRequest,
+    ) -> Vec<RecordBatch> {
+        let table = self.table(table_name);
+
+        let streams = table.partitioned_read(read_request).await.unwrap();
+        let mut record_batches = Vec::new();
+
+        for mut stream in streams.streams {
+            while let Some(batch) = stream.next().await {
+                let batch = batch.unwrap();
+
+                record_batches.push(batch);
+            }
+        }
+
+        record_batches
+    }
+
+    pub async fn reopen_with_tables(&mut self, tables: &[&str]) {
+        let table_infos: Vec<_> = tables
+            .iter()
+            .map(|name| {
+                let table_id = self.name_to_tables.get(*name).unwrap().id();
+                (table_id, *name)
+            })
+            .collect();
+        {
+            // Close all tables.
+            self.name_to_tables.clear();
+
+            // Close engine.
+            let engine = self.engine.take().unwrap();
+            engine.close().await.unwrap();
+        }
+
+        self.open().await;
+
+        self.open_tables_of_shard(table_infos, DEFAULT_SHARD_ID)
+            .await;
+    }
+
+    async fn open_tables_of_shard(&mut self, table_infos: Vec<(TableId, &str)>, shard_id: ShardId) {
+        let table_defs = table_infos
+            .into_iter()
+            .map(|table| TableDef {
+                catalog_name: "horaedb".to_string(),
+                schema_name: "public".to_string(),
+                schema_id: self.schema_id,
+                id: table.0,
+                name: table.1.to_string(),
+            })
+            .collect();
+
+        let open_shard_request = OpenShardRequest {
+            shard_id,
+            table_defs,
+            engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
+        };
+
+        let tables = self
+            .engine()
+            .open_shard(open_shard_request)
+            .await
+            .unwrap()
+            .into_values()
+            .map(|result| result.unwrap().unwrap());
+
+        for table in tables {
+            self.name_to_tables.insert(table.name().to_string(), table);
+        }
+    }
+
+    pub fn name_to_tables(&self) -> &HashMap<String, TableRef> {
+        &self.name_to_tables
     }
 }

@@ -17,13 +17,14 @@
 
 //! Benchmarks
 
-use std::sync::Once;
+use std::{cell::RefCell, sync::Once};
 
 use benchmarks::{
     config::{self, BenchConfig},
     merge_memtable_bench::MergeMemTableBench,
     merge_sst_bench::MergeSstBench,
     parquet_bench::ParquetBench,
+    replay_bench::ReplayBench,
     scan_memtable_bench::ScanMemTableBench,
     sst_bench::SstBench,
     wal_write_bench::WalWriteBench,
@@ -208,6 +209,24 @@ fn bench_wal_write(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_replay_iter(b: &mut Bencher<'_>, bench: &RefCell<ReplayBench>) {
+    let mut bench = bench.borrow_mut();
+    b.iter(|| bench.run_bench())
+}
+
+fn bench_replay(c: &mut Criterion) {
+    let config = init_bench();
+
+    let mut group = c.benchmark_group("replay");
+
+    group.measurement_time(config.replay_bench.bench_measurement_time.0);
+    group.sample_size(config.replay_bench.bench_sample_size);
+
+    let bench = RefCell::new(ReplayBench::new(config.replay_bench));
+    group.bench_with_input(BenchmarkId::new("replay", 0), &bench, bench_replay_iter);
+    group.finish();
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
@@ -217,6 +236,7 @@ criterion_group!(
     bench_scan_memtable,
     bench_merge_memtable,
     bench_wal_write,
+    bench_replay,
 );
 
 criterion_main!(benches);
