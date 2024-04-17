@@ -34,6 +34,8 @@ use table_engine::{
 };
 use time_ext::ReadableDuration;
 
+use crate::util::start_ms;
+
 pub fn new_row_6<C0, C1, C2, C3, C4, C5>(data: (C0, C1, C2, C3, C4, C5)) -> Row
 where
     C0: Into<Datum>,
@@ -55,14 +57,18 @@ where
     Row::from_datums(cols)
 }
 
+pub type WriteRequestTuple = (String, Timestamp, String, f64, f64, String);
 pub type RowTuple<'a> = (&'a str, Timestamp, &'a str, f64, f64, &'a str);
 
 pub fn new_table_id(schema_id: u16, table_seq: u32) -> TableId {
     TableId::with_seq(SchemaId::from(schema_id), TableSeq::from(table_seq)).unwrap()
 }
 
+pub struct RowTupleGenerator {}
+
 pub struct FixedSchemaTable {
     create_request: CreateTableRequest,
+    write_requests: Vec<WriteRequestTuple>,
 }
 
 impl FixedSchemaTable {
@@ -115,6 +121,28 @@ impl FixedSchemaTable {
     fn new_row_group(&self, rows: Vec<Row>) -> RowGroup {
         RowGroup::try_new(self.create_request.params.table_schema.clone(), rows).unwrap()
     }
+
+    pub fn prepare_write_requests(&mut self, batch_size: usize) {
+        let start_ms = start_ms();
+        self.write_requests.clear();
+        (0..batch_size).for_each(|idx| {
+            self.write_requests.push((
+                format!("key_{idx}"),
+                Timestamp::new(start_ms + idx as i64),
+                format!("tag1_{idx}"),
+                11.0,
+                110.0,
+                format!("tag2_{idx}"),
+            ))
+        });
+    }
+
+    pub fn row_tuples(&self) -> Vec<RowTuple> {
+        self.write_requests
+            .iter()
+            .map(|x| (x.0.as_str(), x.1, x.2.as_str(), x.3, x.4, x.5.as_str()))
+            .collect()
+    }
 }
 
 #[must_use]
@@ -157,6 +185,7 @@ impl Builder {
     pub fn build_fixed(self) -> FixedSchemaTable {
         FixedSchemaTable {
             create_request: self.create_request,
+            write_requests: Vec::new(),
         }
     }
 }

@@ -153,4 +153,5 @@ pub struct WalWriteBenchConfig {
 pub struct ReplayConfig {
     pub bench_measurement_time: ReadableDuration,
     pub bench_sample_size: usize,
+    pub batch_size: usize,
 }

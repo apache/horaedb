@@ -222,7 +222,7 @@ fn bench_replay(c: &mut Criterion) {
     group.measurement_time(config.replay_bench.bench_measurement_time.0);
     group.sample_size(config.replay_bench.bench_sample_size);
 
-    let bench = RefCell::new(ReplayBench::new());
+    let bench = RefCell::new(ReplayBench::new(config.replay_bench));
     group.bench_with_input(BenchmarkId::new("replay", 0), &bench, bench_replay_iter);
     group.finish();
 }

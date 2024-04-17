@@ -274,6 +274,10 @@ impl<'a> From<&'a Vec<u8>> for WritePayload<'a> {
 }
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+/// 3 days ago.
+pub fn start_ms() -> i64 {
+    Timestamp::now().as_i64() - 3 * DAY_MS
+}
 #[derive(Clone, Copy, Debug)]
 pub enum OpenTablesMethod {
     WithOpenTable,
@@ -548,11 +552,6 @@ impl<T: WalsOpener> TestContext<T> {
     #[inline]
     pub fn engine(&self) -> &TableEngineRef {
         self.engine.as_ref().unwrap()
-    }
-
-    /// 3 days ago.
-    pub fn start_ms(&self) -> i64 {
-        Timestamp::now().as_i64() - 3 * DAY_MS
     }
 
     pub async fn write_to_table(&self, table_name: &str, row_group: RowGroup) {
