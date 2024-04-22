@@ -15,22 +15,23 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: "PR Title Checker"
+name: Check PR Title
+
 on:
-  pull_request_target:
-    types:
-      - opened
-      - edited
-      - synchronize
-      - labeled
-      - unlabeled
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
 
 jobs:
-  check:
+  check-pr-title:
     runs-on: ubuntu-latest
     steps:
-      - uses: thehanimo/pr-title-checker@v1.4.1
+      - name: Check Title
+        uses: actions/github-script@v5
         with:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          pass_on_octokit_error: false
-          configuration_path: .github/pr-title-checker-config.json
+          script: |
+            const title = context.payload.pull_request.title;
+            const regex = /^(feat|fix|docs|refactor|chore)(\(.+\))?!?: .+$/; 
+            if (!regex.test(title)) {
+              core.setFailed('PR title does not follow the convention, the pattern: ^(feat|fix|docs|refactor|chore)(\(.+\))?!?: .+$');
+            }
+          github-token: ${{ secrets.GITHUB_TOKEN }}
