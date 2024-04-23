@@ -83,6 +83,7 @@ pub struct AliyunOptions {
     pub http: HttpOptions,
     #[serde(default)]
     pub retry: RetryOptions,
+    pub enable_multipart: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
