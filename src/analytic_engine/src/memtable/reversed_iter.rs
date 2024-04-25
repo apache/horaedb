@@ -19,8 +19,7 @@ use std::iter::Rev;
 
 use common_types::record_batch::FetchedRecordBatch;
 
-use super::Error;
-use crate::memtable::Result;
+use crate::memtable::{Error, Result};
 
 /// Reversed columnar iterator.
 // TODO(xikai): Now the implementation is not perfect: read all the entries
