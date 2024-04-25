@@ -22,7 +22,7 @@ pub mod iter;
 
 use std::sync::atomic::{self, AtomicI64, AtomicU64, AtomicUsize};
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use arena::{Arena, BasicStats};
 use bytes_ext::Bytes;
 use codec::Encoder;
@@ -168,7 +168,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         // Update min/max time
         let timestamp = row
             .timestamp(schema)
-            .ok_or(anyhow!("timestamp not found"))?
+            .context("timestamp not found")?
             .as_i64();
         _ = self
             .min_time
