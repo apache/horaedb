@@ -238,9 +238,6 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
             sequence >= last,
             "invalid sequence, given:{sequence}, last:{last}"
         );
-        // if sequence < last {
-        //     return Err(anyhow!("invalid sequence, given:{sequence},
-        // last:{last}").into()); }
 
         self.last_sequence
             .store(sequence, atomic::Ordering::Relaxed);
