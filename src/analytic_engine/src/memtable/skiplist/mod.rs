@@ -22,6 +22,7 @@ pub mod iter;
 
 use std::sync::atomic::{self, AtomicI64, AtomicU64, AtomicUsize};
 
+use anyhow::{anyhow, Context};
 use arena::{Arena, BasicStats};
 use bytes_ext::Bytes;
 use codec::Encoder;
@@ -31,17 +32,19 @@ use common_types::{
     time::TimeRange,
     SequenceNumber,
 };
-use generic_error::BoxError;
 use logger::{debug, trace};
 use skiplist::{BytewiseComparator, Skiplist};
-use snafu::{ensure, OptionExt, ResultExt};
 
-use crate::memtable::{
-    key::{ComparableInternalKey, KeySequence},
-    reversed_iter::ReversedColumnarIterator,
-    skiplist::iter::ColumnarIterImpl,
-    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, KeyTooLarge, MemTable,
-    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest, TimestampNotFound,
+use crate::{
+    ensure,
+    memtable::{
+        error::InnerError,
+        key::{ComparableInternalKey, KeySequence},
+        reversed_iter::ReversedColumnarIterator,
+        skiplist::iter::ColumnarIterImpl,
+        ColumnarIterPtr, MemTable, Metrics as MemtableMetrics, PutContext, Result, ScanContext,
+        ScanRequest,
+    },
 };
 
 #[derive(Default, Debug)]
@@ -143,27 +146,30 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         // Encode key
         key_encoder
             .encode(internal_key, row)
-            .context(EncodeInternalKey)?;
+            .context("encode interval key")?;
 
         // TODO: we should check row's primary key size at the beginning of write
         // process, so WAL and memtable can keep in sync.
-        ensure!(
-            internal_key.len() <= skiplist::MAX_KEY_SIZE as usize,
-            KeyTooLarge {
+        if internal_key.len() > skiplist::MAX_KEY_SIZE as usize {
+            return Err(InnerError::KeyTooLarge {
                 current: internal_key.len(),
-                max: skiplist::MAX_KEY_SIZE,
+                max: skiplist::MAX_KEY_SIZE as usize,
             }
-        );
+            .into());
+        }
 
         // Encode row value. The ContiguousRowWriter will clear the buf.
         let row_value = &mut ctx.value_buf;
         let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
-        row_writer.write_row(row).box_err().context(InvalidRow)?;
+        row_writer.write_row(row).context("invalid row")?;
         let encoded_size = internal_key.len() + row_value.len();
         self.skiplist.put(internal_key, row_value);
 
         // Update min/max time
-        let timestamp = row.timestamp(schema).context(TimestampNotFound)?.as_i64();
+        let timestamp = row
+            .timestamp(schema)
+            .ok_or(anyhow!("timestamp not found"))?
+            .as_i64();
         _ = self
             .min_time
             .fetch_update(atomic::Ordering::Relaxed, atomic::Ordering::Relaxed, |v| {
@@ -230,11 +236,11 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
         let last = self.last_sequence();
         ensure!(
             sequence >= last,
-            InvalidPutSequence {
-                given: sequence,
-                last
-            }
+            "invalid sequence, given:{sequence}, last:{last}"
         );
+        // if sequence < last {
+        //     return Err(anyhow!("invalid sequence, given:{sequence},
+        // last:{last}").into()); }
 
         self.last_sequence
             .store(sequence, atomic::Ordering::Relaxed);

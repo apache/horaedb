@@ -97,6 +97,7 @@ async-trait = "0.1.72"
 atomic_enum = "0.2.0"
 base64 = "0.13"
 bytes = "1"
+thiserror = "1"
 bytes_ext = { path = "src/components/bytes_ext" }
 catalog = { path = "src/catalog" }
 catalog_impls = { path = "src/catalog_impls" }

@@ -18,10 +18,9 @@
 use std::iter::Rev;
 
 use common_types::record_batch::FetchedRecordBatch;
-use generic_error::BoxError;
-use snafu::ResultExt;
 
-use crate::memtable::{IterReverse, Result};
+use super::Error;
+use crate::memtable::Result;
 
 /// Reversed columnar iterator.
 // TODO(xikai): Now the implementation is not perfect: read all the entries
@@ -74,8 +73,7 @@ where
                 Ok(mut batch_with_key) => {
                     batch_with_key
                         .reverse_data()
-                        .box_err()
-                        .context(IterReverse)?;
+                        .map_err(|e| Error::from(anyhow::Error::new(e)))?;
 
                     Ok(batch_with_key)
                 }

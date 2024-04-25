@@ -18,6 +18,7 @@
 //! MemTable
 
 pub mod columnar;
+pub mod error;
 pub mod factory;
 pub mod key;
 pub mod layered;
@@ -27,6 +28,7 @@ pub mod test_util;
 
 use std::{collections::HashMap, ops::Bound, sync::Arc, time::Instant};
 
+use anyhow::Context;
 use bytes_ext::{ByteVec, Bytes};
 use common_types::{
     projected_schema::RowProjectorBuilder,
@@ -36,12 +38,11 @@ use common_types::{
     time::TimeRange,
     SequenceNumber, MUTABLE_SEGMENT_SWITCH_THRESHOLD,
 };
-use generic_error::{BoxError, GenericError};
+pub use error::{Error, ErrorKind};
 use horaedbproto::manifest;
 use macros::define_result;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use snafu::{Backtrace, ResultExt, Snafu};
 use trace_metric::MetricsCollector;
 
 use crate::memtable::key::KeySequence;
@@ -96,9 +97,9 @@ impl LayeredMemtableOptions {
     pub fn parse_from(opts: &HashMap<String, String>) -> Result<Self> {
         let mut options = LayeredMemtableOptions::default();
         if let Some(v) = opts.get(MUTABLE_SEGMENT_SWITCH_THRESHOLD) {
-            let threshold = v.parse::<u64>().box_err().context(Internal {
-                msg: format!("invalid mutable segment switch threshold:{v}"),
-            })?;
+            let threshold = v
+                .parse::<u64>()
+                .with_context(|| format!("invalid mutable segment switch threshold:{v}"))?;
             options.mutable_segment_switch_threshold = ReadableSize(threshold);
         }
 
@@ -122,95 +123,7 @@ impl From<LayeredMemtableOptions> for manifest::LayeredMemtableOptions {
     }
 }
 
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
-pub enum Error {
-    #[snafu(display("Failed to encode internal key, err:{}", source))]
-    EncodeInternalKey { source: crate::memtable::key::Error },
-
-    #[snafu(display("Failed to decode internal key, err:{}", source))]
-    DecodeInternalKey { source: crate::memtable::key::Error },
-
-    #[snafu(display("Failed to decode row, err:{}", source))]
-    DecodeRow { source: codec::row::Error },
-
-    #[snafu(display("Failed to append row to batch builder, err:{}", source))]
-    AppendRow {
-        source: common_types::record_batch::Error,
-    },
-
-    #[snafu(display("Failed to build record batch, err:{}", source,))]
-    BuildRecordBatch {
-        source: common_types::record_batch::Error,
-    },
-
-    #[snafu(display("Failed to decode continuous row, err:{}", source))]
-    DecodeContinuousRow {
-        source: common_types::row::contiguous::Error,
-    },
-
-    #[snafu(display("Failed to project memtable schema, err:{}", source))]
-    ProjectSchema {
-        source: common_types::projected_schema::Error,
-    },
-
-    #[snafu(display(
-        "Invalid sequence number to put, given:{}, last:{}.\nBacktrace:\n{}",
-        given,
-        last,
-        backtrace
-    ))]
-    InvalidPutSequence {
-        given: SequenceNumber,
-        last: SequenceNumber,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Invalid row, err:{}", source))]
-    InvalidRow { source: GenericError },
-
-    #[snafu(display("Fail to iter in reverse order, err:{}", source))]
-    IterReverse { source: GenericError },
-
-    #[snafu(display(
-        "Timeout when iter memtable, now:{:?}, deadline:{:?}.\nBacktrace:\n{}",
-        now,
-        deadline,
-        backtrace
-    ))]
-    IterTimeout {
-        now: Instant,
-        deadline: Instant,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("msg:{msg}, err:{source}"))]
-    Internal { msg: String, source: GenericError },
-
-    #[snafu(display("msg:{msg}"))]
-    InternalNoCause { msg: String },
-
-    #[snafu(display("Timestamp is not found in row.\nBacktrace:\n{backtrace}"))]
-    TimestampNotFound { backtrace: Backtrace },
-
-    #[snafu(display(
-        "{TOO_LARGE_MESSAGE}, current:{current}, max:{max}.\nBacktrace:\n{backtrace}"
-    ))]
-    KeyTooLarge {
-        current: usize,
-        max: usize,
-        backtrace: Backtrace,
-    },
-    #[snafu(display("Factory err, msg:{msg}, err:{source}"))]
-    Factory { msg: String, source: GenericError },
-
-    #[snafu(display("Factory err, msg:{msg}.\nBacktrace:\n{backtrace}"))]
-    FactoryNoCause { msg: String, backtrace: Backtrace },
-}
-
-pub const TOO_LARGE_MESSAGE: &str = "Memtable key length is too large";
-
-define_result!(Error);
+define_result!(error::Error);
 
 /// Options for put and context for tracing
 pub struct PutContext {

@@ -19,6 +19,7 @@
 
 use std::{cmp::Ordering, ops::Bound, time::Instant};
 
+use anyhow::Context;
 use arena::{Arena, BasicStats};
 use bytes_ext::{Bytes, BytesMut};
 use codec::row;
@@ -31,13 +32,14 @@ use common_types::{
 };
 use logger::trace;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
-use snafu::ResultExt;
 
-use crate::memtable::{
-    key::{self, KeySequence},
-    skiplist::SkiplistMemTable,
-    AppendRow, BuildRecordBatch, DecodeContinuousRow, DecodeInternalKey, EncodeInternalKey,
-    IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
+use crate::{
+    ensure,
+    memtable::{
+        key::{self, KeySequence},
+        skiplist::SkiplistMemTable,
+        Result, ScanContext, ScanRequest,
+    },
 };
 
 /// Iterator state
@@ -91,7 +93,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         let row_projector = request
             .row_projector_builder
             .build(&memtable.schema)
-            .context(ProjectSchema)?;
+            .context("build projector")?;
 
         let iter = memtable.skiplist.iter();
         let mut columnar_iter = Self {
@@ -122,7 +124,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 // Construct seek key
                 let mut key_buf = BytesMut::new();
                 let seek_key = key::internal_key_for_seek(user_key, self.sequence, &mut key_buf)
-                    .context(EncodeInternalKey)?;
+                    .context("encode internal key")?;
 
                 // Seek the skiplist
                 self.iter.seek(seek_key);
@@ -135,7 +137,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 let mut key_buf = BytesMut::new();
                 let seek_key =
                     key::internal_key_for_seek(&next_user_key, self.sequence, &mut key_buf)
-                        .context(EncodeInternalKey)?;
+                        .context("encode internal key")?;
 
                 // Seek the skiplist
                 self.iter.seek(seek_key);
@@ -168,14 +170,14 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         while self.iter.valid() && num_rows < self.batch_size {
             if let Some(row) = self.fetch_next_row()? {
                 let row_reader = ContiguousRowReader::try_new(&row, &self.memtable_schema)
-                    .context(DecodeContinuousRow)?;
+                    .context("decode continuous row")?;
                 let projected_row = ProjectedContiguousRow::new(row_reader, &self.row_projector);
 
                 trace!("Column iterator fetch next row, row:{:?}", projected_row);
 
                 builder
                     .append_projected_contiguous_row(&projected_row)
-                    .context(AppendRow)?;
+                    .context("append row")?;
                 num_rows += 1;
             } else {
                 // There is no more row to fetch
@@ -191,12 +193,13 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         if num_rows > 0 {
             if let Some(deadline) = self.deadline {
                 let now = Instant::now();
-                if now >= deadline {
-                    return IterTimeout { now, deadline }.fail();
-                }
+                ensure!(
+                    now < deadline,
+                    "iter timeout, now:{now:?}, deadline:{deadline:?}"
+                )
             }
 
-            let batch = builder.build().context(BuildRecordBatch)?;
+            let batch = builder.build().context("build record batch")?;
             trace!("column iterator send one batch:{:?}", batch);
 
             Ok(Some(batch))
@@ -221,7 +224,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             // Fetch current entry
             let key = self.iter.key();
             let (user_key, sequence) =
-                key::user_key_from_internal_key(key).context(DecodeInternalKey)?;
+                key::user_key_from_internal_key(key).context("DecodeInternalKey")?;
 
             // Check user key is still in range
             if self.is_after_end_bound(user_key) {
@@ -238,7 +241,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                         // be set as last_internal_key so maybe we can just
                         // unwrap it?
                         let (last_user_key, _) = key::user_key_from_internal_key(last_internal_key)
-                            .context(DecodeInternalKey)?;
+                            .context("DecodeInternalKey")?;
                         user_key == last_user_key
                     }
                     // This is the first user key

@@ -23,22 +23,23 @@ use std::{
     },
 };
 
+use anyhow::Context;
 use arena::MonoIncArena;
 use bytes_ext::Bytes;
 use common_types::{
     column::Column, column_schema::ColumnId, datum::Datum, row::Row, schema::Schema,
     time::TimeRange, SequenceNumber,
 };
-use generic_error::BoxError;
 use logger::debug;
 use skiplist::{BytewiseComparator, Skiplist};
-use snafu::{ensure, OptionExt, ResultExt};
 
-use crate::memtable::{
-    columnar::iter::ColumnarIterImpl, factory::Options, key::KeySequence,
-    reversed_iter::ReversedColumnarIterator, ColumnarIterPtr, Internal, InternalNoCause,
-    InvalidPutSequence, MemTable, Metrics as MemtableMetrics, PutContext, Result, ScanContext,
-    ScanRequest,
+use crate::{
+    ensure,
+    memtable::{
+        columnar::iter::ColumnarIterImpl, factory::Options, key::KeySequence,
+        reversed_iter::ReversedColumnarIterator, ColumnarIterPtr, MemTable,
+        Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
+    },
 };
 
 pub mod factory;
@@ -108,16 +109,11 @@ impl MemTable for ColumnarMemTable {
             } else {
                 // TODO: impl append() one row in column, avoid memory expansion.
                 let column = Column::with_capacity(1, column_schema.data_type)
-                    .box_err()
-                    .context(Internal {
-                        msg: "new column failed",
-                    })?;
+                    .context("new column failed")?;
                 columns.insert(column_schema.id, column);
                 columns
                     .get_mut(&column_schema.id)
-                    .context(InternalNoCause {
-                        msg: "get column failed",
-                    })?
+                    .context("get column failed")?
             };
 
             if let Some(writer_index) = ctx.index_in_writer.column_index_in_writer(i) {
@@ -127,10 +123,7 @@ impl MemTable for ColumnarMemTable {
                 } else {
                     column
                         .append_datum_ref(&row[writer_index])
-                        .box_err()
-                        .context(Internal {
-                            msg: "append datum failed",
-                        })?
+                        .context("append datum failed")?
                 }
             } else {
                 column.append_nulls(1);
@@ -140,9 +133,7 @@ impl MemTable for ColumnarMemTable {
             let mut memtable = self.memtable.write().unwrap();
             for (k, v) in columns {
                 if let Some(column) = memtable.get_mut(&k) {
-                    column.append_column(v).box_err().context(Internal {
-                        msg: "append column",
-                    })?;
+                    column.append_column(v).context("append column")?;
                 } else {
                     memtable.insert(k, v);
                 };
@@ -174,18 +165,14 @@ impl MemTable for ColumnarMemTable {
             .schema
             .columns()
             .get(self.schema.timestamp_index())
-            .context(InternalNoCause {
-                msg: "timestamp column is missing",
-            })?;
+            .context("timestamp column is missing")?;
 
         let num_rows = self
             .memtable
             .read()
             .unwrap()
             .get(&timestamp_column.id)
-            .context(InternalNoCause {
-                msg: "get timestamp column failed",
-            })?
+            .context("get timestamp column failed")?
             .len();
         let (reverse, batch_size) = (request.reverse, ctx.batch_size);
         let arena = MonoIncArena::with_collector(
@@ -219,10 +206,7 @@ impl MemTable for ColumnarMemTable {
         let last = self.last_sequence();
         ensure!(
             sequence >= last,
-            InvalidPutSequence {
-                given: sequence,
-                last
-            }
+            "invalid sequence, given:{sequence}, last:{last}"
         );
 
         self.last_sequence.store(sequence, Ordering::Relaxed);
