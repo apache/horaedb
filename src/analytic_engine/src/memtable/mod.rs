@@ -38,7 +38,7 @@ use common_types::{
     time::TimeRange,
     SequenceNumber, MUTABLE_SEGMENT_SWITCH_THRESHOLD,
 };
-pub use error::{Error, ErrorKind};
+pub use error::Error;
 use horaedbproto::manifest;
 use macros::define_result;
 use serde::{Deserialize, Serialize};

@@ -52,9 +52,9 @@ use crate::{
         serial_executor::TableOpSerialExecutor,
         write::{Error as WriteError, MemTableWriter},
     },
-    memtable::error::ErrorKind,
     payload::{ReadPayload, SingleSchemaProviderAdapter, TableSchemaProvider, WalDecoder},
     table::data::TableDataRef,
+    ErrorKind,
 };
 
 // Metrics of wal replayer

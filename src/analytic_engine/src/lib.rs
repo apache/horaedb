@@ -22,6 +22,7 @@
 mod compaction;
 mod context;
 mod engine;
+pub mod error;
 mod instance;
 mod manifest;
 pub mod memtable;
@@ -39,6 +40,7 @@ pub mod table_meta_set_impl;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
+use error::ErrorKind;
 use manifest::details::Options as ManifestOptions;
 use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
