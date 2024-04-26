@@ -38,6 +38,7 @@ wal-rocksdb = ["wal/wal-rocksdb"]
 
 [dependencies]
 # In alphabetical order
+anyhow = { workspace = true }
 arc-swap = "1.4.0"
 arena = { workspace = true }
 arrow = { workspace = true }
@@ -81,6 +82,7 @@ snafu = { workspace = true }
 table_engine = { workspace = true }
 table_kv = { workspace = true }
 tempfile = { workspace = true, optional = true }
+thiserror = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
 trace_metric = { workspace = true }

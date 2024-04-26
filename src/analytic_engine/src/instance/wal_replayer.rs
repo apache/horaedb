@@ -50,10 +50,11 @@ use crate::{
         engine::{Error, ReplayWalWithCause, Result},
         flush_compaction::{Flusher, TableFlushOptions},
         serial_executor::TableOpSerialExecutor,
-        write::MemTableWriter,
+        write::{Error as WriteError, MemTableWriter},
     },
     payload::{ReadPayload, SingleSchemaProviderAdapter, TableSchemaProvider, WalDecoder},
     table::data::TableDataRef,
+    ErrorKind,
 };
 
 // Metrics of wal replayer
@@ -547,22 +548,20 @@ async fn replay_table_log_entries(
                 let index_in_writer =
                     IndexInWriterSchema::for_same_schema(row_group.schema().num_columns());
                 let memtable_writer = MemTableWriter::new(table_data.clone(), serial_exec);
-                let write_res = memtable_writer
-                    .write(sequence, row_group, index_in_writer)
-                    .box_err()
-                    .context(ReplayWalWithCause {
-                        msg: Some(format!(
-                            "table_id:{}, table_name:{}, space_id:{}",
-                            table_data.space_id, table_data.name, table_data.id
-                        )),
-                    });
+                let write_res = memtable_writer.write(sequence, row_group, index_in_writer);
                 if let Err(e) = write_res {
-                    // TODO: find a better way to match this.
-                    if e.to_string().contains(crate::memtable::TOO_LARGE_MESSAGE) {
+                    if matches!(e, WriteError::UpdateMemTableSequence { ref source } if source.kind() == ErrorKind::KeyTooLarge )
+                    {
                         // ignore this error
                         warn!("Unable to insert memtable, err:{e}");
                     } else {
-                        return Err(e);
+                        return Err(Error::ReplayWalWithCause {
+                            msg: Some(format!(
+                                "table_id:{}, table_name:{}, space_id:{}",
+                                table_data.space_id, table_data.name, table_data.id
+                            )),
+                            source: Box::new(e),
+                        });
                     }
                 }
 

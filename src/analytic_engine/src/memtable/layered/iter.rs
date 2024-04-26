@@ -17,13 +17,12 @@
 
 //! Skiplist memtable iterator
 
+use anyhow::Context;
 use common_types::{record_batch::FetchedRecordBatch, schema::Schema, time::TimeRange};
-use generic_error::BoxError;
-use snafu::ResultExt;
 
 use crate::memtable::{
     layered::{ImmutableSegment, MutableSegment},
-    ColumnarIterPtr, Internal, ProjectSchema, Result, ScanContext, ScanRequest,
+    ColumnarIterPtr, Error, Result, ScanContext, ScanRequest,
 };
 
 /// Columnar iterator for [LayeredMemTable]
@@ -43,7 +42,7 @@ impl ColumnarIterImpl {
         let row_projector = request
             .row_projector_builder
             .build(memtable_schema)
-            .context(ProjectSchema)?;
+            .context("build row projector")?;
 
         let (maybe_mutable, selected_immutables) =
             Self::filter_by_time_range(mutable, immutables, request.time_range);
@@ -63,13 +62,11 @@ impl ColumnarIterImpl {
                         fetched_column_indexes,
                         batch.clone(),
                     )
-                    .box_err()
-                    .with_context(|| Internal {
-                        msg: format!("row_projector:{row_projector:?}",),
-                    })
+                    .map_err(|e| Error::from(anyhow::Error::new(e)))
                 })
             })
             .collect::<Vec<_>>();
+
         let immutable_iter = immutable_batches.into_iter();
 
         let maybe_mutable_iter = match maybe_mutable {

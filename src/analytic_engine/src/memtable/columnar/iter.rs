@@ -23,6 +23,7 @@ use std::{
     time::Instant,
 };
 
+use anyhow::Context;
 use arena::{Arena, BasicStats, MonoIncArena};
 use bytes_ext::{ByteVec, Bytes};
 use codec::{memcomparable::MemComparable, row, Encoder};
@@ -36,17 +37,14 @@ use common_types::{
     schema::Schema,
     SequenceNumber,
 };
-use generic_error::BoxError;
 use logger::trace;
+use macros::ensure;
 use parquet::data_type::AsBytes;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
-use snafu::{OptionExt, ResultExt};
 
 use crate::memtable::{
-    key,
-    key::{KeySequence, SequenceCodec},
-    AppendRow, BuildRecordBatch, DecodeInternalKey, Internal, InternalNoCause, IterTimeout,
-    ProjectSchema, Result, ScanContext, ScanRequest,
+    key::{self, KeySequence, SequenceCodec},
+    Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state
@@ -106,7 +104,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         let row_projector = request
             .row_projector_builder
             .build(&schema)
-            .context(ProjectSchema)?;
+            .context("ProjectSchema")?;
         let mut columnar_iter = Self {
             memtable,
             row_num,
@@ -147,15 +145,10 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 let column_schema = self.memtable_schema.column(*idx);
                 let column = memtable
                     .get(&column_schema.id)
-                    .with_context(|| InternalNoCause {
-                        msg: format!("column not found, column:{}", column_schema.name),
-                    })?;
+                    .with_context(|| format!("column not found, column:{}", column_schema.name))?;
                 for (i, key) in key_vec.iter_mut().enumerate().take(self.row_num) {
                     let datum = column.get_datum(i);
-                    encoder
-                        .encode(key, &datum)
-                        .box_err()
-                        .context(Internal { msg: "encode key" })?;
+                    encoder.encode(key, &datum).context("encode key")?;
                 }
             }
 
@@ -163,10 +156,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             for (i, mut key) in key_vec.into_iter().enumerate() {
                 SequenceCodec
                     .encode(&mut key, &KeySequence::new(self.last_sequence, i as u32))
-                    .box_err()
-                    .context(Internal {
-                        msg: "encode key sequence",
-                    })?;
+                    .context("encode key sequence")?;
                 self.skiplist.put(&key, (i as u32).to_le_bytes().as_slice());
             }
 
@@ -203,9 +193,10 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         if !rows.is_empty() {
             if let Some(deadline) = self.deadline {
                 let now = Instant::now();
-                if now >= deadline {
-                    return IterTimeout { now, deadline }.fail();
-                }
+                ensure!(
+                    now < deadline,
+                    "iter timeout, now:{now:?}, deadline:{deadline:?}"
+                );
             }
 
             let fetched_schema = self.row_projector.fetched_schema().clone();
@@ -219,10 +210,10 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 self.batch_size,
             );
             for row in rows.into_iter() {
-                builder.append_row(row).context(AppendRow)?;
+                builder.append_row(row).context("AppendRow")?;
             }
 
-            let batch = builder.build().context(BuildRecordBatch)?;
+            let batch = builder.build().context("BuildRecordBatch")?;
             trace!("column iterator send one batch:{:?}", batch);
             Ok(Some(batch))
         } else {
@@ -245,7 +236,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         while self.iter.valid() {
             // Fetch current entry
             let key = self.iter.key();
-            let (user_key, _) = key::user_key_from_internal_key(key).context(DecodeInternalKey)?;
+            let (user_key, _) =
+                key::user_key_from_internal_key(key).context("DecodeInternalKey")?;
 
             // Check user key is still in range
             if self.is_after_end_bound(user_key) {
@@ -262,7 +254,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                         // be set as last_internal_key so maybe we can just
                         // unwrap it?
                         let (last_user_key, _) = key::user_key_from_internal_key(last_internal_key)
-                            .context(DecodeInternalKey)?;
+                            .context("DecodeInternalKey")?;
                         user_key == last_user_key
                     }
                     // This is the first user key

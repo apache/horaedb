@@ -29,6 +29,7 @@ use std::{
     },
 };
 
+use anyhow::Context;
 use arena::CollectorRef;
 use arrow::record_batch::RecordBatch as ArrowRecordBatch;
 use bytes_ext::Bytes;
@@ -36,17 +37,15 @@ use common_types::{
     projected_schema::RowProjectorBuilder, row::Row, schema::Schema, time::TimeRange,
     SequenceNumber,
 };
-use generic_error::BoxError;
 use logger::debug;
 use skiplist::{BytewiseComparator, KeyComparator};
-use snafu::{OptionExt, ResultExt};
 
 use crate::memtable::{
     factory::{FactoryRef, Options},
     key::KeySequence,
     layered::iter::ColumnarIterImpl,
-    ColumnarIterPtr, Internal, InternalNoCause, MemTable, MemTableRef, Metrics as MemtableMetrics,
-    PutContext, Result, ScanContext, ScanRequest,
+    ColumnarIterPtr, MemTable, MemTableRef, Metrics as MemtableMetrics, PutContext, Result,
+    ScanContext, ScanRequest,
 };
 
 /// MemTable implementation based on skiplist
@@ -238,15 +237,15 @@ impl Inner {
             .map(|batch_res| batch_res.map(|batch| batch.into_arrow_record_batch()))
             .collect::<Result<Vec<_>>>()?;
 
-        let time_range = current_mutable.time_range().context(InternalNoCause {
-            msg: "failed to get time range from mutable segment",
-        })?;
-        let max_key = current_mutable.max_key().context(InternalNoCause {
-            msg: "failed to get max key from mutable segment",
-        })?;
-        let min_key = current_mutable.min_key().context(InternalNoCause {
-            msg: "failed to get min key from mutable segment",
-        })?;
+        let time_range = current_mutable
+            .time_range()
+            .context("failed to get time range from mutable segment")?;
+        let max_key = current_mutable
+            .max_key()
+            .context("failed to get max key from mutable segment")?;
+        let min_key = current_mutable
+            .min_key()
+            .context("failed to get min key from mutable segment")?;
         let immutable = ImmutableSegment::new(immutable_batches, time_range, min_key, max_key);
 
         self.immutable_segments.push(immutable);
@@ -388,10 +387,7 @@ impl MutableSegmentBuilder {
         let memtable = self
             .memtable_factory
             .create_memtable(memtable_opts)
-            .box_err()
-            .context(Internal {
-                msg: "failed to build mutable segment",
-            })?;
+            .context("failed to build mutable segment")?;
 
         Ok(MutableSegment(memtable))
     }
@@ -409,7 +405,7 @@ struct MutableBuilderOptions {
 
 /// Immutable batch
 pub(crate) struct ImmutableSegment {
-    /// Record batch converted from `MutableBatch`    
+    /// Record batch converted from `MutableBatch`
     record_batches: Vec<ArrowRecordBatch>,
 
     /// Min time of source `MutableBatch`

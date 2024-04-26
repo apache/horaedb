@@ -79,6 +79,7 @@ checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
 name = "analytic_engine"
 version = "2.0.0"
 dependencies = [
+ "anyhow",
  "arc-swap 1.6.0",
  "arena",
  "arrow 49.0.0",
@@ -126,6 +127,7 @@ dependencies = [
  "table_kv",
  "tempfile",
  "test_util",
+ "thiserror",
  "time_ext",
  "tokio",
  "trace_metric",
