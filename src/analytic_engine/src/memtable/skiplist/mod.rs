@@ -33,18 +33,16 @@ use common_types::{
     SequenceNumber,
 };
 use logger::{debug, trace};
+use macros::ensure;
 use skiplist::{BytewiseComparator, Skiplist};
 
-use crate::{
-    ensure,
-    memtable::{
-        error::InnerError,
-        key::{ComparableInternalKey, KeySequence},
-        reversed_iter::ReversedColumnarIterator,
-        skiplist::iter::ColumnarIterImpl,
-        ColumnarIterPtr, MemTable, Metrics as MemtableMetrics, PutContext, Result, ScanContext,
-        ScanRequest,
-    },
+use crate::memtable::{
+    error::InnerError,
+    key::{ComparableInternalKey, KeySequence},
+    reversed_iter::ReversedColumnarIterator,
+    skiplist::iter::ColumnarIterImpl,
+    ColumnarIterPtr, MemTable, Metrics as MemtableMetrics, PutContext, Result, ScanContext,
+    ScanRequest,
 };
 
 #[derive(Default, Debug)]
@@ -150,13 +148,13 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
 
         // TODO: we should check row's primary key size at the beginning of write
         // process, so WAL and memtable can keep in sync.
-        if internal_key.len() > skiplist::MAX_KEY_SIZE as usize {
-            return Err(InnerError::KeyTooLarge {
+        ensure!(
+            internal_key.len() <= skiplist::MAX_KEY_SIZE as usize,
+            InnerError::KeyTooLarge {
                 current: internal_key.len(),
                 max: skiplist::MAX_KEY_SIZE as usize,
             }
-            .into());
-        }
+        );
 
         // Encode row value. The ContiguousRowWriter will clear the buf.
         let row_value = &mut ctx.value_buf;

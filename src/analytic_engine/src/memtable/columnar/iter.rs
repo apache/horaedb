@@ -38,15 +38,13 @@ use common_types::{
     SequenceNumber,
 };
 use logger::trace;
+use macros::ensure;
 use parquet::data_type::AsBytes;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
 
-use crate::{
-    ensure,
-    memtable::{
-        key::{self, KeySequence, SequenceCodec},
-        Result, ScanContext, ScanRequest,
-    },
+use crate::memtable::{
+    key::{self, KeySequence, SequenceCodec},
+    Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state

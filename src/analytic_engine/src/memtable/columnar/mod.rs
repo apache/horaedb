@@ -31,15 +31,13 @@ use common_types::{
     time::TimeRange, SequenceNumber,
 };
 use logger::debug;
+use macros::ensure;
 use skiplist::{BytewiseComparator, Skiplist};
 
-use crate::{
-    ensure,
-    memtable::{
-        columnar::iter::ColumnarIterImpl, factory::Options, key::KeySequence,
-        reversed_iter::ReversedColumnarIterator, ColumnarIterPtr, MemTable,
-        Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
-    },
+use crate::memtable::{
+    columnar::iter::ColumnarIterImpl, factory::Options, key::KeySequence,
+    reversed_iter::ReversedColumnarIterator, ColumnarIterPtr, MemTable, Metrics as MemtableMetrics,
+    PutContext, Result, ScanContext, ScanRequest,
 };
 
 pub mod factory;

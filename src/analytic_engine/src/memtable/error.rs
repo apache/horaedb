@@ -42,15 +42,6 @@ impl Error {
     }
 }
 
-#[macro_export]
-macro_rules! ensure {
-    ($cond:expr, $msg:expr) => {
-        if !$cond {
-            return Err(anyhow::anyhow!($msg).into());
-        }
-    };
-}
-
 #[derive(Error, Debug)]
 pub(crate) enum InnerError {
     #[error("too large key, max:{max}, current:{current}")]

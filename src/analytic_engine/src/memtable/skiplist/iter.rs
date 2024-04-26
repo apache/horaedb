@@ -31,15 +31,13 @@ use common_types::{
     SequenceNumber,
 };
 use logger::trace;
+use macros::ensure;
 use skiplist::{ArenaSlice, BytewiseComparator, IterRef, Skiplist};
 
-use crate::{
-    ensure,
-    memtable::{
-        key::{self, KeySequence},
-        skiplist::SkiplistMemTable,
-        Result, ScanContext, ScanRequest,
-    },
+use crate::memtable::{
+    key::{self, KeySequence},
+    skiplist::SkiplistMemTable,
+    Result, ScanContext, ScanRequest,
 };
 
 /// Iterator state

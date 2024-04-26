@@ -38,6 +38,28 @@ macro_rules! hash_map(
      };
 );
 
+/// Util for working with anyhow + thiserror
+/// Works like anyhow's [ensure](https://docs.rs/anyhow/latest/anyhow/macro.ensure.html)
+/// But return `Return<T, ErrorFromAnyhow>`
+#[macro_export]
+macro_rules! ensure {
+    ($cond:expr, $msg:literal) => {
+        if !$cond {
+            return Err(anyhow::anyhow!($msg).into());
+        }
+    };
+    ($cond:expr, $err:expr) => {
+        if !$cond {
+            return Err($err.into());
+        }
+    };
+    ($cond:expr, $fmt:expr, $($arg:tt)*) => {
+        if !$cond {
+            return Err(anyhow::anyhow!($fmt, $($arg)*).into());
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
