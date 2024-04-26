@@ -37,8 +37,8 @@ wal-message-queue = ["wal/wal-message-queue"]
 wal-rocksdb = ["wal/wal-rocksdb"]
 
 [dependencies]
-anyhow = { workspace = true }
 # In alphabetical order
+anyhow = { workspace = true }
 arc-swap = "1.4.0"
 arena = { workspace = true }
 arrow = { workspace = true }
