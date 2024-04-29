@@ -43,7 +43,7 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
+          username: jiacailiu
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Set Environment Variables
         run: |
