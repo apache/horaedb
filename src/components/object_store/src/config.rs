@@ -77,6 +77,7 @@ pub struct AliyunOptions {
     pub key_id: String,
     pub key_secret: String,
     pub endpoint: String,
+    pub proxy: String,
     pub bucket: String,
     pub prefix: String,
     #[serde(default)]
