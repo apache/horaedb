@@ -29,7 +29,7 @@ use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::Shard
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
-use logger::{info, RuntimeLevel};
+use logger::{info, warn, RuntimeLevel};
 use meta_client::{meta_impl, types::NodeMetaInfo};
 use proxy::{
     limiter::Limiter,
@@ -122,10 +122,7 @@ fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
 fn validate_config(config: &Config) {
     let is_data_wal_disabled = config.analytic.wal.disable_data;
     if is_data_wal_disabled {
-        let is_cluster = config.cluster_deployment.is_some();
-        if !is_cluster {
-            panic!("Invalid config, we can only disable data wal in cluster deployments")
-        }
+        warn!("disable data wal may cause data loss, please check whether this configuration is correct")
     }
 }
 
