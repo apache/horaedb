@@ -19,12 +19,11 @@ name: Publish Nightly Docker image
 
 on:
   workflow_dispatch:
-  # schedule:
-  #   - cron: '10 20 * * *'
+  schedule:
+    - cron: '10 20 * * *'
 
 env:
-  REGISTRY: docker.io
-  # REGISTRY: ghcr.io
+  REGISTRY: ghcr.io
   IMAGE_NAME: apache/horaedb-server
 
 jobs:
@@ -43,8 +42,8 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set Environment Variables
         run: |
           echo "BUILD_DATE=$(TZ=':Asia/Shanghai' date '+%Y%m%d')" >> $GITHUB_ENV
