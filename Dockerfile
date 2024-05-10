@@ -35,8 +35,17 @@ FROM ubuntu:20.04
 RUN useradd -m -s /bin/bash horae
 
 RUN apt update && \
-    apt install --yes curl gdb iotop cron vim less net-tools && \
+    apt install --yes curl gdb iotop cron vim less net-tools mysql-client apt-transport-https software-properties-common wget && \
     apt clean
+
+# install grafana
+RUN mkdir -p /etc/apt/keyrings/ && \
+    wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/grafana.gpg > /dev/null && \
+    echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" | tee -a /etc/apt/sources.list.d/grafana.list && \
+    apt update && \
+    apt install --yes grafana && \
+    apt clean
+COPY ./docker/datasource.yml /usr/share/grafana/conf/provisioning/datasources
 
 ENV RUST_BACKTRACE 1
 
