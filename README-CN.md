@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 [![CI](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml)
 [![OpenIssue](https://img.shields.io/github/issues/apache/incubator-horaedb)](https://github.com/apache/incubator-horaedb/issues)
-<!-- [![Docker](https://img.shields.io/docker/v/apache/horaedb-server?logo=docker)](https://hub.docker.com/r/apache/horaedb-server) TODO need to wait for first apache version release. --> 
+<!-- [![Docker](https://img.shields.io/docker/v/apache/horaedb-server?logo=docker)](https://hub.docker.com/r/apache/horaedb-server) TODO need to wait for first apache version release. -->
 
 [English](./README.md)
 
@@ -77,12 +77,13 @@ Drop TABLE `demo`
 '
 ```
 
-## 如何贡献
+## 开发者社区
 
-[订阅邮箱参与讨论](mailto:dev-subscribe@horaedb.apache.org) ([订阅](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [取消订阅](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [查看邮件历史记录](https://lists.apache.org/list.html?dev@horaedb.apache.org))
+与来自世界各地的用户和开发人员一起在 Apache HoraeDB 社区中茁壮成长。
 
-
-发送 [请求](mailto:dev@horaedb.apache.org?subject=(Request%to%20join%20HoraeDB%20slack)) 至 `dev@horaedb.apache.org` 加入HoraedDB Slack
+- [订阅邮箱参与讨论](mailto:dev-subscribe@horaedb.apache.org) ([订阅](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [取消订阅](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [查看邮件历史记录](https://lists.apache.org/list.html?dev@horaedb.apache.org))
+- 发送 [请求](mailto:dev@horaedb.apache.org?subject=(Request%to%20join%20HoraeDB%20slack)) 至 `dev@horaedb.apache.org` 加入HoraedDB Slack
+- 通过[这里的链接](https://github.com/apache/incubator-horaedb-docs/blob/main/static/dingtalk.jpg)，加入钉钉用户群
 
 [约定式提交](https://apache.github.io/incubator-horaedb-docs/cn/dev/conventional_commit)
 
