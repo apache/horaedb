@@ -37,7 +37,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Build and Push HoraeDB Server Docker Image
+      - name: Build and Push HoraeMeta Server Docker Image
         uses: docker/build-push-action@v3
         with:
           context: horaemeta
