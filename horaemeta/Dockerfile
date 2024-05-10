@@ -39,10 +39,10 @@ RUN apt update && \
     apt clean
 
 COPY --from=build /horaemeta/bin/horaemeta-server /usr/bin/horaemeta-server
-RUN chmod +x /usr/bin/horaemeta-server
+COPY --from=build /horaemeta/docker/entrypoint.sh /entrypoint.sh
+COPY --from=build /horaemeta/config/example-standalone.toml /etc/horaemeta/horaemeta.toml
 
-COPY ./docker/entrypoint.sh /entrypoint.sh
-COPY ./config/example-standalone.toml /etc/horaemeta/horaemeta.toml
+RUN chmod +x /usr/bin/horaemeta-server
 
 ARG TINI_VERSION=v0.19.0
 ADD https://github.com/krallin/tini/releases/download/${TINI_VERSION}/tini /tini
