@@ -28,4 +28,4 @@ datasources:
     type: influxdb
     access: proxy
     url: http://localhost:5440/influxdb/v1/
-    isDefault: true
+    isDefault: false
