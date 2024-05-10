@@ -29,7 +29,7 @@ env:
 
 jobs:
   docker:
-    # if: github.repository_owner == 'apache'
+    if: github.repository_owner == 'apache'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,7 +43,7 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: ${{ env.REGISTRY }}
-          username: jiacailiu
+          username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Set Environment Variables
         run: |

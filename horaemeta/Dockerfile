@@ -24,7 +24,7 @@ USER root
 
 RUN apt update && apt install --yes gcc g++ libssl-dev pkg-config cmake && rm -rf /var/lib/apt/lists/*
 
-COPY . /horaemeta
+COPY horaemeta /horaemeta
 WORKDIR /horaemeta
 
 RUN make build
