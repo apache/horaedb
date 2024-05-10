@@ -19,13 +19,13 @@ name: Publish Docker image
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
+    inputs:
+      version:
+        description: Version to release
+        required: true
 
 jobs:
   horaemeta:
-    if: github.repository_owner == 'apache'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,10 +43,9 @@ jobs:
           context: .
           push: true
           file: horaemeta/Dockerfile
-          tags: apache/horaemeta-server:latest,apache/horaemeta-server:${{github.ref_name}}
+          tags: apache/horaemeta-server:latest,apache/horaemeta-server:${{ inputs.version }}
 
   horaedb:
-    if: github.repository_owner == 'apache'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -63,4 +62,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: apache/horaedb-server:latest,apache/horaedb-server:${{github.ref_name}}
+          tags: apache/horaedb-server:latest,apache/horaedb-server:${{ inputs.version }}
