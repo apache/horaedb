@@ -40,9 +40,8 @@ jobs:
       - name: Build and Push HoraeDB Server Docker Image
         uses: docker/build-push-action@v3
         with:
-          context: .
+          context: horaemeta
           push: true
-          file: horaemeta/Dockerfile
           tags: apache/horaemeta-server:latest,apache/horaemeta-server:${{ inputs.version }}
 
   horaedb:
