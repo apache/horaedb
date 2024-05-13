@@ -87,6 +87,20 @@ impl Proxy {
             .fail();
         }
 
+        // Check if the tenant is authorized to access the database.
+        if !self
+            .auth
+            .lock()
+            .unwrap()
+            .identify(ctx.tenant.clone(), ctx.access_token.clone())
+        {
+            return ErrNoCause {
+                msg: format!("tenant: {:?} unauthorized", ctx.tenant),
+                code: StatusCode::UNAUTHORIZED,
+            }
+            .fail();
+        }
+
         let req_context = req.context.as_ref().unwrap();
         let schema = &req_context.database;
 
@@ -152,6 +166,20 @@ impl Proxy {
             return ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "Database is not set",
+            }
+            .fail();
+        }
+
+        // Check if the tenant is authorized to access the database.
+        if !self
+            .auth
+            .lock()
+            .unwrap()
+            .identify(ctx.tenant.clone(), ctx.access_token.clone())
+        {
+            return ErrNoCause {
+                msg: format!("tenant: {:?} unauthorized", ctx.tenant),
+                code: StatusCode::UNAUTHORIZED,
             }
             .fail();
         }
@@ -227,6 +255,8 @@ impl Proxy {
             table: req.tables[0].clone(),
             req: req.clone().into_request(),
             forwarded_from: ctx.forwarded_from.clone(),
+            tenant: ctx.tenant.clone(),
+            access_token: ctx.access_token.clone(),
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,

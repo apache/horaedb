@@ -69,7 +69,7 @@ impl Proxy {
             }),
             table_requests: write_table_requests,
         };
-        let proxy_context = Context::new(ctx.timeout, None);
+        let proxy_context = Context::new(ctx.timeout, None, ctx.tenant, ctx.access_token);
 
         match self
             .handle_write_internal(proxy_context, table_request)

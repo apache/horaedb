@@ -17,7 +17,7 @@
 
 //! Server
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
@@ -29,6 +29,7 @@ use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
+    auth::{auth_with_file::AuthWithFile, AuthBase, AuthRef},
     hotspot::HotspotRecorder,
     instance::{DynamicConfig, Instance, InstanceRef},
     limiter::Limiter,
@@ -135,6 +136,9 @@ pub enum Error {
 
     #[snafu(display("Failed to build query engine, err:{source}"))]
     BuildQueryEngine { source: query_engine::error::Error },
+
+    #[snafu(display("Failed to load auth credential, err:{source}"))]
+    LoadCredential { source: proxy::auth::Error },
 }
 
 define_result!(Error);
@@ -451,7 +455,24 @@ impl Builder {
             .enable
             .then(|| Arc::new(RequestNotifiers::default()));
 
+        // Build auth
+        let auth: AuthRef =
+            if self.server_config.auth.enable && self.server_config.auth.auth_type == "file" {
+                Arc::new(Mutex::new(AuthWithFile::new(
+                    self.server_config.auth.source.clone(),
+                )))
+            } else {
+                Arc::new(Mutex::new(AuthBase))
+            };
+
+        // Load auth credential
+        auth.lock()
+            .unwrap()
+            .load_credential()
+            .context(LoadCredential)?;
+
         let proxy = Arc::new(Proxy::new(
+            auth,
             router.clone(),
             instance.clone(),
             self.server_config.forward,

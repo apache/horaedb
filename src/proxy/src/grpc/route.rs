@@ -16,30 +16,59 @@
 // under the License.
 
 use horaedbproto::storage::{RouteRequest as RouteRequestPb, RouteResponse};
+use http::StatusCode;
 use router::RouteRequest;
 
-use crate::{error, metrics::GRPC_HANDLER_COUNTER_VEC, Context, Proxy};
+use crate::{
+    error,
+    error::{ErrNoCause, Result},
+    metrics::GRPC_HANDLER_COUNTER_VEC,
+    Context, Proxy,
+};
 
 impl Proxy {
-    pub async fn handle_route(&self, _ctx: Context, req: RouteRequestPb) -> RouteResponse {
+    pub async fn handle_route(&self, ctx: Context, req: RouteRequestPb) -> RouteResponse {
         let request = RouteRequest::new(req, true);
-        let routes = self.route(request).await;
 
-        let mut resp = RouteResponse::default();
-        match routes {
-            Err(e) => {
-                GRPC_HANDLER_COUNTER_VEC.route_failed.inc();
-
-                error!("Failed to handle route, err:{e}");
-                resp.header = Some(error::build_err_header(e));
-            }
+        match self.handle_route_internal(ctx, request).await {
             Ok(v) => {
                 GRPC_HANDLER_COUNTER_VEC.route_succeeded.inc();
-
-                resp.header = Some(error::build_ok_header());
-                resp.routes = v;
+                v
+            }
+            Err(e) => {
+                error!("Failed to handle route, err:{e}");
+                GRPC_HANDLER_COUNTER_VEC.route_failed.inc();
+                RouteResponse {
+                    header: Some(error::build_err_header(e)),
+                    ..Default::default()
+                }
             }
         }
-        resp
+    }
+
+    async fn handle_route_internal(
+        &self,
+        ctx: Context,
+        req: RouteRequest,
+    ) -> Result<RouteResponse> {
+        // Check if the tenant is authorized to access the database.
+        if !self
+            .auth
+            .lock()
+            .unwrap()
+            .identify(ctx.tenant.clone(), ctx.access_token.clone())
+        {
+            return ErrNoCause {
+                msg: format!("tenant: {:?} unauthorized", ctx.tenant),
+                code: StatusCode::UNAUTHORIZED,
+            }
+            .fail();
+        }
+
+        let routes = self.route(req).await?;
+        Ok(RouteResponse {
+            header: Some(error::build_ok_header()),
+            routes,
+        })
     }
 }

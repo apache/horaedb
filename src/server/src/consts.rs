@@ -21,8 +21,6 @@
 pub const CATALOG_HEADER: &str = "x-horaedb-catalog";
 /// Header of schema name
 pub const SCHEMA_HEADER: &str = "x-horaedb-schema";
-/// Header of tenant name
-pub const TENANT_HEADER: &str = "x-horaedb-access-tenant";
 /// Header of content encoding type
 pub const CONTENT_ENCODING_HEADER: &str = "content-encoding";
 

@@ -35,7 +35,7 @@ use horaedbproto::{
     },
 };
 use http::StatusCode;
-use proxy::{Context, Proxy, FORWARDED_FROM};
+use proxy::{auth::TENANT_TOKEN_HEADER, Context, Proxy, FORWARDED_FROM};
 use table_engine::engine::EngineRuntimes;
 use time_ext::InstantExt;
 
@@ -148,7 +148,12 @@ impl StorageService for StorageServiceImpl {
     ) -> Result<tonic::Response<Self::StreamSqlQueryStream>, tonic::Status> {
         let begin_instant = Instant::now();
         let proxy = self.proxy.clone();
-        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+        let ctx = Context::new(
+            self.timeout,
+            get_forwarded_from(&req),
+            get_tenant(&req),
+            get_access_token(&req),
+        );
 
         let stream = self.stream_sql_query_internal(ctx, proxy, req).await;
 
@@ -166,13 +171,30 @@ fn get_forwarded_from<T>(req: &tonic::Request<T>) -> Option<String> {
         .map(|value| value.to_str().unwrap().to_string())
 }
 
+fn get_tenant<T>(req: &tonic::Request<T>) -> Option<String> {
+    req.metadata()
+        .get(TENANT_TOKEN_HEADER)
+        .map(|value| value.to_str().unwrap().to_string())
+}
+
+fn get_access_token<T>(req: &tonic::Request<T>) -> Option<String> {
+    req.metadata()
+        .get(TENANT_TOKEN_HEADER)
+        .map(|value| value.to_str().unwrap().to_string())
+}
+
 // TODO: Use macros to simplify duplicate code
 impl StorageServiceImpl {
     async fn route_internal(
         &self,
         req: tonic::Request<RouteRequest>,
     ) -> Result<tonic::Response<RouteResponse>, tonic::Status> {
-        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+        let ctx = Context::new(
+            self.timeout,
+            get_forwarded_from(&req),
+            get_tenant(&req),
+            get_access_token(&req),
+        );
         let req = req.into_inner();
         let proxy = self.proxy.clone();
 
@@ -199,7 +221,12 @@ impl StorageServiceImpl {
         &self,
         req: tonic::Request<WriteRequest>,
     ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
-        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+        let ctx = Context::new(
+            self.timeout,
+            get_forwarded_from(&req),
+            get_tenant(&req),
+            get_access_token(&req),
+        );
 
         let req = req.into_inner();
         let proxy = self.proxy.clone();
@@ -236,7 +263,12 @@ impl StorageServiceImpl {
         &self,
         req: tonic::Request<SqlQueryRequest>,
     ) -> Result<tonic::Response<SqlQueryResponse>, tonic::Status> {
-        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+        let ctx = Context::new(
+            self.timeout,
+            get_forwarded_from(&req),
+            get_tenant(&req),
+            get_access_token(&req),
+        );
         let proxy = self.proxy.clone();
 
         let join_handle = self
@@ -262,11 +294,18 @@ impl StorageServiceImpl {
         &self,
         req: tonic::Request<PrometheusRemoteQueryRequest>,
     ) -> Result<tonic::Response<PrometheusRemoteQueryResponse>, tonic::Status> {
+        let ctx = Context::new(
+            self.timeout,
+            get_forwarded_from(&req),
+            get_tenant(&req),
+            get_access_token(&req),
+        );
+
         let req = req.into_inner();
         let proxy = self.proxy.clone();
-        let timeout = self.timeout;
+
         let join_handle = self.runtimes.read_runtime.spawn(async move {
-            match proxy.handle_prom_grpc_query(timeout, req).await {
+            match proxy.handle_prom_grpc_query(ctx, req).await {
                 Ok(v) => v,
                 Err(e) => PrometheusRemoteQueryResponse {
                     header: Some(error::build_err_header(
@@ -295,7 +334,12 @@ impl StorageServiceImpl {
         &self,
         req: tonic::Request<PrometheusQueryRequest>,
     ) -> Result<tonic::Response<PrometheusQueryResponse>, tonic::Status> {
-        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+        let ctx = Context::new(
+            self.timeout,
+            get_forwarded_from(&req),
+            get_tenant(&req),
+            get_access_token(&req),
+        );
 
         let req = req.into_inner();
         let proxy = self.proxy.clone();
@@ -331,7 +375,12 @@ impl StorageServiceImpl {
         &self,
         req: tonic::Request<tonic::Streaming<WriteRequest>>,
     ) -> Result<tonic::Response<WriteResponse>, tonic::Status> {
-        let ctx = Context::new(self.timeout, get_forwarded_from(&req));
+        let ctx = Context::new(
+            self.timeout,
+            get_forwarded_from(&req),
+            get_tenant(&req),
+            get_access_token(&req),
+        );
         let mut stream = req.into_inner();
         let proxy = self.proxy.clone();
 

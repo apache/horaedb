@@ -23,7 +23,7 @@ use logger::{error, info};
 use opensrv_mysql::{
     AsyncMysqlShim, ErrorKind, InitWriter, QueryResultWriter, StatementMetaWriter,
 };
-use proxy::{context::RequestContext, http::sql::Request, Proxy};
+use proxy::{auth::ADMIN_TENANT, context::RequestContext, http::sql::Request, Proxy};
 use snafu::ResultExt;
 
 use crate::{
@@ -152,6 +152,7 @@ where
             .catalog(session.catalog().to_string())
             .schema(session.schema().to_string())
             .timeout(self.timeout)
+            .tenant(Some(ADMIN_TENANT.to_string()))
             .build()
             .context(CreateContext)
     }

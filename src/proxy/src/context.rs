@@ -56,6 +56,10 @@ pub struct RequestContext {
     pub timeout: Option<Duration>,
     /// Request id
     pub request_id: RequestId,
+    /// Tenant
+    pub tenant: Option<String>,
+    /// Access token
+    pub access_token: Option<String>,
 }
 
 impl RequestContext {
@@ -69,6 +73,8 @@ pub struct Builder {
     catalog: String,
     schema: String,
     timeout: Option<Duration>,
+    tenant: Option<String>,
+    access_token: Option<String>,
 }
 
 impl Builder {
@@ -87,6 +93,16 @@ impl Builder {
         self
     }
 
+    pub fn tenant(mut self, tenant: Option<String>) -> Self {
+        self.tenant = tenant;
+        self
+    }
+
+    pub fn access_token(mut self, access_token: Option<String>) -> Self {
+        self.access_token = access_token;
+        self
+    }
+
     pub fn build(self) -> Result<RequestContext> {
         ensure!(!self.catalog.is_empty(), MissingCatalog);
         ensure!(!self.schema.is_empty(), MissingSchema);
@@ -96,6 +112,8 @@ impl Builder {
             schema: self.schema,
             timeout: self.timeout,
             request_id: RequestId::next_id(),
+            tenant: self.tenant,
+            access_token: self.access_token,
         })
     }
 }

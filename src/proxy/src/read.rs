@@ -316,6 +316,8 @@ impl Proxy {
             table: table_name.unwrap(),
             req: sql_request.into_request(),
             forwarded_from: ctx.forwarded_from,
+            tenant: ctx.tenant,
+            access_token: ctx.access_token,
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,

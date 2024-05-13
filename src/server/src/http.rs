@@ -37,6 +37,7 @@ use macros::define_result;
 use profile::Profiler;
 use prom_remote_api::web;
 use proxy::{
+    auth::{ADMIN_TENANT, TENANT_HEADER, TENANT_TOKEN_HEADER},
     context::RequestContext,
     handlers::{self},
     http::sql::{convert_output, Request},
@@ -732,9 +733,13 @@ impl Service {
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
-            .and(header::optional::<String>(consts::TENANT_HEADER))
+            .and(header::optional::<String>(TENANT_HEADER))
+            .and(header::optional::<String>(TENANT_TOKEN_HEADER))
             .and_then(
-                move |catalog: Option<_>, schema: Option<_>, _tenant: Option<_>| {
+                move |catalog: Option<_>,
+                      schema: Option<_>,
+                      _tenant: Option<_>,
+                      access_token: Option<_>| {
                     // Clone the captured variables
                     let default_catalog = default_catalog.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
@@ -743,6 +748,8 @@ impl Service {
                             .catalog(catalog.unwrap_or(default_catalog))
                             .schema(schema)
                             .timeout(timeout)
+                            .tenant(Some(ADMIN_TENANT.to_string()))
+                            .access_token(access_token)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)

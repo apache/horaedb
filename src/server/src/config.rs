@@ -25,7 +25,7 @@ use std::{
 use cluster::config::SchemaConfig;
 use common_types::schema::TIMESTAMP_COLUMN;
 use meta_client::types::ShardId;
-use proxy::{forward, hotspot, SubTableAccessPerm};
+use proxy::{auth, forward, hotspot, SubTableAccessPerm};
 use router::{
     endpoint::Endpoint,
     rule_based::{ClusterView, RuleList},
@@ -141,6 +141,9 @@ pub struct ServerConfig {
     /// The minimum length of the response body to compress.
     pub resp_compress_min_length: ReadableSize,
 
+    /// Auth config
+    pub auth: auth::Config,
+
     /// Config for forwarding
     pub forward: forward::Config,
 
@@ -178,6 +181,7 @@ impl Default for ServerConfig {
             http_max_body_size: ReadableSize::mb(64),
             grpc_server_cq_count: 20,
             resp_compress_min_length: ReadableSize::mb(4),
+            auth: auth::Config::default(),
             forward: forward::Config::default(),
             auto_create_table: true,
             default_schema_config: Default::default(),
