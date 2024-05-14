@@ -37,10 +37,7 @@ use tonic::{
     transport::{self, Channel},
 };
 
-use crate::{
-    auth::{TENANT_HEADER, TENANT_TOKEN_HEADER},
-    FORWARDED_FROM,
-};
+use crate::{auth::AUTHORIZATION, FORWARDED_FROM};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -209,8 +206,7 @@ pub struct ForwardRequest<Req> {
     pub table: String,
     pub req: tonic::Request<Req>,
     pub forwarded_from: Option<String>,
-    pub tenant: Option<String>,
-    pub access_token: Option<String>,
+    pub authorization: Option<String>,
 }
 
 impl Forwarder<DefaultClientBuilder> {
@@ -288,8 +284,7 @@ impl<B: ClientBuilder> Forwarder<B> {
             table,
             req,
             forwarded_from,
-            tenant,
-            access_token,
+            authorization,
         } = forward_req;
 
         let req_pb = RouteRequestPb {
@@ -316,7 +311,7 @@ impl<B: ClientBuilder> Forwarder<B> {
             }
         };
 
-        self.forward_with_endpoint(endpoint, req, forwarded_from, tenant, access_token, do_rpc)
+        self.forward_with_endpoint(endpoint, req, forwarded_from, authorization, do_rpc)
             .await
     }
 
@@ -325,8 +320,7 @@ impl<B: ClientBuilder> Forwarder<B> {
         endpoint: Endpoint,
         mut req: tonic::Request<Req>,
         forwarded_from: Option<String>,
-        tenant: Option<String>,
-        access_token: Option<String>,
+        authorization: Option<String>,
         do_rpc: F,
     ) -> Result<ForwardResult<Resp, Err>>
     where
@@ -360,14 +354,9 @@ impl<B: ClientBuilder> Forwarder<B> {
             self.local_endpoint.to_string().parse().unwrap(),
         );
 
-        if let Some(tenant) = tenant {
+        if let Some(authorization) = authorization {
             req.metadata_mut()
-                .insert(TENANT_HEADER, tenant.parse().unwrap());
-        }
-
-        if let Some(access_token) = access_token {
-            req.metadata_mut()
-                .insert(TENANT_TOKEN_HEADER, access_token.parse().unwrap());
+                .insert(AUTHORIZATION, authorization.parse().unwrap());
         }
 
         let client = self.get_or_create_client(&endpoint).await?;
@@ -522,8 +511,7 @@ mod tests {
                 table: table.to_string(),
                 req: query_request.into_request(),
                 forwarded_from: None,
-                tenant: None,
-                access_token: None,
+                authorization: None,
             }
         };
 

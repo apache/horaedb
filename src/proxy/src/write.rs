@@ -87,20 +87,6 @@ impl Proxy {
         ctx: Context,
         req: WriteRequest,
     ) -> Result<WriteResponse> {
-        // Check if the tenant is authorized to access the database.
-        if !self
-            .auth
-            .lock()
-            .unwrap()
-            .identify(ctx.tenant.clone(), ctx.access_token.clone())
-        {
-            return ErrNoCause {
-                msg: format!("tenant: {:?} unauthorized", ctx.tenant),
-                code: StatusCode::UNAUTHORIZED,
-            }
-            .fail();
-        }
-
         let write_context = req.context.clone();
         let resp = if self.cluster_with_meta {
             self.handle_write_with_meta(ctx, req).await?
@@ -467,8 +453,7 @@ impl Proxy {
                 endpoint,
                 tonic::Request::new(table_write_request),
                 ctx.forwarded_from,
-                ctx.tenant,
-                ctx.access_token,
+                ctx.authorization,
                 do_write,
             )
             .await;

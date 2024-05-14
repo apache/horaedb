@@ -18,8 +18,6 @@
 //! The proxy module provides features such as forwarding and authentication,
 //! adapts to different protocols.
 
-use std::sync::{Arc, Mutex};
-
 use macros::define_result;
 use serde::{Deserialize, Serialize};
 use snafu::Snafu;
@@ -40,37 +38,14 @@ pub enum Error {
 
 define_result!(Error);
 
-pub type AuthRef = Arc<Mutex<dyn Auth>>;
+/// Header of authorization
+pub const AUTHORIZATION: &str = "authorization";
 
-/// Header of tenant name
-pub const TENANT_HEADER: &str = "x-horaedb-access-tenant";
-/// Header of tenant name
-pub const TENANT_TOKEN_HEADER: &str = "x-horaedb-access-token";
-
-/// Admin tenant name
-pub const ADMIN_TENANT: &str = "admin";
+pub const DEFAULT_AUTH_TYPE: &str = "file";
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
     pub enable: bool,
     pub auth_type: String,
     pub source: String,
-}
-
-pub trait Auth: Send + Sync {
-    fn load_credential(&mut self) -> Result<()>;
-    fn identify(&self, tenant: Option<String>, token: Option<String>) -> bool;
-}
-
-#[derive(Default)]
-pub struct AuthBase;
-
-impl Auth for AuthBase {
-    fn load_credential(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn identify(&self, _tenant: Option<String>, _token: Option<String>) -> bool {
-        true
-    }
 }

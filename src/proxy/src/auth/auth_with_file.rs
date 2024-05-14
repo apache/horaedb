@@ -18,29 +18,35 @@
 //! The proxy module provides features such as forwarding and authentication,
 //! adapts to different protocols.
 
-use std::{collections::HashMap, fs::File, io, io::BufRead, path::Path};
+use std::{collections::HashSet, fs::File, io, io::BufRead, path::Path};
 
+use base64::encode;
 use snafu::ResultExt;
+use tonic::service::Interceptor;
 
-use crate::auth::{Auth, FileNotExisted, OpenFile, ReadLine, Result, ADMIN_TENANT};
+use crate::auth::{FileNotExisted, OpenFile, ReadLine, Result, AUTHORIZATION};
 
+#[derive(Debug, Clone, Default)]
 pub struct AuthWithFile {
+    enable: bool,
     file_path: String,
-    users: HashMap<String, String>,
+    auth: HashSet<String>,
 }
 
 impl AuthWithFile {
-    pub fn new(file_path: String) -> Self {
+    pub fn new(enable: bool, file_path: String) -> Self {
         Self {
+            enable,
             file_path,
-            users: HashMap::new(),
+            auth: HashSet::new(),
         }
     }
-}
 
-impl Auth for AuthWithFile {
-    /// Load credential from file
-    fn load_credential(&mut self) -> Result<()> {
+    pub fn load_credential(&mut self) -> Result<()> {
+        if !self.enable {
+            return Ok(());
+        }
+
         let path = Path::new(&self.file_path);
         if !path.exists() {
             return FileNotExisted {
@@ -54,24 +60,40 @@ impl Auth for AuthWithFile {
 
         for line in reader.lines() {
             let line = line.context(ReadLine)?;
-            if let Some((value, key)) = line.split_once(':') {
-                self.users.insert(key.to_string(), value.to_string());
-            }
+            let mut buf = Vec::with_capacity(line.len() + 1);
+            buf.extend_from_slice(line.as_bytes());
+            let auth = encode(&buf);
+            self.auth.insert(format!("Basic {}", auth));
         }
 
         Ok(())
     }
 
-    fn identify(&self, tenant: Option<String>, token: Option<String>) -> bool {
-        if let Some(tenant) = tenant {
-            if tenant == ADMIN_TENANT {
-                return true;
-            }
+    fn identify(&self, authorization: Option<String>) -> bool {
+        if !self.enable {
+            return true;
         }
 
-        match token {
-            Some(token) => self.users.contains_key(&token),
+        match authorization {
+            Some(auth) => self.auth.contains(&auth),
             None => false,
+        }
+    }
+}
+
+impl Interceptor for AuthWithFile {
+    fn call(
+        &mut self,
+        request: tonic::Request<()>,
+    ) -> std::result::Result<tonic::Request<()>, tonic::Status> {
+        let metadata = request.metadata();
+        let authorization = metadata
+            .get(AUTHORIZATION)
+            .map(|v| v.to_str().unwrap().to_string());
+        if self.identify(authorization) {
+            Ok(request)
+        } else {
+            Err(tonic::Status::unauthenticated("unauthenticated"))
         }
     }
 }

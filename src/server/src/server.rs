@@ -17,7 +17,7 @@
 
 //! Server
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
@@ -29,7 +29,7 @@ use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
-    auth::{auth_with_file::AuthWithFile, AuthBase, AuthRef},
+    auth::{auth_with_file::AuthWithFile, DEFAULT_AUTH_TYPE},
     hotspot::HotspotRecorder,
     instance::{DynamicConfig, Instance, InstanceRef},
     limiter::Limiter,
@@ -456,23 +456,18 @@ impl Builder {
             .then(|| Arc::new(RequestNotifiers::default()));
 
         // Build auth
-        let auth: AuthRef =
-            if self.server_config.auth.enable && self.server_config.auth.auth_type == "file" {
-                Arc::new(Mutex::new(AuthWithFile::new(
-                    self.server_config.auth.source.clone(),
-                )))
-            } else {
-                Arc::new(Mutex::new(AuthBase))
-            };
+        let mut auth = if self.server_config.auth.enable
+            && self.server_config.auth.auth_type == DEFAULT_AUTH_TYPE
+        {
+            AuthWithFile::new(true, self.server_config.auth.source.clone())
+        } else {
+            AuthWithFile::default()
+        };
 
         // Load auth credential
-        auth.lock()
-            .unwrap()
-            .load_credential()
-            .context(LoadCredential)?;
+        auth.load_credential().context(LoadCredential)?;
 
         let proxy = Arc::new(Proxy::new(
-            auth,
             router.clone(),
             instance.clone(),
             self.server_config.forward,
@@ -521,6 +516,7 @@ impl Builder {
             .context(BuildPostgresqlService)?;
 
         let rpc_services = grpc::Builder::new()
+            .auth(auth)
             .endpoint(grpc_endpoint.to_string())
             .runtimes(engine_runtimes)
             .instance(instance.clone())

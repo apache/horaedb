@@ -31,7 +31,7 @@ use pgwire::{
     },
     error::{PgWireError, PgWireResult},
 };
-use proxy::{auth::ADMIN_TENANT, context::RequestContext, http::sql::Request, Proxy};
+use proxy::{context::RequestContext, http::sql::Request, Proxy};
 use snafu::ResultExt;
 
 use crate::postgresql::error::{CreateContext, Result};
@@ -89,7 +89,6 @@ impl PostgresqlHandler {
             .catalog(default_catalog)
             .schema(default_schema)
             .timeout(self.timeout)
-            .tenant(Some(ADMIN_TENANT.to_string()))
             .build()
             .context(CreateContext)
     }

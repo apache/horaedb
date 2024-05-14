@@ -79,7 +79,7 @@ impl Proxy {
             }),
             table_requests: write_table_requests,
         };
-        let ctx = ProxyContext::new(ctx.timeout, None, ctx.tenant, ctx.access_token);
+        let ctx = ProxyContext::new(ctx.timeout, None, ctx.authorization);
 
         match self.handle_write_internal(ctx, table_request).await {
             Ok(result) => {
@@ -116,20 +116,6 @@ impl Proxy {
         metric: String,
         query: Query,
     ) -> Result<QueryResult> {
-        // Check if the tenant is authorized to access the database.
-        if !self
-            .auth
-            .lock()
-            .unwrap()
-            .identify(ctx.tenant.clone(), ctx.access_token.clone())
-        {
-            return ErrNoCause {
-                msg: format!("tenant: {:?} unauthorized", ctx.tenant),
-                code: StatusCode::UNAUTHORIZED,
-            }
-            .fail();
-        }
-
         let request_id = &ctx.request_id;
         let begin_instant = Instant::now();
         let deadline = ctx.timeout.map(|t| begin_instant + t);
@@ -204,8 +190,7 @@ impl Proxy {
         let metric = find_metric(&query.matchers)?;
         let builder = RequestContext::builder()
             .timeout(ctx.timeout)
-            .tenant(ctx.tenant)
-            .access_token(ctx.access_token)
+            .authorization(ctx.authorization)
             .schema(database)
             // TODO: support different catalog
             .catalog(DEFAULT_CATALOG.to_string());

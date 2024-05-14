@@ -35,7 +35,7 @@ use horaedbproto::{
     },
 };
 use http::StatusCode;
-use proxy::{auth::TENANT_TOKEN_HEADER, Context, Proxy, FORWARDED_FROM};
+use proxy::{auth::AUTHORIZATION, Context, Proxy, FORWARDED_FROM};
 use table_engine::engine::EngineRuntimes;
 use time_ext::InstantExt;
 
@@ -151,8 +151,7 @@ impl StorageService for StorageServiceImpl {
         let ctx = Context::new(
             self.timeout,
             get_forwarded_from(&req),
-            get_tenant(&req),
-            get_access_token(&req),
+            get_authorization(&req),
         );
 
         let stream = self.stream_sql_query_internal(ctx, proxy, req).await;
@@ -171,15 +170,9 @@ fn get_forwarded_from<T>(req: &tonic::Request<T>) -> Option<String> {
         .map(|value| value.to_str().unwrap().to_string())
 }
 
-fn get_tenant<T>(req: &tonic::Request<T>) -> Option<String> {
+fn get_authorization<T>(req: &tonic::Request<T>) -> Option<String> {
     req.metadata()
-        .get(TENANT_TOKEN_HEADER)
-        .map(|value| value.to_str().unwrap().to_string())
-}
-
-fn get_access_token<T>(req: &tonic::Request<T>) -> Option<String> {
-    req.metadata()
-        .get(TENANT_TOKEN_HEADER)
+        .get(AUTHORIZATION)
         .map(|value| value.to_str().unwrap().to_string())
 }
 
@@ -192,8 +185,7 @@ impl StorageServiceImpl {
         let ctx = Context::new(
             self.timeout,
             get_forwarded_from(&req),
-            get_tenant(&req),
-            get_access_token(&req),
+            get_authorization(&req),
         );
         let req = req.into_inner();
         let proxy = self.proxy.clone();
@@ -224,8 +216,7 @@ impl StorageServiceImpl {
         let ctx = Context::new(
             self.timeout,
             get_forwarded_from(&req),
-            get_tenant(&req),
-            get_access_token(&req),
+            get_authorization(&req),
         );
 
         let req = req.into_inner();
@@ -266,8 +257,7 @@ impl StorageServiceImpl {
         let ctx = Context::new(
             self.timeout,
             get_forwarded_from(&req),
-            get_tenant(&req),
-            get_access_token(&req),
+            get_authorization(&req),
         );
         let proxy = self.proxy.clone();
 
@@ -297,8 +287,7 @@ impl StorageServiceImpl {
         let ctx = Context::new(
             self.timeout,
             get_forwarded_from(&req),
-            get_tenant(&req),
-            get_access_token(&req),
+            get_authorization(&req),
         );
 
         let req = req.into_inner();
@@ -337,8 +326,7 @@ impl StorageServiceImpl {
         let ctx = Context::new(
             self.timeout,
             get_forwarded_from(&req),
-            get_tenant(&req),
-            get_access_token(&req),
+            get_authorization(&req),
         );
 
         let req = req.into_inner();
@@ -378,8 +366,7 @@ impl StorageServiceImpl {
         let ctx = Context::new(
             self.timeout,
             get_forwarded_from(&req),
-            get_tenant(&req),
-            get_access_token(&req),
+            get_authorization(&req),
         );
         let mut stream = req.into_inner();
         let proxy = self.proxy.clone();

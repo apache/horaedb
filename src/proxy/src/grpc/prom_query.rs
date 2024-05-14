@@ -82,20 +82,6 @@ impl Proxy {
             code: StatusCode::BAD_REQUEST,
         })?;
 
-        // Check if the tenant is authorized to access the database.
-        if !self
-            .auth
-            .lock()
-            .unwrap()
-            .identify(ctx.tenant.clone(), ctx.access_token)
-        {
-            return ErrNoCause {
-                msg: format!("tenant: {:?} unauthorized", ctx.tenant),
-                code: StatusCode::UNAUTHORIZED,
-            }
-            .fail();
-        }
-
         let schema = req_ctx.database;
         let catalog = self.instance.catalog_manager.default_catalog_name();
 

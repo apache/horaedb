@@ -50,12 +50,7 @@ impl Proxy {
         req: Request,
     ) -> Result<Output> {
         let schema = &ctx.schema;
-        let ctx = Context::new(
-            ctx.timeout,
-            None,
-            ctx.tenant.clone(),
-            ctx.access_token.clone(),
-        );
+        let ctx = Context::new(ctx.timeout, None, ctx.authorization.clone());
 
         let query_res = self
             .handle_sql(
