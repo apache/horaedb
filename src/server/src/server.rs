@@ -484,6 +484,7 @@ impl Builder {
         ));
 
         let http_service = http::Builder::new(http_config)
+            .auth(auth.clone())
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .config_content(config_content)

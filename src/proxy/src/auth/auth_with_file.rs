@@ -69,7 +69,7 @@ impl AuthWithFile {
         Ok(())
     }
 
-    fn identify(&self, authorization: Option<String>) -> bool {
+    pub fn identify(&self, authorization: Option<String>) -> bool {
         if !self.enable {
             return true;
         }

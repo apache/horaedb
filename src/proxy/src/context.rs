@@ -90,8 +90,8 @@ impl Builder {
         self
     }
 
-    pub fn authorization(mut self, tenant: Option<String>) -> Self {
-        self.authorization = tenant;
+    pub fn authorization(mut self, authorization: Option<String>) -> Self {
+        self.authorization = authorization;
         self
     }
 
