@@ -750,7 +750,7 @@ impl Service {
                     let proxy = proxy.clone();
 
                     async move {
-                        if !proxy.check_auth(authorization) {
+                        if !proxy.check_auth(authorization.clone()) {
                             return UnAuthenticated.fail().map_err(reject::custom);
                         }
 
@@ -758,6 +758,7 @@ impl Service {
                             .catalog(catalog.unwrap_or(default_catalog))
                             .schema(schema)
                             .timeout(timeout)
+                            .authorization(authorization)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)
