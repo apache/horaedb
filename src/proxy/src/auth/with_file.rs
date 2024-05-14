@@ -15,16 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! The proxy module provides features such as forwarding and authentication,
-//! adapts to different protocols.
-
 use std::{collections::HashSet, fs::File, io, io::BufRead, path::Path};
 
 use base64::encode;
+use generic_error::BoxError;
 use snafu::ResultExt;
 use tonic::service::Interceptor;
 
-use crate::auth::{FileNotExisted, OpenFile, ReadLine, Result, AUTHORIZATION};
+use crate::{
+    auth::AUTHORIZATION,
+    error::{Internal, InternalNoCause, Result},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct AuthWithFile {
@@ -49,17 +50,21 @@ impl AuthWithFile {
 
         let path = Path::new(&self.file_path);
         if !path.exists() {
-            return FileNotExisted {
-                path: self.file_path.clone(),
+            return InternalNoCause {
+                msg: format!("file not existed: {:?}", path),
             }
             .fail();
         }
 
-        let file = File::open(path).context(OpenFile)?;
+        let file = File::open(path).box_err().context(Internal {
+            msg: "failed to open file",
+        })?;
         let reader = io::BufReader::new(file);
 
         for line in reader.lines() {
-            let line = line.context(ReadLine)?;
+            let line = line.box_err().context(Internal {
+                msg: "failed to read line",
+            })?;
             let mut buf = Vec::with_capacity(line.len() + 1);
             buf.extend_from_slice(line.as_bytes());
             let auth = encode(&buf);

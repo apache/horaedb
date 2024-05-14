@@ -37,7 +37,7 @@ use macros::define_result;
 use profile::Profiler;
 use prom_remote_api::web;
 use proxy::{
-    auth::{auth_with_file::AuthWithFile, AUTHORIZATION},
+    auth::AUTHORIZATION,
     context::RequestContext,
     handlers::{self},
     http::sql::{convert_output, Request},
@@ -92,9 +92,6 @@ pub enum Error {
 
     #[snafu(display("Missing proxy.\nBacktrace:\n{}", backtrace))]
     MissingProxy { backtrace: Backtrace },
-
-    #[snafu(display("Missing auth.\nBacktrace:\n{}", backtrace))]
-    MissingAuth { backtrace: Backtrace },
 
     #[snafu(display(
         "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
@@ -183,7 +180,6 @@ impl TryFrom<&str> for ContentEncodingType {
 /// Endpoints beginning with /debug are for internal use, and may subject to
 /// breaking changes.
 pub struct Service {
-    auth: AuthWithFile,
     // In cluster mode, cluster is valid, while in stand-alone mode, cluster is None
     cluster: Option<ClusterRef>,
     proxy: Arc<Proxy>,
@@ -737,7 +733,7 @@ impl Service {
             .default_schema_name()
             .to_string();
         let timeout = self.config.timeout;
-        let auth = self.auth.clone();
+        let proxy = self.proxy.clone();
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
@@ -751,10 +747,10 @@ impl Service {
                     // Clone the captured variables
                     let default_catalog = default_catalog.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
-                    let auth = auth.clone();
+                    let proxy = proxy.clone();
 
                     async move {
-                        if !auth.identify(authorization) {
+                        if !proxy.check_auth(authorization) {
                             return UnAuthenticated.fail().map_err(reject::custom);
                         }
 
@@ -819,7 +815,6 @@ impl Service {
 
 /// Service builder
 pub struct Builder {
-    auth: Option<AuthWithFile>,
     config: HttpConfig,
     engine_runtimes: Option<Arc<EngineRuntimes>>,
     log_runtime: Option<Arc<RuntimeLevel>>,
@@ -832,7 +827,6 @@ pub struct Builder {
 impl Builder {
     pub fn new(config: HttpConfig) -> Self {
         Self {
-            auth: None,
             config,
             engine_runtimes: None,
             log_runtime: None,
@@ -841,11 +835,6 @@ impl Builder {
             proxy: None,
             opened_wals: None,
         }
-    }
-
-    pub fn auth(mut self, auth: AuthWithFile) -> Self {
-        self.auth = Some(auth);
-        self
     }
 
     pub fn engine_runtimes(mut self, engine_runtimes: Arc<EngineRuntimes>) -> Self {
@@ -886,14 +875,12 @@ impl Builder {
         let log_runtime = self.log_runtime.context(MissingLogRuntime)?;
         let config_content = self.config_content.context(MissingInstance)?;
         let proxy = self.proxy.context(MissingProxy)?;
-        let auth = self.auth.context(MissingAuth)?;
         let cluster = self.cluster;
         let opened_wals = self.opened_wals.context(MissingWal)?;
 
         let (tx, rx) = oneshot::channel();
 
         let service = Service {
-            auth,
             cluster,
             proxy,
             engine_runtimes,
@@ -936,7 +923,6 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::MissingInstance { .. }
         | Error::MissingSchemaConfigProvider { .. }
         | Error::MissingProxy { .. }
-        | Error::MissingAuth { .. }
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::ProfileCPU { .. }

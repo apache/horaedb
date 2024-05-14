@@ -37,7 +37,7 @@ use logger::{info, warn};
 use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use proxy::{
-    auth::auth_with_file::AuthWithFile,
+    auth::with_file::AuthWithFile,
     forward,
     hotspot::HotspotRecorder,
     instance::InstanceRef,

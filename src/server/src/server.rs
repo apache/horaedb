@@ -29,7 +29,7 @@ use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
-    auth::{auth_with_file::AuthWithFile, DEFAULT_AUTH_TYPE},
+    auth::{with_file::AuthWithFile, AuthType},
     hotspot::HotspotRecorder,
     instance::{DynamicConfig, Instance, InstanceRef},
     limiter::Limiter,
@@ -138,7 +138,7 @@ pub enum Error {
     BuildQueryEngine { source: query_engine::error::Error },
 
     #[snafu(display("Failed to load auth credential, err:{source}"))]
-    LoadCredential { source: proxy::auth::Error },
+    LoadCredential { source: proxy::error::Error },
 }
 
 define_result!(Error);
@@ -456,10 +456,10 @@ impl Builder {
             .then(|| Arc::new(RequestNotifiers::default()));
 
         // Build auth
-        let mut auth = if self.server_config.auth.enable
-            && self.server_config.auth.auth_type == DEFAULT_AUTH_TYPE
-        {
-            AuthWithFile::new(true, self.server_config.auth.source.clone())
+        let mut auth = if self.server_config.auth.enable {
+            match self.server_config.auth.auth_type {
+                AuthType::File => AuthWithFile::new(true, self.server_config.auth.source.clone()),
+            }
         } else {
             AuthWithFile::default()
         };
@@ -468,6 +468,7 @@ impl Builder {
         auth.load_credential().context(LoadCredential)?;
 
         let proxy = Arc::new(Proxy::new(
+            auth.clone(),
             router.clone(),
             instance.clone(),
             self.server_config.forward,
@@ -484,7 +485,6 @@ impl Builder {
         ));
 
         let http_service = http::Builder::new(http_config)
-            .auth(auth.clone())
             .engine_runtimes(engine_runtimes.clone())
             .log_runtime(log_runtime)
             .config_content(config_content)

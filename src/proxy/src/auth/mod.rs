@@ -15,37 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! The proxy module provides features such as forwarding and authentication,
-//! adapts to different protocols.
-
-use macros::define_result;
 use serde::{Deserialize, Serialize};
-use snafu::Snafu;
 
-pub mod auth_with_file;
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Failed to open file, err:{}.", source))]
-    OpenFile { source: std::io::Error },
-
-    #[snafu(display("Failed to read line, err:{}.", source))]
-    ReadLine { source: std::io::Error },
-
-    #[snafu(display("File not existed, file path:{}", path))]
-    FileNotExisted { path: String },
-}
-
-define_result!(Error);
+pub mod with_file;
 
 /// Header of authorization
 pub const AUTHORIZATION: &str = "authorization";
 
-pub const DEFAULT_AUTH_TYPE: &str = "file";
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub enum AuthType {
+    #[default]
+    #[serde(rename = "file")]
+    File,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
     pub enable: bool,
-    pub auth_type: String,
+    pub auth_type: AuthType,
     pub source: String,
 }

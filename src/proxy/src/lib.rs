@@ -81,6 +81,7 @@ use table_engine::{
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
+    auth::with_file::AuthWithFile,
     context::RequestContext,
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
@@ -107,6 +108,7 @@ impl Default for SubTableAccessPerm {
 }
 
 pub struct Proxy {
+    auth: AuthWithFile,
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
     instance: InstanceRef,
@@ -124,6 +126,7 @@ pub struct Proxy {
 impl Proxy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        auth: AuthWithFile,
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef,
         forward_config: forward::Config,
@@ -145,6 +148,7 @@ impl Proxy {
         ));
 
         Self {
+            auth,
             router,
             instance,
             forwarder,
@@ -532,6 +536,10 @@ impl Proxy {
                 msg: "Failed to execute interpreter",
             })
         }
+    }
+
+    pub fn check_auth(&self, authorization: Option<String>) -> bool {
+        self.auth.identify(authorization)
     }
 }
 
