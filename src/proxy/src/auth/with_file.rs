@@ -65,7 +65,7 @@ impl AuthWithFile {
             let line = line.box_err().context(Internal {
                 msg: "failed to read line",
             })?;
-            let mut buf = Vec::with_capacity(line.len() + 1);
+            let mut buf = Vec::with_capacity(line.len());
             buf.extend_from_slice(line.as_bytes());
             let auth = encode(&buf);
             self.auth.insert(format!("Basic {}", auth));
