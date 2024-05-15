@@ -74,6 +74,7 @@ impl AuthWithFile {
         Ok(())
     }
 
+    // TODO: currently we only support basic auth
     pub fn identify(&self, authorization: Option<String>) -> bool {
         if !self.enable {
             return true;
@@ -86,15 +87,19 @@ impl AuthWithFile {
     }
 }
 
+pub fn get_authorization<T>(req: &tonic::Request<T>) -> Option<String> {
+    req.metadata()
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok().map(String::from))
+}
+
 impl Interceptor for AuthWithFile {
     fn call(
         &mut self,
         request: tonic::Request<()>,
     ) -> std::result::Result<tonic::Request<()>, tonic::Status> {
-        let metadata = request.metadata();
-        let authorization = metadata
-            .get(AUTHORIZATION)
-            .map(|v| v.to_str().unwrap().to_string());
+        // TODO: extract username from request
+        let authorization = get_authorization(&request);
         if self.identify(authorization) {
             Ok(request)
         } else {

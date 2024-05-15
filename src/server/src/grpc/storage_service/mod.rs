@@ -35,7 +35,7 @@ use horaedbproto::{
     },
 };
 use http::StatusCode;
-use proxy::{auth::AUTHORIZATION, Context, Proxy, FORWARDED_FROM};
+use proxy::{auth::with_file::get_authorization, Context, Proxy, FORWARDED_FROM};
 use table_engine::engine::EngineRuntimes;
 use time_ext::InstantExt;
 
@@ -167,12 +167,6 @@ impl StorageService for StorageServiceImpl {
 fn get_forwarded_from<T>(req: &tonic::Request<T>) -> Option<String> {
     req.metadata()
         .get(FORWARDED_FROM)
-        .map(|value| value.to_str().unwrap().to_string())
-}
-
-fn get_authorization<T>(req: &tonic::Request<T>) -> Option<String> {
-    req.metadata()
-        .get(AUTHORIZATION)
         .map(|value| value.to_str().unwrap().to_string())
 }
 
