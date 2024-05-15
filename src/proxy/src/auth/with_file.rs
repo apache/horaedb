@@ -15,11 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{collections::HashSet, fs::File, io, io::BufRead, path::Path};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{self, BufRead},
+    path::Path,
+};
 
-use base64::encode;
 use generic_error::BoxError;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use tonic::service::Interceptor;
 
 use crate::{
@@ -31,7 +35,8 @@ use crate::{
 pub struct AuthWithFile {
     enable: bool,
     file_path: String,
-    auth: HashSet<String>,
+    // name -> password
+    users: HashMap<String, String>,
 }
 
 impl AuthWithFile {
@@ -39,10 +44,11 @@ impl AuthWithFile {
         Self {
             enable,
             file_path,
-            auth: HashSet::new(),
+            users: HashMap::new(),
         }
     }
 
+    // Load a csv format config
     pub fn load_credential(&mut self) -> Result<()> {
         if !self.enable {
             return Ok(());
@@ -65,23 +71,44 @@ impl AuthWithFile {
             let line = line.box_err().context(Internal {
                 msg: "failed to read line",
             })?;
-            let mut buf = Vec::with_capacity(line.len());
-            buf.extend_from_slice(line.as_bytes());
-            let auth = encode(&buf);
-            self.auth.insert(format!("Basic {}", auth));
+            let (username, password) = line.split_once(',').with_context(|| InternalNoCause {
+                msg: format!("invalid line: {:?}", line),
+            })?;
+            self.users
+                .insert(username.to_string(), password.to_string());
         }
 
         Ok(())
     }
 
     // TODO: currently we only support basic auth
-    pub fn identify(&self, authorization: Option<String>) -> bool {
+    // This function should return Result
+    pub fn identify(&self, input: Option<String>) -> bool {
         if !self.enable {
             return true;
         }
 
-        match authorization {
-            Some(auth) => self.auth.contains(&auth),
+        let input = match input {
+            Some(v) => v,
+            None => return false,
+        };
+        let input = match input.split_once("Basic ") {
+            Some((_, encoded)) => match base64::decode(encoded) {
+                Ok(v) => v,
+                Err(_e) => return false,
+            },
+            None => return false,
+        };
+        let input = match std::str::from_utf8(&input) {
+            Ok(v) => v,
+            Err(_e) => return false,
+        };
+        match input.split_once(':') {
+            Some((user, pass)) => self
+                .users
+                .get(user)
+                .map(|expected| expected == pass)
+                .unwrap_or_default(),
             None => false,
         }
     }
