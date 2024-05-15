@@ -19,11 +19,7 @@
 //! It converts write request to gRPC write request, and
 //! translates query request to SQL for execution.
 
-use std::{
-    collections::HashMap,
-    result::Result as StdResult,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, result::Result as StdResult, time::Instant};
 
 use async_trait::async_trait;
 use catalog::consts::DEFAULT_CATALOG;
@@ -83,7 +79,7 @@ impl Proxy {
             }),
             table_requests: write_table_requests,
         };
-        let ctx = ProxyContext::new(ctx.timeout, None);
+        let ctx = ProxyContext::new(ctx.timeout, None, ctx.authorization);
 
         match self.handle_write_internal(ctx, table_request).await {
             Ok(result) => {
@@ -178,14 +174,14 @@ impl Proxy {
     /// another HoraeDB instance.
     pub async fn handle_prom_grpc_query(
         &self,
-        timeout: Option<Duration>,
+        ctx: ProxyContext,
         req: PrometheusRemoteQueryRequest,
     ) -> Result<PrometheusRemoteQueryResponse> {
-        let ctx = req.context.context(ErrNoCause {
+        let req_ctx = req.context.context(ErrNoCause {
             code: StatusCode::BAD_REQUEST,
             msg: "request context is missing",
         })?;
-        let database = ctx.database.to_string();
+        let database = req_ctx.database.to_string();
         let query = Query::decode(req.query.as_ref())
             .box_err()
             .context(Internal {
@@ -193,7 +189,8 @@ impl Proxy {
             })?;
         let metric = find_metric(&query.matchers)?;
         let builder = RequestContext::builder()
-            .timeout(timeout)
+            .timeout(ctx.timeout)
+            .authorization(ctx.authorization)
             .schema(database)
             // TODO: support different catalog
             .catalog(DEFAULT_CATALOG.to_string());
@@ -235,7 +232,7 @@ impl RemoteStorage for Proxy {
                 query: query.encode_to_vec(),
             };
             if let Some(resp) = self
-                .maybe_forward_prom_remote_query(metric.clone(), remote_req)
+                .maybe_forward_prom_remote_query(ctx, metric.clone(), remote_req)
                 .await
                 .map_err(|e| {
                     error!("Forward prom remote query failed, err:{e}");

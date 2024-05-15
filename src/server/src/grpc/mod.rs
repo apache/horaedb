@@ -37,6 +37,7 @@ use logger::{info, warn};
 use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use proxy::{
+    auth::with_file::AuthWithFile,
     forward,
     hotspot::HotspotRecorder,
     instance::InstanceRef,
@@ -47,7 +48,7 @@ use runtime::{JoinHandle, Runtime};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::engine::EngineRuntimes;
 use tokio::sync::oneshot::{self, Sender};
-use tonic::transport::Server;
+use tonic::{codegen::InterceptedService, transport::Server};
 use wal::manager::OpenedWals;
 
 use self::remote_engine_service::QueryDedup;
@@ -113,6 +114,9 @@ pub enum Error {
     #[snafu(display("Missing HotspotRecorder.\nBacktrace:\n{}", backtrace))]
     MissingHotspotRecorder { backtrace: Backtrace },
 
+    #[snafu(display("Missing auth.\nBacktrace:\n{}", backtrace))]
+    MissingAuth { backtrace: Backtrace },
+
     #[snafu(display("Catalog name is not utf8.\nBacktrace:\n{}", backtrace))]
     ParseCatalogName {
         source: std::string::FromUtf8Error,
@@ -158,7 +162,7 @@ define_result!(Error);
 /// Rpc services manages all grpc services of the server.
 pub struct RpcServices {
     serve_addr: SocketAddr,
-    rpc_server: StorageServiceServer<StorageServiceImpl>,
+    rpc_server: InterceptedService<StorageServiceServer<StorageServiceImpl>, AuthWithFile>,
     meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl>>,
     remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl>,
     runtime: Arc<Runtime>,
@@ -212,6 +216,7 @@ impl RpcServices {
 }
 
 pub struct Builder {
+    auth: Option<AuthWithFile>,
     endpoint: String,
     timeout: Option<Duration>,
     runtimes: Option<Arc<EngineRuntimes>>,
@@ -226,6 +231,7 @@ pub struct Builder {
 impl Builder {
     pub fn new() -> Self {
         Self {
+            auth: None,
             endpoint: "0.0.0.0:8381".to_string(),
             timeout: None,
             runtimes: None,
@@ -236,6 +242,11 @@ impl Builder {
             query_dedup_config: None,
             hotspot_recorder: None,
         }
+    }
+
+    pub fn auth(mut self, auth: AuthWithFile) -> Self {
+        self.auth = Some(auth);
+        self
     }
 
     pub fn endpoint(mut self, endpoint: String) -> Self {
@@ -287,6 +298,7 @@ impl Builder {
 
 impl Builder {
     pub fn build(self) -> Result<RpcServices> {
+        let auth = self.auth.context(MissingAuth)?;
         let runtimes = self.runtimes.context(MissingRuntimes)?;
         let instance = self.instance.context(MissingInstance)?;
         let opened_wals = self.opened_wals.context(MissingWals)?;
@@ -330,7 +342,7 @@ impl Builder {
             runtimes,
             timeout: self.timeout,
         };
-        let rpc_server = StorageServiceServer::new(storage_service);
+        let rpc_server = StorageServiceServer::with_interceptor(storage_service, auth);
 
         let serve_addr = self.endpoint.parse().context(InvalidRpcServeAddr)?;
 

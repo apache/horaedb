@@ -37,6 +37,7 @@ use macros::define_result;
 use profile::Profiler;
 use prom_remote_api::web;
 use proxy::{
+    auth::AUTHORIZATION,
     context::RequestContext,
     handlers::{self},
     http::sql::{convert_output, Request},
@@ -148,6 +149,9 @@ pub enum Error {
 
     #[snafu(display("Querying shards is only supported in cluster mode"))]
     QueryShards {},
+
+    #[snafu(display("unauthenticated.\nBacktrace:\n{}", backtrace))]
+    UnAuthenticated { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -729,20 +733,32 @@ impl Service {
             .default_schema_name()
             .to_string();
         let timeout = self.config.timeout;
+        let proxy = self.proxy.clone();
 
         header::optional::<String>(consts::CATALOG_HEADER)
             .and(header::optional::<String>(consts::SCHEMA_HEADER))
             .and(header::optional::<String>(consts::TENANT_HEADER))
+            .and(header::optional::<String>(AUTHORIZATION))
             .and_then(
-                move |catalog: Option<_>, schema: Option<_>, _tenant: Option<_>| {
+                move |catalog: Option<_>,
+                      schema: Option<_>,
+                      _tenant: Option<_>,
+                      authorization: Option<_>| {
                     // Clone the captured variables
                     let default_catalog = default_catalog.clone();
                     let schema = schema.unwrap_or_else(|| default_schema.clone());
+                    let proxy = proxy.clone();
+
                     async move {
+                        if !proxy.check_auth(authorization.clone()) {
+                            return UnAuthenticated.fail().map_err(reject::custom);
+                        }
+
                         RequestContext::builder()
                             .catalog(catalog.unwrap_or(default_catalog))
                             .schema(schema)
                             .timeout(timeout)
+                            .authorization(authorization)
                             .build()
                             .context(CreateContext)
                             .map_err(reject::custom)
@@ -919,6 +935,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::QueryShards { .. } => StatusCode::BAD_REQUEST,
         Error::HandleUpdateLogLevel { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         Error::QueryMaybeExceedTTL { .. } => StatusCode::OK,
+        Error::UnAuthenticated { .. } => StatusCode::UNAUTHORIZED,
     }
 }
 

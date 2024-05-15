@@ -20,6 +20,7 @@
 
 #![feature(trait_alias)]
 
+pub mod auth;
 pub mod context;
 pub mod error;
 mod error_util;
@@ -80,6 +81,8 @@ use table_engine::{
 use tonic::{transport::Channel, IntoRequest};
 
 use crate::{
+    auth::with_file::AuthWithFile,
+    context::RequestContext,
     error::{ErrNoCause, ErrWithCause, Error, Internal, Result},
     forward::{ForwardRequest, ForwardResult, Forwarder, ForwarderRef},
     hotspot::HotspotRecorder,
@@ -105,6 +108,7 @@ impl Default for SubTableAccessPerm {
 }
 
 pub struct Proxy {
+    auth: AuthWithFile,
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
     instance: InstanceRef,
@@ -122,6 +126,7 @@ pub struct Proxy {
 impl Proxy {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        auth: AuthWithFile,
         router: Arc<dyn Router + Send + Sync>,
         instance: InstanceRef,
         forward_config: forward::Config,
@@ -143,6 +148,7 @@ impl Proxy {
         ));
 
         Self {
+            auth,
             router,
             instance,
             forwarder,
@@ -168,6 +174,7 @@ impl Proxy {
 
     async fn maybe_forward_prom_remote_query(
         &self,
+        ctx: &RequestContext,
         metric: String,
         req: PrometheusRemoteQueryRequest,
     ) -> Result<Option<ForwardResult<PrometheusRemoteQueryResponse, Error>>> {
@@ -177,6 +184,7 @@ impl Proxy {
             table: metric,
             req: req.into_request(),
             forwarded_from: None,
+            authorization: ctx.authorization.clone(),
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<PrometheusRemoteQueryRequest>,
@@ -529,6 +537,10 @@ impl Proxy {
             })
         }
     }
+
+    pub fn check_auth(&self, authorization: Option<String>) -> bool {
+        self.auth.identify(authorization)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -536,14 +548,20 @@ pub struct Context {
     request_id: RequestId,
     timeout: Option<Duration>,
     forwarded_from: Option<String>,
+    authorization: Option<String>,
 }
 
 impl Context {
-    pub fn new(timeout: Option<Duration>, forwarded_from: Option<String>) -> Self {
+    pub fn new(
+        timeout: Option<Duration>,
+        forwarded_from: Option<String>,
+        authorization: Option<String>,
+    ) -> Self {
         Self {
             request_id: RequestId::next_id(),
             timeout,
             forwarded_from,
+            authorization,
         }
     }
 }

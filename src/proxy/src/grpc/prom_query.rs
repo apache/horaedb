@@ -81,6 +81,7 @@ impl Proxy {
             msg: "Missing context",
             code: StatusCode::BAD_REQUEST,
         })?;
+
         let schema = req_ctx.database;
         let catalog = self.instance.catalog_manager.default_catalog_name();
 

@@ -453,6 +453,7 @@ impl Proxy {
                 endpoint,
                 tonic::Request::new(table_write_request),
                 ctx.forwarded_from,
+                ctx.authorization,
                 do_write,
             )
             .await;
