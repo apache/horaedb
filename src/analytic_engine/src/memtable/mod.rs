@@ -88,7 +88,7 @@ pub struct LayeredMemtableOptions {
 impl Default for LayeredMemtableOptions {
     fn default() -> Self {
         Self {
-            mutable_segment_switch_threshold: ReadableSize::mb(3),
+            mutable_segment_switch_threshold: ReadableSize::mb(0),
         }
     }
 }
