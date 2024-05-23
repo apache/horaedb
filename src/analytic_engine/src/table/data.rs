@@ -329,7 +329,7 @@ impl TableData {
             .mutable_segment_switch_threshold
             .0 as usize;
         let enable_layered_memtable = mutable_segment_switch_threshold > 0;
-        let memtable_factory = if enable_layered_memtable {
+        let memtable_factory = if enable_layered_memtable && !opts.need_dedup() {
             Arc::new(LayeredMemtableFactory::new(
                 memtable_factory,
                 mutable_segment_switch_threshold,
@@ -409,7 +409,7 @@ impl TableData {
             .mutable_segment_switch_threshold
             .0 as usize;
         let enable_layered_memtable = mutable_segment_switch_threshold > 0;
-        let memtable_factory = if enable_layered_memtable {
+        let memtable_factory = if enable_layered_memtable && !add_meta.opts.need_dedup() {
             Arc::new(LayeredMemtableFactory::new(
                 memtable_factory,
                 mutable_segment_switch_threshold,
