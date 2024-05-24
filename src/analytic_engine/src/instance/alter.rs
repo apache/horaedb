@@ -30,7 +30,7 @@ use crate::{
         self,
         engine::{
             AlterDroppedTable, EncodePayloads, FlushTable, InvalidOptions, InvalidPreVersion,
-            InvalidSchemaVersion, Result, WriteManifest, WriteWal,
+            InvalidSchemaVersion, InvalidTableOptions, Result, WriteManifest, WriteWal,
         },
         flush_compaction::TableFlushOptions,
         serial_executor::TableOpSerialExecutor,
@@ -239,6 +239,10 @@ impl<'a> Alterer<'a> {
             opts.sanitize();
             opts
         };
+
+        // We should check the options after altering
+        ensure!(table_opts.is_valid(), InvalidTableOptions { table_opts });
+
         let manifest_update = AlterOptionsMeta {
             space_id: self.table_data.space_id,
             table_id: self.table_data.id,
