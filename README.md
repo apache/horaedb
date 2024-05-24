@@ -10,6 +10,12 @@
 
 Apache HoraeDB (incubating) is a high-performance, distributed, cloud native time-series database.
 
+> [!IMPORTANT]
+> Apache HoraeDB (incubating) is an effort undergoing incubation at the Apache
+> Software Foundation (ASF), sponsored by the Apache Incubator PMC.
+>
+> Please read the [DISCLAIMER](DISCLAIMER) and a full explanation of ["incubating"](https://incubator.apache.org/policy/incubation.html).
+
 ## Documentation
 
 - [User Guide](https://horaedb.apache.org)
