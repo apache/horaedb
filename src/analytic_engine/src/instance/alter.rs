@@ -240,7 +240,7 @@ impl<'a> Alterer<'a> {
             opts
         };
 
-        // We should check the options after altering
+        // We should check the options before altering
         ensure!(table_opts.is_valid(), InvalidTableOptions { table_opts });
 
         let manifest_update = AlterOptionsMeta {
