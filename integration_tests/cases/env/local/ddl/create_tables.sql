@@ -111,7 +111,7 @@ drop table `05_create_tables_t11`;
 CREATE TABLE `05_timestamp_not_in_primary_key`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic;
 
 -- Invalid table options
-CREATE TABLE `05_invalid_options`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t), PRIMARY KEY(c1)) ENGINE = Analytic with (mutable_segment_switch_threshold='1', update_mode='OVERWRITE');
+CREATE TABLE `05_invalid_options`(c1 int NOT NULL, t timestamp NOT NULL, TIMESTAMP KEY(t)) ENGINE = Analytic with (mutable_segment_switch_threshold='1', update_mode='OVERWRITE');
 
 DROP TABLE IF EXISTS `05_create_tables_t`;
 DROP TABLE IF EXISTS `05_create_tables_t2`;
