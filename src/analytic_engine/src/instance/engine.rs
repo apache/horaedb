@@ -38,6 +38,7 @@ use crate::{
         Instance,
     },
     space::{MemSizeOptions, Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
+    TableOptions,
 };
 
 #[derive(Debug, Snafu)]
@@ -246,6 +247,14 @@ pub enum Error {
     TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
 
     #[snafu(display(
+        "Found invalid table options, table:{table_opts:?}.\nBacktrace:\n{backtrace}",
+    ))]
+    InvalidTableOptions {
+        table_opts: TableOptions,
+        backtrace: Backtrace,
+    },
+
+    #[snafu(display(
         "Failed to purge wal, wal_location:{:?}, sequence:{}",
         wal_location,
         sequence
@@ -292,7 +301,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
             | Error::PurgeWal { .. }
-            | Error::ReplayWalWithCause { .. } => Self::Unexpected {
+            | Error::ReplayWalWithCause { .. }
+            | Error::InvalidTableOptions { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }

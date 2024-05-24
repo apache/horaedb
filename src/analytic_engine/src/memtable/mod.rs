@@ -93,20 +93,6 @@ impl Default for LayeredMemtableOptions {
     }
 }
 
-impl LayeredMemtableOptions {
-    pub fn parse_from(opts: &HashMap<String, String>) -> Result<Self> {
-        let mut options = LayeredMemtableOptions::default();
-        if let Some(v) = opts.get(MUTABLE_SEGMENT_SWITCH_THRESHOLD) {
-            let threshold = v
-                .parse::<u64>()
-                .with_context(|| format!("invalid mutable segment switch threshold:{v}"))?;
-            options.mutable_segment_switch_threshold = ReadableSize(threshold);
-        }
-
-        Ok(options)
-    }
-}
-
 impl From<manifest::LayeredMemtableOptions> for LayeredMemtableOptions {
     fn from(value: manifest::LayeredMemtableOptions) -> Self {
         Self {

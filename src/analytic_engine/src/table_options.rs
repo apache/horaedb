@@ -21,10 +21,11 @@ use std::{collections::HashMap, string::ToString, time::Duration};
 
 use common_types::{
     time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL, MEMTABLE_TYPE,
-    NUM_ROWS_PER_ROW_GROUP, OPTION_KEY_ENABLE_TTL, SEGMENT_DURATION, STORAGE_FORMAT, TTL,
-    UPDATE_MODE, WRITE_BUFFER_SIZE,
+    MUTABLE_SEGMENT_SWITCH_THRESHOLD, NUM_ROWS_PER_ROW_GROUP, OPTION_KEY_ENABLE_TTL,
+    SEGMENT_DURATION, STORAGE_FORMAT, TTL, UPDATE_MODE, WRITE_BUFFER_SIZE,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
+use generic_error::{BoxError, GenericError};
 use horaedbproto::manifest as manifest_pb;
 use macros::define_result;
 use serde::{Deserialize, Serialize};
@@ -143,7 +144,7 @@ pub enum Error {
         "Failed to parse layered memtable options, err:{source}.\nBacktrace:\n{backtrace}",
     ))]
     ParseLayeredMemtableOptions {
-        source: crate::memtable::Error,
+        source: GenericError,
         backtrace: Backtrace,
     },
 
@@ -468,12 +469,35 @@ impl TableOptions {
                 self.storage_format_hint.to_string(),
             ),
             (MEMTABLE_TYPE.to_string(), self.memtable_type.to_string()),
+            (
+                MUTABLE_SEGMENT_SWITCH_THRESHOLD.to_string(),
+                self.layered_memtable_opts
+                    .mutable_segment_switch_threshold
+                    .0
+                    .to_string(),
+            ),
         ]
         .into_iter()
         .collect();
         self.compaction_strategy.fill_raw_map(&mut m);
 
         m
+    }
+
+    /// Check if the options are valid.
+    pub fn is_valid(&self) -> bool {
+        // layered memtable is not support in overwrite mode
+        if self.need_dedup()
+            && self
+                .layered_memtable_opts
+                .mutable_segment_switch_threshold
+                .0
+                > 0
+        {
+            return false;
+        }
+
+        true
     }
 
     /// Sanitize options silently.
@@ -791,10 +815,15 @@ fn merge_table_options(
     if let Some(v) = options.get(MEMTABLE_TYPE) {
         base_table_opts.memtable_type = MemtableType::parse_from(v);
     }
-
-    let layered_memtable_opts =
-        LayeredMemtableOptions::parse_from(options).context(ParseLayeredMemtableOptions)?;
-    base_table_opts.layered_memtable_opts = layered_memtable_opts;
+    if let Some(v) = options.get(MUTABLE_SEGMENT_SWITCH_THRESHOLD) {
+        let threshold = v
+            .parse::<u64>()
+            .box_err()
+            .context(ParseLayeredMemtableOptions)?;
+        base_table_opts
+            .layered_memtable_opts
+            .mutable_segment_switch_threshold = ReadableSize(threshold);
+    }
 
     Ok(base_table_opts)
 }
