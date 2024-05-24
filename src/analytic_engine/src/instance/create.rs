@@ -49,7 +49,9 @@ impl Instance {
                     table: &params.table_name,
                 })?;
 
-        ensure!(table_opts.is_valid(), InvalidTableOptions { table_opts });
+        if let Some(reason) = table_opts.check_validity() {
+            return InvalidTableOptions { reason }.fail();
+        }
 
         if let Some(partition_info) = &params.partition_info {
             let dedup_on_random_partition =

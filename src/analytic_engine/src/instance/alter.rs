@@ -241,7 +241,9 @@ impl<'a> Alterer<'a> {
         };
 
         // We should check the options before altering
-        ensure!(table_opts.is_valid(), InvalidTableOptions { table_opts });
+        if let Some(reason) = table_opts.check_validity() {
+            return InvalidTableOptions { reason }.fail();
+        }
 
         let manifest_update = AlterOptionsMeta {
             space_id: self.table_data.space_id,

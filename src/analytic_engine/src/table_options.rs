@@ -485,7 +485,9 @@ impl TableOptions {
     }
 
     /// Check if the options are valid.
-    pub fn is_valid(&self) -> bool {
+    /// If invalid, Some(reason) will be returned.
+    /// If valid, None will be returned
+    pub fn check_validity(&self) -> Option<String> {
         // layered memtable is not support in overwrite mode
         if self.need_dedup()
             && self
@@ -494,10 +496,13 @@ impl TableOptions {
                 .0
                 > 0
         {
-            return false;
+            return Some(format!(
+                "layered memtable is enabled for table needing dedup, layered_memtable_opts:{:?}, update_mode:{:?}",
+                self.layered_memtable_opts, self.update_mode,
+            ));
         }
 
-        true
+        None
     }
 
     /// Sanitize options silently.

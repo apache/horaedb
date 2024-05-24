@@ -120,7 +120,7 @@ UInt64(0),Timestamp(3),Int32(3),String("d22"),String("3"),String("d33"),
 -- doesn't support layered memtable for overwrite mode
 ALTER TABLE `05_alter_table_t0` MODIFY SETTING mutable_segment_switch_threshold='1';
 
-Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute alter table, err:Failed to alter table options, err:Failed to alter options, table:05_alter_table_t0, err:Found invalid table options, table:TableOptions { segment_duration: Some(ReadableDuration(7200s)), update_mode: Overwrite, storage_format_hint: Auto, enable_ttl: false, ttl: ReadableDuration(604800s), arena_block_size: 2097152, write_buffer_size: 33554432, compaction_strategy: Default, num_rows_per_row_group: 8192, compression: Zstd, memtable_type: SkipList, layered_memtable_opts: LayeredMemtableOptions { mutable_segment_switch_threshold: ReadableSize(1) } }. sql:ALTER TABLE `05_alter_table_t0` MODIFY SETTING mutable_segment_switch_threshold='1';" })
+Failed to execute query, err: Server(ServerError { code: 500, msg: "Failed to execute plan. Caused by: Internal error, msg:Failed to execute interpreter, err:Failed to execute alter table, err:Failed to alter table options, err:Failed to alter options, table:05_alter_table_t0, err:Found invalid table options, reason:layered memtable is enabled for table needing dedup, layered_memtable_opts:LayeredMemtableOptions { mutable_segment_switch_threshold: ReadableSize(1) }, update_mode:Overwrite. sql:ALTER TABLE `05_alter_table_t0` MODIFY SETTING mutable_segment_switch_threshold='1';" })
 
 DROP TABLE `05_alter_table_t0`;
 

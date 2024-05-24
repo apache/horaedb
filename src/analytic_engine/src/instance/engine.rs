@@ -38,7 +38,6 @@ use crate::{
         Instance,
     },
     space::{MemSizeOptions, Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
-    TableOptions,
 };
 
 #[derive(Debug, Snafu)]
@@ -247,10 +246,10 @@ pub enum Error {
     TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Found invalid table options, table:{table_opts:?}.\nBacktrace:\n{backtrace}",
+        "Found invalid table options, reason:{reason}.\nBacktrace:\n{backtrace}",
     ))]
     InvalidTableOptions {
-        table_opts: TableOptions,
+        reason: String,
         backtrace: Backtrace,
     },
 
