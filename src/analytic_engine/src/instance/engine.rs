@@ -245,9 +245,7 @@ pub enum Error {
     ))]
     TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
 
-    #[snafu(display(
-        "Found invalid table options, reason:{reason}.\nBacktrace:\n{backtrace}",
-    ))]
+    #[snafu(display("Found invalid table options, reason:{reason}.\nBacktrace:\n{backtrace}",))]
     InvalidTableOptions {
         reason: String,
         backtrace: Backtrace,
