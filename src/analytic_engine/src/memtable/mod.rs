@@ -26,9 +26,8 @@ mod reversed_iter;
 pub mod skiplist;
 pub mod test_util;
 
-use std::{collections::HashMap, ops::Bound, sync::Arc, time::Instant};
+use std::{ops::Bound, sync::Arc, time::Instant};
 
-use anyhow::Context;
 use bytes_ext::{ByteVec, Bytes};
 use common_types::{
     projected_schema::RowProjectorBuilder,
@@ -36,7 +35,7 @@ use common_types::{
     row::Row,
     schema::{IndexInWriterSchema, Schema},
     time::TimeRange,
-    SequenceNumber, MUTABLE_SEGMENT_SWITCH_THRESHOLD,
+    SequenceNumber,
 };
 pub use error::Error;
 use horaedbproto::manifest;
