@@ -19,14 +19,12 @@
 
 use std::{collections::HashMap, str::FromStr, string::ToString, time::Duration};
 
-use anyhow::ensure;
 use common_types::{
     time::Timestamp, ARENA_BLOCK_SIZE, COMPACTION_STRATEGY, COMPRESSION, ENABLE_TTL,
     LAYERED_ENABLE, LAYERED_MUTABLE_SWITCH_THRESHOLD, MEMTABLE_TYPE, NUM_ROWS_PER_ROW_GROUP,
     OPTION_KEY_ENABLE_TTL, SEGMENT_DURATION, STORAGE_FORMAT, TTL, UPDATE_MODE, WRITE_BUFFER_SIZE,
 };
 use datafusion::parquet::basic::Compression as ParquetCompression;
-use generic_error::{BoxError, GenericError};
 use horaedbproto::manifest as manifest_pb;
 use macros::define_result;
 use serde::{Deserialize, Serialize};
