@@ -108,18 +108,15 @@ impl From<manifest::LayeredMemtableOptions> for LayeredMemtableOptions {
         let enable = match value.enable {
             Some(Enable::EnableOpt(enable)) => enable,
             None => {
-                // For compatibility, mutable_segment_switch_threshold is used to decision
+                // For compatibility here.
+                // Mutable_segment_switch_threshold is used to decision
                 // whether use the layered memtable in former.
                 // So this situation is possible to exist:
                 //
                 //  mutable_segment_switch_threshold > 0 and enable none
                 //
-                // And in this situation, layered memtable should be used.
-                if mutable_segment_switch_threshold.0 > 0 {
-                    true
-                } else {
-                    false
-                }
+                // and in this situation, layered memtable should be used.
+                mutable_segment_switch_threshold.0 > 0
             }
         };
 

@@ -18,11 +18,7 @@
 //! Table factory trait
 
 use core::fmt;
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Debug,
-    sync::Arc,
-};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::{

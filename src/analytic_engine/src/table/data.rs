@@ -336,7 +336,7 @@ impl TableData {
             ensure!(
                 mutable_segment_switch_threshold > 0,
                 InvalidTableOpts {
-                    msg: format!("layered memtable is enabled but mutable_switch_threshold is 0")
+                    msg: "layered memtable is enabled but mutable_switch_threshold is 0",
                 }
             );
 
@@ -424,7 +424,7 @@ impl TableData {
             ensure!(
                 mutable_segment_switch_threshold > 0,
                 InvalidTableOpts {
-                    msg: format!("layered memtable is enabled but mutable_switch_threshold is 0")
+                    msg: "layered memtable is enabled but mutable_switch_threshold is 0",
                 }
             );
 
