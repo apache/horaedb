@@ -105,8 +105,11 @@ impl From<manifest::LayeredMemtableOptions> for LayeredMemtableOptions {
     fn from(value: manifest::LayeredMemtableOptions) -> Self {
         // For compatibility here.
         // Layered memtable is enabled default in former,
-        // and we should keep this behavior after switching to use `enable`
-        // to control layered memtable's on/off.
+        // so some horaedb service is running with layered memtable in production
+        // and we shouldn't make difference to such exist running services
+        // after switching to control layered memtable's on/off with the new added
+        // `enable` field in manifest(that says `enable` should assume to true when not
+        // exist).
         // However, pb version used now don't support to define default value
         // explicitly, and default value of bool is always false...
         // So we use `disable` rather than `enable` in pb to reach it
