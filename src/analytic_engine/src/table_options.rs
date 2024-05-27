@@ -715,6 +715,7 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
             Some(v) => v.into(),
             None => LayeredMemtableOptions {
                 mutable_segment_switch_threshold: ReadableSize(0),
+                enable: false,
             },
         };
 

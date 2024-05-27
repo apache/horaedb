@@ -38,7 +38,7 @@ use common_types::{
     SequenceNumber,
 };
 pub use error::Error;
-use horaedbproto::manifest;
+use horaedbproto::manifest::{self, layered_memtable_options::Enable};
 use macros::define_result;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
@@ -81,6 +81,7 @@ impl ToString for MemtableType {
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
 pub struct LayeredMemtableOptions {
+    pub enable: bool,
     pub mutable_segment_switch_threshold: ReadableSize,
 }
 
@@ -88,14 +89,23 @@ impl Default for LayeredMemtableOptions {
     fn default() -> Self {
         Self {
             mutable_segment_switch_threshold: ReadableSize::mb(0),
+            enable: false,
         }
     }
 }
 
 impl From<manifest::LayeredMemtableOptions> for LayeredMemtableOptions {
     fn from(value: manifest::LayeredMemtableOptions) -> Self {
+        let enable = match value.enable {
+            Some(Enable::EnableOpt(enable)) => enable,
+            // For compatibility(enable field not exist in old horaedb version), 
+            // if this field not exist in pb, set it to true.
+            None => true,
+        };
+
         Self {
             mutable_segment_switch_threshold: ReadableSize(value.mutable_segment_switch_threshold),
+            enable,
         }
     }
 }
@@ -104,6 +114,7 @@ impl From<LayeredMemtableOptions> for manifest::LayeredMemtableOptions {
     fn from(value: LayeredMemtableOptions) -> Self {
         Self {
             mutable_segment_switch_threshold: value.mutable_segment_switch_threshold.0,
+            enable: Some(Enable::EnableOpt(value.enable))
         }
     }
 }
