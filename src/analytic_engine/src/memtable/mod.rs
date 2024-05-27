@@ -38,7 +38,7 @@ use common_types::{
     SequenceNumber,
 };
 pub use error::Error;
-use horaedbproto::manifest::{self, layered_memtable_options::Enable};
+use horaedbproto::manifest;
 use macros::define_result;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
@@ -103,26 +103,20 @@ impl Default for LayeredMemtableOptions {
 
 impl From<manifest::LayeredMemtableOptions> for LayeredMemtableOptions {
     fn from(value: manifest::LayeredMemtableOptions) -> Self {
+        // For compatibility here.
+        // Layered memtable is enabled default in former,
+        // and we should keep this behavior after switching to use `enable`
+        // to control layered memtable's on/off.
+        // However, pb version used now don't support to define default value
+        // explicitly, and default value of bool is always false...
+        // So we use `disable` rather than `enable` in pb to reach it
+        // (disable: false --> enable: true).
+        let enable = !value.disable;
         let mutable_segment_switch_threshold = ReadableSize(value.mutable_segment_switch_threshold);
-
-        let enable = match value.enable {
-            Some(Enable::EnableOpt(enable)) => enable,
-            None => {
-                // For compatibility here.
-                // Mutable_segment_switch_threshold is used to decision
-                // whether use the layered memtable in former.
-                // So this situation is possible to exist:
-                //
-                //  mutable_segment_switch_threshold > 0 and enable none
-                //
-                // and in this situation, layered memtable should be used.
-                mutable_segment_switch_threshold.0 > 0
-            }
-        };
 
         Self {
             enable,
-            mutable_segment_switch_threshold: ReadableSize(value.mutable_segment_switch_threshold),
+            mutable_segment_switch_threshold,
         }
     }
 }
@@ -131,7 +125,7 @@ impl From<LayeredMemtableOptions> for manifest::LayeredMemtableOptions {
     fn from(value: LayeredMemtableOptions) -> Self {
         Self {
             mutable_segment_switch_threshold: value.mutable_segment_switch_threshold.0,
-            enable: Some(Enable::EnableOpt(value.enable)),
+            disable: !value.enable,
         }
     }
 }
