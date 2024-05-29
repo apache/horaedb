@@ -23,22 +23,13 @@ use std::{
     convert::TryFrom,
     mem,
     ops::ControlFlow,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
 };
 
 use arrow::{
     compute::can_cast_types,
     datatypes::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema},
     error::ArrowError,
-};
-use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use cluster::config::SchemaConfig;
-use common_types::{
-    column_schema::{self, ColumnSchema},
-    datum::{Datum, DatumKind},
-    request_id::RequestId,
-    row::{RowBuilder, RowGroup},
-    schema::{self, Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
 use datafusion::{
     common::{DFField, DFSchema},
@@ -50,17 +41,27 @@ use datafusion::{
         ResolvedTableReference,
     },
 };
-use generic_error::GenericError;
 use horaedbproto::storage::{value::Value as PbValue, WriteTableRequest};
 use influxql_parser::statement::Statement as InfluxqlStatement;
+use prom_remote_api::types::Query as PromRemoteQuery;
+use snafu::{Backtrace, ensure, OptionExt, ResultExt, Snafu};
+use sqlparser::ast::{
+    ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query, SelectItem, SetExpr,
+    SqlOption, Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values, visit_statements_mut,
+};
+
+use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
+use cluster::config::SchemaConfig;
+use common_types::{
+    column_schema::{self, ColumnSchema},
+    datum::{Datum, DatumKind},
+    request_id::RequestId,
+    row::{RowBuilder, RowGroup},
+    schema::{self, Builder as SchemaBuilder, Schema, TSID_COLUMN},
+};
+use generic_error::GenericError;
 use logger::{debug, trace};
 use macros::define_result;
-use prom_remote_api::types::Query as PromRemoteQuery;
-use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
-use sqlparser::ast::{
-    visit_statements_mut, ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query, SelectItem,
-    SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
-};
 use table_engine::table::TableRef;
 
 use crate::{
@@ -80,12 +81,13 @@ use crate::{
     partition::PartitionParser,
     plan::{
         AlterTableOperation, AlterTablePlan, CreateTablePlan, DescribeTablePlan, DropTablePlan,
-        ExistsTablePlan, InsertPlan, Plan, QueryPlan, QueryType, ShowCreatePlan, ShowPlan,
-        ShowTablesPlan,
+        ExistsTablePlan, InsertPlan, InsertSource, Plan, QueryPlan, QueryType, ShowCreatePlan,
+        ShowPlan, ShowTablesPlan,
     },
-    promql::{remote_query_to_plan, ColumnNames, Expr as PromExpr, RemoteQueryPlan},
+    promql::{ColumnNames, Expr as PromExpr, remote_query_to_plan, RemoteQueryPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
+
 // We do not carry backtrace in sql error because it is mainly used in server
 // handler and the error is usually caused by invalid/unsupported sql, which
 // should be easy to find out the reason.
@@ -996,11 +998,16 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     }
                 }
 
-                let rows = build_row_group(schema, source, column_index_in_insert)?;
+                let source = build_insert_source(
+                    schema,
+                    source,
+                    column_index_in_insert,
+                    self.meta_provider.clone_with_cleared_cache(),
+                )?;
 
                 Ok(Plan::Insert(InsertPlan {
                     table,
-                    rows,
+                    source,
                     default_value_map,
                 }))
             }
@@ -1105,7 +1112,7 @@ fn normalize_func_name(sql_stmt: &mut SqlStatement) {
 }
 
 #[derive(Debug)]
-enum InsertMode {
+pub enum InsertMode {
     // Insert the value in expr with given index directly.
     Direct(usize),
     // No value provided, insert a null.
@@ -1154,14 +1161,15 @@ fn parse_data_value_from_expr(data_type: DatumKind, expr: &mut Expr) -> Result<D
     }
 }
 
-/// Build RowGroup
-fn build_row_group(
+/// Build InsertSource
+fn build_insert_source<P: MetaProvider>(
     schema: Schema,
     source: Box<Query>,
     column_index_in_insert: Vec<InsertMode>,
-) -> Result<RowGroup> {
+    meta_provider: ContextProviderAdapter<P>,
+) -> Result<InsertSource> {
     // Build row group by schema
-    match *source.body {
+    match *source.clone().body {
         SetExpr::Values(Values {
             explicit_row: _,
             rows: expr_rows,
@@ -1207,7 +1215,33 @@ fn build_row_group(
             }
 
             // Build the whole row group
-            Ok(RowGroup::new_unchecked(schema, rows))
+            Ok(InsertSource::Values {
+                row_group: RowGroup::new_unchecked(schema, rows),
+            })
+        }
+        SetExpr::Select(__) => {
+            let mut select_stmt = SqlStatement::Query(source);
+            normalize_func_name(&mut select_stmt);
+            let select_table_name = parse_table_name_with_standard(&select_stmt);
+
+            let df_planner = SqlToRel::new_with_options(&meta_provider, DEFAULT_PARSER_OPTS);
+
+            let select_df_plan = df_planner
+                .sql_statement_to_plan(select_stmt)
+                .context(DatafusionPlan)?;
+            let select_df_plan = optimize_plan(&select_df_plan).context(DatafusionPlan)?;
+
+            // Get all tables needed in the plan
+            let tables = meta_provider.try_into_container().context(FindMeta)?;
+            let query = QueryPlan {
+                df_plan: select_df_plan,
+                table_name: select_table_name,
+                tables: Arc::new(tables),
+            };
+            Ok(InsertSource::Select {
+                query,
+                column_index_in_insert,
+            })
         }
         _ => InsertSourceBodyNotSet.fail(),
     }
@@ -1409,25 +1443,26 @@ pub fn get_table_ref(table_name: &str) -> TableReference {
 
 #[cfg(test)]
 pub mod tests {
-
     use datafusion::{
         common::tree_node::{TreeNode, TreeNodeVisitor, VisitRecursion},
         datasource::source_as_provider,
         logical_expr::LogicalPlan,
     };
     use horaedbproto::storage::{
-        value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
+        Field, FieldGroup, Tag, value, Value as PbValue, WriteSeriesEntry,
     };
-    use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
     use sqlparser::ast::Value;
+
+    use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
     use table_engine::provider::TableProviderAdapter;
 
-    use super::*;
     use crate::{
         parser::Parser,
         planner::{parse_for_option, Planner},
         tests::MockMetaProvider,
     };
+
+    use super::*;
 
     fn quick_test(sql: &str, expected: &str) -> Result<()> {
         let plan = sql_to_logical_plan(sql)?;
