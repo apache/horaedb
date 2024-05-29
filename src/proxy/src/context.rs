@@ -56,6 +56,8 @@ pub struct RequestContext {
     pub timeout: Option<Duration>,
     /// Request id
     pub request_id: RequestId,
+    /// authorization
+    pub authorization: Option<String>,
 }
 
 impl RequestContext {
@@ -69,6 +71,7 @@ pub struct Builder {
     catalog: String,
     schema: String,
     timeout: Option<Duration>,
+    authorization: Option<String>,
 }
 
 impl Builder {
@@ -87,6 +90,11 @@ impl Builder {
         self
     }
 
+    pub fn authorization(mut self, authorization: Option<String>) -> Self {
+        self.authorization = authorization;
+        self
+    }
+
     pub fn build(self) -> Result<RequestContext> {
         ensure!(!self.catalog.is_empty(), MissingCatalog);
         ensure!(!self.schema.is_empty(), MissingSchema);
@@ -96,6 +104,7 @@ impl Builder {
             schema: self.schema,
             timeout: self.timeout,
             request_id: RequestId::next_id(),
+            authorization: self.authorization,
         })
     }
 }

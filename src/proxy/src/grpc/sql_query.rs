@@ -227,6 +227,7 @@ impl Proxy {
             table: req.tables[0].clone(),
             req: req.clone().into_request(),
             forwarded_from: ctx.forwarded_from.clone(),
+            authorization: ctx.authorization.clone(),
         };
         let do_query = |mut client: StorageServiceClient<Channel>,
                         request: tonic::Request<SqlQueryRequest>,

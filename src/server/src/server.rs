@@ -29,6 +29,7 @@ use macros::define_result;
 use notifier::notifier::RequestNotifiers;
 use partition_table_engine::PartitionTableEngine;
 use proxy::{
+    auth::{with_file::AuthWithFile, AuthType},
     hotspot::HotspotRecorder,
     instance::{DynamicConfig, Instance, InstanceRef},
     limiter::Limiter,
@@ -135,6 +136,9 @@ pub enum Error {
 
     #[snafu(display("Failed to build query engine, err:{source}"))]
     BuildQueryEngine { source: query_engine::error::Error },
+
+    #[snafu(display("Failed to load auth credential, err:{source}"))]
+    LoadCredential { source: proxy::error::Error },
 }
 
 define_result!(Error);
@@ -451,7 +455,20 @@ impl Builder {
             .enable
             .then(|| Arc::new(RequestNotifiers::default()));
 
+        // Build auth
+        let mut auth = if self.server_config.auth.enable {
+            match self.server_config.auth.auth_type {
+                AuthType::File => AuthWithFile::new(true, self.server_config.auth.source.clone()),
+            }
+        } else {
+            AuthWithFile::default()
+        };
+
+        // Load auth credential
+        auth.load_credential().context(LoadCredential)?;
+
         let proxy = Arc::new(Proxy::new(
+            auth.clone(),
             router.clone(),
             instance.clone(),
             self.server_config.forward,
@@ -500,6 +517,7 @@ impl Builder {
             .context(BuildPostgresqlService)?;
 
         let rpc_services = grpc::Builder::new()
+            .auth(auth)
             .endpoint(grpc_endpoint.to_string())
             .runtimes(engine_runtimes)
             .instance(instance.clone())
