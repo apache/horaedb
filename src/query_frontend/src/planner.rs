@@ -1844,114 +1844,116 @@ pub mod tests {
                 ],
             },
         },
-        rows: RowGroup {
-            schema: Schema {
-                timestamp_index: 1,
-                tsid_index: None,
-                column_schemas: ColumnSchemas {
-                    columns: [
-                        ColumnSchema {
-                            id: 1,
-                            name: "key1",
-                            data_type: Varbinary,
-                            is_nullable: false,
-                            is_tag: false,
-                            is_dictionary: false,
-                            comment: "",
-                            escaped_name: "key1",
-                            default_value: None,
-                        },
-                        ColumnSchema {
-                            id: 2,
-                            name: "key2",
-                            data_type: Timestamp,
-                            is_nullable: false,
-                            is_tag: false,
-                            is_dictionary: false,
-                            comment: "",
-                            escaped_name: "key2",
-                            default_value: None,
-                        },
-                        ColumnSchema {
-                            id: 3,
-                            name: "field1",
-                            data_type: Double,
-                            is_nullable: true,
-                            is_tag: false,
-                            is_dictionary: false,
-                            comment: "",
-                            escaped_name: "field1",
-                            default_value: None,
-                        },
-                        ColumnSchema {
-                            id: 4,
-                            name: "field2",
-                            data_type: String,
-                            is_nullable: true,
-                            is_tag: false,
-                            is_dictionary: false,
-                            comment: "",
-                            escaped_name: "field2",
-                            default_value: None,
-                        },
-                        ColumnSchema {
-                            id: 5,
-                            name: "field3",
-                            data_type: Date,
-                            is_nullable: true,
-                            is_tag: false,
-                            is_dictionary: false,
-                            comment: "",
-                            escaped_name: "field3",
-                            default_value: None,
-                        },
-                        ColumnSchema {
-                            id: 6,
-                            name: "field4",
-                            data_type: Time,
-                            is_nullable: true,
-                            is_tag: false,
-                            is_dictionary: false,
-                            comment: "",
-                            escaped_name: "field4",
-                            default_value: None,
-                        },
+        source: Values {
+            row_group: RowGroup {
+                schema: Schema {
+                    timestamp_index: 1,
+                    tsid_index: None,
+                    column_schemas: ColumnSchemas {
+                        columns: [
+                            ColumnSchema {
+                                id: 1,
+                                name: "key1",
+                                data_type: Varbinary,
+                                is_nullable: false,
+                                is_tag: false,
+                                is_dictionary: false,
+                                comment: "",
+                                escaped_name: "key1",
+                                default_value: None,
+                            },
+                            ColumnSchema {
+                                id: 2,
+                                name: "key2",
+                                data_type: Timestamp,
+                                is_nullable: false,
+                                is_tag: false,
+                                is_dictionary: false,
+                                comment: "",
+                                escaped_name: "key2",
+                                default_value: None,
+                            },
+                            ColumnSchema {
+                                id: 3,
+                                name: "field1",
+                                data_type: Double,
+                                is_nullable: true,
+                                is_tag: false,
+                                is_dictionary: false,
+                                comment: "",
+                                escaped_name: "field1",
+                                default_value: None,
+                            },
+                            ColumnSchema {
+                                id: 4,
+                                name: "field2",
+                                data_type: String,
+                                is_nullable: true,
+                                is_tag: false,
+                                is_dictionary: false,
+                                comment: "",
+                                escaped_name: "field2",
+                                default_value: None,
+                            },
+                            ColumnSchema {
+                                id: 5,
+                                name: "field3",
+                                data_type: Date,
+                                is_nullable: true,
+                                is_tag: false,
+                                is_dictionary: false,
+                                comment: "",
+                                escaped_name: "field3",
+                                default_value: None,
+                            },
+                            ColumnSchema {
+                                id: 6,
+                                name: "field4",
+                                data_type: Time,
+                                is_nullable: true,
+                                is_tag: false,
+                                is_dictionary: false,
+                                comment: "",
+                                escaped_name: "field4",
+                                default_value: None,
+                            },
+                        ],
+                    },
+                    version: 1,
+                    primary_key_indexes: [
+                        0,
+                        1,
                     ],
                 },
-                version: 1,
-                primary_key_indexes: [
-                    0,
-                    1,
+                rows: [
+                    Row {
+                        cols: [
+                            Varbinary(
+                                b"tagk",
+                            ),
+                            Timestamp(
+                                Timestamp(
+                                    1638428434000,
+                                ),
+                            ),
+                            Double(
+                                100.0,
+                            ),
+                            String(
+                                StringBytes(
+                                    b"hello3",
+                                ),
+                            ),
+                            Date(
+                                19275,
+                            ),
+                            Time(
+                                43200456000000,
+                            ),
+                        ],
+                    },
                 ],
             },
-            rows: [
-                Row {
-                    cols: [
-                        Varbinary(
-                            b"tagk",
-                        ),
-                        Timestamp(
-                            Timestamp(
-                                1638428434000,
-                            ),
-                        ),
-                        Double(
-                            100.0,
-                        ),
-                        String(
-                            StringBytes(
-                                b"hello3",
-                            ),
-                        ),
-                        Date(
-                            19275,
-                        ),
-                        Time(
-                            43200456000000,
-                        ),
-                    ],
-                },
-            ],
         },
         default_value_map: {},
     },
