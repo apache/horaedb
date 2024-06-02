@@ -23,13 +23,22 @@ use std::{
     convert::TryFrom,
     mem,
     ops::ControlFlow,
-    sync::{Arc, atomic::AtomicBool},
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use arrow::{
     compute::can_cast_types,
     datatypes::{DataType as ArrowDataType, Field as ArrowField, Schema as ArrowSchema},
     error::ArrowError,
+};
+use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
+use cluster::config::SchemaConfig;
+use common_types::{
+    column_schema::{self, ColumnSchema},
+    datum::{Datum, DatumKind},
+    request_id::RequestId,
+    row::{RowBuilder, RowGroup},
+    schema::{self, Builder as SchemaBuilder, Schema, TSID_COLUMN},
 };
 use datafusion::{
     common::{DFField, DFSchema},
@@ -41,27 +50,17 @@ use datafusion::{
         ResolvedTableReference,
     },
 };
+use generic_error::GenericError;
 use horaedbproto::storage::{value::Value as PbValue, WriteTableRequest};
 use influxql_parser::statement::Statement as InfluxqlStatement;
-use prom_remote_api::types::Query as PromRemoteQuery;
-use snafu::{Backtrace, ensure, OptionExt, ResultExt, Snafu};
-use sqlparser::ast::{
-    ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query, SelectItem, SetExpr,
-    SqlOption, Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values, visit_statements_mut,
-};
-
-use catalog::consts::{DEFAULT_CATALOG, DEFAULT_SCHEMA};
-use cluster::config::SchemaConfig;
-use common_types::{
-    column_schema::{self, ColumnSchema},
-    datum::{Datum, DatumKind},
-    request_id::RequestId,
-    row::{RowBuilder, RowGroup},
-    schema::{self, Builder as SchemaBuilder, Schema, TSID_COLUMN},
-};
-use generic_error::GenericError;
 use logger::{debug, trace};
 use macros::define_result;
+use prom_remote_api::types::Query as PromRemoteQuery;
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
+use sqlparser::ast::{
+    visit_statements_mut, ColumnDef, ColumnOption, Expr, Expr as SqlExpr, Ident, Query, SelectItem,
+    SetExpr, SqlOption, Statement as SqlStatement, TableConstraint, UnaryOperator, Value, Values,
+};
 use table_engine::table::TableRef;
 
 use crate::{
@@ -84,7 +83,7 @@ use crate::{
         ExistsTablePlan, InsertPlan, InsertSource, Plan, QueryPlan, QueryType, ShowCreatePlan,
         ShowPlan, ShowTablesPlan,
     },
-    promql::{ColumnNames, Expr as PromExpr, remote_query_to_plan, RemoteQueryPlan},
+    promql::{remote_query_to_plan, ColumnNames, Expr as PromExpr, RemoteQueryPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
 
@@ -1449,20 +1448,18 @@ pub mod tests {
         logical_expr::LogicalPlan,
     };
     use horaedbproto::storage::{
-        Field, FieldGroup, Tag, value, Value as PbValue, WriteSeriesEntry,
+        value, Field, FieldGroup, Tag, Value as PbValue, WriteSeriesEntry,
     };
-    use sqlparser::ast::Value;
-
     use partition_table_engine::scan_builder::PartitionedTableScanBuilder;
+    use sqlparser::ast::Value;
     use table_engine::provider::TableProviderAdapter;
 
+    use super::*;
     use crate::{
         parser::Parser,
         planner::{parse_for_option, Planner},
         tests::MockMetaProvider,
     };
-
-    use super::*;
 
     fn quick_test(sql: &str, expected: &str) -> Result<()> {
         let plan = sql_to_logical_plan(sql)?;

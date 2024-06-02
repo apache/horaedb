@@ -39,8 +39,11 @@ use runtime::Priority;
 use snafu::{OptionExt, Snafu};
 use table_engine::{partition::PartitionInfo, table::TableRef};
 
-use crate::{ast::ShowCreateObject, container::TableContainer, planner::get_table_ref};
-use crate::planner::InsertMode;
+use crate::{
+    ast::ShowCreateObject,
+    container::TableContainer,
+    planner::{get_table_ref, InsertMode},
+};
 
 #[derive(Debug, Snafu)]
 pub enum Error {

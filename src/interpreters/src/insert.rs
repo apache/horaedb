@@ -25,49 +25,40 @@ use std::{
 
 use arrow::{array::ArrayRef, error::ArrowError, record_batch::RecordBatch};
 use async_trait::async_trait;
-use datafusion::{
-    common::ToDFSchema,
-    error::DataFusionError,
-    logical_expr::{ColumnarValue as DfColumnarValue, expr::Expr as DfLogicalExpr},
-    optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
-    physical_expr::{
-        create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
-    }
-    ,
-};
-use futures::TryStreamExt;
-use snafu::{ensure, OptionExt, ResultExt, Snafu};
-
 use codec::{compact::MemCompactEncoder, Encoder};
 use common_types::{
     column_block::{ColumnBlock, ColumnBlockBuilder},
     column_schema::ColumnId,
     datum::Datum,
     row::{Row, RowBuilder, RowGroup},
+    schema::Schema,
 };
-use common_types::schema::Schema;
+use datafusion::{
+    common::ToDFSchema,
+    error::DataFusionError,
+    logical_expr::{expr::Expr as DfLogicalExpr, ColumnarValue as DfColumnarValue},
+    optimizer::simplify_expressions::{ExprSimplifier, SimplifyContext},
+    physical_expr::{
+        create_physical_expr, execution_props::ExecutionProps, expressions::TryCastExpr,
+    },
+};
 use df_operator::visitor::find_columns_by_expr;
+use futures::TryStreamExt;
 use generic_error::{BoxError, GenericError};
 use hash_ext::hash64;
 use macros::define_result;
-use query_engine::{
-    executor::ExecutorRef,
-    physical_planner::PhysicalPlannerRef,
-};
+use query_engine::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 use query_frontend::{
-    plan::{InsertPlan, InsertSource},
+    plan::{InsertPlan, InsertSource, QueryPlan},
     planner::InsertMode,
 };
-use query_frontend::plan::QueryPlan;
 use runtime::Priority;
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use table_engine::table::{TableRef, WriteRequest};
 
 use crate::{
     context::Context,
-    interpreter::{
-        Insert, Interpreter, InterpreterPtr, Output, Result as InterpreterResult,
-    }
-    ,
+    interpreter::{Insert, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
     RecordBatchVec,
 };
 
@@ -123,7 +114,7 @@ pub enum Error {
     BuildRow { source: common_types::row::Error },
 
     #[snafu(display("Record columns not enough, len:{}, index:{}", len, index))]
-    RecordColumnsNotEnough { len: usize, index: usize},
+    RecordColumnsNotEnough { len: usize, index: usize },
 }
 
 define_result!(Error);
@@ -170,13 +161,25 @@ impl Interpreter for InsertInterpreter {
                 query: query_plan,
                 column_index_in_insert,
             } => {
-                let record_batches = exec_select_logical_plan(self.ctx, query_plan, self.executor, self.physical_planner).await.context(Insert)?;
+                let record_batches = exec_select_logical_plan(
+                    self.ctx,
+                    query_plan,
+                    self.executor,
+                    self.physical_planner,
+                )
+                .await
+                .context(Insert)?;
 
                 if record_batches.is_empty() {
                     return Ok(Output::AffectedRows(0));
                 }
 
-                rows = convert_records_to_row_group(record_batches, column_index_in_insert, table.schema()).context(Insert)?;
+                rows = convert_records_to_row_group(
+                    record_batches,
+                    column_index_in_insert,
+                    table.schema(),
+                )
+                .context(Insert)?;
             }
         }
 
@@ -227,18 +230,23 @@ async fn exec_select_logical_plan(
             msg: "failed to execute select physical plan",
         })?;
 
-    let record_batches = record_batch_stream
-        .try_collect()
-        .await
-        .box_err()
-        .context(ExecuteSelectPlan {
-            msg: "failed to collect select execution results",
-        })?;
+    let record_batches =
+        record_batch_stream
+            .try_collect()
+            .await
+            .box_err()
+            .context(ExecuteSelectPlan {
+                msg: "failed to collect select execution results",
+            })?;
 
     Ok(record_batches)
 }
 
-fn convert_records_to_row_group(record_batches: RecordBatchVec, column_index_in_insert: Vec<InsertMode>, schema: Schema) -> Result<RowGroup> {
+fn convert_records_to_row_group(
+    record_batches: RecordBatchVec,
+    column_index_in_insert: Vec<InsertMode>,
+    schema: Schema,
+) -> Result<RowGroup> {
     let mut data_rows: Vec<Row> = Vec::new();
 
     for record in &record_batches {
@@ -247,15 +255,16 @@ fn convert_records_to_row_group(record_batches: RecordBatchVec, column_index_in_
         for row_idx in 0..num_rows {
             let mut row_builder = RowBuilder::new(&schema);
             // For each column in schema, append datum into row builder
-            for (index_opt, column_schema) in
-            column_index_in_insert.iter().zip(schema.columns())
-            {
+            for (index_opt, column_schema) in column_index_in_insert.iter().zip(schema.columns()) {
                 match index_opt {
                     InsertMode::Direct(index) => {
-                        ensure!(*index < num_cols, RecordColumnsNotEnough {
-                                        len: num_cols,
-                                        index: *index
-                                    });
+                        ensure!(
+                            *index < num_cols,
+                            RecordColumnsNotEnough {
+                                len: num_cols,
+                                index: *index
+                            }
+                        );
                         // if *index >= num_cols {
                         //     return Err(Error::RecordColumnsNotEnough {
                         //         len: num_cols,
@@ -263,15 +272,11 @@ fn convert_records_to_row_group(record_batches: RecordBatchVec, column_index_in_
                         //     });
                         // }
                         let datum = record.column(*index).datum(row_idx);
-                        row_builder = row_builder
-                            .append_datum(datum)
-                            .context(BuildRow)?;
+                        row_builder = row_builder.append_datum(datum).context(BuildRow)?;
                     }
                     InsertMode::Null => {
                         // This is a null column
-                        row_builder = row_builder
-                            .append_datum(Datum::Null)
-                            .context(BuildRow)?;
+                        row_builder = row_builder.append_datum(Datum::Null).context(BuildRow)?;
                     }
                     InsertMode::Auto => {
                         // This is an auto generated column, fill by default value.
