@@ -265,12 +265,6 @@ fn convert_records_to_row_group(
                                 index: *index
                             }
                         );
-                        // if *index >= num_cols {
-                        //     return Err(Error::RecordColumnsNotEnough {
-                        //         len: num_cols,
-                        //         index: *index,
-                        //     });
-                        // }
                         let datum = record.column(*index).datum(row_idx);
                         row_builder = row_builder.append_datum(datum).context(BuildRow)?;
                     }
