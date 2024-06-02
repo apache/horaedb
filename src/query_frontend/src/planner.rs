@@ -1219,7 +1219,7 @@ fn build_insert_source<P: MetaProvider>(
                 row_group: RowGroup::new_unchecked(schema, rows),
             })
         }
-        SetExpr::Select(__) => {
+        SetExpr::Select(_) => {
             let mut select_stmt = SqlStatement::Query(source);
             normalize_func_name(&mut select_stmt);
             let select_table_name = parse_table_name_with_standard(&select_stmt);
