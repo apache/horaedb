@@ -1168,7 +1168,7 @@ fn build_insert_source<P: MetaProvider>(
     meta_provider: ContextProviderAdapter<P>,
 ) -> Result<InsertSource> {
     // Build row group by schema
-    match *source.clone().body {
+    match *source.body {
         SetExpr::Values(Values {
             explicit_row: _,
             rows: expr_rows,
@@ -1218,12 +1218,12 @@ fn build_insert_source<P: MetaProvider>(
                 row_group: RowGroup::new_unchecked(schema, rows),
             })
         }
-        SetExpr::Select(_) => {
+        SetExpr::Select(..) => {
             let mut select_stmt = SqlStatement::Query(source);
             normalize_func_name(&mut select_stmt);
-            let select_table_name = parse_table_name_with_standard(&select_stmt);
 
             let df_planner = SqlToRel::new_with_options(&meta_provider, DEFAULT_PARSER_OPTS);
+            let select_table_name = parse_table_name_with_standard(&select_stmt);
 
             let select_df_plan = df_planner
                 .sql_statement_to_plan(select_stmt)
