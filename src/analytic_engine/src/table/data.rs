@@ -796,6 +796,15 @@ impl TableDataSet {
     pub fn insert_if_absent(&mut self, table_data_ref: TableDataRef) -> bool {
         let table_name = &table_data_ref.name;
         if self.table_datas.contains_key(table_name) {
+            let exist_table = self.table_datas.get(table_name).unwrap();
+            logger::error!(
+                "found duplicated table_name:{}, exist_table_id:{}, exist_table_shard_id:{}, inserted_table_id:{}, inserted_table_shard_id:{}",
+                table_name,
+                exist_table.id,
+                exist_table.shard_info.shard_id,
+                table_data_ref.id,
+                table_data_ref.shard_info.shard_id,
+            );
             return false;
         }
         self.table_datas
