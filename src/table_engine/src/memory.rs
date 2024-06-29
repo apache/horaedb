@@ -360,7 +360,18 @@ impl RemoteEngine for MockRemoteEngine {
         unimplemented!()
     }
 
+    async fn write_fb(&self, _request: remote::model::WriteRequest) -> remote::Result<usize> {
+        unimplemented!()
+    }
+
     async fn write_batch(
+        &self,
+        _requests: Vec<remote::model::WriteRequest>,
+    ) -> remote::Result<Vec<WriteBatchResult>> {
+        unimplemented!()
+    }
+
+    async fn write_batch_fb(
         &self,
         _requests: Vec<remote::model::WriteRequest>,
     ) -> remote::Result<Vec<WriteBatchResult>> {

@@ -29,6 +29,10 @@ use arrow_ext::{
     ipc::{CompressOptions, CompressionMethod},
 };
 use common_types::{record_batch::RecordBatch, schema::RecordSchema};
+use fb_util::{
+    remote_engine_fb_service_client::RemoteEngineFbServiceClient,
+    remote_engine_generated::fbprotocol::WriteResponse,
+};
 use futures::{Stream, StreamExt};
 use generic_error::BoxError;
 use horaedbproto::{
@@ -133,7 +137,66 @@ impl Client {
         Ok(remote_read_record_batch_stream)
     }
 
+    pub async fn write_fb(&self, request: WriteRequest) -> Result<usize> {
+        info!("remote engine client write.");
+        // Find the channel from router firstly.
+        let route_context = self.cached_router.route(&request.table).await?;
+
+        // Write to remote.
+        let table_ident = request.table.clone();
+        let endpoint = route_context.endpoint.clone();
+        let request_fb = request.convert_into_fb().box_err().context(Convert {
+            msg: "Failed to convert WriteRequest to pb",
+        })?;
+
+        let mut rpc_client = RemoteEngineFbServiceClient::<Channel>::new(route_context.channel);
+
+        let result = rpc_client
+            .write(Request::new(request_fb))
+            .await
+            .with_context(|| Rpc {
+                table_idents: vec![table_ident.clone()],
+                msg: "Failed to write to remote engine",
+            });
+
+        let result = result.and_then(|response| {
+            let response = response.into_inner();
+            if let Ok(res) = response.deserialize::<WriteResponse>() {
+                if let Some(header) = &res.header()
+                    && !status_code::is_ok(header.code())
+                {
+                    Server {
+                        endpoint,
+                        table_idents: vec![table_ident.clone()],
+                        code: header.code(),
+                        msg: header.error().unwrap().to_string(),
+                    }
+                    .fail()
+                } else {
+                    Ok(res.affected_rows() as usize)
+                }
+            } else {
+                Server {
+                    endpoint,
+                    table_idents: vec![table_ident.clone()],
+                    code: 1_u32,
+                    msg: "deserialized failed".to_string(),
+                }
+                .fail()
+            }
+        });
+
+        if result.is_err() {
+            // If occurred error, we simply evict the corresponding channel now.
+            // TODO: evict according to the type of error.
+            self.evict_route_from_cache(&[table_ident]).await;
+        }
+
+        result
+    }
+
     pub async fn write(&self, request: WriteRequest) -> Result<usize> {
+        info!("remote engine client write.");
         // Find the channel from router firstly.
         let route_context = self.cached_router.route(&request.table).await?;
 
@@ -179,11 +242,112 @@ impl Client {
         result
     }
 
-    pub async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>> {
+    pub async fn write_batch_fb(
+        &self,
+        requests: Vec<WriteRequest>,
+    ) -> Result<Vec<WriteBatchResult>> {
+        info!("write batch fb, len(reqs): {}", requests.len());
         // Find the channels from router firstly.
         let mut write_batch_contexts_by_endpoint = HashMap::new();
         for request in requests {
-            let route_context = self.cached_router.route(&request.table).await?;
+            let route_context: crate::cached_router::RouteContext =
+                self.cached_router.route(&request.table).await?;
+            let write_batch_context = write_batch_contexts_by_endpoint
+                .entry(route_context.endpoint)
+                .or_insert(WriteBatchContext {
+                    table_idents: Vec::new(),
+                    request: WriteBatchRequest::default(),
+                    channel: route_context.channel,
+                });
+            write_batch_context.table_idents.push(request.table.clone());
+            write_batch_context.request.batch.push(request);
+        }
+
+        // Merge according to endpoint.
+        let mut write_handles = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
+        let mut written_tables = Vec::with_capacity(write_batch_contexts_by_endpoint.len());
+        for (endpoint, context) in write_batch_contexts_by_endpoint {
+            // Write to remote.
+            let WriteBatchContext {
+                table_idents,
+                request,
+                channel,
+            } = context;
+
+            let batch_request_fb = request.convert_into_fb().box_err().context(Convert {
+                msg: "failed to convert request to pb",
+            })?;
+            let handle = self.io_runtime.spawn(async move {
+                let mut rpc_client = RemoteEngineFbServiceClient::<Channel>::new(channel);
+                rpc_client
+                    .write_batch(Request::new(batch_request_fb))
+                    .await
+                    .map(|v| (v, endpoint.clone()))
+                    .box_err()
+            });
+
+            write_handles.push(handle);
+            written_tables.push(table_idents);
+        }
+
+        let mut results = Vec::with_capacity(write_handles.len());
+        for (table_idents, handle) in written_tables.into_iter().zip(write_handles) {
+            // If it's runtime error, don't evict entires from route cache.
+            let batch_result = match handle.await.box_err() {
+                Ok(result) => result,
+                Err(e) => {
+                    results.push(WriteBatchResult {
+                        table_idents,
+                        result: Err(e),
+                    });
+                    continue;
+                }
+            };
+
+            // Check remote write result then.
+            let result = batch_result.and_then(|result| {
+                let (response, endpoint) = result;
+                let response = response.into_inner();
+
+                let response = response.deserialize::<WriteResponse>().unwrap();
+                if let Some(header) = response.header()
+                    && !status_code::is_ok(header.code())
+                {
+                    Server {
+                        endpoint,
+                        table_idents: table_idents.clone(),
+                        code: header.code(),
+                        msg: header.error().unwrap().to_string(),
+                    }
+                    .fail()
+                    .box_err()
+                } else {
+                    Ok(response.affected_rows())
+                }
+            });
+
+            if result.is_err() {
+                // If occurred error, we simply evict the corresponding channel now.
+                // TODO: evict according to the type of error.
+                self.evict_route_from_cache(&table_idents).await;
+            }
+
+            results.push(WriteBatchResult {
+                table_idents,
+                result,
+            });
+        }
+
+        Ok(results)
+    }
+
+    pub async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>> {
+        info!("write batch, len(reqs): {}", requests.len());
+        // Find the channels from router firstly.
+        let mut write_batch_contexts_by_endpoint = HashMap::new();
+        for request in requests {
+            let route_context: crate::cached_router::RouteContext =
+                self.cached_router.route(&request.table).await?;
             let write_batch_context = write_batch_contexts_by_endpoint
                 .entry(route_context.endpoint)
                 .or_insert(WriteBatchContext {

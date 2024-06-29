@@ -68,7 +68,11 @@ pub trait RemoteEngine: fmt::Debug + Send + Sync {
     /// Write to the remote engine.
     async fn write(&self, request: WriteRequest) -> Result<usize>;
 
+    async fn write_fb(&self, request: WriteRequest) -> Result<usize>;
+
     async fn write_batch(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>>;
+
+    async fn write_batch_fb(&self, requests: Vec<WriteRequest>) -> Result<Vec<WriteBatchResult>>;
 
     async fn alter_table_schema(&self, request: AlterTableSchemaRequest) -> Result<()>;
 
