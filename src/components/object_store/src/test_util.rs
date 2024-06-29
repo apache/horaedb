@@ -20,8 +20,10 @@ use std::{collections::HashMap, fmt::Display, ops::Range, sync::RwLock};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::{self, BoxStream};
-use tokio::io::AsyncWrite;
-use upstream::{path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result};
+use upstream::{
+    path::Path, GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload, ObjectMeta,
+    ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
+};
 
 #[derive(Debug)]
 struct StoreError {
@@ -64,19 +66,33 @@ impl MemoryStore {
 
 #[async_trait]
 impl ObjectStore for MemoryStore {
-    async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
+    async fn put(&self, location: &Path, payload: PutPayload) -> Result<PutResult> {
         let mut files = self.files.write().unwrap();
-        files.insert(location.clone(), bytes);
-        Ok(())
+        files.insert(location.clone(), Bytes::from(payload));
+        Ok(PutResult {
+            e_tag: None,
+            version: None,
+        })
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
         let files = self.files.read().unwrap();
         if let Some(bs) = files.get(location) {
             let bs = bs.clone();
-            Ok(GetResult::Stream(Box::pin(stream::once(
-                async move { Ok(bs) },
-            ))))
+            let size = bs.len();
+            let payload = GetResultPayload::Stream(Box::pin(stream::once(async move { Ok(bs) })));
+            Ok(GetResult {
+                payload,
+                meta: ObjectMeta {
+                    location: location.clone(),
+                    last_modified: Default::default(),
+                    size,
+                    e_tag: None,
+                    version: None,
+                },
+                range: Default::default(),
+                attributes: Default::default(),
+            })
         } else {
             let source = Box::new(StoreError {
                 msg: "not found".to_string(),
@@ -120,7 +136,9 @@ impl ObjectStore for MemoryStore {
             Ok(ObjectMeta {
                 location: location.clone(),
                 size: bs.len(),
+                e_tag: None,
                 last_modified: Default::default(),
+                version: None,
             })
         } else {
             let source = Box::new(StoreError {
@@ -134,14 +152,7 @@ impl ObjectStore for MemoryStore {
         }
     }
 
-    async fn put_multipart(
-        &self,
-        _location: &Path,
-    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
-        unimplemented!()
-    }
-
-    async fn abort_multipart(&self, _location: &Path, _multipart_id: &MultipartId) -> Result<()> {
+    async fn put_multipart(&self, _location: &Path) -> Result<Box<dyn MultipartUpload>> {
         unimplemented!()
     }
 
@@ -149,7 +160,7 @@ impl ObjectStore for MemoryStore {
         unimplemented!()
     }
 
-    async fn list(&self, _prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+    fn list(&self, _prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
         unimplemented!()
     }
 
@@ -170,6 +181,27 @@ impl ObjectStore for MemoryStore {
     }
 
     async fn rename_if_not_exists(&self, _from: &Path, _to: &Path) -> Result<()> {
+        unimplemented!()
+    }
+
+    async fn put_opts(
+        &self,
+        _location: &Path,
+        _payload: PutPayload,
+        _opts: PutOptions,
+    ) -> Result<PutResult> {
+        unimplemented!()
+    }
+
+    async fn put_multipart_opts(
+        &self,
+        _location: &Path,
+        _opts: PutMultipartOpts,
+    ) -> Result<Box<dyn MultipartUpload>> {
+        unimplemented!()
+    }
+
+    async fn get_opts(&self, _location: &Path, _options: GetOptions) -> Result<GetResult> {
         unimplemented!()
     }
 }

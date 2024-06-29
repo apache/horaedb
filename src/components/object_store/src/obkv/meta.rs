@@ -88,6 +88,9 @@ pub enum Error {
         object_size: usize,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to get parts from range, start:{start}, end:{end}"))]
+    GetParts { start: usize, end: usize },
 }
 
 define_result!(Error);
@@ -113,13 +116,9 @@ pub struct ObkvObjectMeta {
     /// table_name @ path @ upload_id
     #[serde(rename = "unique_id")]
     pub unique_id: Option<String>,
-    /// The size in bytes of one part. Note: maybe the size of last part less
-    /// than part_size.
-    #[serde(rename = "part_size")]
-    pub part_size: usize,
-    /// The paths of multi upload parts.
+    /// The paths and size of multi upload parts.
     #[serde(rename = "parts")]
-    pub parts: Vec<String>,
+    pub parts: Vec<(String, usize)>,
     /// The version of object, Now we use the upload_id as version.
     #[serde(rename = "version")]
     pub version: String,
@@ -166,12 +165,12 @@ impl ObkvObjectMeta {
         } else {
             size += 4;
         }
-        // part_size
-        size += 8;
         // parts
-        for part in &self.parts {
+        for (part, _) in &self.parts {
             // part.len, `""`, `:`, and `,`
             size += part.len() + 4;
+            // usize
+            size += 8
         }
         //{}
         size += 2;
@@ -195,17 +194,45 @@ impl ObkvObjectMeta {
             return Ok(None);
         }
 
-        let batch_size = self.part_size;
-        let start_index = range.start / batch_size;
-        let start_offset = range.start % batch_size;
+        let mut start_offset = 0;
+        let mut end_offset = 0;
+        let mut start_index = None;
+        let mut end_index = None;
 
         let inclusive_end = range.end - 1;
+        let mut accumulated_size = 0;
 
-        let end_index = inclusive_end / batch_size;
-        let end_offset = inclusive_end % batch_size;
+        for (index, (_, size)) in self.parts.iter().enumerate() {
+            if start_index.is_none() && accumulated_size + size > range.start {
+                start_index = Some(index);
+                start_offset = range.start - accumulated_size;
+            }
+            if accumulated_size + size > inclusive_end {
+                end_index = Some(index);
+                end_offset = inclusive_end - accumulated_size;
+                break;
+            }
+            accumulated_size += size;
+        }
+
+        let (start_index, end_index) = match (start_index, end_index) {
+            (Some(start_index), Some(end_index)) => (start_index, end_index),
+            _ => {
+                return GetParts {
+                    start: range.start,
+                    end: range.end,
+                }
+                .fail()
+            }
+        };
+        let part = &self.parts;
+        let part_keys = part[start_index..=end_index]
+            .iter()
+            .map(|(s, _)| s.clone())
+            .collect::<Vec<_>>();
 
         Ok(Some(ConveredParts {
-            part_keys: &self.parts[start_index..=end_index],
+            part_keys,
             start_offset,
             end_offset,
         }))
@@ -213,9 +240,9 @@ impl ObkvObjectMeta {
 }
 
 #[derive(Debug, Clone)]
-pub struct ConveredParts<'a> {
+pub struct ConveredParts {
     /// The table kv client
-    pub part_keys: &'a [String],
+    pub part_keys: Vec<String>,
     pub start_offset: usize,
     pub end_offset: usize,
 }
@@ -283,7 +310,7 @@ impl<T: TableKv> MetaManager<T> {
         Ok(())
     }
 
-    pub async fn list(&self, prefix: &Path) -> StoreResult<Vec<ObkvObjectMeta>, std::io::Error> {
+    pub fn list(&self, prefix: &Path) -> StoreResult<Vec<ObkvObjectMeta>, std::io::Error> {
         let scan_context: ScanContext = ScanContext {
             timeout: time::Duration::from_secs(SCAN_TIMEOUT_SECS),
             batch_size: SCAN_BATCH_SIZE,
@@ -408,16 +435,15 @@ mod test {
             last_modified: 123456789,
             size: 8190,
             unique_id: Some(String::from("1245689u438uferjalfjkda")),
-            part_size: 1024,
             parts: vec![
-                String::from("/test/xx/0"),
-                String::from("/test/xx/1"),
-                String::from("/test/xx/4"),
-                String::from("/test/xx/5"),
-                String::from("/test/xx/0"),
-                String::from("/test/xx/1"),
-                String::from("/test/xx/4"),
-                String::from("/test/xx/5"),
+                (String::from("/test/xx/0"), 1024),
+                (String::from("/test/xx/1"), 1024),
+                (String::from("/test/xx/4"), 1024),
+                (String::from("/test/xx/5"), 1024),
+                (String::from("/test/xx/0"), 1024),
+                (String::from("/test/xx/1"), 1024),
+                (String::from("/test/xx/4"), 1024),
+                (String::from("/test/xx/5"), 1024),
             ],
             version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
         }
@@ -429,8 +455,7 @@ mod test {
             last_modified: 123456789,
             size: 1024,
             unique_id: Some(String::from("1245689u438uferjalfjkda")),
-            part_size: 1024,
-            parts: vec![String::from("/test/xx/0")],
+            parts: vec![(String::from("/test/xx/0"), 1024)],
             version: String::from("123456fsdalfkassa;l;kjfaklasadffsd"),
         }
     }

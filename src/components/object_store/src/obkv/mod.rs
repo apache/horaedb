@@ -17,11 +17,12 @@
 
 use std::{
     collections::HashSet,
+    fmt::Debug,
     hash::{Hash, Hasher},
     ops::Range,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time,
     time::{SystemTime, UNIX_EPOCH},
@@ -38,21 +39,18 @@ use generic_error::{BoxError, GenericError};
 use logger::debug;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_kv::{ScanContext, ScanIter, TableKv, WriteBatch, WriteContext};
-use tokio::{
-    io::{AsyncWrite, AsyncWriteExt},
-    time::Instant,
-};
+use tokio::time::Instant;
 use twox_hash::XxHash64;
 use upstream::{
     path::{Path, DELIMITER},
-    Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
+    Error as StoreError,
+    Error::Generic,
+    GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload, ObjectMeta, ObjectStore,
+    PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
 };
 use uuid::Uuid;
 
-use crate::{
-    multipart::{CloudMultiPartUpload, CloudMultiPartUploadImpl, UploadPart},
-    obkv::meta::{MetaManager, ObkvObjectMeta, OBJECT_STORE_META},
-};
+use crate::obkv::meta::{MetaManager, ObkvObjectMeta, OBJECT_STORE_META};
 
 mod meta;
 mod util;
@@ -192,14 +190,8 @@ pub struct ObkvObjectStore<T> {
     /// The manager to manage object store meta, which persist in obkv
     meta_manager: Arc<MetaManager<T>>,
     client: Arc<T>,
-    /// The size of one object part persited in obkv
-    /// It may cause problem to save huge data in one obkv value, so we
-    /// need to split data into small parts.
-    part_size: usize,
     /// The max size of bytes, default is 1GB
     max_object_size: usize,
-    /// Maximum number of upload tasks to run concurrently
-    max_upload_concurrency: usize,
 }
 
 impl<T: TableKv> std::fmt::Display for ObkvObjectStore<T> {
@@ -214,21 +206,14 @@ impl<T: TableKv> std::fmt::Display for ObkvObjectStore<T> {
 }
 
 impl<T: TableKv> ObkvObjectStore<T> {
-    pub fn try_new(
-        client: Arc<T>,
-        shard_num: usize,
-        part_size: usize,
-        max_object_size: usize,
-        max_upload_concurrency: usize,
-    ) -> Result<Self> {
-        let shard_manager = ShardManager::try_new(client.clone(), shard_num).map_err(|source| {
-            StoreError::Generic {
+    pub fn try_new(client: Arc<T>, shard_num: usize, max_object_size: usize) -> Result<Self> {
+        let shard_manager =
+            ShardManager::try_new(client.clone(), shard_num).map_err(|source| Generic {
                 store: OBKV,
                 source: Box::new(source),
-            }
-        })?;
+            })?;
         let meta_manager: MetaManager<T> =
-            MetaManager::try_new(client.clone()).map_err(|source| StoreError::Generic {
+            MetaManager::try_new(client.clone()).map_err(|source| Generic {
                 store: OBKV,
                 source: Box::new(source),
             })?;
@@ -236,14 +221,13 @@ impl<T: TableKv> ObkvObjectStore<T> {
             shard_manager,
             meta_manager: Arc::new(meta_manager),
             client,
-            part_size,
             max_object_size,
-            max_upload_concurrency,
         })
     }
 
     #[inline]
-    fn check_size(&self, bytes: &Bytes) -> std::result::Result<(), Error> {
+    fn check_size(&self, payload: &PutPayload) -> std::result::Result<(), Error> {
+        let bytes = payload.as_ref();
         ensure!(
             bytes.len() < self.max_object_size,
             TooLargeData {
@@ -299,13 +283,13 @@ impl<T: TableKv> ObkvObjectStore<T> {
         let table_name = self.pick_shard_table(location);
         // TODO: Let table_kv provide a api `get_batch` to avoid extra IO operations.
         let mut futures = FuturesOrdered::new();
-        for part_key in meta.parts {
+        for (part_key, _) in meta.parts {
             let client = self.client.clone();
             let table_name = table_name.to_string();
             let future = async move {
                 match client.get(&table_name, part_key.as_bytes()) {
                     Ok(res) => Ok(Bytes::from(res.unwrap())),
-                    Err(err) => Err(StoreError::Generic {
+                    Err(err) => Err(Generic {
                         store: OBKV,
                         source: Box::new(err),
                     }),
@@ -316,7 +300,20 @@ impl<T: TableKv> ObkvObjectStore<T> {
 
         let boxed = futures.boxed();
 
-        Ok(GetResult::Stream(boxed))
+        let payload = GetResultPayload::Stream(boxed);
+
+        Ok(GetResult {
+            range: Default::default(),
+            payload,
+            attributes: Default::default(),
+            meta: ObjectMeta {
+                location: location.clone(),
+                last_modified: self.convert_datetime(meta.last_modified).unwrap(),
+                size: meta.size,
+                e_tag: None,
+                version: None,
+            },
+        })
     }
 
     fn convert_datetime(&self, timestamp: i64) -> std::result::Result<DateTime<Utc>, Error> {
@@ -331,120 +328,68 @@ impl<T: TableKv> ObkvObjectStore<T> {
 
 #[async_trait]
 impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
-    async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
+    async fn put(&self, location: &Path, payload: PutPayload) -> Result<PutResult> {
         let instant = Instant::now();
 
-        self.check_size(&bytes)
-            .map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?;
+        self.check_size(&payload).map_err(|source| Generic {
+            store: OBKV,
+            source: Box::new(source),
+        })?;
 
         // Use `put_multipart` to implement `put`.
-        let (_upload_id, mut multipart) = self.put_multipart(location).await?;
-        multipart
-            .write(&bytes)
-            .await
-            .map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?;
+        let mut multipart = self.put_multipart(location).await?;
+        multipart.put_part(payload).await?;
         // Complete stage: flush buffer data to obkv, and save meta data
-        multipart
-            .shutdown()
-            .await
-            .map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?;
+        let res = multipart.complete().await;
         debug!(
             "ObkvObjectStore put operation, location:{location}, cost:{:?}",
             instant.elapsed()
         );
-        Ok(())
+        res
     }
 
-    async fn put_multipart(
+    async fn put_opts(
         &self,
-        location: &Path,
-    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        _location: &Path,
+        _payload: PutPayload,
+        _opts: PutOptions,
+    ) -> Result<PutResult> {
+        Err(StoreError::NotImplemented)
+    }
+
+    async fn put_multipart(&self, location: &Path) -> Result<Box<dyn MultipartUpload>> {
         let instant = Instant::now();
 
         let upload_id = Uuid::new_v4().to_string();
         let table_name = self.pick_shard_table(location);
 
-        let upload = ObkvMultiPartUpload {
+        let state = UploadState {
             location: location.clone(),
             upload_id: upload_id.clone(),
             table_name: table_name.to_string(),
             size: AtomicU64::new(0),
             client: Arc::clone(&self.client),
-            part_size: self.part_size,
             meta_manager: self.meta_manager.clone(),
+            parts: Default::default(),
         };
-        let multi_part_upload =
-            CloudMultiPartUpload::new(upload, self.max_upload_concurrency, self.part_size);
+        let multi_part_upload = ObkvMultiPartUpload {
+            part_idx: 0,
+            state: Arc::new(state),
+        };
 
         debug!(
             "ObkvObjectStore put_multipart operation, location:{location}, table_name:{table_name}, cost:{:?}",
             instant.elapsed()
         );
-        Ok((upload_id, Box::new(multi_part_upload)))
+        Ok(Box::new(multi_part_upload))
     }
 
-    async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
-        let instant = Instant::now();
-
-        let table_name = self.pick_shard_table(location);
-
-        // Before aborting multipart, we need to delete all data parts and meta info.
-        // Here to delete data with path `location` and multipart_id.
-        let scan_context: ScanContext = ScanContext {
-            timeout: time::Duration::from_secs(meta::SCAN_TIMEOUT_SECS),
-            batch_size: meta::SCAN_BATCH_SIZE,
-        };
-
-        let prefix = PathKeyEncoder::part_key_prefix(location, multipart_id);
-        let scan_request = util::scan_request_with_prefix(prefix.as_bytes());
-
-        let mut iter = self
-            .client
-            .scan(scan_context, table_name, scan_request)
-            .map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?;
-
-        let mut keys = vec![];
-        while iter.valid() {
-            keys.push(iter.key().to_vec());
-            iter.next().map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?;
-        }
-
-        self.client
-            .delete_batch(table_name, keys)
-            .map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?;
-
-        // Here to delete meta with path `location` and multipart_id
-        self.meta_manager
-            .delete_with_version(location, multipart_id)
-            .await
-            .map_err(|source| StoreError::Generic {
-                store: OBKV,
-                source: Box::new(source),
-            })?;
-
-        debug!(
-            "ObkvObjectStore abort_multipart operation, location:{location}, table_name:{table_name}, cost:{:?}",
-            instant.elapsed()
-        );
-        Ok(())
+    async fn put_multipart_opts(
+        &self,
+        _location: &Path,
+        _opts: PutMultipartOpts,
+    ) -> Result<Box<dyn MultipartUpload>> {
+        Err(StoreError::NotImplemented)
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
@@ -455,10 +400,14 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             "ObkvObjectStore get operation, location:{location}, cost:{:?}",
             instant.elapsed()
         );
-        result.box_err().map_err(|source| StoreError::NotFound {
+        result.map_err(|source| StoreError::NotFound {
             path: location.to_string(),
-            source,
+            source: Box::new(source),
         })
+    }
+
+    async fn get_opts(&self, _location: &Path, _options: GetOptions) -> Result<GetResult> {
+        Err(StoreError::NotImplemented)
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
@@ -503,7 +452,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     value_len: values.len(),
                 }
                 .fail()
-                .map_err(|source| StoreError::Generic {
+                .map_err(|source| Generic {
                     store: OBKV,
                     source: Box::new(source),
                 })?
@@ -569,6 +518,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             location: (*location).clone(),
             last_modified,
             size: meta.size,
+            e_tag: None,
+            version: None,
         })
     }
 
@@ -588,7 +539,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 })?;
 
         // delete every part of data
-        for part in &meta.parts {
+        for (part, _) in &meta.parts {
             let key = part.as_bytes();
             self.client
                 .delete(table_name, key)
@@ -601,7 +552,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         self.meta_manager
             .delete(meta, location)
             .await
-            .map_err(|source| StoreError::Generic {
+            .map_err(|source| Generic {
                 store: OBKV,
                 source: Box::new(source),
             })?;
@@ -620,18 +571,19 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     /// TODO: Currently this method may return lots of object meta, we should
     /// limit the count of return ojects in future. Maybe a better
     /// implementation is to fetch and send the list results in a stream way.
-    async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+    fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
         let instant = Instant::now();
 
         let path = Self::normalize_path(prefix);
-        let raw_metas =
-            self.meta_manager
-                .list(&path)
-                .await
-                .map_err(|source| StoreError::Generic {
-                    store: OBKV,
-                    source: Box::new(source),
-                })?;
+        let raw_metas = match self.meta_manager.list(&path).map_err(|source| Generic {
+            store: OBKV,
+            source: Box::new(source),
+        }) {
+            Ok(meta) => meta,
+            Err(e) => {
+                return futures::stream::iter(vec![Err(e)]).boxed();
+            }
+        };
 
         let mut meta_list = Vec::new();
         for meta in raw_metas {
@@ -639,6 +591,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                 location: Path::from(meta.location),
                 last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
                 size: meta.size,
+                e_tag: None,
+                version: None,
             }));
         }
 
@@ -647,7 +601,7 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
             "ObkvObjectStore list operation, prefix:{path}, cost:{:?}",
             instant.elapsed()
         );
-        Ok(iter.boxed())
+        iter.boxed()
     }
 
     /// List all the objects and common paths(directories) with the given
@@ -661,7 +615,6 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
         let metas = self
             .meta_manager
             .list(&path)
-            .await
             .map_err(|source| StoreError::Generic {
                 store: OBKV,
                 source: Box::new(source),
@@ -681,6 +634,8 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
                     location: Path::from(location),
                     last_modified: Utc.timestamp_millis_opt(meta.last_modified).unwrap(),
                     size: meta.size,
+                    e_tag: None,
+                    version: None,
                 })
             }
         }
@@ -697,32 +652,12 @@ impl<T: TableKv> ObjectStore for ObkvObjectStore<T> {
     }
 
     async fn copy(&self, _from: &Path, _to: &Path) -> Result<()> {
-        // TODO:
         Err(StoreError::NotImplemented)
     }
 
     async fn copy_if_not_exists(&self, _from: &Path, _to: &Path) -> Result<()> {
-        // TODO:
         Err(StoreError::NotImplemented)
     }
-}
-
-struct ObkvMultiPartUpload<T> {
-    /// The full path to the object.
-    location: Path,
-    /// The id of multi upload tasks, we use this id as object version.
-    upload_id: String,
-    /// The table name of obkv to save data.
-    table_name: String,
-    /// The client of object store.
-    client: Arc<T>,
-    /// The size of object.
-    size: AtomicU64,
-    /// The size in bytes of one part. Note: maybe the size of last part less
-    /// than part_size.
-    part_size: usize,
-    /// The mananger to process meta info.
-    meta_manager: Arc<MetaManager<T>>,
 }
 
 struct PathKeyEncoder;
@@ -744,35 +679,85 @@ impl PathKeyEncoder {
     }
 }
 
-#[async_trait]
-impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
-    async fn put_multipart_part(
-        &self,
-        buf: Vec<u8>,
-        part_idx: usize,
-    ) -> Result<UploadPart, std::io::Error> {
+#[derive(Debug, Clone)]
+pub struct PartId {
+    pub content_id: String,
+    pub size: usize,
+}
+
+#[derive(Debug, Default)]
+struct Parts(Mutex<Vec<(usize, PartId)>>);
+
+impl Parts {
+    pub fn put(&self, part_idx: usize, id: PartId) {
+        self.0.lock().unwrap().push((part_idx, id))
+    }
+
+    pub fn finish(&self, expected: usize) -> Result<Vec<PartId>> {
+        let mut parts = self.0.lock().unwrap();
+        if parts.len() != expected {
+            return Err(Generic {
+                store: OBKV,
+                source: "Missing part".to_string().into(),
+            });
+        }
+        parts.sort_unstable_by_key(|(idx, _)| *idx);
+        Ok(parts.drain(..).map(|(_, v)| v).collect())
+    }
+}
+
+#[derive(Debug)]
+struct ObkvMultiPartUpload<T> {
+    part_idx: usize,
+    state: Arc<UploadState<T>>,
+}
+
+#[derive(Debug)]
+struct UploadState<T> {
+    /// The full path to the object.
+    location: Path,
+    /// The id of multi upload tasks, we use this id as object version.
+    upload_id: String,
+    /// The table name of obkv to save data.
+    table_name: String,
+    /// The client of object store.
+    client: Arc<T>,
+    /// The size of object.
+    size: AtomicU64,
+    /// The mananger to process meta info.
+    meta_manager: Arc<MetaManager<T>>,
+    parts: Parts,
+}
+
+impl<T: TableKv> UploadState<T> {
+    async fn put_part(&self, data: PutPayload, part_idx: usize) -> Result<PartId> {
         let mut batch = T::WriteBatch::default();
         let part_key = PathKeyEncoder::part_key(&self.location, &self.upload_id, part_idx);
-        batch.insert(part_key.as_bytes(), buf.as_ref());
+        let mut buf = Vec::new();
+        for b in data.as_ref() {
+            buf.extend_from_slice(&b[..])
+        }
+        batch.insert(part_key.as_bytes(), &buf);
 
         self.client
             .write(WriteContext::default(), &self.table_name, batch)
-            .map_err(|source| StoreError::Generic {
+            .map_err(|source| Generic {
                 store: OBKV,
                 source: Box::new(source),
             })?;
         // Record size of object.
         self.size.fetch_add(buf.len() as u64, Ordering::Relaxed);
-        Ok(UploadPart {
+        Ok(PartId {
             content_id: part_key,
+            size: buf.len(),
         })
     }
 
-    async fn complete(&self, completed_parts: Vec<UploadPart>) -> Result<(), std::io::Error> {
+    async fn complete_multipart(&self, parts: Vec<PartId>) -> Result<()> {
         // We should save meta info after finish save data.
-        let mut paths = Vec::with_capacity(completed_parts.len());
-        for upload_part in completed_parts {
-            paths.push(upload_part.content_id);
+        let mut paths = Vec::with_capacity(parts.len());
+        for upload_part in parts {
+            paths.push((upload_part.content_id, upload_part.size));
         }
 
         let now = SystemTime::now();
@@ -788,7 +773,6 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
                 &self.location,
                 &self.upload_id,
             )),
-            part_size: self.part_size,
             parts: paths,
             version: self.upload_id.clone(),
         };
@@ -798,11 +782,89 @@ impl<T: TableKv> CloudMultiPartUploadImpl for ObkvMultiPartUpload<T> {
         self.meta_manager
             .save(meta)
             .await
-            .map_err(|source| StoreError::Generic {
+            .map_err(|source| Generic {
                 store: OBKV,
                 source: Box::new(source),
             })?;
         Ok(())
+    }
+
+    async fn abort(&self) -> Result<()> {
+        let location = &self.location;
+        let table_name = &self.table_name;
+        let upload_id = &self.upload_id;
+
+        // Before aborting multipart, we need to delete all data parts and meta info.
+        // Here to delete data with path `location` and multipart_id.
+        let scan_context: ScanContext = ScanContext {
+            timeout: time::Duration::from_secs(meta::SCAN_TIMEOUT_SECS),
+            batch_size: meta::SCAN_BATCH_SIZE,
+        };
+
+        let prefix = PathKeyEncoder::part_key_prefix(location, upload_id);
+        let scan_request = util::scan_request_with_prefix(prefix.as_bytes());
+
+        let mut iter = self
+            .client
+            .scan(scan_context, table_name, scan_request)
+            .map_err(|source| Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
+
+        let mut keys = vec![];
+        while iter.valid() {
+            keys.push(iter.key().to_vec());
+            iter.next().map_err(|source| Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
+        }
+
+        self.client
+            .delete_batch(table_name, keys)
+            .map_err(|source| Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
+
+        // Here to delete meta with path `location` and multipart_id
+        self.meta_manager
+            .delete_with_version(location, upload_id)
+            .await
+            .map_err(|source| Generic {
+                store: OBKV,
+                source: Box::new(source),
+            })?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl<T: TableKv> MultipartUpload for ObkvMultiPartUpload<T> {
+    fn put_part(&mut self, data: PutPayload) -> upstream::UploadPart {
+        let idx = self.part_idx;
+        self.part_idx += 1;
+        let state = Arc::clone(&self.state);
+        Box::pin(async move {
+            let part = state.put_part(data, idx).await?;
+            state.parts.put(idx, part);
+            Ok(())
+        })
+    }
+
+    async fn complete(&mut self) -> Result<PutResult> {
+        let parts = self.state.parts.finish(self.part_idx)?;
+        self.state.complete_multipart(parts).await?;
+        Ok(PutResult {
+            e_tag: None,
+            version: None,
+        })
+    }
+
+    async fn abort(&mut self) -> Result<()> {
+        self.state.abort().await
     }
 }
 
@@ -815,8 +877,7 @@ mod test {
     use rand::{thread_rng, Rng};
     use runtime::{Builder, Runtime};
     use table_kv::memory::MemoryImpl;
-    use tokio::io::AsyncWriteExt;
-    use upstream::{path::Path, ObjectStore};
+    use upstream::{path::Path, MultipartUpload, ObjectStore};
 
     use crate::obkv::ObkvObjectStore;
 
@@ -882,17 +943,15 @@ mod test {
         input2: &[u8],
     ) {
         let location3 = Path::from("test/data/3");
-        let multipart_id = write_data(oss.clone(), &location3, input1, input2).await;
+        let mut multipart_upload = write_data(oss.clone(), &location3, input1, input2).await;
         test_list(oss.clone(), 2).await;
-        oss.abort_multipart(&location3, &multipart_id)
-            .await
-            .unwrap();
+        multipart_upload.abort().await.unwrap();
         test_list(oss.clone(), 1).await;
     }
 
     async fn test_list(oss: Arc<ObkvObjectStore<MemoryImpl>>, expect_len: usize) {
         let prefix = Path::from("test/");
-        let stream = oss.list(Some(&prefix)).await.unwrap();
+        let stream = oss.list(Some(&prefix));
         let meta_vec = stream
             .fold(Vec::new(), |mut acc, item| async {
                 let object_meta = item.unwrap();
@@ -955,19 +1014,24 @@ mod test {
         location: &Path,
         input1: &[u8],
         input2: &[u8],
-    ) -> String {
-        let (multipart_id, mut async_writer) = oss.put_multipart(location).await.unwrap();
+    ) -> Box<dyn MultipartUpload> {
+        let mut multipart_upload = oss.put_multipart(location).await.unwrap();
 
-        async_writer.write(input1).await.unwrap();
-        async_writer.write(input2).await.unwrap();
-        async_writer.shutdown().await.unwrap();
-        multipart_id
+        multipart_upload
+            .put_part(input1.to_vec().into())
+            .await
+            .unwrap();
+        multipart_upload
+            .put_part(input2.to_vec().into())
+            .await
+            .unwrap();
+        multipart_upload.complete().await.unwrap();
+        multipart_upload
     }
 
     fn init_object_store() -> Arc<ObkvObjectStore<MemoryImpl>> {
         let table_kv = Arc::new(MemoryImpl::default());
-        let obkv_object =
-            ObkvObjectStore::try_new(table_kv, 128, TEST_PART_SIZE, 1024 * 1024 * 1024, 8).unwrap();
+        let obkv_object = ObkvObjectStore::try_new(table_kv, 128, 1024 * 1024 * 1024).unwrap();
         Arc::new(obkv_object)
     }
 
@@ -994,7 +1058,7 @@ mod test {
             let location = Path::from("test/data/4");
             let rand_str = generate_random_string(length);
             let buffer = Bytes::from(rand_str);
-            oss.put(&location, buffer.clone()).await.unwrap();
+            oss.put(&location, buffer.clone().into()).await.unwrap();
             let meta = oss.head(&location).await.unwrap();
             assert_eq!(meta.location, location);
             assert_eq!(meta.size, length);
@@ -1004,10 +1068,7 @@ mod test {
             assert!(inner_meta.is_some());
             if let Some(m) = inner_meta {
                 assert_eq!(m.location, location.as_ref());
-                assert_eq!(m.part_size, oss.part_size);
-                let expect_size =
-                    length / TEST_PART_SIZE + if length % TEST_PART_SIZE != 0 { 1 } else { 0 };
-                assert_eq!(m.parts.len(), expect_size);
+                assert_eq!(m.parts.len(), 1);
             }
             oss.delete(&location).await.unwrap();
         }

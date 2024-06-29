@@ -145,7 +145,7 @@ async fn run(args: Args) -> Result<()> {
     let storage: ObjectStoreRef = Arc::new(storage);
 
     let mut join_set = JoinSet::new();
-    let mut ssts = storage.list(None).await?;
+    let mut ssts = storage.list(None);
     let verbose = args.verbose;
     let page_indexes = args.page_indexes;
     while let Some(object_meta) = ssts.next().await {

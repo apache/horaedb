@@ -19,6 +19,8 @@
 
 use std::sync::Arc;
 
+use tokio::sync::Mutex;
+use upstream::MultipartUpload;
 pub use upstream::{
     local::LocalFileSystem, path::Path, Error as ObjectStoreError, GetResult, ListResult,
     ObjectMeta, ObjectStore,
@@ -29,7 +31,6 @@ pub mod config;
 pub mod disk_cache;
 pub mod mem_cache;
 pub mod metrics;
-pub mod multipart;
 pub mod obkv;
 pub mod prefix;
 pub mod s3;
@@ -37,3 +38,7 @@ pub mod s3;
 pub mod test_util;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
+
+pub type MultipartRef = Arc<Mutex<Box<dyn MultipartUpload>>>;
+
+pub type UploadPart = upstream::UploadPart;
