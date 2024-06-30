@@ -158,31 +158,12 @@ impl RemoteEngine for RemoteEngineImpl {
             .context(remote::Write)
     }
 
-    async fn write_fb(&self, request: WriteRequest) -> remote::Result<usize> {
-        self.client
-            .write_fb(request)
-            .await
-            .box_err()
-            .context(remote::Write)
-    }
-
     async fn write_batch(
         &self,
         requests: Vec<WriteRequest>,
     ) -> remote::Result<Vec<WriteBatchResult>> {
         self.client
             .write_batch(requests)
-            .await
-            .box_err()
-            .context(remote::Write)
-    }
-
-    async fn write_batch_fb(
-        &self,
-        requests: Vec<WriteRequest>,
-    ) -> remote::Result<Vec<WriteBatchResult>> {
-        self.client
-            .write_batch_fb(requests)
             .await
             .box_err()
             .context(remote::Write)

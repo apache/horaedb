@@ -117,7 +117,7 @@ impl PartitionTableImpl {
         };
 
         self.remote_engine
-            .write_fb(request)
+            .write(request)
             .await
             .box_err()
             .with_context(|| WriteBatch {
@@ -155,7 +155,7 @@ impl PartitionTableImpl {
 
         let batch_results = self
             .remote_engine
-            .write_batch_fb(request_batch)
+            .write_batch(request_batch)
             .await
             .box_err()
             .with_context(|| WriteBatch {
