@@ -1236,7 +1236,6 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequestExt<'_>) -> Resu
         WriteRequestExt::Proto(v) => {
             let table_ident: TableIdentifier = v
                 .table
-                .clone()
                 .context(ErrNoCause {
                     code: StatusCode::BadRequest,
                     msg: "missing table ident",
@@ -1257,8 +1256,24 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequestExt<'_>) -> Resu
             (table_ident, RowsPayloadExt::Proto(rows_payload))
         }
         WriteRequestExt::Flatbuffer(v) => {
-            let table_ident = v.table().unwrap().into();
-            let rows_payload = v.row_group().unwrap().contiguous().unwrap();
+            let table_ident = v
+                .table()
+                .context(ErrNoCause {
+                    code: StatusCode::BadRequest,
+                    msg: "missing table ident",
+                })?
+                .into();
+            let rows_payload = v
+                .row_group()
+                .context(ErrNoCause {
+                    code: StatusCode::BadRequest,
+                    msg: "missing row group payload",
+                })?
+                .contiguous()
+                .context(ErrNoCause {
+                    code: StatusCode::BadRequest,
+                    msg: "missing rows payload",
+                })?;
             (table_ident, RowsPayloadExt::Flatbuffer(rows_payload))
         }
     };
