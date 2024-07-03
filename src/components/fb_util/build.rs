@@ -42,7 +42,7 @@ fn main() -> Result<()> {
         .build();
 
     tonic_build::manual::Builder::new()
-        .out_dir("src")
+        .out_dir("target/flatbuffers/")
         .compile(&[greeter_service]);
     Ok(())
 }

@@ -66,6 +66,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          sudo sh scripts/compile-flatc.sh
       - name: Install check binaries
         run: |
           rustup component add clippy
@@ -95,6 +96,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          sudo sh scripts/compile-flatc.sh
       - name: Backup Lock File
         run: |
           cp ${LOCK_FILE} ${LOCK_FILE}.bak
@@ -127,6 +129,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          sudo sh scripts/compile-flatc.sh
       - name: Run integration tests
         run: |
           make integration-test
@@ -164,6 +167,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          sudo sh scripts/compile-flatc.sh
       - name: Build and Run HoraeDB Cluster
         working-directory: integration_tests
         run: |
@@ -224,6 +228,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          sudo sh scripts/compile-flatc.sh
       - name: Run recovery tests
         working-directory: integration_tests
         run: |
@@ -257,6 +262,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          sudo sh scripts/compile-flatc.sh
       - name: Run dist query tests
         working-directory: integration_tests
         run: |
