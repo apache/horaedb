@@ -36,20 +36,30 @@ impl<T, B> PartitionedRwLock<T, B>
 where
     B: BuildHasher,
 {
-    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
+    /// the old way to new a partitioned lock, for Compatibility
+    pub fn try_new_bit_len<F, E>(
+        init_fn: F,
+        partition_bit_len: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
-        let partition_num = 1 << partition_bit;
-        let partitions = (1..partition_num)
-            .map(|_| init_fn(partition_num).map(RwLock::new))
-            .collect::<Result<Vec<RwLock<T>>, E>>()?;
+        let partition_num = 1 << partition_bit_len;
+        PartitionedRwLock::try_new_with_partition_num(init_fn, hash_builder, partition_num)
+    }
 
-        Ok(Self {
-            partitions,
-            partition_mask: partition_num - 1,
-            hash_builder,
-        })
+    /// the suggested method of new a partitioned lock
+    pub fn try_new_suggest_cap<F, E>(
+        init_fn: F,
+        suggest_cap: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
+    where
+        F: Fn(usize) -> Result<T, E>,
+    {
+        let partition_num = suggest_cap.next_power_of_two();
+        PartitionedRwLock::try_new_with_partition_num(init_fn, hash_builder, partition_num)
     }
 
     pub fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
@@ -66,6 +76,26 @@ where
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &RwLock<T> {
         &self.partitions[(self.hash_builder.hash_one(key) as usize) & self.partition_mask]
+    }
+
+    #[inline]
+    fn try_new_with_partition_num<F, E>(
+        init_fn: F,
+        hash_builder: B,
+        partition_num: usize,
+    ) -> Result<Self, E>
+    where
+        F: Fn(usize) -> Result<T, E>,
+    {
+        let partitions = (0..partition_num)
+            .map(|_| init_fn(partition_num).map(RwLock::new))
+            .collect::<Result<Vec<RwLock<T>>, E>>()?;
+
+        Ok(Self {
+            partitions,
+            partition_mask: partition_num - 1,
+            hash_builder,
+        })
     }
 
     #[cfg(test)]
@@ -89,11 +119,11 @@ impl<T, B> PartitionedMutex<T, B>
 where
     B: BuildHasher,
 {
-    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
+    pub fn try_new<F, E>(init_fn: F, partition_bit_len: usize, hash_builder: B) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
-        let partition_num = 1 << partition_bit;
+        let partition_num = 1 << partition_bit_len;
         let partitions = (0..partition_num)
             .map(|_| init_fn(partition_num).map(Mutex::new))
             .collect::<Result<Vec<Mutex<T>>, E>>()?;
@@ -140,11 +170,11 @@ impl<T, B> PartitionedMutexAsync<T, B>
 where
     B: BuildHasher,
 {
-    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
+    pub fn try_new<F, E>(init_fn: F, partition_bit_len: usize, hash_builder: B) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
-        let partition_num = 1 << partition_bit;
+        let partition_num = 1 << partition_bit_len;
         let partitions = (0..partition_num)
             .map(|_| init_fn(partition_num).map(tokio::sync::Mutex::new))
             .collect::<Result<Vec<tokio::sync::Mutex<T>>, E>>()?;
@@ -185,7 +215,8 @@ mod tests {
     fn test_partitioned_rwlock() {
         let init_hmap = |_: usize| Ok::<_, ()>(HashMap::new());
         let test_locked_map =
-            PartitionedRwLock::try_new(init_hmap, 4, build_fixed_seed_ahasher_builder()).unwrap();
+            PartitionedRwLock::try_new_bit_len(init_hmap, 4, build_fixed_seed_ahasher_builder())
+                .unwrap();
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -257,7 +288,8 @@ mod tests {
     fn test_partitioned_rwmutex_vis_different_partition() {
         let init_vec = |_: usize| Ok::<_, ()>(Vec::<i32>::new());
         let test_locked_map =
-            PartitionedRwLock::try_new(init_vec, 4, build_fixed_seed_ahasher_builder()).unwrap();
+            PartitionedRwLock::try_new_bit_len(init_vec, 4, build_fixed_seed_ahasher_builder())
+                .unwrap();
         let mutex_first = test_locked_map.get_partition_by_index(0);
         let mut _tmp = mutex_first.write().unwrap();
         assert!(mutex_first.try_write().is_err());
