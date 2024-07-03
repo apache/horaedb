@@ -46,7 +46,7 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit_len;
-        PartitionedRwLock::try_new_with_partition_num(init_fn, hash_builder, partition_num)
+        PartitionedRwLock::try_new_with_partition_num(init_fn, partition_num, hash_builder)
     }
 
     /// the suggested method of new a partitioned lock
@@ -59,7 +59,7 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = suggest_cap.next_power_of_two();
-        PartitionedRwLock::try_new_with_partition_num(init_fn, hash_builder, partition_num)
+        PartitionedRwLock::try_new_with_partition_num(init_fn, partition_num, hash_builder)
     }
 
     pub fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
@@ -81,8 +81,8 @@ where
     #[inline]
     fn try_new_with_partition_num<F, E>(
         init_fn: F,
-        hash_builder: B,
         partition_num: usize,
+        hash_builder: B,
     ) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
@@ -119,20 +119,28 @@ impl<T, B> PartitionedMutex<T, B>
 where
     B: BuildHasher,
 {
-    pub fn try_new<F, E>(init_fn: F, partition_bit_len: usize, hash_builder: B) -> Result<Self, E>
+    pub fn try_new_bit_len<F, E>(
+        init_fn: F,
+        partition_bit_len: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit_len;
-        let partitions = (0..partition_num)
-            .map(|_| init_fn(partition_num).map(Mutex::new))
-            .collect::<Result<Vec<Mutex<T>>, E>>()?;
+        PartitionedMutex::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+    }
 
-        Ok(Self {
-            partitions,
-            partition_mask: partition_num - 1,
-            hash_builder,
-        })
+    pub fn try_new_suggest_cap<F, E>(
+        init_fn: F,
+        suggest_cap: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
+    where
+        F: Fn(usize) -> Result<T, E>,
+    {
+        let partition_num = suggest_cap.next_power_of_two();
+        PartitionedMutex::try_new_with_partition_num(init_fn, partition_num, hash_builder)
     }
 
     pub fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
@@ -143,6 +151,26 @@ where
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &Mutex<T> {
         &self.partitions[(self.hash_builder.hash_one(key) as usize) & self.partition_mask]
+    }
+
+    #[inline]
+    fn try_new_with_partition_num<F, E>(
+        init_fn: F,
+        partition_num: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
+    where
+        F: Fn(usize) -> Result<T, E>,
+    {
+        let partitions = (0..partition_num)
+            .map(|_| init_fn(partition_num).map(Mutex::new))
+            .collect::<Result<Vec<Mutex<T>>, E>>()?;
+
+        Ok(Self {
+            partitions,
+            partition_mask: partition_num - 1,
+            hash_builder,
+        })
     }
 
     #[cfg(test)]
@@ -170,11 +198,45 @@ impl<T, B> PartitionedMutexAsync<T, B>
 where
     B: BuildHasher,
 {
-    pub fn try_new<F, E>(init_fn: F, partition_bit_len: usize, hash_builder: B) -> Result<Self, E>
+    pub fn try_new_bit_len<F, E>(
+        init_fn: F,
+        partition_bit_len: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit_len;
+        PartitionedMutexAsync::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+    }
+
+    pub fn try_new_suggest_cap<F, E>(
+        init_fn: F,
+        suggest_cap: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
+    where
+        F: Fn(usize) -> Result<T, E>,
+    {
+        let partition_num = suggest_cap.next_power_of_two();
+        PartitionedMutexAsync::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+    }
+
+    pub async fn lock<K: Eq + Hash>(&self, key: &K) -> tokio::sync::MutexGuard<'_, T> {
+        let mutex = self.get_partition(key);
+
+        mutex.lock().await
+    }
+
+    #[inline]
+    fn try_new_with_partition_num<F, E>(
+        init_fn: F,
+        partition_num: usize,
+        hash_builder: B,
+    ) -> Result<Self, E>
+    where
+        F: Fn(usize) -> Result<T, E>,
+    {
         let partitions = (0..partition_num)
             .map(|_| init_fn(partition_num).map(tokio::sync::Mutex::new))
             .collect::<Result<Vec<tokio::sync::Mutex<T>>, E>>()?;
@@ -184,12 +246,6 @@ where
             partition_mask: partition_num - 1,
             hash_builder,
         })
-    }
-
-    pub async fn lock<K: Eq + Hash>(&self, key: &K) -> tokio::sync::MutexGuard<'_, T> {
-        let mutex = self.get_partition(key);
-
-        mutex.lock().await
     }
 
     fn get_partition<K: Eq + Hash>(&self, key: &K) -> &tokio::sync::Mutex<T> {
@@ -210,6 +266,48 @@ mod tests {
     use hash_ext::{build_fixed_seed_ahasher_builder, SeaHasherBuilder};
 
     use super::*;
+
+    #[test]
+    fn test_new_equivalence() {
+        let init_42 = |_: usize| Ok::<_, ()>(42);
+
+        let test_rwlock_42_bit_len =
+            PartitionedRwLock::try_new_bit_len(init_42, 4, build_fixed_seed_ahasher_builder())
+                .unwrap();
+        let test_rwlock_42_suggest_cap =
+            PartitionedRwLock::try_new_suggest_cap(init_42, 13, build_fixed_seed_ahasher_builder())
+                .unwrap();
+
+        let test_mutex_42_bit_len =
+            PartitionedMutex::try_new_bit_len(init_42, 4, build_fixed_seed_ahasher_builder())
+                .unwrap();
+        let test_mutex_42_suggest_cap =
+            PartitionedMutex::try_new_suggest_cap(init_42, 16, build_fixed_seed_ahasher_builder())
+                .unwrap();
+
+        let test_mutex_async_42_bit_len =
+            PartitionedMutexAsync::try_new_bit_len(init_42, 4, build_fixed_seed_ahasher_builder())
+                .unwrap();
+        let test_mutex_async_42_suggest_cap = PartitionedMutexAsync::try_new_suggest_cap(
+            init_42,
+            13,
+            build_fixed_seed_ahasher_builder(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            test_rwlock_42_bit_len.partition_mask,
+            test_rwlock_42_suggest_cap.partition_mask
+        );
+        assert_eq!(
+            test_mutex_42_bit_len.partition_mask,
+            test_mutex_42_suggest_cap.partition_mask
+        );
+        assert_eq!(
+            test_mutex_async_42_bit_len.partition_mask,
+            test_mutex_async_42_suggest_cap.partition_mask
+        );
+    }
 
     #[test]
     fn test_partitioned_rwlock() {
@@ -235,7 +333,8 @@ mod tests {
     fn test_partitioned_mutex() {
         let init_hmap = |_: usize| Ok::<_, ()>(HashMap::new());
         let test_locked_map =
-            PartitionedMutex::try_new(init_hmap, 4, build_fixed_seed_ahasher_builder()).unwrap();
+            PartitionedMutex::try_new_bit_len(init_hmap, 4, build_fixed_seed_ahasher_builder())
+                .unwrap();
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -254,7 +353,7 @@ mod tests {
     async fn test_partitioned_mutex_async() {
         let init_hmap = |_: usize| Ok::<_, ()>(HashMap::new());
         let test_locked_map =
-            PartitionedMutexAsync::try_new(init_hmap, 4, SeaHasherBuilder).unwrap();
+            PartitionedMutexAsync::try_new_bit_len(init_hmap, 4, SeaHasherBuilder).unwrap();
         let test_key = "test_key".to_string();
         let test_value = "test_value".to_string();
 
@@ -273,7 +372,8 @@ mod tests {
     fn test_partitioned_mutex_vis_different_partition() {
         let init_vec = |_: usize| Ok::<_, ()>(Vec::<i32>::new());
         let test_locked_map =
-            PartitionedMutex::try_new(init_vec, 4, build_fixed_seed_ahasher_builder()).unwrap();
+            PartitionedMutex::try_new_bit_len(init_vec, 4, build_fixed_seed_ahasher_builder())
+                .unwrap();
         let mutex_first = test_locked_map.get_partition_by_index(0);
 
         let mut _tmp_data = mutex_first.lock().unwrap();
@@ -303,7 +403,7 @@ mod tests {
     async fn test_partitioned_mutex_async_vis_different_partition() {
         let init_vec = |_: usize| Ok::<_, ()>(Vec::<i32>::new());
         let test_locked_map =
-            PartitionedMutexAsync::try_new(init_vec, 4, SeaHasherBuilder).unwrap();
+            PartitionedMutexAsync::try_new_bit_len(init_vec, 4, SeaHasherBuilder).unwrap();
         let mutex_first = test_locked_map.get_partition_by_index(0).await;
 
         let mut _tmp_data = mutex_first.lock().await;
