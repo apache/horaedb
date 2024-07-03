@@ -40,6 +40,8 @@ arrow_ext = { workspace = true }
 bytes_ext = { workspace = true }
 chrono = { workspace = true }
 datafusion = { workspace = true }
+fb_util = { workspace = true }
+flatbuffers = { workspace = true }
 hash_ext = { workspace = true }
 horaedbproto = { workspace = true }
 macros = { workspace = true }
@@ -52,5 +54,3 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 sqlparser = { workspace = true }
 uuid = { workspace = true, features = ["fast-rng"] }
-fb_util = { workspace = true }
-flatbuffers = { workspace = true }

@@ -27,6 +27,8 @@ RUN apt update && apt install --yes git gcc g++ libssl-dev pkg-config cmake prot
 COPY . /horaedb
 WORKDIR /horaedb
 
+RUN sh scripts/compile-flatc.sh
+
 RUN make build
 
 ## HoraeDB

@@ -31,9 +31,9 @@ workspace = true
 workspace = true
 
 [dependencies]
+bytes = { workspace = true }
 flatbuffers = { workspace = true }
 tonic = { workspace = true }
-bytes = { workspace = true }
 
 [build-dependencies]
 flatc-rust = "*"

@@ -40,6 +40,8 @@ common_types = { workspace = true }
 datafusion = { workspace = true }
 datafusion-proto = { workspace = true }
 df_operator = { workspace = true }
+fb_util = { workspace = true }
+flatbuffers = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
 hash_ext = { workspace = true }
@@ -58,8 +60,6 @@ snafu = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
 trace_metric = { workspace = true }
-fb_util = { workspace = true }
-flatbuffers = { workspace = true }
 
 [dev-dependencies]
 common_types = { workspace = true, features = ["test"] }

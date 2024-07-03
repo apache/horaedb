@@ -34,6 +34,7 @@ workspace = true
 arrow_ext = { workspace = true }
 async-trait = { workspace = true }
 common_types = { workspace = true }
+fb_util = { workspace = true }
 futures = { workspace = true }
 generic_error = { workspace = true }
 horaedbproto = { workspace = true }
@@ -47,4 +48,3 @@ table_engine = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
-fb_util = { workspace = true }
