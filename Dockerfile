@@ -22,7 +22,7 @@ FROM rust:${RUST_VERSION}-slim-bullseye as build
 # cache mounts below may already exist and owned by root
 USER root
 
-RUN apt update && apt install --yes git gcc g++ libssl-dev pkg-config cmake protobuf-compiler && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install --yes git gcc g++ libssl-dev pkg-config cmake protobuf-compiler wget && rm -rf /var/lib/apt/lists/*
 
 COPY . /horaedb
 WORKDIR /horaedb
