@@ -36,8 +36,7 @@ impl<T, B> PartitionedRwLock<T, B>
 where
     B: BuildHasher,
 {
-    /// the old way to new a partitioned lock, retained for Compatibility
-    /// the capactity of partition is 2^partition_bit_Len
+    /// New cache with capacity set to `2^bit_len`
     pub fn try_new_with_bit_len<F, E>(
         init_fn: F,
         partition_bit_len: usize,
@@ -47,12 +46,10 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit_len;
-        PartitionedRwLock::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+        PartitionedRwLock::try_new(init_fn, partition_num, hash_builder)
     }
 
-    /// the suggested method of new a partitioned lock
-    /// the capactity is the next power of 2 of suggest_cap
-    /// example: suggest_cap = 10, partition_num = 16
+    /// New cache with capacity round to `suggest_cap`'s power of 2
     pub fn try_new_with_suggest_cap<F, E>(
         init_fn: F,
         suggest_cap: usize,
@@ -62,7 +59,7 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = suggest_cap.next_power_of_two();
-        PartitionedRwLock::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+        PartitionedRwLock::try_new(init_fn, partition_num, hash_builder)
     }
 
     pub fn read<K: Eq + Hash>(&self, key: &K) -> RwLockReadGuard<'_, T> {
@@ -82,11 +79,7 @@ where
     }
 
     #[inline]
-    fn try_new_with_partition_num<F, E>(
-        init_fn: F,
-        partition_num: usize,
-        hash_builder: B,
-    ) -> Result<Self, E>
+    fn try_new<F, E>(init_fn: F, partition_num: usize, hash_builder: B) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
@@ -122,8 +115,7 @@ impl<T, B> PartitionedMutex<T, B>
 where
     B: BuildHasher,
 {
-    /// the old way to new a partitioned lock, retained for Compatibility
-    /// the capactity of partition is 2^partition_bit_Len
+    /// New cache with capacity set to `2^bit_len`
     pub fn try_new_with_bit_len<F, E>(
         init_fn: F,
         partition_bit_len: usize,
@@ -133,12 +125,10 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit_len;
-        PartitionedMutex::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+        PartitionedMutex::try_new(init_fn, partition_num, hash_builder)
     }
 
-    /// the suggested method of new a partitioned lock
-    /// the capactity is the next power of 2 of suggest_cap
-    /// example: suggest_cap = 10, partition _num = 16
+    /// New cache with capacity round to `suggest_cap`'s power of 2
     pub fn try_new_with_suggest_cap<F, E>(
         init_fn: F,
         suggest_cap: usize,
@@ -148,7 +138,7 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = suggest_cap.next_power_of_two();
-        PartitionedMutex::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+        PartitionedMutex::try_new(init_fn, partition_num, hash_builder)
     }
 
     pub fn lock<K: Eq + Hash>(&self, key: &K) -> MutexGuard<'_, T> {
@@ -162,11 +152,7 @@ where
     }
 
     #[inline]
-    fn try_new_with_partition_num<F, E>(
-        init_fn: F,
-        partition_num: usize,
-        hash_builder: B,
-    ) -> Result<Self, E>
+    fn try_new<F, E>(init_fn: F, partition_num: usize, hash_builder: B) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
@@ -206,8 +192,7 @@ impl<T, B> PartitionedMutexAsync<T, B>
 where
     B: BuildHasher,
 {
-    /// the old way to new a partitioned lock, retained for Compatibility
-    /// the capactity of partition is 2^partition_bit_Len
+    /// New cache with capacity set to `2^bit_len`
     pub fn try_new_with_bit_len<F, E>(
         init_fn: F,
         partition_bit_len: usize,
@@ -217,12 +202,10 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit_len;
-        PartitionedMutexAsync::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+        PartitionedMutexAsync::try_new(init_fn, partition_num, hash_builder)
     }
 
-    /// the suggested method of new a partitioned lock
-    /// the capactity is the next power of 2 of suggest _Cap
-    /// example: suggest_cap = 10, partition _num = 16
+    /// New cache with capacity round to `suggest_cap`'s power of 2
     pub fn try_new_with_suggest_cap<F, E>(
         init_fn: F,
         suggest_cap: usize,
@@ -232,7 +215,7 @@ where
         F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = suggest_cap.next_power_of_two();
-        PartitionedMutexAsync::try_new_with_partition_num(init_fn, partition_num, hash_builder)
+        PartitionedMutexAsync::try_new(init_fn, partition_num, hash_builder)
     }
 
     pub async fn lock<K: Eq + Hash>(&self, key: &K) -> tokio::sync::MutexGuard<'_, T> {
@@ -242,11 +225,7 @@ where
     }
 
     #[inline]
-    fn try_new_with_partition_num<F, E>(
-        init_fn: F,
-        partition_num: usize,
-        hash_builder: B,
-    ) -> Result<Self, E>
+    fn try_new<F, E>(init_fn: F, partition_num: usize, hash_builder: B) -> Result<Self, E>
     where
         F: Fn(usize) -> Result<T, E>,
     {
