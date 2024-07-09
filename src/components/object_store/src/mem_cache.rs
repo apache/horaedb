@@ -81,7 +81,7 @@ impl MemCache {
             ))
         };
 
-        let inner = PartitionedMutex::try_new(
+        let inner = PartitionedMutex::try_new_with_bit_len(
             init_lru,
             partition_bits,
             build_fixed_seed_ahasher_builder(),
