@@ -152,15 +152,13 @@ impl Interpreter for InsertInterpreter {
             default_value_map,
         } = self.plan;
 
-        let mut rows;
-        match source {
-            InsertSource::Values { row_group } => {
-                rows = row_group;
-            }
+        let mut rows = match source {
+            InsertSource::Values { row_group } => row_group,
             InsertSource::Select {
                 query: query_plan,
                 column_index_in_insert,
             } => {
+                // TODO: support streaming insert
                 let record_batches = exec_select_logical_plan(
                     self.ctx,
                     query_plan,
@@ -174,14 +172,10 @@ impl Interpreter for InsertInterpreter {
                     return Ok(Output::AffectedRows(0));
                 }
 
-                rows = convert_records_to_row_group(
-                    record_batches,
-                    column_index_in_insert,
-                    table.schema(),
-                )
-                .context(Insert)?;
+                convert_records_to_row_group(record_batches, column_index_in_insert, table.schema())
+                    .context(Insert)?
             }
-        }
+        };
 
         maybe_generate_tsid(&mut rows).context(Insert)?;
 

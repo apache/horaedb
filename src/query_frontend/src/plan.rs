@@ -325,7 +325,7 @@ pub enum InsertSource {
 pub struct InsertPlan {
     /// The table to insert
     pub table: TableRef,
-    /// RowGroup to insert
+    /// Insert source(could be value literals or select query)
     pub source: InsertSource,
     /// Column indexes in schema to its default-value-expr which is used to fill
     /// values
