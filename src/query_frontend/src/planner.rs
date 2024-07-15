@@ -906,7 +906,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     // REQUIRE: SqlStatement must be INSERT stmt
-    fn insert_to_plan(&self, sql_stmt: SqlStatement) -> Result<Plan> {
+    fn insert_to_plan(self, sql_stmt: SqlStatement) -> Result<Plan> {
         match sql_stmt {
             SqlStatement::Insert {
                 table_name,
@@ -1001,7 +1001,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                     schema,
                     source,
                     column_index_in_insert,
-                    self.meta_provider.clone_with_cleared_cache(),
+                    self.meta_provider,
                 )?;
 
                 Ok(Plan::Insert(InsertPlan {
