@@ -31,7 +31,6 @@ pub mod config;
 pub mod disk_cache;
 pub mod mem_cache;
 pub mod metrics;
-pub mod obkv;
 pub mod prefix;
 pub mod s3;
 #[cfg(test)]
