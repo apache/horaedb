@@ -179,9 +179,9 @@ impl Interpreter for InsertInterpreter {
                 .await
                 .context(Insert)?;
 
-                // accumulate 8 record batches before writing to table and this param
+                // accumulate 4 record batches before writing to table and this param
                 // can be adjusted according to the performance test result.
-                let max_batch_size = 8;
+                let max_batch_size = 4;
                 let mut result_rows = 0;
                 let mut record_batches = Vec::new();
                 while let Some(response) = record_batches_stream.next().await {
