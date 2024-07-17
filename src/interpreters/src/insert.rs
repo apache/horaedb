@@ -185,8 +185,8 @@ impl Interpreter for InsertInterpreter {
                 .await
                 .context(Insert)?;
 
-                let max_batch_size = 1000;
-                let (tx, rx) = mpsc::channel(max_batch_size * 2);
+                let max_row_count = 1000;
+                let (tx, rx) = mpsc::channel(max_row_count * 2);
                 let producer: tokio::task::JoinHandle<InterpreterResult<()>> =
                     tokio::spawn(async move {
                         while let Some(record_batch) = record_batches_stream
@@ -212,10 +212,10 @@ impl Interpreter for InsertInterpreter {
                     tokio::spawn(async move {
                         let mut rx = rx;
                         let mut result_rows = 0;
-                        let mut record_batches = Vec::with_capacity(max_batch_size * 2);
+                        let mut record_batches = Vec::with_capacity(max_row_count * 2);
                         while let Some(record_batch) = rx.recv().await {
                             record_batches.push(record_batch);
-                            if record_batches.len() >= max_batch_size {
+                            if record_batches.len() >= max_row_count {
                                 let num_rows = write_record_batches(
                                     &mut record_batches,
                                     column_index_in_insert.as_slice(),
