@@ -60,6 +60,7 @@ use table_engine::{
     stream::SendableRecordBatchStream,
     table::{TableRef, WriteRequest},
 };
+use tokio::sync::mpsc;
 
 use crate::{
     context::Context,
@@ -122,6 +123,12 @@ pub enum Error {
 
     #[snafu(display("Failed to do select, err:{}", source))]
     Select { source: table_engine::stream::Error },
+
+    #[snafu(display("Failed to send msg in channel, err:{}", msg))]
+    MsgChannel { msg: String },
+
+    #[snafu(display("Failed to join async task, err:{}", msg))]
+    AsyncTask { msg: String },
 }
 
 define_result!(Error);
@@ -179,49 +186,76 @@ impl Interpreter for InsertInterpreter {
                 .await
                 .context(Insert)?;
 
-                // accumulate 4 record batches before writing to table and this param
-                // can be adjusted according to the performance test result.
-                let max_batch_size = 4;
-                let mut result_rows = 0;
-                let mut record_batches = Vec::new();
-                while let Some(response) = record_batches_stream.next().await {
-                    match response {
-                        Ok(record_batch) => {
-                            if record_batch.is_empty() {
-                                continue;
+                let (tx, rx) = mpsc::channel(32);
+                let producer: tokio::task::JoinHandle<InterpreterResult<()>> =
+                    tokio::spawn(async move {
+                        while let Some(response) = record_batches_stream.next().await {
+                            match response {
+                                Ok(record_batch) => {
+                                    if record_batch.is_empty() {
+                                        continue;
+                                    }
+                                    if let Err(e) = tx.send(record_batch).await {
+                                        return Err(Error::MsgChannel {
+                                            msg: format!("{}", e),
+                                        })
+                                        .context(Insert)?;
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to get record batch, err:{}", e);
+                                    return Err(e).context(Select).context(Insert)?;
+                                }
                             }
+                        }
+                        Ok(())
+                    });
+
+                let consumer: tokio::task::JoinHandle<InterpreterResult<usize>> =
+                    tokio::spawn(async move {
+                        // accumulate 4 record batches before writing to table and this param
+                        // can be adjusted according to the performance test result.
+                        let max_batch_size = 4;
+                        let mut rx = rx;
+                        let mut result_rows = 0;
+                        let mut record_batches = Vec::with_capacity(max_batch_size * 2);
+                        while let Some(record_batch) = rx.recv().await {
                             record_batches.push(record_batch);
+                            if record_batches.len() >= max_batch_size {
+                                let num_rows = write_record_batches(
+                                    &mut record_batches,
+                                    column_index_in_insert.as_slice(),
+                                    table.clone(),
+                                    &default_value_map,
+                                )
+                                .await?;
+                                result_rows += num_rows;
+                            }
                         }
-                        Err(e) => {
-                            error!("Failed to get record batch, err:{}", e);
-                            return Err(e).context(Select).context(Insert)?;
+
+                        if !record_batches.is_empty() {
+                            let num_rows = write_record_batches(
+                                &mut record_batches,
+                                column_index_in_insert.as_slice(),
+                                table,
+                                &default_value_map,
+                            )
+                            .await?;
+                            result_rows += num_rows;
                         }
+                        Ok(result_rows)
+                    });
+
+                match tokio::try_join!(producer, consumer) {
+                    Ok((select_res, write_rows)) => {
+                        select_res?;
+                        Ok(Output::AffectedRows(write_rows?))
                     }
-
-                    if record_batches.len() >= max_batch_size {
-                        let num_rows = write_record_batches(
-                            &mut record_batches,
-                            column_index_in_insert.as_slice(),
-                            table.clone(),
-                            &default_value_map,
-                        )
-                        .await?;
-                        result_rows += num_rows;
-                    }
+                    Err(e) => Err(Error::AsyncTask {
+                        msg: format!("{}", e),
+                    })
+                    .context(Insert)?,
                 }
-
-                if !record_batches.is_empty() {
-                    let num_rows = write_record_batches(
-                        &mut record_batches,
-                        column_index_in_insert.as_slice(),
-                        table,
-                        &default_value_map,
-                    )
-                    .await?;
-                    result_rows += num_rows;
-                }
-
-                Ok(Output::AffectedRows(result_rows))
             }
         }
     }
