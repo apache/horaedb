@@ -44,10 +44,9 @@ use datafusion::{
     },
 };
 use df_operator::visitor::find_columns_by_expr;
-use futures::StreamExt;
+use futures::TryStreamExt;
 use generic_error::{BoxError, GenericError};
 use hash_ext::hash64;
-use logger::error;
 use macros::define_result;
 use query_engine::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
 use query_frontend::{
@@ -186,26 +185,24 @@ impl Interpreter for InsertInterpreter {
                 .await
                 .context(Insert)?;
 
-                let (tx, rx) = mpsc::channel(32);
+                let max_batch_size = 1000;
+                let (tx, rx) = mpsc::channel(max_batch_size * 2);
                 let producer: tokio::task::JoinHandle<InterpreterResult<()>> =
                     tokio::spawn(async move {
-                        while let Some(response) = record_batches_stream.next().await {
-                            match response {
-                                Ok(record_batch) => {
-                                    if record_batch.is_empty() {
-                                        continue;
-                                    }
-                                    if let Err(e) = tx.send(record_batch).await {
-                                        return Err(Error::MsgChannel {
-                                            msg: format!("{}", e),
-                                        })
-                                        .context(Insert)?;
-                                    }
-                                }
-                                Err(e) => {
-                                    error!("Failed to get record batch, err:{}", e);
-                                    return Err(e).context(Select).context(Insert)?;
-                                }
+                        while let Some(record_batch) = record_batches_stream
+                            .try_next()
+                            .await
+                            .context(Select)
+                            .context(Insert)?
+                        {
+                            if record_batch.is_empty() {
+                                continue;
+                            }
+                            if let Err(e) = tx.send(record_batch).await {
+                                return Err(Error::MsgChannel {
+                                    msg: format!("{}", e),
+                                })
+                                .context(Insert)?;
                             }
                         }
                         Ok(())
@@ -213,9 +210,6 @@ impl Interpreter for InsertInterpreter {
 
                 let consumer: tokio::task::JoinHandle<InterpreterResult<usize>> =
                     tokio::spawn(async move {
-                        // accumulate 4 record batches before writing to table and this param
-                        // can be adjusted according to the performance test result.
-                        let max_batch_size = 4;
                         let mut rx = rx;
                         let mut result_rows = 0;
                         let mut record_batches = Vec::with_capacity(max_batch_size * 2);
