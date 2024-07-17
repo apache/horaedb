@@ -187,58 +187,56 @@ impl Interpreter for InsertInterpreter {
 
                 let max_row_count = 1000;
                 let (tx, rx) = mpsc::channel(max_row_count * 2);
-                let producer: tokio::task::JoinHandle<InterpreterResult<()>> =
-                    tokio::spawn(async move {
-                        while let Some(record_batch) = record_batches_stream
-                            .try_next()
-                            .await
-                            .context(Select)
-                            .context(Insert)?
-                        {
-                            if record_batch.is_empty() {
-                                continue;
-                            }
-                            if let Err(e) = tx.send(record_batch).await {
-                                return Err(Error::MsgChannel {
-                                    msg: format!("{}", e),
-                                })
-                                .context(Insert)?;
-                            }
+                let producer = tokio::spawn(async move {
+                    while let Some(record_batch) = record_batches_stream
+                        .try_next()
+                        .await
+                        .context(Select)
+                        .context(Insert)?
+                    {
+                        if record_batch.is_empty() {
+                            continue;
                         }
-                        Ok(())
-                    });
-
-                let consumer: tokio::task::JoinHandle<InterpreterResult<usize>> =
-                    tokio::spawn(async move {
-                        let mut rx = rx;
-                        let mut result_rows = 0;
-                        let mut record_batches = Vec::with_capacity(max_row_count * 2);
-                        while let Some(record_batch) = rx.recv().await {
-                            record_batches.push(record_batch);
-                            if record_batches.len() >= max_row_count {
-                                let num_rows = write_record_batches(
-                                    &mut record_batches,
-                                    column_index_in_insert.as_slice(),
-                                    table.clone(),
-                                    &default_value_map,
-                                )
-                                .await?;
-                                result_rows += num_rows;
-                            }
+                        if let Err(e) = tx.send(record_batch).await {
+                            return Err(Error::MsgChannel {
+                                msg: format!("{}", e),
+                            })
+                            .context(Insert)?;
                         }
+                    }
+                    Ok(())
+                });
 
-                        if !record_batches.is_empty() {
+                let consumer = tokio::spawn(async move {
+                    let mut rx = rx;
+                    let mut result_rows = 0;
+                    let mut record_batches = Vec::with_capacity(max_row_count);
+                    while let Some(record_batch) = rx.recv().await {
+                        record_batches.push(record_batch);
+                        if record_batches.len() >= max_row_count {
                             let num_rows = write_record_batches(
                                 &mut record_batches,
                                 column_index_in_insert.as_slice(),
-                                table,
+                                table.clone(),
                                 &default_value_map,
                             )
                             .await?;
                             result_rows += num_rows;
                         }
-                        Ok(result_rows)
-                    });
+                    }
+
+                    if !record_batches.is_empty() {
+                        let num_rows = write_record_batches(
+                            &mut record_batches,
+                            column_index_in_insert.as_slice(),
+                            table,
+                            &default_value_map,
+                        )
+                        .await?;
+                        result_rows += num_rows;
+                    }
+                    Ok(result_rows)
+                });
 
                 match tokio::try_join!(producer, consumer) {
                     Ok((select_res, write_rows)) => {
