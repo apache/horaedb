@@ -19,7 +19,7 @@
 
 #![feature(option_get_or_insert_default)]
 
-mod compaction;
+pub mod compaction;
 mod context;
 mod engine;
 pub mod error;
