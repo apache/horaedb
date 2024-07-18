@@ -132,6 +132,10 @@ pub enum Error {
 
 define_result!(Error);
 
+// TODO: make those configurable
+const INSERT_SELECT_ROW_BATCH_NUM: usize = 1000;
+const INSERT_SELECT_PENDING_BATCH_NUM: usize = 3;
+
 pub struct InsertInterpreter {
     ctx: Context,
     plan: InsertPlan,
@@ -185,8 +189,7 @@ impl Interpreter for InsertInterpreter {
                 .await
                 .context(Insert)?;
 
-                let max_row_count = 1000;
-                let (tx, rx) = mpsc::channel(max_row_count * 2);
+                let (tx, rx) = mpsc::channel(INSERT_SELECT_PENDING_BATCH_NUM);
                 let producer = tokio::spawn(async move {
                     while let Some(record_batch) = record_batches_stream
                         .try_next()
@@ -210,10 +213,13 @@ impl Interpreter for InsertInterpreter {
                 let consumer = tokio::spawn(async move {
                     let mut rx = rx;
                     let mut result_rows = 0;
-                    let mut record_batches = Vec::with_capacity(max_row_count);
+                    let mut pending_rows = 0;
+                    let mut record_batches = Vec::new();
                     while let Some(record_batch) = rx.recv().await {
+                        pending_rows += record_batch.num_rows();
                         record_batches.push(record_batch);
-                        if record_batches.len() >= max_row_count {
+                        if pending_rows >= INSERT_SELECT_ROW_BATCH_NUM {
+                            pending_rows = 0;
                             let num_rows = write_record_batches(
                                 &mut record_batches,
                                 column_index_in_insert.as_slice(),
