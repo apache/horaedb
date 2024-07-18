@@ -35,9 +35,11 @@ INSERT INTO `insert_into_select_table1` (`timestamp`, `value`, `name`)
 VALUES
     (1, 100, "s1"),
     (2, 200, "s2"),
-    (3, 300, "s3");
+    (3, 300, "s3"),
+    (4, 400, "s4"),
+    (5, 500, "s5");
 
-affected_rows: 3
+affected_rows: 5
 
 DROP TABLE IF EXISTS `insert_into_select_table2`;
 
@@ -58,7 +60,7 @@ INSERT INTO `insert_into_select_table2` (`timestamp`, `value`)
 SELECT `timestamp`, `value`
 FROM `insert_into_select_table1`;
 
-affected_rows: 3
+affected_rows: 5
 
 SELECT `timestamp`, `value`, `name`
 FROM `insert_into_select_table2`;
@@ -67,6 +69,8 @@ timestamp,value,name,
 Timestamp(1),Int32(100),String(""),
 Timestamp(2),Int32(200),String(""),
 Timestamp(3),Int32(300),String(""),
+Timestamp(4),Int32(400),String(""),
+Timestamp(5),Int32(500),String(""),
 
 
 DROP TABLE `insert_into_select_table1`;

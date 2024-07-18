@@ -32,7 +32,9 @@ INSERT INTO `insert_into_select_table1` (`timestamp`, `value`, `name`)
 VALUES
     (1, 100, "s1"),
     (2, 200, "s2"),
-    (3, 300, "s3");
+    (3, 300, "s3"),
+    (4, 400, "s4"),
+    (5, 500, "s5");
 
 DROP TABLE IF EXISTS `insert_into_select_table2`;
 
