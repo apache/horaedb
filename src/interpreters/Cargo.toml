@@ -54,6 +54,7 @@ regex = { workspace = true }
 runtime = { workspace = true }
 snafu = { workspace = true }
 table_engine = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 analytic_engine = { workspace = true, features = ["test"] }

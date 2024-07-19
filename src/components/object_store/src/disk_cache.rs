@@ -296,7 +296,7 @@ impl DiskCache {
 
         Ok(Self {
             root_dir,
-            meta_cache: Arc::new(PartitionedMutex::try_new(
+            meta_cache: Arc::new(PartitionedMutex::try_new_with_bit_len(
                 init_lru,
                 partition_bits,
                 SeaHasherBuilder {},
@@ -545,7 +545,7 @@ impl DiskCacheStore {
             assert!(cap_per_part > 0);
             Ok(LruCache::new(cap_per_part))
         };
-        let meta_cache = PartitionedMutex::try_new(
+        let meta_cache = PartitionedMutex::try_new_with_bit_len(
             init_size_lru,
             FILE_SIZE_CACHE_PARTITION_BITS,
             SeaHasherBuilder,
