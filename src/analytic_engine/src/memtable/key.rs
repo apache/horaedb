@@ -104,7 +104,7 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
         for idx in self.schema.primary_key_indexes() {
             encoder
                 .encode(buf, &value[*idx])
-                .map_err(|e| Error::from(anyhow::Error::new(e)))?;
+                .map_err(anyhow::Error::new)?;
         }
         SequenceCodec.encode(buf, &self.sequence)?;
 
@@ -133,7 +133,7 @@ impl Encoder<KeySequence> for SequenceCodec {
         encode_sequence_number(buf, value.sequence())?;
         let reversed_index = RowIndex::MAX - value.row_index();
         buf.try_put_u32(reversed_index)
-            .map_err(|e| Error::from(anyhow::Error::new(e)))?;
+            .map_err(anyhow::Error::new)?;
 
         Ok(())
     }
@@ -147,14 +147,10 @@ impl Decoder<KeySequence> for SequenceCodec {
     type Error = Error;
 
     fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<KeySequence> {
-        let sequence = buf
-            .try_get_u64()
-            .map_err(|e| Error::from(anyhow::Error::new(e)))?;
+        let sequence = buf.try_get_u64().map_err(anyhow::Error::new)?;
         // Reverse sequence
         let sequence = SequenceNumber::MAX - sequence;
-        let row_index = buf
-            .try_get_u32()
-            .map_err(|e| Error::from(anyhow::Error::new(e)))?;
+        let row_index = buf.try_get_u32().map_err(anyhow::Error::new)?;
         // Reverse row index
         let row_index = RowIndex::MAX - row_index;
 
@@ -168,7 +164,7 @@ fn encode_sequence_number<B: SafeBufMut>(buf: &mut B, sequence: SequenceNumber) 
     let reversed_sequence = SequenceNumber::MAX - sequence;
     // Encode sequence
     buf.try_put_u64(reversed_sequence)
-        .map_err(|e| Error::from(anyhow::Error::new(e)))?;
+        .map_err(anyhow::Error::new)?;
     Ok(())
 }
 

@@ -28,19 +28,6 @@ use crate::{
     table::version::TableVersionMeta,
 };
 
-// #[derive(Debug, Snafu)]
-// pub enum Error {
-//     #[snafu(display(
-//         "Apply update on non-exist table, meta update:{:?}\nBacktrace:\n{}",
-//         update,
-//         backtrace
-//     ))]
-//     TableNotFound {
-//         update: MetaUpdate,
-//         backtrace: Backtrace,
-//     },
-// }
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetaSnapshot {
     pub table_meta: AddTableMeta,
