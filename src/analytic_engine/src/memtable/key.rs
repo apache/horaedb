@@ -197,9 +197,10 @@ pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequ
     // Empty user key is meaningless
     ensure!(
         internal_key.len() > KEY_SEQUENCE_BYTES_LEN,
-        "Insufficient internal key length, len:{}.\nBacktrace:\n{}",
-        internal_key.len(),
-        std::backtrace::Backtrace::capture()
+        anyhow::anyhow!(
+            "Insufficient internal key length, len:{}",
+            internal_key.len()
+        )
     );
 
     let (left, mut right) = internal_key.split_at(internal_key.len() - KEY_SEQUENCE_BYTES_LEN);
