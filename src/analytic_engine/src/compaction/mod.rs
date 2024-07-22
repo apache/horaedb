@@ -20,6 +20,7 @@
 use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
 use common_types::COMPACTION_STRATEGY;
+use macros::define_result;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
 use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
@@ -73,6 +74,8 @@ pub enum Error {
     #[snafu(display("Invalid compaction option value, err: {}", error))]
     InvalidOption { error: String, backtrace: Backtrace },
 }
+
+define_result!(Error);
 
 #[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Serialize)]
 pub enum CompactionStrategy {
@@ -145,7 +148,7 @@ impl CompactionStrategy {
     pub(crate) fn parse_from(
         value: &str,
         options: &HashMap<String, String>,
-    ) -> Result<CompactionStrategy, Error> {
+    ) -> Result<CompactionStrategy> {
         match value.trim().to_lowercase().as_str() {
             DEFAULT_STRATEGY => Ok(CompactionStrategy::Default),
             STC_STRATEGY => Ok(CompactionStrategy::SizeTiered(
@@ -182,7 +185,7 @@ impl CompactionStrategy {
 }
 
 impl SizeTieredCompactionOptions {
-    pub(crate) fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<()> {
         ensure!(
             self.bucket_high > self.bucket_low,
             InvalidOption {
@@ -215,7 +218,7 @@ impl SizeTieredCompactionOptions {
 
     pub(crate) fn parse_from(
         options: &HashMap<String, String>,
-    ) -> Result<SizeTieredCompactionOptions, Error> {
+    ) -> Result<SizeTieredCompactionOptions> {
         let mut opts = SizeTieredCompactionOptions::default();
         if let Some(v) = options.get(BUCKET_LOW_KEY) {
             opts.bucket_low = v.parse().context(ParseFloat {
@@ -278,7 +281,7 @@ impl TimeWindowCompactionOptions {
         );
     }
 
-    pub(crate) fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<()> {
         if !Self::valid_timestamp_unit(self.timestamp_resolution) {
             return InvalidOption {
                 error: format!(
@@ -294,7 +297,7 @@ impl TimeWindowCompactionOptions {
 
     pub(crate) fn parse_from(
         options: &HashMap<String, String>,
-    ) -> Result<TimeWindowCompactionOptions, Error> {
+    ) -> Result<TimeWindowCompactionOptions> {
         let mut opts = TimeWindowCompactionOptions {
             size_tiered: SizeTieredCompactionOptions::parse_from(options)?,
             ..Default::default()
