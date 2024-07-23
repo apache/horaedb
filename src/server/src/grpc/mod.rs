@@ -60,6 +60,7 @@ use crate::{
     },
 };
 
+mod compaction_service;
 mod meta_event_service;
 mod metrics;
 mod remote_engine_service;

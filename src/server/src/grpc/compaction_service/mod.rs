@@ -17,13 +17,18 @@
 
 // Compaction rpc service implementation.
 
-use std::{intrinsics::mir::UnwindResume, sync::Arc};
+#![allow(dead_code)]
 
-use analytic_engine::compaction::runner::{local_runner::LocalCompactionRunner, CompactionRunner, CompactionRunnerResult, CompactionRunnerTask};
+use std::sync::Arc;
+
+use analytic_engine::compaction::runner::{local_runner::LocalCompactionRunner, CompactionRunner, CompactionRunnerTask};
 use async_trait::async_trait;
-use common_types::request_id::RequestId;
+use generic_error::BoxError;
 use horaedbproto::compaction_service::{compaction_service_server::CompactionService, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 use runtime::Runtime;
+use snafu::ResultExt;
+use tonic::{Request, Response, Status};
+use error::{ErrWithCause, StatusCode};
 
 mod error;
 
@@ -37,29 +42,27 @@ pub struct CompactionServiceImpl {
 impl CompactionService for CompactionServiceImpl {
     async fn execute_compaction_task(
         &self,
-        request: tonic::Request<super::ExecuteCompactionTaskRequest>,
-    ) -> Result<
-        tonic::Response<super::ExecuteCompactionTaskResponse>,
-        tonic::Status,
-    > {
-        let execution_response = {
-            let compaction_task = generate_compaction_task(request.get_ref());
-            let execution_result = self.runner.run(compaction_task).await?;
-            generate_execution_response(&execution_result)
-        };
+        request: Request<ExecuteCompactionTaskRequest>,
+    ) -> Result<Response<ExecuteCompactionTaskResponse>, Status> {
+        let request: Result<CompactionRunnerTask, error::Error> = request.into_inner().try_into().box_err().context(ErrWithCause { 
+            code: StatusCode::BadRequest,
+            msg: "fail to convert the execute compaction task request",
+        });
+
+        match request {
+            Ok(request) => {
+                let request_id = request.request_id.clone();
+                let _res = self.runner.run(request).await
+                    .box_err().with_context(|| {
+                        ErrWithCause {
+                            code: StatusCode::Internal,
+                            msg: format!("fail to compact task, request:{request_id}")
+                        }
+                });
+            },
+            Err(_e) => {}
+        }
 
         unimplemented!()
     }
-}
-
-// Transform request into compaction task
-fn generate_compaction_task(request: &ExecuteCompactionTaskRequest) 
-        -> CompactionRunnerTask {
-    unimplemented!()
-}
-
-// Transform compaction result into response
-fn generate_execution_response(result: &CompactionRunnerResult) 
-        -> ExecuteCompactionTaskResponse {
-    unimplemented!()
 }
