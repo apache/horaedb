@@ -130,6 +130,15 @@ pub enum Error {
     ))]
     UnknownStorageFormatHint { value: String, backtrace: Backtrace },
 
+    #[snafu(display(
+        "Unknown compression type. value:{:?}.\nBacktrace:\n{}",
+        value,
+        backtrace
+    ))]
+    UnknownCompressionType { value: i32, backtrace: Backtrace },
+
+
+
     #[snafu(display("Storage format hint is missing.\nBacktrace:\n{}", backtrace))]
     MissingStorageFormatHint { backtrace: Backtrace },
 
@@ -234,6 +243,22 @@ impl From<manifest_pb::Compression> for Compression {
             manifest_pb::Compression::Snappy => Compression::Snappy,
             manifest_pb::Compression::Zstd => Compression::Zstd,
         }
+    }
+}
+
+impl TryFrom<i32> for Compression {
+    type Error = Error;
+
+    fn try_from(compression: i32) -> Result<Self> {
+        let compression = match compression {
+            0 => Compression::Uncompressed,
+            1 => Compression::Lz4,
+            2 => Compression::Snappy,
+            4 => Compression::Zstd,
+            _ => return UnknownCompressionType { value: compression }.fail(),
+        };
+
+        Ok(compression)
     }
 }
 
@@ -363,6 +388,18 @@ impl TryFrom<&str> for StorageFormat {
             _ => return UnknownStorageFormat { value }.fail(),
         };
         Ok(format)
+    }
+}
+
+impl TryFrom<i32> for StorageFormat {
+    type Error = Error;
+
+    fn try_from(value: i32) -> Result<Self> {
+        let format = match value {
+            0 => Self::Columnar,
+            _ => return UnknownStorageFormatType { value }.fail(),
+        };
+        Ok(format) 
     }
 }
 
