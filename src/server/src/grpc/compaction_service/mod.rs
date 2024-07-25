@@ -24,11 +24,11 @@ use std::sync::Arc;
 use analytic_engine::compaction::runner::{local_runner::LocalCompactionRunner, CompactionRunner, CompactionRunnerTask};
 use async_trait::async_trait;
 use generic_error::BoxError;
-use horaedbproto::compaction_service::{compaction_service_server::CompactionService, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
+use horaedbproto::compaction_service::{compaction_service_server::CompactionService, ExecResult, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 use runtime::Runtime;
 use snafu::ResultExt;
 use tonic::{Request, Response, Status};
-use error::{ErrWithCause, StatusCode};
+use error::{build_err_header, build_ok_header, ErrWithCause, StatusCode};
 
 mod error;
 
@@ -49,20 +49,38 @@ impl CompactionService for CompactionServiceImpl {
             msg: "fail to convert the execute compaction task request",
         });
 
+        let mut resp: ExecuteCompactionTaskResponse = ExecuteCompactionTaskResponse::default();
         match request {
             Ok(request) => {
                 let request_id = request.request_id.clone();
-                let _res = self.runner.run(request).await
+                let res = self.runner.run(request).await
                     .box_err().with_context(|| {
                         ErrWithCause {
                             code: StatusCode::Internal,
                             msg: format!("fail to compact task, request:{request_id}")
                         }
                 });
+                
+                match res {
+                    Ok(res) => {
+                        resp.header = Some(build_ok_header());
+                        resp.result = Some(ExecResult {
+                            output_file_path: res.output_file_path.into(),
+                            sst_info: Some(res.sst_info.into()),
+                            sst_meta: Some(res.sst_meta.into()),
+                        });
+                        // TODO: Add status.    
+                    }
+                    Err(e) => {
+                        resp.header = Some(build_err_header(e));
+                    }
+                }
             },
-            Err(_e) => {}
+            Err(e) => {
+                resp.header = Some(build_err_header(e));
+            }
         }
 
-        unimplemented!()
+        Ok(Response::new(resp))
     }
 }

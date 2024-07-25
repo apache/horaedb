@@ -368,6 +368,14 @@ impl From<StorageFormat> for manifest_pb::StorageFormat {
     }
 }
 
+impl From<StorageFormat> for i32 {
+    fn from(value: StorageFormat) -> Self {
+        match value {
+            StorageFormat::Columnar => 0,
+        } 
+    }
+}
+
 impl TryFrom<manifest_pb::StorageFormat> for StorageFormat {
     type Error = Error;
 
