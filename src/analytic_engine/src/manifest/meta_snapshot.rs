@@ -18,28 +18,15 @@
 //! Meta data of manifest.
 
 use logger::debug;
-use macros::define_result;
-use snafu::{ensure, Backtrace, Snafu};
+use macros::ensure;
 
 use crate::{
-    manifest::meta_edit::{AddTableMeta, MetaUpdate},
+    manifest::{
+        meta_edit::{AddTableMeta, MetaUpdate},
+        Result,
+    },
     table::version::TableVersionMeta,
 };
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display(
-        "Apply update on non-exist table, meta update:{:?}\nBacktrace:\n{}",
-        update,
-        backtrace
-    ))]
-    TableNotFound {
-        update: MetaUpdate,
-        backtrace: Backtrace,
-    },
-}
-
-define_result!(Error);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetaSnapshot {
@@ -83,7 +70,10 @@ impl MetaSnapshotBuilder {
 
         if let MetaUpdate::AddTable(_) = &update {
         } else {
-            ensure!(self.is_table_exists(), TableNotFound { update });
+            ensure!(
+                self.is_table_exists(),
+                "Apply update on non-exist table, meta update:{update:?}",
+            );
         }
 
         match update {
