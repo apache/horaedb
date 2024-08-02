@@ -70,10 +70,10 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        let delete_to_sequence_num = if sequence_num == MAX_SEQUENCE_NUMBER {
-            MAX_SEQUENCE_NUMBER
-        } else {
+        let delete_to_sequence_num = if sequence_num < MAX_SEQUENCE_NUMBER {
             sequence_num + 1
+        } else {
+            MAX_SEQUENCE_NUMBER
         };
         self.0
             .mark_delete_to(location, delete_to_sequence_num)
