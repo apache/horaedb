@@ -243,6 +243,12 @@ pub enum Error {
     ))]
     TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
 
+    #[snafu(display("Found invalid table options, reason:{reason}.\nBacktrace:\n{backtrace}",))]
+    InvalidTableOptions {
+        reason: String,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display(
         "Failed to purge wal, wal_location:{:?}, sequence:{}",
         wal_location,
@@ -290,7 +296,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
             | Error::PurgeWal { .. }
-            | Error::ReplayWalWithCause { .. } => Self::Unexpected {
+            | Error::ReplayWalWithCause { .. }
+            | Error::InvalidTableOptions { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }
