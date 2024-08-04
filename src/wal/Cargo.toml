@@ -40,10 +40,11 @@ optional = true
 wal-message-queue = ["dep:message_queue"]
 wal-table-kv = ["dep:table_kv"]
 wal-rocksdb = ["dep:rocksdb"]
+wal-local-storage = ["memmap2", "crc32fast"]
 
 [[test]]
 name = "read_write"
-required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb"]
+required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb", "wal-local-storage"]
 
 [dependencies]
 async-trait = { workspace = true }
@@ -70,6 +71,8 @@ table_kv = { workspace = true, optional = true }
 time_ext = { workspace = true }
 timed_task = { workspace = true }
 tokio = { workspace = true }
+memmap2 = { version = "0.9.4", optional = true }
+crc32fast = { version = "1.3.2", optional = true }
 
 [dev-dependencies]
 futures = { workspace = true, features = ["async-await"] }

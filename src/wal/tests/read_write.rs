@@ -44,6 +44,8 @@ use wal::{
     rocksdb_impl::manager::RocksImpl,
     table_kv_impl::{model::NamespaceConfig, wal::WalNamespaceImpl},
 };
+use wal::local_storage_impl::config::LocalStorageConfig;
+use wal::local_storage_impl::wal_manager::LocalStorageImpl;
 
 #[test]
 fn test_rocksdb_wal() {
@@ -68,6 +70,12 @@ fn test_memory_table_wal_with_ttl() {
 fn test_kafka_wal() {
     let builder = KafkaWalBuilder::new();
     test_all(builder, true);
+}
+
+#[test]
+fn test_local_storage_wal() {
+    let builder = LocalStorageWalBuilder;
+    test_all(builder, false);
 }
 
 fn test_all<B: WalBuilder>(builder: B, is_distributed: bool) {
@@ -977,6 +985,21 @@ impl Clone for KafkaWalBuilder {
         Self {
             namespace: format!("test-namespace-{}", uuid::Uuid::new_v4()),
         }
+    }
+}
+
+
+#[derive(Clone, Default)]
+pub struct LocalStorageWalBuilder;
+
+#[async_trait]
+impl WalBuilder for LocalStorageWalBuilder {
+    type Wal = LocalStorageImpl;
+
+    async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
+        let mut config = LocalStorageConfig::default();
+        config.path = data_path.to_str().unwrap().to_string();
+        Arc::new(LocalStorageImpl::new(config, runtime))
     }
 }
 
