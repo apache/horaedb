@@ -54,7 +54,7 @@ build-meta:
 	./build_meta.sh
 
 build-horaedb:
-	cd .. && cargo build --bin horaedb-server --features wal-table-kv,wal-message-queue,wal-rocksdb
+	cd .. && cargo build --bin horaedb-server --features wal-table-kv,wal-message-queue,wal-rocksdb,wal-local-storage
 
 build-test:
 	cargo build

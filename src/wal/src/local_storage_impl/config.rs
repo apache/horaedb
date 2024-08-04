@@ -15,21 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Write Ahead Log
+use serde::{Deserialize, Serialize};
 
-#![feature(trait_alias)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalStorageConfig {
+    pub path: String,
+    pub max_segment_size: u64,
+    pub cache_size: usize
+}
 
-pub mod config;
-mod dummy;
-pub mod kv_encoder;
-pub mod log_batch;
-pub mod manager;
-#[cfg(feature = "wal-message-queue")]
-pub mod message_queue_impl;
-pub(crate) mod metrics;
-#[cfg(feature = "wal-rocksdb")]
-pub mod rocksdb_impl;
-#[cfg(feature = "wal-table-kv")]
-pub mod table_kv_impl;
-#[cfg(feature = "wal-local-storage")]
-pub mod local_storage_impl;
+impl Default for LocalStorageConfig {
+    fn default() -> Self {
+        Self {
+            path: String::from("/tmp/horaedb/wal"),
+            max_segment_size: 64 * 1024 * 1024, // 64MB
+            cache_size: 3
+        }
+    }
+}
