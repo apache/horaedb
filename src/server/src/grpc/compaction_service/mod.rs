@@ -21,8 +21,9 @@
 
 use std::sync::Arc;
 
-use analytic_engine::compaction::runner::{local_runner::LocalCompactionRunner, CompactionRunner, CompactionRunnerTask};
+use analytic_engine::compaction::runner::CompactionRunnerTask;
 use async_trait::async_trait;
+use compaction_cluster::CompactionClusterRef;
 use generic_error::BoxError;
 use horaedbproto::compaction_service::{compaction_service_server::CompactionService, ExecResult, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 use runtime::Runtime;
@@ -34,8 +35,8 @@ mod error;
 
 #[derive(Clone)]
 pub struct CompactionServiceImpl {
-    runtime: Arc<Runtime>,
-    runner: LocalCompactionRunner,
+    pub runtime: Arc<Runtime>,
+    pub compaction_cluster: CompactionClusterRef,
 }
 
 #[async_trait]
@@ -51,9 +52,9 @@ impl CompactionService for CompactionServiceImpl {
 
         let mut resp: ExecuteCompactionTaskResponse = ExecuteCompactionTaskResponse::default();
         match request {
-            Ok(request) => {
-                let request_id = request.request_id.clone();
-                let res = self.runner.run(request).await
+            Ok(task) => {
+                let request_id = task.request_id.clone();
+                let res = self.compaction_cluster.compact(task).await
                     .box_err().with_context(|| {
                         ErrWithCause {
                             code: StatusCode::Internal,

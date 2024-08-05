@@ -26,12 +26,12 @@ use std::{
 
 use cluster::ClusterRef;
 use common_types::column_schema;
+use compaction_cluster::CompactionClusterRef;
+use compaction_service::CompactionServiceImpl;
 use futures::FutureExt;
 use generic_error::GenericError;
 use horaedbproto::{
-    meta_event::meta_event_service_server::MetaEventServiceServer,
-    remote_engine::remote_engine_service_server::RemoteEngineServiceServer,
-    storage::storage_service_server::StorageServiceServer,
+    compaction_service::compaction_service_server::CompactionServiceServer, meta_event::meta_event_service_server::MetaEventServiceServer, remote_engine::remote_engine_service_server::RemoteEngineServiceServer, storage::storage_service_server::StorageServiceServer
 };
 use logger::{info, warn};
 use macros::define_result;
@@ -164,7 +164,9 @@ define_result!(Error);
 pub struct RpcServices {
     serve_addr: SocketAddr,
     rpc_server: InterceptedService<StorageServiceServer<StorageServiceImpl>, AuthWithFile>,
+    compaction_rpc_server: Option<CompactionServiceServer<CompactionServiceImpl>>,
     meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl>>,
+    // TODO: Consider make remote engine service server optional here.
     remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl>,
     runtime: Arc<Runtime>,
     stop_tx: Option<Sender<()>>,
@@ -174,6 +176,7 @@ pub struct RpcServices {
 impl RpcServices {
     pub async fn start(&mut self) -> Result<()> {
         let rpc_server = self.rpc_server.clone();
+        let compaction_server = self.compaction_rpc_server.clone();
         let meta_rpc_server = self.meta_rpc_server.clone();
         let remote_engine_server = self.remote_engine_server.clone();
         let serve_addr = self.serve_addr;
@@ -182,6 +185,11 @@ impl RpcServices {
             info!("Grpc server tries to listen on {}", serve_addr);
 
             let mut router = Server::builder().add_service(rpc_server);
+
+            if let Some(s) = compaction_server {
+                info!("Grpc server serves compaction service");
+                router = router.add_service(s);
+            };
 
             if let Some(s) = meta_rpc_server {
                 info!("Grpc server serves meta rpc service");
@@ -227,6 +235,7 @@ pub struct Builder {
     proxy: Option<Arc<Proxy>>,
     query_dedup_config: Option<QueryDedupConfig>,
     hotspot_recorder: Option<Arc<HotspotRecorder>>,
+    compaction_cluster: Option<CompactionClusterRef>,
 }
 
 impl Builder {
@@ -242,6 +251,7 @@ impl Builder {
             proxy: None,
             query_dedup_config: None,
             hotspot_recorder: None,
+            compaction_cluster: None,
         }
     }
 
@@ -295,6 +305,12 @@ impl Builder {
         self.query_dedup_config = Some(config);
         self
     }
+
+    // CompactionCluster is an optional field for building [RpcServices].
+    pub fn compaction_cluster(mut self, compaction_cluster: Option<CompactionClusterRef>) -> Self {
+        self.compaction_cluster = compaction_cluster;
+        self
+    }
 }
 
 impl Builder {
@@ -305,6 +321,21 @@ impl Builder {
         let opened_wals = self.opened_wals.context(MissingWals)?;
         let proxy = self.proxy.context(MissingProxy)?;
         let hotspot_recorder = self.hotspot_recorder.context(MissingHotspotRecorder)?;
+
+        assert!((self.cluster.clone().is_some() & self.compaction_cluster.clone().is_some()) == false);
+
+        let compaction_rpc_server = {
+            match self.compaction_cluster {
+                Some(compaction_cluster) => {
+                    let service = CompactionServiceImpl {
+                        runtime: runtimes.compact_runtime.clone(),
+                        compaction_cluster,
+                    };
+                    Some(CompactionServiceServer::new(service))
+                }
+                None => None, 
+            }
+        };
 
         let meta_rpc_server = self.cluster.map(|v| {
             let builder = meta_event_service::Builder {
@@ -350,6 +381,7 @@ impl Builder {
         Ok(RpcServices {
             serve_addr,
             rpc_server,
+            compaction_rpc_server,
             meta_rpc_server,
             remote_engine_server,
             runtime,

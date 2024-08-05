@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
+use compaction_cluster::CompactionClusterRef;
 use datafusion::execution::{runtime_env::RuntimeConfig, FunctionRegistry};
 use df_operator::registry::FunctionRegistryRef;
 use interpreters::table_manipulator::TableManipulatorRef;
@@ -131,6 +132,9 @@ pub enum Error {
     #[snafu(display("Failed to start cluster, err:{}", source))]
     StartCluster { source: cluster::Error },
 
+    #[snafu(display("Failed to start compaction cluster, err:{}", source))]
+    StartCompactionCluster { source: compaction_cluster::Error },
+
     #[snafu(display("Failed to open tables in standalone mode, err:{}", source))]
     OpenLocalTables { source: local_tables::Error },
 
@@ -152,6 +156,8 @@ pub struct Server {
     postgresql_service: postgresql::PostgresqlService,
     instance: InstanceRef,
     cluster: Option<ClusterRef>,
+    #[allow(dead_code)]
+    compaction_cluster: Option<CompactionClusterRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
 
@@ -162,8 +168,14 @@ impl Server {
         self.mysql_service.shutdown();
         self.postgresql_service.shutdown();
 
+        assert!((self.cluster.clone().is_some() & self.compaction_cluster.clone().is_some()) == false);
+
         if let Some(cluster) = &self.cluster {
             cluster.stop().await.expect("fail to stop cluster");
+        }
+
+        if let Some(compaction_cluster) = &self.compaction_cluster {
+            compaction_cluster.stop().await.expect("fail to stop compaction cluster");
         }
     }
 
@@ -177,10 +189,18 @@ impl Server {
                 .context(OpenLocalTables)?;
         }
 
-        // Run in cluster mode
+        assert!((self.cluster.clone().is_some() & self.compaction_cluster.clone().is_some()) == false);
+
+        // Run in cluster mode (HoraeDB)
         if let Some(cluster) = &self.cluster {
-            info!("Server start, start cluster");
+            info!("HoraeDB server start, start cluster");
             cluster.start().await.context(StartCluster)?;
+        }
+
+        // Run in compaction cluster mode (Compaction Server)
+        if let Some(compaction_cluster) = &self.compaction_cluster {
+            info!("Compaction server start, start cluster");
+            compaction_cluster.start().await.context(StartCompactionCluster)?;
         }
 
         // TODO: Is it necessary to create default schema in cluster mode?
@@ -251,6 +271,7 @@ pub struct Builder {
     opened_wals: Option<OpenedWals>,
     remote_engine: Option<RemoteEngineRef>,
     datatfusion_context: Option<DatafusionContext>,
+    compaction_cluster: Option<CompactionClusterRef>,
 }
 
 impl Builder {
@@ -274,6 +295,7 @@ impl Builder {
             opened_wals: None,
             remote_engine: None,
             datatfusion_context: None,
+            compaction_cluster: None,
         }
     }
 
@@ -365,6 +387,11 @@ impl Builder {
 
     pub fn datafusion_context(mut self, datafusion_context: DatafusionContext) -> Self {
         self.datatfusion_context = Some(datafusion_context);
+        self
+    }
+
+    pub fn compaction_cluster(mut self, compaction_cluster: CompactionClusterRef) -> Self {
+        self.compaction_cluster = Some(compaction_cluster);
         self
     }
 
@@ -527,6 +554,7 @@ impl Builder {
             .proxy(proxy)
             .hotspot_recorder(hotspot_recorder)
             .query_dedup(self.server_config.query_dedup)
+            .compaction_cluster(self.compaction_cluster.clone())
             .build()
             .context(BuildGrpcService)?;
 
@@ -537,6 +565,7 @@ impl Builder {
             postgresql_service,
             instance,
             cluster: self.cluster,
+            compaction_cluster: self.compaction_cluster,
             local_tables_recoverer: self.local_tables_recoverer,
         };
         Ok(server)
