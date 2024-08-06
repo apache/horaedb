@@ -27,11 +27,17 @@ use crate::{CompactionCluster, Result};
 ///
 /// Its functions are to:
 ///  - Handle the action from the HoraeDB;
-///  - Handle the heartbeat between CompactionServer and HoraeMeta;
+///  - (todo) Handle the heartbeat between CompactionServer and HoraeMeta;
 pub struct CompactionClusterImpl {
     // Runtime is to be used for processing heartbeat.
     _runtime: Arc<Runtime>,
     compaction_task_runner: CompactionRunnerRef,
+}
+
+impl CompactionClusterImpl {
+    pub async fn try_new() -> Result<Self> {
+        unimplemented!()
+    }
 }
 
 #[async_trait]

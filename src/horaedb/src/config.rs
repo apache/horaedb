@@ -18,6 +18,7 @@
 // Config for horaedb server.
 
 use cluster::config::ClusterConfig;
+use compaction_cluster::config::CompactionClusterConfig;
 use proxy::limiter::LimiterConfig;
 use serde::{Deserialize, Serialize};
 use server::config::{ServerConfig, StaticRouteConfig};
@@ -26,8 +27,8 @@ use size_ext::ReadableSize;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct NodeInfo {
-    /// The address of the horaedb node. It can be a domain name or an IP
-    /// address without port followed.
+    /// The address of the horaedb (or compaction server) node. It can be a domain 
+    /// name or an IP address without port followed.
     pub addr: String,
     pub zone: String,
     pub idc: String,
@@ -99,12 +100,17 @@ impl Config {
 ///
 /// [ClusterDeployment::WithMeta] means to start one or multiple HoraeDB
 /// instance(s) under the control of HoraeMeta.
+/// 
+/// [ClusterDeployment::CompactionServer] means to start one or multiple
+/// Compaction Server instance(s) under the control of HoraeMeta.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
 #[allow(clippy::large_enum_variant)]
 pub enum ClusterDeployment {
     NoMeta(StaticRouteConfig),
     WithMeta(ClusterConfig),
+    // TODO: Consider introduce CompactionClusterConfig.
+    CompactionServer(CompactionClusterConfig),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

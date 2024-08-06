@@ -176,7 +176,7 @@ pub struct RpcServices {
 impl RpcServices {
     pub async fn start(&mut self) -> Result<()> {
         let rpc_server = self.rpc_server.clone();
-        let compaction_server = self.compaction_rpc_server.clone();
+        let compaction_rpc_server = self.compaction_rpc_server.clone();
         let meta_rpc_server = self.meta_rpc_server.clone();
         let remote_engine_server = self.remote_engine_server.clone();
         let serve_addr = self.serve_addr;
@@ -186,7 +186,7 @@ impl RpcServices {
 
             let mut router = Server::builder().add_service(rpc_server);
 
-            if let Some(s) = compaction_server {
+            if let Some(s) = compaction_rpc_server {
                 info!("Grpc server serves compaction service");
                 router = router.add_service(s);
             };

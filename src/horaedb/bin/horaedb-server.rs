@@ -98,6 +98,8 @@ fn main() {
     if let Ok(cluster) = env::var(CLUSTER_NAME) {
         if let Some(ClusterDeployment::WithMeta(v)) = &mut config.cluster_deployment {
             v.meta_client.cluster_name = cluster;
+        } else if let Some(ClusterDeployment::CompactionServer(_v)) = &mut config.cluster_deployment {
+            // TODO: Initialize the CompactionClusterConfig.
         }
     }
 

@@ -36,6 +36,7 @@ use snafu::Snafu;
 use macros::define_result;
 
 pub mod cluster_impl;
+pub mod config;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
