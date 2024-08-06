@@ -27,13 +27,11 @@ use object_store::{
     disk_cache::DiskCacheStore,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
-    obkv,
     prefix::StoreWithPrefix,
     s3, LocalFileSystem, ObjectStoreRef,
 };
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
-use table_kv::obkv::ObkvImpl;
 use wal::manager::{OpenedWals, WalManagerRef};
 
 use crate::{
@@ -54,9 +52,6 @@ pub enum Error {
     OpenInstance {
         source: crate::instance::engine::Error,
     },
-
-    #[snafu(display("Failed to open obkv, err:{}", source))]
-    OpenObkv { source: table_kv::obkv::Error },
 
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
     RuntimeExec { source: runtime::Error },
@@ -213,26 +208,6 @@ fn open_storage(
                     Arc::new(aliyun::try_new(&aliyun_opts).context(OpenObjectStore)?);
                 let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
-            }
-            ObjectStoreOptions::Obkv(obkv_opts) => {
-                let obkv_config = obkv_opts.client;
-                let obkv = engine_runtimes
-                    .write_runtime
-                    .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
-                    .await
-                    .context(RuntimeExec)??;
-
-                let oss: ObjectStoreRef = Arc::new(
-                    obkv::ObkvObjectStore::try_new(
-                        Arc::new(obkv),
-                        obkv_opts.shard_num,
-                        obkv_opts.part_size.0 as usize,
-                        obkv_opts.max_object_size.0 as usize,
-                        obkv_opts.upload_parallelism,
-                    )
-                    .context(OpenObjectStore)?,
-                );
-                Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
             }
             ObjectStoreOptions::S3(s3_option) => {
                 let oss: ObjectStoreRef =

@@ -34,10 +34,9 @@ use hash_ext::{ahash::RandomState, build_fixed_seed_ahasher_builder};
 use macros::define_result;
 use partitioned_lock::PartitionedMutex;
 use snafu::{OptionExt, Snafu};
-use tokio::io::AsyncWrite;
 use upstream::{
-    path::Path, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore,
-    Result as ObjectStoreResult,
+    path::Path, GetOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, ObjectStore,
+    PutMultipartOpts, PutOptions, PutPayload, PutResult, Result as ObjectStoreResult,
 };
 
 use crate::{
@@ -219,24 +218,32 @@ impl fmt::Debug for MemCacheStore {
 
 #[async_trait]
 impl ObjectStore for MemCacheStore {
-    async fn put(&self, location: &Path, bytes: Bytes) -> ObjectStoreResult<()> {
-        self.underlying_store.put(location, bytes).await
+    async fn put(&self, location: &Path, payload: PutPayload) -> ObjectStoreResult<PutResult> {
+        self.underlying_store.put(location, payload).await
     }
 
-    async fn put_multipart(
+    async fn put_opts(
         &self,
         location: &Path,
-    ) -> ObjectStoreResult<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        payload: PutPayload,
+        opts: PutOptions,
+    ) -> ObjectStoreResult<PutResult> {
+        self.underlying_store
+            .put_opts(location, payload, opts)
+            .await
+    }
+
+    async fn put_multipart(&self, location: &Path) -> ObjectStoreResult<Box<dyn MultipartUpload>> {
         self.underlying_store.put_multipart(location).await
     }
 
-    async fn abort_multipart(
+    async fn put_multipart_opts(
         &self,
         location: &Path,
-        multipart_id: &MultipartId,
-    ) -> ObjectStoreResult<()> {
+        opts: PutMultipartOpts,
+    ) -> ObjectStoreResult<Box<dyn MultipartUpload>> {
         self.underlying_store
-            .abort_multipart(location, multipart_id)
+            .put_multipart_opts(location, opts)
             .await
     }
 
@@ -245,6 +252,10 @@ impl ObjectStore for MemCacheStore {
     // 2. In sst module, we only use get_range, get is not used
     async fn get(&self, location: &Path) -> ObjectStoreResult<GetResult> {
         self.underlying_store.get(location).await
+    }
+
+    async fn get_opts(&self, location: &Path, options: GetOptions) -> ObjectStoreResult<GetResult> {
+        self.underlying_store.get_opts(location, options).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> ObjectStoreResult<Bytes> {
@@ -263,11 +274,8 @@ impl ObjectStore for MemCacheStore {
         self.underlying_store.delete(location).await
     }
 
-    async fn list(
-        &self,
-        prefix: Option<&Path>,
-    ) -> ObjectStoreResult<BoxStream<'_, ObjectStoreResult<ObjectMeta>>> {
-        self.underlying_store.list(prefix).await
+    fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, ObjectStoreResult<ObjectMeta>> {
+        self.underlying_store.list(prefix)
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> ObjectStoreResult<ListResult> {
@@ -307,7 +315,7 @@ mod test {
         // write date
         let location = Path::from("1.sst");
         store
-            .put(&location, Bytes::from_static(&[1; 1024]))
+            .put(&location, Bytes::from_static(&[1; 1024]).into())
             .await
             .unwrap();
 
@@ -358,7 +366,7 @@ mod test {
         let store = prepare_store(2, 100);
         let location = Path::from("partition.sst");
         store
-            .put(&location, Bytes::from_static(&[1; 1024]))
+            .put(&location, Bytes::from_static(&[1; 1024]).into())
             .await
             .unwrap();
 

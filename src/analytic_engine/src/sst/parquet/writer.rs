@@ -17,7 +17,14 @@
 
 //! Sst writer implementation based on parquet.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    future::Future,
+    io::Error,
+    pin::Pin,
+    sync::Arc,
+    task::Poll,
+};
 
 use async_trait::async_trait;
 use common_types::{
@@ -25,13 +32,12 @@ use common_types::{
     time::TimeRange,
 };
 use datafusion::parquet::basic::Compression;
-use futures::StreamExt;
+use futures::{future::BoxFuture, FutureExt, StreamExt};
 use generic_error::BoxError;
 use logger::{debug, error};
-use object_store::{ObjectStoreRef, Path};
-use parquet::data_type::AsBytes;
+use object_store::{ObjectStore, ObjectStoreRef, Path, WriteMultipart, WriteMultipartRef};
 use snafu::{OptionExt, ResultExt};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::{io::AsyncWrite, sync::Mutex};
 
 use crate::{
     sst::{
@@ -45,8 +51,8 @@ use crate::{
             },
         },
         writer::{
-            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
-            MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
+            BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, MetaData,
+            PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
@@ -62,6 +68,9 @@ const MIN_NUM_ROWS_SAMPLE_DICT_ENCODING: usize = 1024;
 /// `total_num_values * MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING`, there is no need
 /// to do dictionary encoding for such column.
 const MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING: f64 = 0.12;
+
+const CHUNK_SIZE: usize = 5 * 1024 * 1024;
+const MAX_CONCURRENCY: usize = 10;
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
@@ -405,67 +414,116 @@ impl<'a> RecordBatchGroupWriter<'a> {
     }
 }
 
-struct ObjectStoreMultiUploadAborter<'a> {
-    location: &'a Path,
-    session_id: String,
-    object_store: &'a ObjectStoreRef,
+struct ObjectStoreMultiUpload {
+    multi_upload: WriteMultipartRef,
+    upload_task: Option<BoxFuture<'static, std::result::Result<usize, Error>>>,
+    flush_task: Option<BoxFuture<'static, std::result::Result<(), Error>>>,
+    completion_task: Option<BoxFuture<'static, std::result::Result<(), Error>>>,
 }
 
-impl<'a> ObjectStoreMultiUploadAborter<'a> {
-    async fn initialize_upload(
-        object_store: &'a ObjectStoreRef,
-        location: &'a Path,
-    ) -> Result<(
-        ObjectStoreMultiUploadAborter<'a>,
-        Box<dyn AsyncWrite + Unpin + Send>,
-    )> {
-        let (session_id, upload_writer) = object_store
+impl<'a> ObjectStoreMultiUpload {
+    async fn new(object_store: &'a ObjectStoreRef, location: &'a Path) -> Result<Self> {
+        let upload_writer = object_store
             .put_multipart(location)
             .await
             .context(Storage)?;
-        let aborter = Self {
-            location,
-            session_id,
-            object_store,
+
+        let multi_upload = Arc::new(Mutex::new(WriteMultipart::new(upload_writer, CHUNK_SIZE)));
+
+        let multi_upload = Self {
+            multi_upload,
+            upload_task: None,
+            flush_task: None,
+            completion_task: None,
         };
-        Ok((aborter, upload_writer))
+
+        Ok(multi_upload)
     }
 
-    async fn abort(self) -> Result<()> {
-        self.object_store
-            .abort_multipart(self.location, &self.session_id)
-            .await
-            .context(Storage)
+    pub fn aborter(&self) -> WriteMultipartRef {
+        self.multi_upload.clone()
     }
 }
 
-async fn write_metadata<W>(
-    mut meta_sink: W,
+impl AsyncWrite for ObjectStoreMultiUpload {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::result::Result<usize, Error>> {
+        let multi_upload = self.multi_upload.clone();
+        let buf = buf.to_owned();
+
+        let upload_task = self.upload_task.insert(
+            async move {
+                multi_upload.lock().await.flush(MAX_CONCURRENCY).await?;
+                multi_upload.lock().await.write(&buf);
+                Ok(buf.len())
+            }
+            .boxed(),
+        );
+
+        Pin::new(upload_task).poll(cx)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::result::Result<(), Error>> {
+        let multi_upload = self.multi_upload.clone();
+
+        let flush_task = self.flush_task.insert(
+            async move {
+                multi_upload.lock().await.flush(0).await?;
+                Ok(())
+            }
+            .boxed(),
+        );
+
+        Pin::new(flush_task).poll(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::result::Result<(), Error>> {
+        let multi_upload = self.multi_upload.clone();
+
+        let completion_task = self.completion_task.get_or_insert_with(|| {
+            async move {
+                multi_upload.lock().await.finish().await?;
+                Ok(())
+            }
+            .boxed()
+        });
+
+        Pin::new(completion_task).poll(cx)
+    }
+}
+
+async fn write_metadata(
+    meta_sink: ObjectStoreMultiUpload,
     parquet_metadata: ParquetMetaData,
-    meta_path: &object_store::Path,
-) -> writer::Result<usize>
-where
-    W: AsyncWrite + Send + Unpin,
-{
+) -> Result<usize> {
     let buf = encode_sst_meta_data(parquet_metadata).context(EncodePbData)?;
-    let bytes = buf.as_bytes();
-    let bytes_size = bytes.len();
-    meta_sink.write_all(bytes).await.with_context(|| Io {
-        file: meta_path.clone(),
-    })?;
+    let buf_size = buf.len();
+    meta_sink.multi_upload.lock().await.put(buf);
+    meta_sink
+        .multi_upload
+        .lock()
+        .await
+        .finish()
+        .await
+        .context(Storage)?;
 
-    meta_sink.shutdown().await.with_context(|| Io {
-        file: meta_path.clone(),
-    })?;
-
-    Ok(bytes_size)
+    Ok(buf_size)
 }
 
-async fn multi_upload_abort(path: &Path, aborter: ObjectStoreMultiUploadAborter<'_>) {
-    // The uploading file will be leaked if failed to abort. A repair command will
-    // be provided to clean up the leaked files.
-    if let Err(e) = aborter.abort().await {
-        error!("Failed to abort multi-upload for sst:{}, err:{}", path, e);
+async fn multi_upload_abort(aborter: WriteMultipartRef) {
+    // The uploading file will be leaked if failed to abort. A repair command
+    // will be provided to clean up the leaked files.
+    if let Err(e) = aborter.lock().await.abort().await {
+        error!("Failed to abort multi-upload sst, err:{}", e);
     }
 }
 
@@ -476,7 +534,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         request_id: RequestId,
         meta: &MetaData,
         input: RecordBatchStream,
-    ) -> writer::Result<SstInfo> {
+    ) -> Result<SstInfo> {
         debug!(
             "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
             request_id, meta, self.options.num_rows_per_row_group
@@ -491,8 +549,8 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         };
         let group_writer = RecordBatchGroupWriter::new(request_id, input, meta, write_options);
 
-        let (aborter, sink) =
-            ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
+        let sink = ObjectStoreMultiUpload::new(self.store, self.path).await?;
+        let aborter = sink.aborter();
 
         let meta_path = Path::from(sst_util::new_metadata_path(self.path.as_ref()));
 
@@ -500,19 +558,19 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             match group_writer.write_all(sink, &meta_path).await {
                 Ok(v) => v,
                 Err(e) => {
-                    multi_upload_abort(self.path, aborter).await;
+                    multi_upload_abort(aborter).await;
                     return Err(e);
                 }
             };
         let time_range = parquet_metadata.time_range;
 
-        let (meta_aborter, meta_sink) =
-            ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
-        let meta_size = match write_metadata(meta_sink, parquet_metadata, &meta_path).await {
+        let meta_sink = ObjectStoreMultiUpload::new(self.store, &meta_path).await?;
+        let meta_aborter = meta_sink.aborter();
+        let meta_size = match write_metadata(meta_sink, parquet_metadata).await {
             Ok(v) => v,
             Err(e) => {
-                multi_upload_abort(self.path, aborter).await;
-                multi_upload_abort(&meta_path, meta_aborter).await;
+                multi_upload_abort(aborter).await;
+                multi_upload_abort(meta_aborter).await;
                 return Err(e);
             }
         };
