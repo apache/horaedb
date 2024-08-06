@@ -32,10 +32,10 @@ use common_types::{
     time::TimeRange,
 };
 use datafusion::parquet::basic::Compression;
-use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
+use futures::{future::BoxFuture, FutureExt, StreamExt};
 use generic_error::BoxError;
 use logger::{debug, error};
-use object_store::{MultipartRef, ObjectStore, ObjectStoreRef, Path, UploadPart};
+use object_store::{ObjectStore, ObjectStoreRef, Path, WriteMultipart, WriteMultipartRef};
 use snafu::{OptionExt, ResultExt};
 use tokio::{io::AsyncWrite, sync::Mutex};
 
@@ -68,6 +68,9 @@ const MIN_NUM_ROWS_SAMPLE_DICT_ENCODING: usize = 1024;
 /// `total_num_values * MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING`, there is no need
 /// to do dictionary encoding for such column.
 const MAX_UNIQUE_VALUE_RATIO_DICT_ENCODING: f64 = 0.12;
+
+const CHUNK_SIZE: usize = 5 * 1024 * 1024;
+const MAX_CONCURRENCY: usize = 10;
 
 /// The implementation of sst based on parquet and object storage.
 #[derive(Debug)]
@@ -412,8 +415,9 @@ impl<'a> RecordBatchGroupWriter<'a> {
 }
 
 struct ObjectStoreMultiUpload {
-    multi_upload: MultipartRef,
-    tasks: FuturesUnordered<UploadPart>,
+    multi_upload: WriteMultipartRef,
+    upload_task: Option<BoxFuture<'static, std::result::Result<usize, Error>>>,
+    flush_task: Option<BoxFuture<'static, std::result::Result<(), Error>>>,
     completion_task: Option<BoxFuture<'static, std::result::Result<(), Error>>>,
 }
 
@@ -424,82 +428,73 @@ impl<'a> ObjectStoreMultiUpload {
             .await
             .context(Storage)?;
 
+        let multi_upload = Arc::new(Mutex::new(WriteMultipart::new(upload_writer, CHUNK_SIZE)));
+
         let multi_upload = Self {
-            multi_upload: Arc::new(Mutex::new(upload_writer)),
-            tasks: FuturesUnordered::new(),
+            multi_upload,
+            upload_task: None,
+            flush_task: None,
             completion_task: None,
         };
 
         Ok(multi_upload)
     }
 
-    pub fn aborter(&self) -> MultipartRef {
+    pub fn aborter(&self) -> WriteMultipartRef {
         self.multi_upload.clone()
-    }
-
-    pub fn poll_tasks(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::result::Result<(), object_store::ObjectStoreError> {
-        if self.tasks.is_empty() {
-            return Ok(());
-        }
-        while let Poll::Ready(Some(res)) = self.tasks.poll_next_unpin(cx) {
-            res?;
-        }
-        Ok(())
     }
 }
 
 impl AsyncWrite for ObjectStoreMultiUpload {
-    // TODO: Currently,the data writing is serial, and data may need to be written
-    // concurrently.
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> Poll<std::result::Result<usize, Error>> {
-        let buf_size = buf.len();
         let multi_upload = self.multi_upload.clone();
+        let buf = buf.to_owned();
 
-        let buf = buf.to_vec();
-        let task = async move { multi_upload.lock().await.put_part(buf.into()).await };
-        self.as_mut().tasks.push(Box::pin(task));
+        let upload_task = self.upload_task.insert(
+            async move {
+                multi_upload.lock().await.flush(MAX_CONCURRENCY).await?;
+                multi_upload.lock().await.write(&buf);
+                Ok(buf.len())
+            }
+            .boxed(),
+        );
 
-        self.as_mut().poll_tasks(cx)?;
-
-        Poll::Ready(Ok(buf_size))
+        Pin::new(upload_task).poll(cx)
     }
 
     fn poll_flush(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::result::Result<(), Error>> {
-        self.as_mut().poll_tasks(cx)?;
+        let multi_upload = self.multi_upload.clone();
 
-        if self.tasks.is_empty() {
-            return Poll::Ready(Ok(()));
-        }
-        Poll::Pending
+        let flush_task = self.flush_task.insert(
+            async move {
+                multi_upload.lock().await.flush(0).await?;
+                Ok(())
+            }
+            .boxed(),
+        );
+
+        Pin::new(flush_task).poll(cx)
     }
 
     fn poll_shutdown(
         mut self: Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> Poll<std::result::Result<(), Error>> {
-        self.as_mut().poll_tasks(cx)?;
-
-        if !self.tasks.is_empty() {
-            return Poll::Pending;
-        }
-
         let multi_upload = self.multi_upload.clone();
 
         let completion_task = self.completion_task.get_or_insert_with(|| {
-            Box::pin(async move {
-                multi_upload.lock().await.complete().await?;
+            async move {
+                multi_upload.lock().await.finish().await?;
                 Ok(())
-            })
+            }
+            .boxed()
         });
 
         Pin::new(completion_task).poll(cx)
@@ -512,26 +507,21 @@ async fn write_metadata(
 ) -> Result<usize> {
     let buf = encode_sst_meta_data(parquet_metadata).context(EncodePbData)?;
     let buf_size = buf.len();
+    meta_sink.multi_upload.lock().await.put(buf);
     meta_sink
         .multi_upload
         .lock()
         .await
-        .put_part(buf.into())
+        .finish()
         .await
         .context(Storage)?;
-    meta_sink
-        .multi_upload
-        .lock()
-        .await
-        .complete()
-        .await
-        .context(Storage)?;
+
     Ok(buf_size)
 }
 
-async fn multi_upload_abort(aborter: MultipartRef) {
-    // The uploading file will be leaked if failed to abort. A repair command will
-    // be provided to clean up the leaked files.
+async fn multi_upload_abort(aborter: WriteMultipartRef) {
+    // The uploading file will be leaked if failed to abort. A repair command
+    // will be provided to clean up the leaked files.
     if let Err(e) = aborter.lock().await.abort().await {
         error!("Failed to abort multi-upload sst, err:{}", e);
     }

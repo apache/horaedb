@@ -19,11 +19,11 @@
 
 use std::sync::Arc;
 
+pub use multi_part::WriteMultipart;
 use tokio::sync::Mutex;
-use upstream::MultipartUpload;
 pub use upstream::{
-    local::LocalFileSystem, path::Path, Error as ObjectStoreError, GetResult, ListResult,
-    ObjectMeta, ObjectStore,
+    local::LocalFileSystem, path::Path, Error as ObjectStoreError, Error, GetResult, ListResult,
+    ObjectMeta, ObjectStore, PutPayloadMut,
 };
 
 pub mod aliyun;
@@ -31,6 +31,7 @@ pub mod config;
 pub mod disk_cache;
 pub mod mem_cache;
 pub mod metrics;
+mod multi_part;
 pub mod prefix;
 pub mod s3;
 #[cfg(test)]
@@ -38,6 +39,4 @@ pub mod test_util;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 
-pub type MultipartRef = Arc<Mutex<Box<dyn MultipartUpload>>>;
-
-pub type UploadPart = upstream::UploadPart;
+pub type WriteMultipartRef = Arc<Mutex<WriteMultipart>>;
