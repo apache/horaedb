@@ -20,7 +20,7 @@ use std::{
     fmt::{Debug, Formatter},
     sync::Arc,
 };
-
+use std::path::{Path, PathBuf};
 use async_trait::async_trait;
 use common_types::{table::TableId, SequenceNumber, MIN_SEQUENCE_NUMBER};
 use logger::{debug, info};
@@ -38,10 +38,13 @@ use crate::{
     },
     rocksdb_impl::manager::{RocksImpl, RocksLogIterator},
 };
+use crate::config::{Config, StorageConfig};
 use crate::local_storage_impl::config::LocalStorageConfig;
 use crate::local_storage_impl::segment::SegmentManager;
 use crate::log_batch::LogEntry;
-use crate::manager::SyncLogIterator;
+use crate::manager::{MANIFEST_DIR_NAME, OpenedWals, SyncLogIterator, WAL_DIR_NAME, WalManagerRef, WalRuntimes, WalsOpener};
+use crate::rocksdb_impl::config::RocksDBConfig;
+use crate::rocksdb_impl::manager::Builder;
 
 pub struct LocalStorageImpl {
     config: LocalStorageConfig,
@@ -137,23 +140,50 @@ impl WalManager for LocalStorageImpl {
     }
 }
 
+#[derive(Default)]
+pub struct LocalStorageWalsOpener;
 
-struct LocalStorageLogIterator {
-    log_encoding: CommonLogEncoding,
-    no_more_data: bool,
-    min_log_key: CommonLogKey,
-    max_log_key: CommonLogKey,
-    seeked: bool,
-}
-
-impl Debug for LocalStorageLogIterator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        todo!()
+impl LocalStorageWalsOpener {
+    fn build_manager(
+        wal_path: PathBuf,
+        runtime: Arc<Runtime>,
+        config: LocalStorageConfig,
+    ) -> Result<WalManagerRef> {
+        Ok(Arc::new(LocalStorageImpl::new(config, runtime)))
     }
 }
 
-impl SyncLogIterator for LocalStorageLogIterator {
-    fn next_log_entry(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
-        todo!()
+
+#[async_trait]
+impl WalsOpener for LocalStorageWalsOpener {
+    async fn open_wals(&self, config: &Config, runtimes: WalRuntimes) -> Result<OpenedWals> {
+        let local_storage_wal_config = match &config.storage {
+            StorageConfig::Local(config) => config.clone(),
+            _ => {
+                return InvalidWalConfig {
+                    msg: format!(
+                        "invalid wal storage config while opening local storage wal, config:{config:?}"
+                    ),
+                }
+                    .fail();
+            }
+        };
+
+        let write_runtime = runtimes.write_runtime.clone();
+        let data_path = Path::new(&local_storage_wal_config.path);
+
+
+        let data_wal = if config.disable_data {
+            Arc::new(crate::dummy::DoNothing)
+        } else {
+            Self::build_manager(data_path.join(WAL_DIR_NAME), write_runtime.clone(), *local_storage_wal_config.clone())?
+        };
+
+        let manifest_wal = Self::build_manager(data_path.join(MANIFEST_DIR_NAME), write_runtime.clone(), *local_storage_wal_config.clone())?;
+
+        Ok(OpenedWals {
+            data_wal,
+            manifest_wal
+        })
     }
 }
