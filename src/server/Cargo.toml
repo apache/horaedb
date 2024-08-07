@@ -41,7 +41,6 @@ catalog = { workspace = true }
 clru = { workspace = true }
 cluster = { workspace = true }
 common_types = { workspace = true }
-compaction_cluster = { workspace = true }
 datafusion = { workspace = true }
 derive_builder = { workspace = true }
 df_operator = { workspace = true }

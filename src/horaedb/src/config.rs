@@ -18,7 +18,6 @@
 // Config for horaedb server.
 
 use cluster::config::ClusterConfig;
-use compaction_cluster::config::CompactionClusterConfig;
 use proxy::limiter::LimiterConfig;
 use serde::{Deserialize, Serialize};
 use server::config::{ServerConfig, StaticRouteConfig};
@@ -100,17 +99,12 @@ impl Config {
 ///
 /// [ClusterDeployment::WithMeta] means to start one or multiple HoraeDB
 /// instance(s) under the control of HoraeMeta.
-/// 
-/// [ClusterDeployment::CompactionServer] means to start one or multiple
-/// Compaction Server instance(s) under the control of HoraeMeta.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "mode")]
 #[allow(clippy::large_enum_variant)]
 pub enum ClusterDeployment {
     NoMeta(StaticRouteConfig),
     WithMeta(ClusterConfig),
-    // TODO: Consider introduce CompactionClusterConfig.
-    CompactionServer(CompactionClusterConfig),
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

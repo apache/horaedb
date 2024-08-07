@@ -35,6 +35,7 @@ use meta_client::types::{
     ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardStatus,
     ShardVersion,
 };
+use serde::{Deserialize, Serialize};
 use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};
 
@@ -182,7 +183,7 @@ impl From<ShardStatus> for TableStatus {
     }
 }
 
-pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
+pub type ClusterRef = Arc<dyn Cluster<ClusterType = ClusterType> + Send + Sync>;
 
 #[derive(Clone, Debug)]
 pub struct ClusterNodesResp {
@@ -190,11 +191,28 @@ pub struct ClusterNodesResp {
     pub cluster_nodes: ClusterNodesRef,
 }
 
-/// Cluster manages tables and shard infos in cluster mode.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum ClusterType {
+    HoraeDB,
+    CompactionServer,
+}
+
+impl Default for ClusterType {
+    fn default() -> Self {
+        Self::HoraeDB
+    }
+}
+
+/// Cluster manages tables and shard infos in cluster mode. (HoraeDB)
 #[async_trait]
 pub trait Cluster {
+    type ClusterType: Send + Sync;
+
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
+    
+    /// Get cluster type.
+    fn cluster_type(&self) -> ClusterType;
 
     /// Fetch related information and open shard.
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef>;

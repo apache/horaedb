@@ -25,8 +25,7 @@ use analytic_engine::{
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
-use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
-use compaction_cluster::cluster_impl::CompactionClusterImpl;
+use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet, ClusterType};
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
@@ -250,16 +249,6 @@ async fn run_server_with_runtimes<T>(
             )
             .await
         }
-        Some(ClusterDeployment::CompactionServer(_compaction_cluster_config)) => {
-            compaction_server_build(
-                &config,
-                cluster_config,
-                builder,
-                engine_runtimes.clone(),
-                wal_builder,
-            )
-            .await
-        }
     };
 
     // Build and start server
@@ -324,8 +313,6 @@ async fn build_with_meta<T: WalsOpener>(
             endpoint,
             shard_set.clone(),
             meta_client.clone(),
-            // FIXME: Introduce optional compaction client here.
-            None,
             cluster_config.clone(),
             runtimes.meta_runtime.clone(),
         )
@@ -347,7 +334,7 @@ async fn build_with_meta<T: WalsOpener>(
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };
-    let TableEngineContext { table_engine, .. } = engine_builder
+    let TableEngineContext { table_engine, local_compaction_runner } = engine_builder
         .build()
         .await
         .expect("Failed to setup analytic engine");
@@ -365,14 +352,19 @@ async fn build_with_meta<T: WalsOpener>(
     let table_manipulator = Arc::new(meta_based::TableManipulatorImpl::new(meta_client));
 
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));
-    builder
+
+    let mut builder = builder
         .table_engine(engine_proxy)
         .catalog_manager(catalog_manager)
         .table_manipulator(table_manipulator)
         .cluster(cluster)
         .opened_wals(opened_wals)
         .router(router)
-        .schema_config_provider(schema_config_provider)
+        .schema_config_provider(schema_config_provider);
+    if let ClusterType::CompactionServer = cluster_config.cluster_type {
+        builder = builder.compaction_runner(local_compaction_runner.expect("Empty compaction runner."));
+    }
+    builder
 }
 
 async fn build_without_meta<T: WalsOpener>(
@@ -451,25 +443,6 @@ async fn build_without_meta<T: WalsOpener>(
         .opened_wals(opened_wals)
         .schema_config_provider(schema_config_provider)
         .local_tables_recoverer(local_tables_recoverer)
-}
-
-async fn compaction_server_build<T: WalsOpener>(
-    config: &Config,
-    cluster_config: &ClusterConfig,
-    builder: Builder,
-    runtimes: Arc<EngineRuntimes>,
-    wal_opener: T,
-) -> Builder {
-    let compaction_cluster = {
-        let compaction_cluster_impl = CompactionClusterImpl::try_new()
-        .await
-        .unwrap();
-        Arc::new(compaction_cluster_impl)
-    };
-
-    build_with_meta(config, cluster_config, builder, runtimes, wal_opener)
-    .await
-    .compaction_cluster(compaction_cluster)
 }
 
 async fn create_static_topology_schema(

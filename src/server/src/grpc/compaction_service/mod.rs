@@ -21,11 +21,12 @@
 
 use std::sync::Arc;
 
-use analytic_engine::compaction::runner::CompactionRunnerTask;
+use analytic_engine::compaction::runner::{CompactionRunnerRef, CompactionRunnerTask};
 use async_trait::async_trait;
-use compaction_cluster::CompactionClusterRef;
+use cluster::ClusterRef;
 use generic_error::BoxError;
 use horaedbproto::compaction_service::{compaction_service_server::CompactionService, ExecResult, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
+use proxy::instance::InstanceRef;
 use runtime::Runtime;
 use snafu::ResultExt;
 use tonic::{Request, Response, Status};
@@ -33,10 +34,39 @@ use error::{build_err_header, build_ok_header, ErrWithCause, StatusCode};
 
 mod error;
 
+/// Builder for [CompactionServiceImpl]
+pub struct Builder {
+    pub cluster: ClusterRef,
+    pub instance: InstanceRef,
+    pub runtime: Arc<Runtime>,
+    pub compaction_runner: CompactionRunnerRef,
+}
+
+impl Builder {
+    pub fn build(self) -> CompactionServiceImpl {
+        let Self {
+            cluster,
+            instance,
+            runtime,
+            compaction_runner,
+        } = self;
+
+        CompactionServiceImpl {
+            cluster,
+            instance,
+            runtime,
+            compaction_runner,
+        }
+    }
+}
+
+
 #[derive(Clone)]
 pub struct CompactionServiceImpl {
+    pub cluster: ClusterRef,
+    pub instance: InstanceRef,
     pub runtime: Arc<Runtime>,
-    pub compaction_cluster: CompactionClusterRef,
+    pub compaction_runner: CompactionRunnerRef,
 }
 
 #[async_trait]
@@ -54,7 +84,7 @@ impl CompactionService for CompactionServiceImpl {
         match request {
             Ok(task) => {
                 let request_id = task.request_id.clone();
-                let res = self.compaction_cluster.compact(task).await
+                let res = self.compaction_runner.run(task).await
                     .box_err().with_context(|| {
                         ErrWithCause {
                             code: StatusCode::Internal,

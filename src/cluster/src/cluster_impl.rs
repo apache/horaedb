@@ -45,7 +45,7 @@ use crate::{
     shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef},
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, ClusterType,
     InitEtcdClientConfig, InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause,
     Result, ShardNotFound, TableStatus,
 };
@@ -345,6 +345,8 @@ impl Inner {
 
 #[async_trait]
 impl Cluster for ClusterImpl {
+    type ClusterType = ClusterType;
+
     async fn start(&self) -> Result<()> {
         info!("Cluster is starting with config:{:?}", self.config);
 
@@ -374,6 +376,10 @@ impl Cluster for ClusterImpl {
 
         info!("Cluster has stopped");
         Ok(())
+    }
+
+    fn cluster_type(&self) -> ClusterType {
+        self.config.cluster_type.clone()
     }
 
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
