@@ -34,8 +34,6 @@ members = [
     "src/catalog_impls",
     "src/cluster",
     "src/common_types", 
-    "src/compaction_client", 
-    "src/compaction_cluster",
     "src/components/alloc_tracker",
     "src/components/arena",
     "src/components/arrow_ext",
@@ -109,8 +107,6 @@ chrono = "0.4"
 clap = { version = "4.5.1", features = ["derive"] }
 clru = "0.6.1"
 cluster = { path = "src/cluster" }
-compaction_cluster = { path = "src/compaction_cluster" }
-compaction_client = {path = "src/compaction_client" }
 criterion = "0.5"
 horaedb-client = "1.0.2"
 common_types = { path = "src/common_types" }
