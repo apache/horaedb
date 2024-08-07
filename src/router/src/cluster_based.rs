@@ -203,9 +203,9 @@ mod tests {
 
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
-        ClusterType, TableStatus
+        TableStatus
     };
-    use common_types::table::ShardId;
+    use common_types::{cluster::ClusterType, table::ShardId};
     use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,

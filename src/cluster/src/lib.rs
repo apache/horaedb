@@ -28,14 +28,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::schema::SchemaName;
+use common_types::{cluster::ClusterType, schema::SchemaName};
 use generic_error::GenericError;
 use macros::define_result;
 use meta_client::types::{
     ClusterNodesRef, RouteTablesRequest, RouteTablesResponse, ShardId, ShardInfo, ShardStatus,
     ShardVersion,
 };
-use serde::{Deserialize, Serialize};
 use shard_lock_manager::ShardLockManagerRef;
 use snafu::{Backtrace, Snafu};
 
@@ -189,18 +188,6 @@ pub type ClusterRef = Arc<dyn Cluster<ClusterType = ClusterType> + Send + Sync>;
 pub struct ClusterNodesResp {
     pub cluster_topology_version: u64,
     pub cluster_nodes: ClusterNodesRef,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum ClusterType {
-    HoraeDB,
-    CompactionServer,
-}
-
-impl Default for ClusterType {
-    fn default() -> Self {
-        Self::HoraeDB
-    }
 }
 
 /// Cluster manages tables and shard infos in cluster mode. (HoraeDB)

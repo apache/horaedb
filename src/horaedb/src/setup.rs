@@ -25,7 +25,8 @@ use analytic_engine::{
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
-use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet, ClusterType};
+use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
+use common_types::cluster::ClusterType;
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
@@ -297,6 +298,7 @@ async fn build_with_meta<T: WalsOpener>(
         zone: config.node.zone.clone(),
         idc: config.node.idc.clone(),
         binary_version: config.node.binary_version.clone(),
+        cluster_type: cluster_config.cluster_type.clone(),
     };
 
     info!("Build horaedb with node meta info:{node_meta_info:?}");

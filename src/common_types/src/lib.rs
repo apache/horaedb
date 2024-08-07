@@ -18,6 +18,7 @@
 //! Contains common types
 
 pub mod bitset;
+pub mod cluster;
 pub mod column;
 pub mod column_block;
 pub mod column_schema;
