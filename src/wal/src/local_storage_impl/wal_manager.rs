@@ -84,8 +84,10 @@ impl WalManager for LocalStorageImpl {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        debug!("Mark delete entries up to for LocalStorage based WAL is noop operation, location:{:?}, sequence_num:{}", location, sequence_num);
-        Ok(())
+        self.segment_manager
+            .mark_delete_entries_up_to(location, sequence_num)
+            .box_err()
+            .context(Write)
     }
 
     async fn close_region(&self, region_id: RegionId) -> Result<()> {
