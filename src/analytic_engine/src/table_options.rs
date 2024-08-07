@@ -137,8 +137,6 @@ pub enum Error {
     ))]
     UnknownCompressionType { value: i32, backtrace: Backtrace },
 
-
-
     #[snafu(display("Storage format hint is missing.\nBacktrace:\n{}", backtrace))]
     MissingStorageFormatHint { backtrace: Backtrace },
 

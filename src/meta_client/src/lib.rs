@@ -94,8 +94,8 @@ pub enum Error {
 
 define_result!(Error);
 
-/// MetaClient is the abstraction of client used for HoraeDB to communicate with 
-/// HoraeMeta cluster.
+/// MetaClient is the abstraction of client used to communicate with HoraeMeta 
+// cluster.
 #[async_trait]
 pub trait MetaClient: Send + Sync {
     async fn alloc_schema_id(&self, req: AllocSchemaIdRequest) -> Result<AllocSchemaIdResponse>;

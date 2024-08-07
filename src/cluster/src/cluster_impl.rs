@@ -345,6 +345,7 @@ impl Inner {
 
 #[async_trait]
 impl Cluster for ClusterImpl {
+    /// Type of the server in cluster mode.
     type ClusterType = ClusterType;
 
     async fn start(&self) -> Result<()> {
