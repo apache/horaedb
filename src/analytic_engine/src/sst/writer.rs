@@ -117,6 +117,18 @@ pub struct SstInfo {
     pub time_range: TimeRange,
 }
 
+impl From<SstInfo> for horaedbproto::compaction_service::SstInfo {
+    fn from(value: SstInfo) -> Self {
+        Self {
+            file_size: value.file_size as u64,
+            row_num: value.row_num as u64,
+            storage_format: value.storage_format.into(),
+            meta_path: value.meta_path,
+            time_range: Some(value.time_range.into()),
+        }    
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MetaData {
     /// Min key of the sst.
@@ -129,6 +141,18 @@ pub struct MetaData {
     pub max_sequence: SequenceNumber,
     /// The schema of the sst.
     pub schema: Schema,
+}
+
+impl From<MetaData> for horaedbproto::compaction_service::MetaData {
+    fn from(meta: MetaData) -> Self {
+        Self {
+            min_key: meta.min_key.to_vec(),
+            max_key: meta.max_key.to_vec(),
+            max_sequence: meta.max_sequence,
+            time_range: Some(meta.time_range.into()),
+            schema: Some((&meta.schema).into()),
+        }
+    }
 }
 
 /// The writer for sst.

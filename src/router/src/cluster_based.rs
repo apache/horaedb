@@ -203,7 +203,7 @@ mod tests {
 
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
-        TableStatus,
+        ClusterType, TableStatus
     };
     use common_types::table::ShardId;
     use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
@@ -218,12 +218,18 @@ mod tests {
 
     #[async_trait]
     impl Cluster for MockClusterImpl {
+        type ClusterType = ClusterType;
+
         async fn start(&self) -> cluster::Result<()> {
             unimplemented!();
         }
 
         async fn stop(&self) -> cluster::Result<()> {
             unimplemented!();
+        }
+
+        fn cluster_type(&self) -> ClusterType {
+            unimplemented!()
         }
 
         async fn open_shard(&self, _: &ShardInfo) -> cluster::Result<ShardRef> {

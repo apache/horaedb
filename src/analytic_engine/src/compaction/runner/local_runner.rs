@@ -45,6 +45,7 @@ use crate::{
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
 /// Executor carrying for actual compaction work
+#[derive(Clone)]
 pub struct LocalCompactionRunner {
     runtime: Arc<Runtime>,
     scan_options: ScanOptions,

@@ -35,12 +35,13 @@ use common_types::{
     SequenceNumber,
 };
 use future_ext::{retry_async, BackoffConfig, RetryConfig};
+use generic_error::{BoxError, GenericError};
 use logger::{error, info, trace, warn};
 use macros::define_result;
 use metric_ext::Meter;
 use object_store::{ObjectStoreRef, Path};
 use runtime::{JoinHandle, Runtime};
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, ResultExt, OptionExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -54,6 +55,18 @@ use crate::{space::SpaceId, sst::manager::FileId, table::sst_util, table_options
 pub enum Error {
     #[snafu(display("Failed to join purger, err:{}", source))]
     StopPurger { source: runtime::Error },
+
+    #[snafu(display("Empty time range.\nBacktrace:\n{}", backtrace))]
+    EmptyTimeRange { backtrace: Backtrace },
+
+    #[snafu(display("Failed to convert time range, err:{}", source))]
+    ConvertTimeRange { source: GenericError },
+
+    #[snafu(display("Failed to convert storage format, err:{}", source))]
+    ConvertStorageFormat { source: GenericError },
+
+    #[snafu(display("Converted overflow, err:{}", source))]
+    ConvertOverflow { source: GenericError },
 }
 
 define_result!(Error);
@@ -92,6 +105,18 @@ impl Level {
 impl From<u16> for Level {
     fn from(value: u16) -> Self {
         Self(value)
+    }
+}
+
+impl TryFrom<u32> for Level {
+    type Error = Error;
+
+    fn try_from(value: u32) -> Result<Self> {
+        let value: u16 = value
+            .try_into()
+            .box_err()
+            .context(ConvertOverflow)?;
+        Ok(value.into())
     }
 }
 
@@ -460,6 +485,39 @@ impl FileMeta {
     }
 }
 
+impl TryFrom<horaedbproto::compaction_service::FileMeta> for FileMeta {
+    type Error = Error;
+
+    fn try_from(value: horaedbproto::compaction_service::FileMeta) -> Result<Self> {
+        let time_range: TimeRange = value
+            .time_range
+            .context(EmptyTimeRange)?
+            .try_into()
+            .box_err()
+            .context(ConvertTimeRange)?;
+
+        let storage_format: StorageFormat = value
+            .storage_format
+            .try_into()
+            .box_err()
+            .context(ConvertStorageFormat)?;
+        let mut associated_files: Vec<String> = Vec::with_capacity(value.associated_files.len());
+        for file in value.associated_files {
+            associated_files.push(file);
+        }
+
+        Ok(FileMeta {
+            id: value.file_id,
+            size: value.size,
+            row_num: value.row_num,
+            time_range,
+            max_seq: value.max_seq,
+            storage_format,
+            associated_files,
+        })
+    }
+}
+
 // Queue to store files to be deleted for a table.
 #[derive(Clone)]
 pub struct FilePurgeQueue {
@@ -507,6 +565,14 @@ impl FilePurgeQueue {
                 send_res.0
             );
         }
+    }
+}
+
+impl TryFrom<horaedbproto::compaction_service::FilePurgeQueue> for FilePurgeQueue {
+    type Error = Error;
+
+    fn try_from(_value: horaedbproto::compaction_service::FilePurgeQueue) -> Result<Self> {
+        unimplemented!()
     }
 }
 
