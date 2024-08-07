@@ -159,7 +159,7 @@ impl Segment {
 
         // Read and validate all records
         let mut pos = header_len;
-        let mut epos = Vec::new();
+        let mut record_position = Vec::new();
 
         while pos < size as usize {
             // todo: change invalid header
@@ -181,8 +181,8 @@ impl Segment {
             let computed_crc = crc32fast::hash(data);
             ensure!(computed_crc == crc, InvalidHeader);
 
-            epos.push(Position {
-                start: pos as u64,
+            record_position.push(Position {
+                start: (pos - CRC_SIZE - RECORD_LENGTH_SIZE) as u64,
                 end: (pos + length as usize) as u64
             });
             // Move to the next record
@@ -192,7 +192,7 @@ impl Segment {
         self.is_open = true;
         self.file = Some(file);
         self.mmap = Some(mmap);
-        self.record_position = Some(epos);
+        self.record_position = Some(record_position);
         self.size = size;
         Ok(())
     }
@@ -340,7 +340,7 @@ impl SegmentManager {
         if max_segment_id == -1 {
             max_segment_id = 0;
             let path = format!("{}/segment_{}.wal", segment_dir, max_segment_id);
-            let new_segment = Segment::new(path, (max_segment_id) as u64)?;
+            let new_segment = Segment::new(path, max_segment_id as u64)?;
             let segment_arc = Arc::new(Mutex::new(new_segment));
             // current_segment = Some(segment_arc.clone());
             all_segments.push(segment_arc);
@@ -359,6 +359,7 @@ impl SegmentManager {
             segment_dir,
             latest_segment_idx: AtomicU64::new(max_segment_id as u64),
             log_encoding: CommonLogEncoding::newest(),
+            // todo: do not use MIN_SEQUENCE_NUMBER
             next_sequence_num: AtomicU64::new(MIN_SEQUENCE_NUMBER + 1),
             runtime
         })
@@ -482,6 +483,10 @@ impl SegmentManager {
             self.runtime.clone(),
             ctx.batch_size,
         ))
+    }
+
+    pub fn mark_delete_entries_up_to(&self, location: WalLocation, sequence_num: SequenceNumber) -> Result<()> {
+        todo!()
     }
 
     #[inline]
