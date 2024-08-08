@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::SequenceNumber;
+use common_types::{SequenceNumber, MAX_SEQUENCE_NUMBER};
 use generic_error::BoxError;
 use message_queue::{kafka::kafka_impl::KafkaImpl, ConsumeIterator, MessageQueue};
 use runtime::Runtime;
@@ -70,8 +70,13 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
+        let delete_to_sequence_num = if sequence_num < MAX_SEQUENCE_NUMBER {
+            sequence_num + 1
+        } else {
+            MAX_SEQUENCE_NUMBER
+        };
         self.0
-            .mark_delete_to(location, sequence_num + 1)
+            .mark_delete_to(location, delete_to_sequence_num)
             .await
             .box_err()
             .context(Delete)

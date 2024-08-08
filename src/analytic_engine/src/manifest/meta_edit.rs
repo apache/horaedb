@@ -19,20 +19,19 @@
 
 use std::convert::TryFrom;
 
+use anyhow::Context;
 use bytes_ext::{Buf, BufMut};
 use common_types::{
     schema::{Schema, Version},
     SequenceNumber,
 };
 use horaedbproto::{manifest as manifest_pb, schema as schema_pb};
-use macros::define_result;
 use prost::Message;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use wal::log_batch::{Payload, PayloadDecodeContext, PayloadDecoder};
 
 use crate::{
-    manifest::meta_snapshot::MetaSnapshot,
+    manifest::{meta_snapshot::MetaSnapshot, Error, Result},
     space::SpaceId,
     sst::manager::FileId,
     table::{
@@ -40,48 +39,8 @@ use crate::{
         version::TableVersionMeta,
         version_edit::{AddFile, DeleteFile, VersionEdit},
     },
-    table_options, TableOptions,
+    TableOptions,
 };
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Failed to encode payload, err:{}.\nBacktrace:\n{}", source, backtrace))]
-    EncodePayloadPb {
-        source: prost::EncodeError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Failed to decode payload, err:{}.\nBacktrace:\n{}", source, backtrace))]
-    DecodePayloadPb {
-        source: prost::DecodeError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Failed to convert schema, err:{}", source))]
-    ConvertSchema { source: common_types::schema::Error },
-
-    #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
-    EmptyTableSchema { backtrace: Backtrace },
-
-    #[snafu(display("Empty table options.\nBacktrace:\n{}", backtrace))]
-    EmptyTableOptions { backtrace: Backtrace },
-
-    #[snafu(display("Failed to convert table options, err:{}", source))]
-    ConvertTableOptions { source: table_options::Error },
-
-    #[snafu(display("Empty meta update.\nBacktrace:\n{}", backtrace))]
-    EmptyMetaUpdate { backtrace: Backtrace },
-
-    #[snafu(display("Failed to convert version edit, err:{}", source))]
-    ConvertVersionEdit {
-        source: crate::table::version_edit::Error,
-    },
-
-    #[snafu(display("Failed to convert meta edit, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
-    ConvertMetaEdit { msg: String, backtrace: Backtrace },
-}
-
-define_result!(Error);
 
 /// Modifications to meta data in meta
 #[derive(Debug, Clone)]
@@ -133,7 +92,7 @@ impl TryFrom<manifest_pb::MetaUpdate> for MetaUpdate {
     type Error = Error;
 
     fn try_from(src: manifest_pb::MetaUpdate) -> Result<Self> {
-        let meta_update = match src.meta.context(EmptyMetaUpdate)? {
+        let meta_update = match src.meta.context("Empty meta update.")? {
             manifest_pb::meta_update::Meta::AddTable(v) => {
                 let add_table = AddTableMeta::try_from(v)?;
                 MetaUpdate::AddTable(add_table)
@@ -191,15 +150,15 @@ impl TryFrom<manifest_pb::AddTableMeta> for AddTableMeta {
     type Error = Error;
 
     fn try_from(src: manifest_pb::AddTableMeta) -> Result<Self> {
-        let table_schema = src.schema.context(EmptyTableSchema)?;
-        let opts = src.options.context(EmptyTableOptions)?;
+        let table_schema = src.schema.context("Empty table schema.")?;
+        let opts = src.options.context("Empty table options.")?;
 
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
             table_name: src.table_name,
-            schema: Schema::try_from(table_schema).context(ConvertSchema)?,
-            opts: TableOptions::try_from(opts).context(ConvertTableOptions)?,
+            schema: Schema::try_from(table_schema).map_err(anyhow::Error::new)?,
+            opts: TableOptions::try_from(opts).map_err(anyhow::Error::new)?,
         })
     }
 }
@@ -288,12 +247,12 @@ impl TryFrom<manifest_pb::VersionEditMeta> for VersionEditMeta {
     fn try_from(src: manifest_pb::VersionEditMeta) -> Result<Self> {
         let mut files_to_add = Vec::with_capacity(src.files_to_add.len());
         for file_meta in src.files_to_add {
-            files_to_add.push(AddFile::try_from(file_meta).context(ConvertVersionEdit)?);
+            files_to_add.push(AddFile::try_from(file_meta).map_err(anyhow::Error::new)?);
         }
 
         let mut files_to_delete = Vec::with_capacity(src.files_to_delete.len());
         for file_meta in src.files_to_delete {
-            files_to_delete.push(DeleteFile::try_from(file_meta).context(ConvertVersionEdit)?);
+            files_to_delete.push(DeleteFile::try_from(file_meta).map_err(anyhow::Error::new)?);
         }
 
         Ok(Self {
@@ -332,12 +291,12 @@ impl TryFrom<manifest_pb::AlterSchemaMeta> for AlterSchemaMeta {
     type Error = Error;
 
     fn try_from(src: manifest_pb::AlterSchemaMeta) -> Result<Self> {
-        let table_schema = src.schema.context(EmptyTableSchema)?;
+        let table_schema = src.schema.context("Empty table schema.")?;
 
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
-            schema: Schema::try_from(table_schema).context(ConvertSchema)?,
+            schema: Schema::try_from(table_schema).map_err(anyhow::Error::new)?,
             pre_schema_version: src.pre_schema_version,
         })
     }
@@ -365,12 +324,12 @@ impl TryFrom<manifest_pb::AlterOptionsMeta> for AlterOptionsMeta {
     type Error = Error;
 
     fn try_from(src: manifest_pb::AlterOptionsMeta) -> Result<Self> {
-        let table_options = src.options.context(EmptyTableOptions)?;
+        let table_options = src.options.context("Empty table options.")?;
 
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
-            options: TableOptions::try_from(table_options).context(ConvertTableOptions)?,
+            options: TableOptions::try_from(table_options).map_err(anyhow::Error::new)?,
         })
     }
 }
@@ -400,7 +359,8 @@ impl Payload for MetaUpdatePayload {
     }
 
     fn encode_to<B: BufMut>(&self, buf: &mut B) -> Result<()> {
-        self.0.encode(buf).context(EncodePayloadPb)
+        self.0.encode(buf).map_err(anyhow::Error::new)?;
+        Ok(())
     }
 }
 
@@ -413,7 +373,7 @@ impl PayloadDecoder for MetaUpdateDecoder {
 
     fn decode<B: Buf>(&self, _ctx: &PayloadDecodeContext, buf: &mut B) -> Result<Self::Target> {
         let meta_update_pb =
-            manifest_pb::MetaUpdate::decode(buf.chunk()).context(DecodePayloadPb)?;
+            manifest_pb::MetaUpdate::decode(buf.chunk()).map_err(anyhow::Error::new)?;
         MetaUpdate::try_from(meta_update_pb)
     }
 }
@@ -506,10 +466,9 @@ impl TryFrom<MetaEdit> for MetaUpdate {
         if let MetaEdit::Update(update) = value {
             Ok(update)
         } else {
-            ConvertMetaEdit {
-                msg: "it is not the update type meta edit",
-            }
-            .fail()
+            Err(Self::Error::from(anyhow::anyhow!(
+                "Failed to convert meta edit, it is not the update type meta edit"
+            )))
         }
     }
 }
@@ -521,10 +480,9 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
         if let MetaEdit::Snapshot(table_manifest_data) = value {
             Ok(table_manifest_data)
         } else {
-            ConvertMetaEdit {
-                msg: "it is not the snapshot type meta edit",
-            }
-            .fail()
+            Err(Self::Error::from(anyhow::anyhow!(
+                "Failed to convert meta edit, it is not the snapshot type meta edit"
+            )))
         }
     }
 }
