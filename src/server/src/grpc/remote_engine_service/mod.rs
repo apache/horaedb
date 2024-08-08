@@ -30,13 +30,13 @@ use async_trait::async_trait;
 use catalog::{manager::ManagerRef, schema::SchemaRef};
 use common_types::{record_batch::RecordBatch, request_id::RequestId};
 use fb_util::{
-    common::FlatBufferBytes,
     remote_engine_fb_service_server::RemoteEngineFbService,
     remote_engine_generated::fbprotocol::{
         ContiguousRows as FBContiguousRows, ResponseHeader, ResponseHeaderArgs,
         WriteBatchRequest as FBWriteBatchRequest, WriteRequest as FBWriteRequest,
         WriteResponse as FBWriteResponse, WriteResponseArgs as FBWriteResponseArgs,
     },
+    remote_service::FlatBufferBytes,
 };
 use futures::{
     stream::{self, BoxStream, FuturesUnordered, StreamExt},
@@ -100,6 +100,11 @@ mod metrics;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 200;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
+
+enum RequestType {
+    Protobuf,
+    Flatbuffer,
+}
 
 enum TonicWriteBatchRequestExt {
     Proto(Request<WriteBatchRequest>),
@@ -608,7 +613,7 @@ impl RemoteEngineServiceImpl {
     ) -> std::result::Result<TonicWriteResponseExt, Status> {
         let begin_instant = Instant::now();
         let ctx = self.handler_ctx();
-        let (handle, is_flatbuffer) = match request {
+        let (handle, request_type) = match request {
             TonicWriteRequestExt::Proto(v) => (
                 self.runtimes.write_runtime.spawn(async move {
                     let request = WriteRequestExt::Proto(v.into_inner());
@@ -618,7 +623,7 @@ impl RemoteEngineServiceImpl {
                         e
                     })
                 }),
-                false,
+                RequestType::Protobuf,
             ),
             TonicWriteRequestExt::Flatbuffer(v) => (
                 self.runtimes.write_runtime.spawn(async move {
@@ -631,7 +636,7 @@ impl RemoteEngineServiceImpl {
                         e
                     })
                 }),
-                true,
+                RequestType::Flatbuffer,
             ),
         };
 
@@ -655,11 +660,11 @@ impl RemoteEngineServiceImpl {
             .write
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        match is_flatbuffer {
-            true => Ok(TonicWriteResponseExt::Flatbuffer(Response::new(
+        match request_type {
+            RequestType::Flatbuffer => Ok(TonicWriteResponseExt::Flatbuffer(Response::new(
                 build_fb_write_response(resp),
             ))),
-            false => Ok(TonicWriteResponseExt::Proto(Response::new(resp))),
+            RequestType::Protobuf => Ok(TonicWriteResponseExt::Proto(Response::new(resp))),
         }
     }
 
@@ -705,7 +710,7 @@ impl RemoteEngineServiceImpl {
     ) -> std::result::Result<TonicWriteResponseExt, Status> {
         let begin_instant = Instant::now();
 
-        let (write_table_handles, is_flatbuffer) = match request {
+        let (write_table_handles, request_type) = match request {
             TonicWriteBatchRequestExt::Proto(v) => {
                 let request = v.into_inner();
                 let mut write_table_handles = Vec::with_capacity(request.batch.len());
@@ -717,7 +722,7 @@ impl RemoteEngineServiceImpl {
                         .spawn(handle_write(ctx, WriteRequestExt::Proto(one_request)));
                     write_table_handles.push(handle);
                 }
-                (write_table_handles, false)
+                (write_table_handles, RequestType::Protobuf)
             }
             TonicWriteBatchRequestExt::Flatbuffer(v) => {
                 let request = Arc::new(v.into_inner());
@@ -739,7 +744,7 @@ impl RemoteEngineServiceImpl {
                     });
                     write_table_handles.push(handle);
                 }
-                (write_table_handles, true)
+                (write_table_handles, RequestType::Flatbuffer)
             }
         };
 
@@ -776,11 +781,11 @@ impl RemoteEngineServiceImpl {
             .write_batch
             .observe(begin_instant.saturating_elapsed().as_secs_f64());
 
-        match is_flatbuffer {
-            true => Ok(TonicWriteResponseExt::Flatbuffer(Response::new(
+        match request_type {
+            RequestType::Flatbuffer => Ok(TonicWriteResponseExt::Flatbuffer(Response::new(
                 build_fb_write_response(batch_resp),
             ))),
-            false => Ok(TonicWriteResponseExt::Proto(Response::new(batch_resp))),
+            RequestType::Protobuf => Ok(TonicWriteResponseExt::Proto(Response::new(batch_resp))),
         }
     }
 
@@ -1023,7 +1028,10 @@ impl RemoteEngineFbService for RemoteEngineServiceImpl {
             .await?;
         match result {
             TonicWriteResponseExt::Flatbuffer(v) => Ok(v),
-            TonicWriteResponseExt::Proto(_) => Err(Status::new(Code::Internal, "logic error")),
+            TonicWriteResponseExt::Proto(_) => Err(Status::new(
+                Code::Internal,
+                "only support flatbuffer payload",
+            )),
         }
     }
 
@@ -1036,7 +1044,10 @@ impl RemoteEngineFbService for RemoteEngineServiceImpl {
             .await?;
         match result {
             TonicWriteResponseExt::Flatbuffer(v) => Ok(v),
-            TonicWriteResponseExt::Proto(_) => Err(Status::new(Code::Internal, "logic error")),
+            TonicWriteResponseExt::Proto(_) => Err(Status::new(
+                Code::Internal,
+                "only support flatbuffer payload",
+            )),
         }
     }
 }
@@ -1077,7 +1088,9 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
             .await?;
         match result {
             TonicWriteResponseExt::Proto(v) => Ok(v),
-            TonicWriteResponseExt::Flatbuffer(_) => Err(Status::new(Code::Internal, "logic error")),
+            TonicWriteResponseExt::Flatbuffer(_) => {
+                Err(Status::new(Code::Internal, "only support protobuf payload"))
+            }
         }
     }
 
@@ -1097,7 +1110,9 @@ impl RemoteEngineService for RemoteEngineServiceImpl {
             .await?;
         match result {
             TonicWriteResponseExt::Proto(v) => Ok(v),
-            TonicWriteResponseExt::Flatbuffer(_) => Err(Status::new(Code::Internal, "logic error")),
+            TonicWriteResponseExt::Flatbuffer(_) => {
+                Err(Status::new(Code::Internal, "only support protobuf payload"))
+            }
         }
     }
 
@@ -1600,12 +1615,18 @@ fn build_fb_write_response(resp: WriteResponse) -> FlatBufferBytes {
     let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1024);
     let header = resp.header.unwrap();
 
-    let error_message = builder.create_string(header.error.as_str());
+    let error_message = if header.error.is_empty() {
+        None
+    } else {
+        Some(builder.create_string(header.error.as_str()))
+    };
+
+    // builder.create_string(header.error.as_str());
     let response_header_args = ResponseHeader::create(
         &mut builder,
         &ResponseHeaderArgs {
             code: header.code,
-            error: Some(error_message),
+            error: error_message,
         },
     );
 

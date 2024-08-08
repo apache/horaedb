@@ -34,7 +34,6 @@ use common_types::{
     schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
 };
 use fb_util::{
-    common::FlatBufferBytes,
     remote_engine_generated::fbprotocol::{
         ColumnDesc as FBColumnDesc, ContiguousRows as FBContiguousRows,
         ContiguousRowsArgs as FBContiguousRowsArgs, EncodedRow, EncodedRowArgs,
@@ -43,6 +42,7 @@ use fb_util::{
         WriteBatchRequest as FBWriteBatchRequest, WriteBatchRequestArgs as FBWriteBatchRequestArgs,
         WriteRequest as FBWriteRequest, WriteRequestArgs as FBWriteRequestArgs,
     },
+    remote_service::FlatBufferBytes,
 };
 use flatbuffers;
 use generic_error::{BoxError, GenericError, GenericResult};

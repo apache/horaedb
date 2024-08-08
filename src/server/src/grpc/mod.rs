@@ -166,7 +166,7 @@ pub struct RpcServices {
     rpc_server: InterceptedService<StorageServiceServer<StorageServiceImpl>, AuthWithFile>,
     meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl>>,
     remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl>,
-    remote_engine_server_ext: RemoteEngineFbServiceServer<RemoteEngineServiceImpl>,
+    remote_engine_fb_server: RemoteEngineFbServiceServer<RemoteEngineServiceImpl>,
     runtime: Arc<Runtime>,
     stop_tx: Option<Sender<()>>,
     join_handle: Option<JoinHandle<()>>,
@@ -177,7 +177,7 @@ impl RpcServices {
         let rpc_server = self.rpc_server.clone();
         let meta_rpc_server = self.meta_rpc_server.clone();
         let remote_engine_server = self.remote_engine_server.clone();
-        let remote_engine_server_ext = self.remote_engine_server_ext.clone();
+        let remote_engine_fb_server = self.remote_engine_fb_server.clone();
         let serve_addr = self.serve_addr;
         let (stop_tx, stop_rx) = oneshot::channel();
         let join_handle = self.runtime.spawn(async move {
@@ -192,7 +192,7 @@ impl RpcServices {
 
             info!("Grpc server serves remote engine rpc service");
             router = router.add_service(remote_engine_server);
-            router = router.add_service(remote_engine_server_ext);
+            router = router.add_service(remote_engine_fb_server);
 
             router
                 .serve_with_shutdown(serve_addr, stop_rx.map(drop))
@@ -343,7 +343,7 @@ impl Builder {
             hotspot_recorder,
         };
 
-        let remote_engine_server_ext = RemoteEngineFbServiceServer::new(service_ext);
+        let remote_engine_fb_server = RemoteEngineFbServiceServer::new(service_ext);
 
         let runtime = runtimes.default_runtime.clone();
 
@@ -361,7 +361,7 @@ impl Builder {
             rpc_server,
             meta_rpc_server,
             remote_engine_server,
-            remote_engine_server_ext,
+            remote_engine_fb_server,
             runtime,
             stop_tx: None,
             join_handle: None,

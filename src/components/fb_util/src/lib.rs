@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod common;
+pub mod remote_service;
 #[allow(clippy::all)]
 #[rustfmt::skip]
 #[allow(non_snake_case)]

@@ -42,18 +42,18 @@ fn main() -> Result<()> {
             tonic_build::manual::Method::builder()
                 .name("write")
                 .route_name("Write")
-                .input_type("crate::common::FlatBufferBytes")
-                .output_type("crate::common::FlatBufferBytes")
-                .codec_path("crate::common::FlatBufferCodec")
+                .input_type("crate::remote_service::FlatBufferBytes")
+                .output_type("crate::remote_service::FlatBufferBytes")
+                .codec_path("crate::remote_service::FlatBufferCodec")
                 .build(),
         )
         .method(
             tonic_build::manual::Method::builder()
                 .name("write_batch")
                 .route_name("WriteBatch")
-                .input_type("crate::common::FlatBufferBytes")
-                .output_type("crate::common::FlatBufferBytes")
-                .codec_path("crate::common::FlatBufferCodec")
+                .input_type("crate::remote_service::FlatBufferBytes")
+                .output_type("crate::remote_service::FlatBufferBytes")
+                .codec_path("crate::remote_service::FlatBufferCodec")
                 .build(),
         )
         .build();

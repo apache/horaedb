@@ -81,7 +81,7 @@ impl Decoder for FlatBufferDecoder {
     }
 }
 
-/// A [`Codec`] that implements `application/grpc+json` via the serde library.
+/// A [`Codec`] that implements the FlatBuffers serialization format.
 #[derive(Debug, Clone, Default)]
 pub struct FlatBufferCodec();
 

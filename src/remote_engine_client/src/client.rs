@@ -168,7 +168,7 @@ impl Client {
                     endpoint,
                     table_idents: vec![table_ident.clone()],
                     code: header.code(),
-                    msg: header.error().unwrap().to_string(),
+                    msg: header.error().unwrap_or("").to_string(),
                 }
                 .fail()
             } else {
@@ -189,8 +189,7 @@ impl Client {
         // Find the channels from router firstly.
         let mut write_batch_contexts_by_endpoint = HashMap::new();
         for request in requests {
-            let route_context: crate::cached_router::RouteContext =
-                self.cached_router.route(&request.table).await?;
+            let route_context = self.cached_router.route(&request.table).await?;
             let write_batch_context = write_batch_contexts_by_endpoint
                 .entry(route_context.endpoint)
                 .or_insert(WriteBatchContext {
@@ -255,7 +254,7 @@ impl Client {
                         endpoint,
                         table_idents: table_idents.clone(),
                         code: header.code(),
-                        msg: header.error().unwrap().to_string(),
+                        msg: header.error().unwrap_or("").to_string(),
                     }
                     .fail()
                     .box_err()
