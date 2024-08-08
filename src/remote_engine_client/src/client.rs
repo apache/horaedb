@@ -759,7 +759,7 @@ async fn write_pb_internal(
             msg: "Failed to write to remote engine",
         });
 
-    let result = result.and_then(|response| {
+    result.and_then(|response| {
         let response = response.into_inner();
         if let Some(header) = &response.header
             && !status_code::is_ok(header.code)
@@ -774,8 +774,7 @@ async fn write_pb_internal(
         } else {
             Ok(response.affected_rows as usize)
         }
-    });
-    result
+    })
 }
 
 async fn write_fb_internal(
@@ -798,7 +797,7 @@ async fn write_fb_internal(
             msg: "Failed to write to remote engine",
         });
 
-    let result = result.and_then(|response| {
+    result.and_then(|response| {
         let fb_response = response.into_inner();
         let response = fb_response.deserialize::<WriteResponse>().unwrap();
         if let Some(header) = &response.header()
@@ -814,6 +813,5 @@ async fn write_fb_internal(
         } else {
             Ok(response.affected_rows() as usize)
         }
-    });
-    result
+    })
 }
