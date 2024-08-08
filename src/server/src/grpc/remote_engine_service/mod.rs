@@ -67,6 +67,7 @@ use query_engine::{
     physical_planner::PhysicalPlanRef,
     QueryEngineRef, QueryEngineType,
 };
+use remote_engine_client::RequestType;
 use runtime::{Priority, RuntimeRef};
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
@@ -100,11 +101,6 @@ mod metrics;
 
 const STREAM_QUERY_CHANNEL_LEN: usize = 200;
 const DEFAULT_COMPRESS_MIN_LENGTH: usize = 80 * 1024;
-
-enum RequestType {
-    Protobuf,
-    Flatbuffer,
-}
 
 enum TonicWriteBatchRequestExt {
     Proto(Request<WriteBatchRequest>),

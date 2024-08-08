@@ -240,3 +240,8 @@ impl RecordBatchStream for RemoteReadRecordBatchStream {
         &self.0.record_schema
     }
 }
+
+pub enum RequestType {
+    Protobuf,
+    Flatbuffer,
+}
