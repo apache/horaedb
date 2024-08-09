@@ -23,32 +23,26 @@ use std::{
 };
 
 use async_trait::async_trait;
-use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
+use common_types::SequenceNumber;
 use generic_error::BoxError;
 use logger::{debug, info};
-use rocksdb::{DBIterator, ReadOptions};
 use runtime::Runtime;
-use snafu::{ensure, OptionExt, ResultExt};
+use snafu::ResultExt;
 
 use crate::{
     config::{Config, StorageConfig},
-    kv_encoder::{CommonLogEncoding, CommonLogKey},
     local_storage_impl::{config::LocalStorageConfig, segment::SegmentManager},
-    log_batch::{LogEntry, LogWriteBatch},
+    log_batch::LogWriteBatch,
     manager::{
         error::*, BatchLogIteratorAdapter, Open, OpenedWals, ReadContext, ReadRequest, RegionId,
-        ScanContext, ScanRequest, SyncLogIterator, WalLocation, WalManager, WalManagerRef,
-        WalRuntimes, WalsOpener, WriteContext, MANIFEST_DIR_NAME, WAL_DIR_NAME,
-    },
-    rocksdb_impl::{
-        config::RocksDBConfig,
-        manager::{Builder, RocksImpl, RocksLogIterator},
+        ScanContext, ScanRequest, WalLocation, WalManager, WalManagerRef, WalRuntimes, WalsOpener,
+        WriteContext, MANIFEST_DIR_NAME, WAL_DIR_NAME,
     },
 };
 
 pub struct LocalStorageImpl {
     config: LocalStorageConfig,
-    runtime: Arc<Runtime>,
+    _runtime: Arc<Runtime>,
     segment_manager: SegmentManager,
 }
 
@@ -68,7 +62,7 @@ impl LocalStorageImpl {
                 })?;
         Ok(Self {
             config,
-            runtime,
+            _runtime: runtime,
             segment_manager,
         })
     }

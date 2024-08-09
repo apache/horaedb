@@ -21,7 +21,7 @@ use std::{
     fs,
     fs::{File, OpenOptions},
     io,
-    io::{Read as OtherRead, Write as OtherWrite},
+    io::Write,
     path::Path,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -130,7 +130,7 @@ pub struct Segment {
 }
 
 #[derive(Debug, Clone)]
-struct Position {
+pub struct Position {
     start: u64,
     end: u64,
 }
@@ -157,7 +157,6 @@ impl Segment {
     pub fn open(&mut self) -> Result<()> {
         let file = OpenOptions::new()
             .read(true)
-            .write(true)
             .append(true)
             .open(&self.path)
             .context(FileOpen)?;
@@ -284,8 +283,11 @@ impl Segment {
     pub fn append_record_position(&mut self, pos: &mut Vec<Position>) -> Result<()> {
         ensure!(self.is_open, SegmentNotOpen { id: self.id });
         match self.record_position.as_mut() {
-            Some(mut record_position) => Ok(record_position.append(pos)),
-            None => return SegmentNotOpen { id: self.id }.fail(),
+            Some(record_position) => {
+                record_position.append(pos);
+                Ok(())
+            }
+            None => SegmentNotOpen { id: self.id }.fail(),
         }
     }
 
@@ -313,7 +315,7 @@ pub struct SegmentManager {
     cache_size: usize,
 
     /// Directory for segment storage
-    segment_dir: String,
+    _segment_dir: String,
 
     /// Index of the latest segment for appending logs
     latest_segment_idx: AtomicU64,
@@ -331,7 +333,6 @@ pub struct SegmentManager {
 impl SegmentManager {
     pub fn new(cache_size: usize, segment_dir: String, runtime: Arc<Runtime>) -> Result<Self> {
         let mut all_segments = HashMap::new();
-        let mut current_segment = None;
 
         // Scan the directory for existing WAL files
         let mut max_segment_id: i32 = -1;
@@ -371,7 +372,6 @@ impl SegmentManager {
 
             if segment_id as i32 > max_segment_id {
                 max_segment_id = segment_id as i32;
-                current_segment = Some(segment_arc.clone());
             }
             all_segments.insert(segment_id, segment_arc);
         }
@@ -389,11 +389,10 @@ impl SegmentManager {
             all_segments: Mutex::new(all_segments),
             cache: Mutex::new(VecDeque::new()),
             cache_size,
-            segment_dir,
+            _segment_dir: segment_dir,
             latest_segment_idx: AtomicU64::new(max_segment_id as u64),
             log_encoding: CommonLogEncoding::newest(),
-            // todo: do not use MIN_SEQUENCE_NUMBER, read from the latest record or read the
-            // manifest
+            // todo: do not use MIN_SEQUENCE_NUMBER, read from the latest record
             next_sequence_num: AtomicU64::new(MIN_SEQUENCE_NUMBER + 1),
             runtime,
         })
@@ -411,7 +410,7 @@ impl SegmentManager {
         };
 
         // Check if segment is already in cache
-        if let Some(_) = cache.iter().position(|id| *id == segment_id) {
+        if cache.iter().any(|id| *id == segment_id) {
             let segment = all_segments.get(&segment_id);
             return match segment {
                 Some(segment_arc) => Ok(segment_arc.clone()),
@@ -444,11 +443,14 @@ impl SegmentManager {
     }
 
     pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        let segment = self.get_segment(self.latest_segment_idx.load(Ordering::Relaxed))?;
+        let mut segment = segment.lock().unwrap();
+
         let entries_num = batch.len() as u64;
         let region_id = batch.location.region_id;
 
         let mut key_buf = BytesMut::new();
-        let mut prev_sequence_num = self.alloc_sequence_num(entries_num);
+        let prev_sequence_num = self.alloc_sequence_num(entries_num);
         let mut next_sequence_num = prev_sequence_num;
         let mut data = Vec::new();
         let mut record_position = Vec::new();
@@ -494,8 +496,7 @@ impl SegmentManager {
 
         // TODO: spawn a new task to write to segment
         // TODO: maybe need a write mutex?
-        let segment = self.get_segment(self.latest_segment_idx.load(Ordering::Relaxed))?;
-        let mut segment = segment.lock().unwrap();
+
         for pos in record_position.iter_mut() {
             pos.start += segment.size;
             pos.end += segment.size;

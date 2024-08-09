@@ -996,8 +996,10 @@ impl WalBuilder for LocalStorageWalBuilder {
     type Wal = LocalStorageImpl;
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
-        let mut config = LocalStorageConfig::default();
-        config.path = data_path.to_str().unwrap().to_string();
+        let config = LocalStorageConfig {
+            path: data_path.to_str().unwrap().to_string(),
+            ..LocalStorageConfig::default()
+        };
         Arc::new(LocalStorageImpl::new(data_path.to_path_buf(), config, runtime).unwrap())
     }
 }
