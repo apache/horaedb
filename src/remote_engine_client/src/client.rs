@@ -731,7 +731,8 @@ fn convert_arrow_payload(mut v: ArrowPayload) -> Result<RecordBatch> {
 
 fn runtime_request_type() -> RequestType {
     // get request type from environment variable
-    std::env::var("REQUEST_TYPE").map_or(RequestType::Protobuf, |v| {
+    // TODO: remove this config when fb write format is stable
+    std::env::var("HORAEDB_REMOTE_WRITE_REQUEST_TYPE").map_or(RequestType::Protobuf, |v| {
         if v.to_lowercase() == "flatbuffer" {
             RequestType::Flatbuffer
         } else {
