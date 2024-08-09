@@ -52,7 +52,7 @@ bytes_ext = { workspace = true }
 chrono = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
-crc32fast = { version = "1.3.2", optional = true }
+crc32fast = { version = "1.4.2", optional = true }
 futures = { workspace = true, features = ["async-await"], optional = true }
 generic_error = { workspace = true }
 horaedbproto = { workspace = true }
