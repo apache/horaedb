@@ -187,7 +187,7 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
                 {
                     panic!("Message Queue WAL not bundled!");
                 }
-            },
+            }
             StorageConfig::Local(_) => {
                 #[cfg(feature = "wal-local-storage")]
                 {
@@ -197,7 +197,7 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
                         engine_runtimes,
                         log_runtime,
                     )
-                        .await;
+                    .await;
                 }
                 #[cfg(not(feature = "wal-local-storage"))]
                 {

@@ -16,5 +16,5 @@
 // under the License.
 
 pub mod config;
-pub mod wal_manager;
 mod segment;
+pub mod wal_manager;
