@@ -47,6 +47,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          sudo sh scripts/compile-flatc.sh
       - name: Build server
         run: |
           make build

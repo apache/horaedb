@@ -40,6 +40,8 @@ arrow_ext = { workspace = true }
 bytes_ext = { workspace = true }
 chrono = { workspace = true }
 datafusion = { workspace = true }
+fb_util = { workspace = true }
+flatbuffers = { workspace = true }
 hash_ext = { workspace = true }
 horaedbproto = { workspace = true }
 macros = { workspace = true }

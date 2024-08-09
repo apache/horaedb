@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,36 +16,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[package]
-name = "remote_engine_client"
+set -e
+wget 'https://github.com/google/flatbuffers/archive/refs/tags/v24.3.25.tar.gz'
 
-[package.license]
-workspace = true
-
-[package.version]
-workspace = true
-
-[package.authors]
-workspace = true
-
-[package.edition]
-workspace = true
-
-[dependencies]
-arrow_ext = { workspace = true }
-async-trait = { workspace = true }
-common_types = { workspace = true }
-fb_util = { workspace = true }
-futures = { workspace = true }
-generic_error = { workspace = true }
-horaedbproto = { workspace = true }
-logger = { workspace = true }
-macros = { workspace = true }
-router = { workspace = true }
-runtime = { workspace = true }
-serde = { workspace = true }
-snafu = { workspace = true }
-table_engine = { workspace = true }
-time_ext = { workspace = true }
-tokio = { workspace = true }
-tonic = { workspace = true }
+tar xzf v24.3.25.tar.gz
+cd flatbuffers-24.3.25
+cmake -G "Unix Makefiles"
+make
+make install
+ldconfig
+flatc --version
+cd -
+rm -rf flatbuffers-24.3.25

@@ -44,6 +44,8 @@ common_types = { workspace = true }
 datafusion = { workspace = true }
 derive_builder = { workspace = true }
 df_operator = { workspace = true }
+fb_util = { workspace = true }
+flatbuffers = { workspace = true }
 flate2 = "1.0"
 future_ext = { workspace = true }
 futures = { workspace = true }
