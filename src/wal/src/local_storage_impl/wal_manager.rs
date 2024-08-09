@@ -18,33 +18,33 @@
 use std::{
     fmt,
     fmt::{Debug, Formatter},
+    path::{Path, PathBuf},
     sync::Arc,
 };
-use std::path::{Path, PathBuf};
+
 use async_trait::async_trait;
-use common_types::{table::TableId, SequenceNumber, MIN_SEQUENCE_NUMBER};
+use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
+use generic_error::BoxError;
 use logger::{debug, info};
 use rocksdb::{DBIterator, ReadOptions};
-use snafu::ResultExt;
-use generic_error::BoxError;
 use runtime::Runtime;
+use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::{
+    config::{Config, StorageConfig},
     kv_encoder::{CommonLogEncoding, CommonLogKey},
-    log_batch::LogWriteBatch,
+    local_storage_impl::{config::LocalStorageConfig, segment::SegmentManager},
+    log_batch::{LogEntry, LogWriteBatch},
     manager::{
-        error::*, BatchLogIteratorAdapter, ReadContext, ReadRequest, RegionId, ScanContext, ScanRequest,
-        WalLocation, WalManager, WriteContext,
+        error::*, BatchLogIteratorAdapter, Open, OpenedWals, ReadContext, ReadRequest, RegionId,
+        ScanContext, ScanRequest, SyncLogIterator, WalLocation, WalManager, WalManagerRef,
+        WalRuntimes, WalsOpener, WriteContext, MANIFEST_DIR_NAME, WAL_DIR_NAME,
     },
-    rocksdb_impl::manager::{RocksImpl, RocksLogIterator},
+    rocksdb_impl::{
+        config::RocksDBConfig,
+        manager::{Builder, RocksImpl, RocksLogIterator},
+    },
 };
-use crate::config::{Config, StorageConfig};
-use crate::local_storage_impl::config::LocalStorageConfig;
-use crate::local_storage_impl::segment::SegmentManager;
-use crate::log_batch::LogEntry;
-use crate::manager::{MANIFEST_DIR_NAME, OpenedWals, SyncLogIterator, WAL_DIR_NAME, WalManagerRef, WalRuntimes, WalsOpener};
-use crate::rocksdb_impl::config::RocksDBConfig;
-use crate::rocksdb_impl::manager::Builder;
 
 pub struct LocalStorageImpl {
     config: LocalStorageConfig,
@@ -53,12 +53,24 @@ pub struct LocalStorageImpl {
 }
 
 impl LocalStorageImpl {
-    pub fn new(config: LocalStorageConfig, runtime: Arc<Runtime>) -> Self {
-        Self {
-            config: config.clone(),
-            runtime: runtime.clone(),
-            segment_manager: SegmentManager::new(config.cache_size, config.path, runtime).unwrap(), // TODO: remove unwrap
-        }
+    pub fn new(
+        wal_path: PathBuf,
+        config: LocalStorageConfig,
+        runtime: Arc<Runtime>,
+    ) -> Result<Self> {
+        let LocalStorageConfig { cache_size, .. } = config.clone();
+        let wal_path_str = wal_path.to_str().unwrap().to_string();
+        let segment_manager =
+            SegmentManager::new(cache_size, wal_path_str.clone(), runtime.clone())
+                .box_err()
+                .context(Open {
+                    wal_path: wal_path_str,
+                })?;
+        Ok(Self {
+            config,
+            runtime,
+            segment_manager,
+        })
     }
 }
 
@@ -79,7 +91,10 @@ impl Debug for LocalStorageImpl {
 #[async_trait]
 impl WalManager for LocalStorageImpl {
     async fn sequence_num(&self, location: WalLocation) -> Result<u64> {
-        self.segment_manager.sequence_num(location).box_err().context(Read)
+        self.segment_manager
+            .sequence_num(location)
+            .box_err()
+            .context(Read)
     }
 
     async fn mark_delete_entries_up_to(
@@ -90,7 +105,7 @@ impl WalManager for LocalStorageImpl {
         self.segment_manager
             .mark_delete_entries_up_to(location, sequence_num)
             .box_err()
-            .context(Write)
+            .context(Delete)
     }
 
     async fn close_region(&self, region_id: RegionId) -> Result<()> {
@@ -112,26 +127,17 @@ impl WalManager for LocalStorageImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
+        self.segment_manager.read(ctx, req).box_err().context(Read)
+    }
+
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         self.segment_manager
-            .read(ctx, req)
-            .await
+            .write(ctx, batch)
             .box_err()
-            .context(Read)
+            .context(Write)
     }
 
-    async fn write(
-        &self,
-        ctx: &WriteContext,
-        batch: &LogWriteBatch,
-    ) -> Result<SequenceNumber> {
-        self.segment_manager.write(ctx, batch).box_err().context(Write)
-    }
-
-    async fn scan(
-        &self,
-        ctx: &ScanContext,
-        req: &ScanRequest,
-    ) -> Result<BatchLogIteratorAdapter> {
+    async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
         self.segment_manager.scan(ctx, req).box_err().context(Read)
     }
 
@@ -149,10 +155,9 @@ impl LocalStorageWalsOpener {
         runtime: Arc<Runtime>,
         config: LocalStorageConfig,
     ) -> Result<WalManagerRef> {
-        Ok(Arc::new(LocalStorageImpl::new(config, runtime)))
+        Ok(Arc::new(LocalStorageImpl::new(wal_path, config, runtime)?))
     }
 }
-
 
 #[async_trait]
 impl WalsOpener for LocalStorageWalsOpener {
@@ -172,18 +177,25 @@ impl WalsOpener for LocalStorageWalsOpener {
         let write_runtime = runtimes.write_runtime.clone();
         let data_path = Path::new(&local_storage_wal_config.path);
 
-
         let data_wal = if config.disable_data {
             Arc::new(crate::dummy::DoNothing)
         } else {
-            Self::build_manager(data_path.join(WAL_DIR_NAME), write_runtime.clone(), *local_storage_wal_config.clone())?
+            Self::build_manager(
+                data_path.join(WAL_DIR_NAME),
+                write_runtime.clone(),
+                *local_storage_wal_config.clone(),
+            )?
         };
 
-        let manifest_wal = Self::build_manager(data_path.join(MANIFEST_DIR_NAME), write_runtime.clone(), *local_storage_wal_config.clone())?;
+        let manifest_wal = Self::build_manager(
+            data_path.join(MANIFEST_DIR_NAME),
+            write_runtime.clone(),
+            *local_storage_wal_config.clone(),
+        )?;
 
         Ok(OpenedWals {
             data_wal,
-            manifest_wal
+            manifest_wal,
         })
     }
 }
