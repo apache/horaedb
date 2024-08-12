@@ -206,6 +206,7 @@ mod tests {
         TableStatus
     };
     use common_types::{cluster::ClusterType, table::ShardId};
+    use compaction_client::types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
     use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
@@ -293,6 +294,10 @@ mod tests {
 
         fn shard_lock_manager(&self) -> ShardLockManagerRef {
             unimplemented!();
+        }
+
+        async fn compact(&self, _req: &ExecuteCompactionTaskRequest) -> cluster::Result<ExecuteCompactionTaskResponse> {
+            unimplemented!()
         }
     }
 

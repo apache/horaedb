@@ -29,6 +29,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_types::{cluster::ClusterType, schema::SchemaName};
+use compaction_client::types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 use generic_error::GenericError;
 use macros::define_result;
 use meta_client::types::{
@@ -66,6 +67,12 @@ pub enum Error {
 
     #[snafu(display("Meta client execute failed, err:{source}."))]
     MetaClientFailure { source: meta_client::Error },
+
+    #[snafu(display("Compaction client execute failed, err:{source}."))]
+    CompactionClientFailure { source: compaction_client::Error },
+
+    #[snafu(display("Compaction client is empty.\nBacktrace:\n{}", backtrace))]
+    EmptyCompactionClient { backtrace: Backtrace },
 
     #[snafu(display("Failed to init etcd client config, err:{source}.\nBacktrace:\n{backtrace}"))]
     InitEtcdClientConfig {
@@ -190,7 +197,9 @@ pub struct ClusterNodesResp {
     pub cluster_nodes: ClusterNodesRef,
 }
 
-/// Cluster manages tables and shard infos in cluster mode. (HoraeDB)
+/// Cluster has the following functions:
+/// + Manages tables and shard infos in cluster mode.
+/// + (Optional) Executes compaction task remotely.
 #[async_trait]
 pub trait Cluster {
     type ClusterType: Send + Sync;
@@ -223,4 +232,7 @@ pub trait Cluster {
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
     fn shard_lock_manager(&self) -> ShardLockManagerRef;
+
+    /// Execute compaction task in remote compaction node.
+    async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse>;
 }

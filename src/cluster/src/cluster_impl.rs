@@ -22,6 +22,12 @@ use std::{
 
 use async_trait::async_trait;
 use common_types::table::ShardId;
+use compaction_client::{
+    types::{
+        ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse
+    },
+    CompactionClientRef,
+};
 use etcd_client::{Certificate, ConnectOptions, Identity, TlsOptions};
 use generic_error::BoxError;
 use logger::{error, info, warn};
@@ -41,13 +47,13 @@ use tokio::{
 };
 
 use crate::{
-    config::{ClusterConfig, EtcdClientConfig},
-    shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef},
-    shard_set::{Shard, ShardRef, ShardSet},
-    topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause, ClusterType,
-    InitEtcdClientConfig, InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause,
-    Result, ShardNotFound, TableStatus,
+    config::{ClusterConfig, EtcdClientConfig}, 
+    shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef}, 
+    shard_set::{Shard, ShardRef, ShardSet}, 
+    topology::ClusterTopology, 
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, ClusterType, CompactionClientFailure, 
+    EmptyCompactionClient, EtcdClientFailureWithCause, InitEtcdClientConfig, InvalidArguments, 
+    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound, TableStatus
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -70,6 +76,7 @@ impl ClusterImpl {
         node_name: String,
         shard_set: ShardSet,
         meta_client: MetaClientRef,
+        compaction_client: Option<CompactionClientRef>,
         config: ClusterConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
@@ -102,7 +109,7 @@ impl ClusterImpl {
         };
         let shard_lock_manager = ShardLockManager::new(shard_lock_mgr_config, etcd_client);
 
-        let inner = Arc::new(Inner::new(shard_set, meta_client)?);
+        let inner = Arc::new(Inner::new(shard_set, meta_client, compaction_client)?);
         Ok(Self {
             inner,
             runtime,
@@ -181,14 +188,16 @@ impl ClusterImpl {
 struct Inner {
     shard_set: ShardSet,
     meta_client: MetaClientRef,
+    compaction_client: Option<CompactionClientRef>,
     topology: RwLock<ClusterTopology>,
 }
 
 impl Inner {
-    fn new(shard_set: ShardSet, meta_client: MetaClientRef) -> Result<Self> {
+    fn new(shard_set: ShardSet, meta_client: MetaClientRef, compaction_client: Option<CompactionClientRef>) -> Result<Self> {
         Ok(Self {
             shard_set,
             meta_client,
+            compaction_client,
             topology: Default::default(),
         })
     }
@@ -341,6 +350,18 @@ impl Inner {
 
         shards.iter().map(|shard| shard.shard_info()).collect()
     }
+
+    async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse> {
+        let compact_resp = self
+            .compaction_client
+            .clone()
+            .context(EmptyCompactionClient)?
+            .execute_compaction_task(req.clone())
+            .await
+            .context(CompactionClientFailure)?;
+
+        Ok(compact_resp)
+    }
 }
 
 #[async_trait]
@@ -415,6 +436,10 @@ impl Cluster for ClusterImpl {
 
     fn shard_lock_manager(&self) -> ShardLockManagerRef {
         self.shard_lock_manager.clone()
+    }
+
+    async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse> {
+        self.inner.compact(req).await
     }
 }
 

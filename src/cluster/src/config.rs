@@ -18,6 +18,7 @@
 use std::time::Duration;
 
 use common_types::schema::TIMESTAMP_COLUMN;
+use compaction_client::compaction_impl::CompactionClientConfig;
 use meta_client::meta_impl::MetaClientConfig;
 use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
@@ -138,4 +139,5 @@ pub struct ClusterConfig {
     pub cluster_type: ClusterType,
     pub meta_client: MetaClientConfig,
     pub etcd_client: EtcdClientConfig,
+    pub compaction_client: Option<CompactionClientConfig>,
 }

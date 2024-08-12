@@ -35,6 +35,7 @@ async-trait = { workspace = true }
 bytes_ext = { workspace = true }
 catalog = { workspace = true }
 common_types = { workspace = true }
+compaction_client = { workspace = true }
 etcd-client = { workspace = true }
 future_ext = { workspace = true }
 generic_error = { workspace = true }

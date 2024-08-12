@@ -27,6 +27,7 @@ use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOpe
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use common_types::cluster::ClusterType;
+use compaction_client::compaction_impl;
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
@@ -309,12 +310,23 @@ async fn build_with_meta<T: WalsOpener>(
             .await
             .expect("fail to build meta client");
 
+    let compaction_client = if let Some(compaction_client) = cluster_config.compaction_client.clone() {
+        Some(
+            compaction_impl::build_compaction_client(compaction_client)
+                .await
+                .expect("fail to build compaction client"),
+        )
+    } else {
+        None
+    };
+ 
     let shard_set = ShardSet::default();
     let cluster = {
         let cluster_impl = ClusterImpl::try_new(
             endpoint,
             shard_set.clone(),
             meta_client.clone(),
+            compaction_client.clone(),
             cluster_config.clone(),
             runtimes.meta_runtime.clone(),
         )
