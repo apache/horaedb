@@ -17,15 +17,16 @@
 
 // Compaction rpc service implementation.
 
-#![allow(dead_code)]
-
 use std::sync::Arc;
 
 use analytic_engine::compaction::runner::{CompactionRunnerRef, CompactionRunnerTask};
 use async_trait::async_trait;
 use cluster::ClusterRef;
 use generic_error::BoxError;
-use horaedbproto::compaction_service::{compaction_service_server::CompactionService, ExecResult, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
+use horaedbproto::compaction_service::{
+    compaction_service_server::CompactionService, ExecResult, ExecuteCompactionTaskRequest,
+    ExecuteCompactionTaskResponse,
+};
 use proxy::instance::InstanceRef;
 use runtime::Runtime;
 use snafu::ResultExt;
@@ -59,7 +60,6 @@ impl Builder {
         }
     }
 }
-
 
 #[derive(Clone)]
 pub struct CompactionServiceImpl {
@@ -100,7 +100,7 @@ impl CompactionService for CompactionServiceImpl {
                             sst_info: Some(res.sst_info.into()),
                             sst_meta: Some(res.sst_meta.into()),
                         });
-                        // TODO: Add status.    
+                        // TODO(leslie): Add status.    
                     }
                     Err(e) => {
                         resp.header = Some(build_err_header(e));

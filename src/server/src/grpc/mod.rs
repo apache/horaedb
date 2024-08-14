@@ -31,7 +31,10 @@ use compaction_service::CompactionServiceImpl;
 use futures::FutureExt;
 use generic_error::GenericError;
 use horaedbproto::{
-    compaction_service::compaction_service_server::CompactionServiceServer, meta_event::meta_event_service_server::MetaEventServiceServer, remote_engine::remote_engine_service_server::RemoteEngineServiceServer, storage::storage_service_server::StorageServiceServer
+    compaction_service::compaction_service_server::CompactionServiceServer,
+    meta_event::meta_event_service_server::MetaEventServiceServer,
+    remote_engine::remote_engine_service_server::RemoteEngineServiceServer,
+    storage::storage_service_server::StorageServiceServer,
 };
 use logger::{info, warn};
 use macros::define_result;
@@ -169,7 +172,6 @@ pub struct RpcServices {
     rpc_server: InterceptedService<StorageServiceServer<StorageServiceImpl>, AuthWithFile>,
     compaction_rpc_server: Option<CompactionServiceServer<CompactionServiceImpl>>,
     meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl>>,
-    // TODO: Consider make remote engine service server optional here.
     remote_engine_server: RemoteEngineServiceServer<RemoteEngineServiceImpl>,
     runtime: Arc<Runtime>,
     stop_tx: Option<Sender<()>>,
@@ -331,6 +333,7 @@ impl Builder {
             let result: Result<()> = (|| {
                 match v.cluster_type() {
                     ClusterType::HoraeDB => {
+                        // Support meta rpc service.
                         let opened_wals = self.opened_wals.context(MissingWals)?;
                         let builder = meta_event_service::Builder {
                             cluster: v,
@@ -341,7 +344,10 @@ impl Builder {
                         meta_rpc_server = Some(MetaEventServiceServer::new(builder.build()));
                     }
                     ClusterType::CompactionServer => {
-                        let compaction_runner = self.compaction_runner.context(MissingCompactionRunner)?;
+                        // Support remote rpc service.
+                        let compaction_runner = self
+                            .compaction_runner
+                            .context(MissingCompactionRunner)?;
                         let builder = compaction_service::Builder {
                             cluster: v,
                             instance: instance.clone(),

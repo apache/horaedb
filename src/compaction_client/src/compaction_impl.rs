@@ -19,13 +19,19 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use generic_error::BoxError;
-use horaedbproto::{common::ResponseHeader, compaction_service::{self, compaction_service_client::CompactionServiceClient}};
+use horaedbproto::{
+    common::ResponseHeader, 
+    compaction_service::{self, compaction_service_client::CompactionServiceClient}
+};
 use logger::info;
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, OptionExt};
 use time_ext::ReadableDuration;
 
-use crate::{BadResponse, CompactionClient, CompactionClientRef, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse, FailConnect, FailExecuteCompactionTask, MissingHeader, Result};
+use crate::{
+    BadResponse, CompactionClient, CompactionClientRef, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse,
+    FailConnect, FailExecuteCompactionTask, MissingHeader, Result,
+};
 
 type CompactionServiceGrpcClient = CompactionServiceClient<tonic::transport::Channel>;
 

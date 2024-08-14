@@ -19,7 +19,9 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 pub use common_types::table::{ShardId, ShardVersion};
 use common_types::{
-    cluster::ClusterType, schema::{SchemaId, SchemaName}, table::{TableId, TableName}
+    cluster::ClusterType,
+    schema::{SchemaId, SchemaName},
+    table::{TableId, TableName},
 };
 use generic_error::BoxError;
 use horaedbproto::{cluster as cluster_pb, meta_service as meta_service_pb};

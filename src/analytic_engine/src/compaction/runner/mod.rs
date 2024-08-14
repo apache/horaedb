@@ -49,7 +49,6 @@ pub trait CompactionRunner: Send + Sync + 'static {
 pub type CompactionRunnerPtr = Box<dyn CompactionRunner>;
 pub type CompactionRunnerRef = Arc<dyn CompactionRunner>;
 
-// TODO: Extend info(msg) for error handling.
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]

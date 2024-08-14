@@ -53,8 +53,8 @@ use crate::{
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, ClusterType, CompactionClientFailure,
-    EtcdClientFailureWithCause, InitEtcdClientConfig, InvalidArguments,MetaClientFailure, 
-    OpenShard, OpenShardWithCause, Result, ShardNotFound, TableStatus
+    CompactionOffloadNotAllowed, EtcdClientFailureWithCause, InitEtcdClientConfig, InvalidArguments,
+    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound, TableStatus
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -349,11 +349,12 @@ impl Inner {
         shards.iter().map(|shard| shard.shard_info()).collect()
     }
 
-    /// Get the proper remote compaction node for compaction offload.
+    /// Get proper remote compaction node for compaction offload with meta client.
     async fn get_compaction_node(&self) -> Result<CompactionClientConfig> {
         unimplemented!()
     }
 
+    /// Return a new compaction client.
     async fn compaction_client(&self) -> CompactionClientRef {
         // TODO(leslie): impl better error handling with snafu.
         let config = self
@@ -453,6 +454,12 @@ impl Cluster for ClusterImpl {
     }
 
     async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse> {
+        ensure!(
+            self.cluster_type() == ClusterType::HoraeDB,
+            CompactionOffloadNotAllowed {
+                cluster_type: self.cluster_type()
+            } 
+        );
         self.inner.compact(req).await
     }
 }

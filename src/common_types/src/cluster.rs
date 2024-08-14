@@ -17,6 +17,7 @@
 
 use serde::{Serialize, Deserialize};
 
+/// Type to distinguish different server type in cluster mode.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ClusterType {
     #[default]

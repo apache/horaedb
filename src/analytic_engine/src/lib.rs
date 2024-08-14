@@ -23,7 +23,7 @@ pub mod compaction;
 mod context;
 mod engine;
 pub mod error;
-pub mod instance;
+mod instance;
 mod manifest;
 pub mod memtable;
 mod payload;

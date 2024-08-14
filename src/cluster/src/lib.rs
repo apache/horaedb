@@ -165,6 +165,14 @@ pub enum Error {
         "Cluster nodes are not found in the topology, version:{version}.\nBacktrace:\n{backtrace}",
     ))]
     ClusterNodesNotFound { version: u64, backtrace: Backtrace },
+
+    #[snafu(display(
+        "Not allowed to execute compaction offload in cluster_type:{cluster_type:?}.\nBacktrace:\n{backtrace:?}"
+    ))]
+    CompactionOffloadNotAllowed {
+        cluster_type: ClusterType,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);
