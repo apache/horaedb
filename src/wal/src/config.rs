@@ -39,7 +39,7 @@ pub struct KafkaStorageConfig;
 pub type LocalStorageConfig = crate::local_storage_impl::config::LocalStorageConfig;
 #[cfg(not(feature = "wal-local-storage"))]
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct LocalFileStorageConfig;
+pub struct LocalStorageConfig;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {

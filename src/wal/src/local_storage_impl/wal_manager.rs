@@ -113,6 +113,7 @@ impl WalManager for LocalStorageImpl {
 
     async fn close_gracefully(&self) -> Result<()> {
         info!("Close local storage wal gracefully");
+        // todo: close all opened files
         Ok(())
     }
 

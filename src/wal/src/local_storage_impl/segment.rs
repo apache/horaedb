@@ -29,9 +29,9 @@ use std::{
     },
 };
 
-use bytes_ext::{BufMut, BytesMut};
+use bytes_ext::BytesMut;
+use codec::Encoder;
 use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
-use crc32fast::Hasher;
 use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use memmap2::{MmapMut, MmapOptions};
@@ -40,6 +40,7 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     kv_encoder::{CommonLogEncoding, CommonLogKey},
+    local_storage_impl::record_encoding::{Record, RecordEncoding},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
         BatchLogIteratorAdapter, Read, ReadContext, ReadRequest, RegionId, ScanContext,
@@ -109,23 +110,39 @@ pub enum Error {
 define_result!(Error);
 
 const HEADER: &str = "HoraeDB WAL";
-const CRC_SIZE: usize = 4;
-const RECORD_LENGTH_SIZE: usize = 4;
-const KEY_LENGTH_SIZE: usize = 2;
-const VALUE_LENGTH_SIZE: usize = 4;
 // todo: make MAX_FILE_SIZE configurable
 const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug)]
 pub struct Segment {
+    /// The file path of the segment.
     path: String,
+
+    /// A unique identifier for the segment.
     id: u64,
+
+    /// The size of the segment in bytes.
     size: u64,
+
+    /// The minimum sequence number of records within this segment.
     min_seq: SequenceNumber,
+
+    /// The maximum sequence number of records within this segment.
     max_seq: SequenceNumber,
-    is_open: bool,
+
+    /// The encoding format used for records within this segment.
+    record_encoding: RecordEncoding,
+
+    /// An optional file handle for the segment.
+    /// This may be `None` if the file is not currently open.
     file: Option<File>,
+
+    /// An optional memory-mapped mutable buffer of the segment.
+    /// This may be `None` if the segment is not memory-mapped.
     mmap: Option<MmapMut>,
+
+    /// An optional vector of positions within the segment.
+    /// This may be `None` if the segment is not memory-mapped.
     record_position: Option<Vec<Position>>,
 }
 
@@ -135,6 +152,16 @@ pub struct Position {
     end: u64,
 }
 
+/// Segment file format:
+///
+/// ```text
+/// +----------+--------+--------+---+--------+
+/// |  Header  | Record | Record |...| Record |
+/// +----------+--------+--------+---+--------+
+/// ```
+///
+/// The `Header` is a fixed string. The format of the `Record` can be referenced
+/// in the struct `Record`.
 impl Segment {
     pub fn new(path: String, segment_id: u64) -> Result<Segment> {
         if !Path::new(&path).exists() {
@@ -145,9 +172,9 @@ impl Segment {
             path,
             id: segment_id,
             size: HEADER.len() as u64,
-            is_open: false,
             min_seq: MAX_SEQUENCE_NUMBER,
             max_seq: MIN_SEQUENCE_NUMBER,
+            record_encoding: RecordEncoding::newest(),
             file: None,
             mmap: None,
             record_position: None,
@@ -155,6 +182,7 @@ impl Segment {
     }
 
     pub fn open(&mut self) -> Result<()> {
+        // Open the segment file
         let file = OpenOptions::new()
             .read(true)
             .append(true)
@@ -164,71 +192,36 @@ impl Segment {
         let metadata = file.metadata().context(FileOpen)?;
         let size = metadata.len();
 
+        // Map the file in memory
         let mmap = unsafe { MmapOptions::new().map_mut(&file).context(Mmap)? };
 
         // Validate segment header
         let header_len = HEADER.len();
         ensure!(size >= header_len as u64, InvalidHeader);
-
-        let header_bytes = &mmap[0..header_len];
-        let header_str = std::str::from_utf8(header_bytes).map_err(|_| Error::InvalidHeader)?;
-
-        ensure!(header_str == HEADER, InvalidHeader);
+        let header = &mmap[0..header_len];
+        ensure!(header == HEADER.as_bytes(), InvalidHeader);
 
         // Read and validate all records
         let mut pos = header_len;
         let mut record_position = Vec::new();
-
         while pos < size as usize {
-            ensure!(
-                pos + CRC_SIZE + RECORD_LENGTH_SIZE <= size as usize,
-                LengthMismatch {
-                    expected: pos + CRC_SIZE + RECORD_LENGTH_SIZE,
-                    actual: size as usize
-                }
-            );
+            let data = &mmap[pos..];
 
-            // Read the CRC
-            let crc = u32::from_le_bytes(mmap[pos..pos + CRC_SIZE].try_into().context(Conversion)?);
-            pos += CRC_SIZE;
-
-            // Read the length
-            let length = u32::from_le_bytes(
-                mmap[pos..pos + RECORD_LENGTH_SIZE]
-                    .try_into()
-                    .context(Conversion)?,
-            );
-            pos += RECORD_LENGTH_SIZE;
-
-            // Ensure the entire record is within the bounds of the mmap
-            ensure!(
-                pos + length as usize <= size as usize,
-                LengthMismatch {
-                    expected: pos + length as usize,
-                    actual: size as usize
-                }
-            );
-
-            // Verify the checksum (CRC32 of the data)
-            let data = &mmap[pos..pos + length as usize];
-            let computed_crc = crc32fast::hash(data);
-            ensure!(
-                computed_crc == crc,
-                ChecksumMismatch {
-                    expected: crc,
-                    actual: computed_crc
-                }
-            );
+            let record = self
+                .record_encoding
+                .decode(data)
+                .box_err()
+                .context(InvalidRecord)?;
 
             record_position.push(Position {
-                start: (pos - CRC_SIZE - RECORD_LENGTH_SIZE) as u64,
-                end: (pos + length as usize) as u64,
+                start: pos as u64,
+                end: (pos + record.len()) as u64,
             });
+
             // Move to the next record
-            pos += length as usize;
+            pos += record.len();
         }
 
-        self.is_open = true;
         self.file = Some(file);
         self.mmap = Some(mmap);
         self.record_position = Some(record_position);
@@ -237,24 +230,28 @@ impl Segment {
     }
 
     pub fn close(&mut self) -> Result<()> {
-        self.is_open = false;
         self.file.take();
         self.mmap.take();
         self.record_position.take();
         Ok(())
     }
 
+    /// Append a slice to the segment file.
     pub fn append(&mut self, data: &[u8]) -> Result<()> {
-        ensure!(self.is_open, SegmentNotOpen { id: self.id });
         ensure!(self.size + data.len() as u64 <= MAX_FILE_SIZE, SegmentFull);
 
+        // Ensure the segment file is open
         let Some(file) = &mut self.file else {
             return SegmentNotOpen { id: self.id }.fail();
         };
+
+        // Append to the file
         file.write_all(data).context(SegmentAppend)?;
         file.flush().context(Flush)?;
 
         // Remap
+        // todo: Do not remap every time you append; instead, create a large enough file
+        // at the beginning.
         let mmap = unsafe { MmapOptions::new().map_mut(&*file).context(Mmap)? };
         self.mmap = Some(mmap);
         self.size += data.len() as u64;
@@ -263,7 +260,7 @@ impl Segment {
     }
 
     pub fn read(&self, offset: u64, size: u64) -> Result<Vec<u8>> {
-        ensure!(self.is_open, SegmentNotOpen { id: self.id });
+        // Ensure that the reading range is within the file
         ensure!(
             offset + size <= self.size,
             LengthMismatch {
@@ -281,7 +278,6 @@ impl Segment {
     }
 
     pub fn append_record_position(&mut self, pos: &mut Vec<Position>) -> Result<()> {
-        ensure!(self.is_open, SegmentNotOpen { id: self.id });
         match self.record_position.as_mut() {
             Some(record_position) => {
                 record_position.append(pos);
@@ -292,7 +288,6 @@ impl Segment {
     }
 
     pub fn update_seq(&mut self, min_seq: u64, max_seq: u64) -> Result<()> {
-        ensure!(self.is_open, SegmentNotOpen { id: self.id });
         if min_seq < self.min_seq {
             self.min_seq = min_seq;
         }
@@ -318,10 +313,13 @@ pub struct SegmentManager {
     _segment_dir: String,
 
     /// Index of the latest segment for appending logs
-    latest_segment_idx: AtomicU64,
+    current: Mutex<u64>,
 
     /// Encoding method for logs
     log_encoding: CommonLogEncoding,
+
+    /// Encoding method for records
+    record_encoding: RecordEncoding,
 
     /// Sequence number for the next log
     next_sequence_num: AtomicU64,
@@ -368,12 +366,12 @@ impl SegmentManager {
             };
 
             let segment = Segment::new(path.to_string_lossy().to_string(), segment_id)?;
-            let segment_arc = Arc::new(Mutex::new(segment));
+            let segment = Arc::new(Mutex::new(segment));
 
             if segment_id as i32 > max_segment_id {
                 max_segment_id = segment_id as i32;
             }
-            all_segments.insert(segment_id, segment_arc);
+            all_segments.insert(segment_id, segment);
         }
 
         // If no existing segments, create a new one
@@ -381,8 +379,8 @@ impl SegmentManager {
             max_segment_id = 0;
             let path = format!("{}/segment_{}.wal", segment_dir, max_segment_id);
             let new_segment = Segment::new(path, max_segment_id as u64)?;
-            let segment_arc = Arc::new(Mutex::new(new_segment));
-            all_segments.insert(0, segment_arc);
+            let new_segment = Arc::new(Mutex::new(new_segment));
+            all_segments.insert(0, new_segment);
         }
 
         Ok(Self {
@@ -390,14 +388,17 @@ impl SegmentManager {
             cache: Mutex::new(VecDeque::new()),
             cache_size,
             _segment_dir: segment_dir,
-            latest_segment_idx: AtomicU64::new(max_segment_id as u64),
+            current: Mutex::new(max_segment_id as u64),
             log_encoding: CommonLogEncoding::newest(),
+            record_encoding: RecordEncoding::newest(),
             // todo: do not use MIN_SEQUENCE_NUMBER, read from the latest record
             next_sequence_num: AtomicU64::new(MIN_SEQUENCE_NUMBER + 1),
             runtime,
         })
     }
 
+    /// Obtain the target segment. If it is not open, then open it and put it to
+    /// the cache.
     fn get_segment(&self, segment_id: u64) -> Result<Arc<Mutex<Segment>>> {
         let mut cache = self.cache.lock().unwrap();
         let all_segments = self.all_segments.lock().unwrap();
@@ -405,7 +406,7 @@ impl SegmentManager {
         let segment = all_segments.get(&segment_id);
 
         let segment = match segment {
-            Some(segment_arc) => segment_arc,
+            Some(segment) => segment,
             None => return SegmentNotFound { id: segment_id }.fail(),
         };
 
@@ -413,7 +414,7 @@ impl SegmentManager {
         if cache.iter().any(|id| *id == segment_id) {
             let segment = all_segments.get(&segment_id);
             return match segment {
-                Some(segment_arc) => Ok(segment_arc.clone()),
+                Some(segment) => Ok(segment.clone()),
                 None => SegmentNotFound { id: segment_id }.fail(),
             };
         }
@@ -443,21 +444,23 @@ impl SegmentManager {
     }
 
     pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        let segment = self.get_segment(self.latest_segment_idx.load(Ordering::Relaxed))?;
+        // Lock
+        let current = self.current.lock().unwrap();
+        let segment = self.get_segment(*current)?;
         let mut segment = segment.lock().unwrap();
 
         let entries_num = batch.len() as u64;
         let region_id = batch.location.region_id;
 
-        let mut key_buf = BytesMut::new();
+        // Allocate sequence number
         let prev_sequence_num = self.alloc_sequence_num(entries_num);
         let mut next_sequence_num = prev_sequence_num;
+
+        let mut key_buf = BytesMut::new();
         let mut data = Vec::new();
         let mut record_position = Vec::new();
 
         for entry in &batch.entries {
-            let mut record_content = Vec::new();
-
             self.log_encoding
                 .encode_key(
                     &mut key_buf,
@@ -466,30 +469,19 @@ impl SegmentManager {
                 .box_err()
                 .context(Encoding)?;
 
-            let key_len = key_buf.len() as u16;
-            record_content.put_u16_le(key_len);
-            record_content.extend_from_slice(&key_buf);
-
-            let value_len = entry.payload.len() as u32;
-            record_content.put_u32_le(value_len);
-            record_content.extend_from_slice(&entry.payload);
+            // Encode the record
+            let record = Record::new(&key_buf, &entry.payload)
+                .box_err()
+                .context(Encoding)?;
+            self.record_encoding
+                .encode(&mut data, &record)
+                .box_err()
+                .context(Encoding)?;
 
             record_position.push(Position {
-                start: data.len() as u64,
-                end: (data.len() + record_content.len() + CRC_SIZE + RECORD_LENGTH_SIZE) as u64,
+                start: (data.len() - record.len()) as u64,
+                end: data.len() as u64,
             });
-
-            // Calculate and encode the CRC
-            let mut hasher = Hasher::new();
-            hasher.update(&record_content);
-            let crc = hasher.finalize();
-            data.put_u32_le(crc);
-
-            // Add length
-            let record_len = record_content.len() as u32;
-            data.put_u32_le(record_len);
-
-            data.extend_from_slice(&record_content);
 
             next_sequence_num += 1;
         }
@@ -530,6 +522,7 @@ impl SegmentManager {
         }
         let iter = SegmentLogIterator::new(
             self.log_encoding.clone(),
+            self.record_encoding.clone(),
             self.get_segment(0)?,
             Some(req.location.region_id),
             Some(req.location.table_id),
@@ -546,6 +539,7 @@ impl SegmentManager {
     pub fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
         let iter = SegmentLogIterator::new(
             self.log_encoding.clone(),
+            self.record_encoding.clone(),
             self.get_segment(0)?,
             Some(req.region_id),
             None,
@@ -582,20 +576,41 @@ impl SegmentManager {
 // TODO: handle the case when read requests involving multiple segments
 #[derive(Debug)]
 pub struct SegmentLogIterator {
+    /// Encoding method for common log.
     log_encoding: CommonLogEncoding,
+
+    /// Encoding method for records.
+    record_encoding: RecordEncoding,
+
+    /// Thread-safe, shared reference to the log segment.
     segment: Arc<Mutex<Segment>>,
+
+    /// Optional identifier for the region, which is used to filter logs.
     region_id: Option<RegionId>,
+
+    /// Optional identifier for the table, which is used to filter logs.
     table_id: Option<TableId>,
+
+    /// Starting sequence number for log iteration.
     start: SequenceNumber,
+
+    /// Ending sequence number for log iteration.
     end: SequenceNumber,
+
+    /// Index of the current record within the segment.
     current_record_idx: usize,
+
+    /// The raw payload data of the current record.
     current_payload: Vec<u8>,
+
+    /// Flag indicating whether there is no more data to read.
     no_more_data: bool,
 }
 
 impl SegmentLogIterator {
     pub fn new(
         log_encoding: CommonLogEncoding,
+        record_encoding: RecordEncoding,
         segment: Arc<Mutex<Segment>>,
         region_id: Option<RegionId>,
         table_id: Option<TableId>,
@@ -604,6 +619,7 @@ impl SegmentLogIterator {
     ) -> Self {
         SegmentLogIterator {
             log_encoding,
+            record_encoding,
             segment,
             region_id,
             table_id,
@@ -637,74 +653,26 @@ impl SegmentLogIterator {
             self.current_record_idx += 1;
             let record = segment.read(pos.start, pos.end - pos.start)?;
 
-            ensure!(
-                record.len() > CRC_SIZE + RECORD_LENGTH_SIZE,
-                LengthMismatch {
-                    expected: CRC_SIZE + RECORD_LENGTH_SIZE,
-                    actual: record.len()
-                }
-            );
-
-            let mut pos = 0;
-            let crc_bytes = record[pos..pos + CRC_SIZE]
-                .try_into()
+            // Decode record
+            let record = self
+                .record_encoding
+                .decode(record.as_slice())
                 .box_err()
                 .context(InvalidRecord)?;
-            // No need to verify the checksum, as it has already been validated when the
-            // segment was opened.
-            let _crc = u32::from_le_bytes(crc_bytes);
-            pos += CRC_SIZE;
 
-            let length_bytes = record[pos..pos + RECORD_LENGTH_SIZE]
-                .try_into()
-                .box_err()
-                .context(InvalidRecord)?;
-            let length = u32::from_le_bytes(length_bytes);
-            pos += RECORD_LENGTH_SIZE;
-
-            ensure!(
-                record.len() == length as usize + CRC_SIZE + RECORD_LENGTH_SIZE,
-                LengthMismatch {
-                    expected: length as usize + CRC_SIZE + RECORD_LENGTH_SIZE,
-                    actual: record.len()
-                }
-            );
-
-            let key_length_bytes = record[pos..pos + KEY_LENGTH_SIZE]
-                .try_into()
-                .box_err()
-                .context(InvalidRecord)?;
-            let key_length = u16::from_le_bytes(key_length_bytes);
-            pos += KEY_LENGTH_SIZE;
-
-            let key_bytes = record[pos..pos + key_length as usize]
-                .try_into()
-                .box_err()
-                .context(InvalidRecord)?;
+            // Decode key and value
             let key = self
                 .log_encoding
-                .decode_key(key_bytes)
-                .box_err()
-                .context(InvalidRecord)?;
-            pos += key_length as usize;
-
-            let value_length_bytes = record[pos..pos + VALUE_LENGTH_SIZE]
-                .try_into()
-                .box_err()
-                .context(InvalidRecord)?;
-            let value_length = u32::from_le_bytes(value_length_bytes);
-            pos += VALUE_LENGTH_SIZE;
-
-            let value_bytes = record[pos..pos + value_length as usize]
-                .try_into()
+                .decode_key(record.key)
                 .box_err()
                 .context(InvalidRecord)?;
             let value = self
                 .log_encoding
-                .decode_value(value_bytes)
+                .decode_value(record.value)
                 .box_err()
                 .context(InvalidRecord)?;
 
+            // Filter by sequence number
             if key.sequence_num < self.start {
                 continue;
             }
@@ -712,6 +680,8 @@ impl SegmentLogIterator {
                 self.no_more_data = true;
                 return Ok(None);
             }
+
+            // Filter by region_id and table_id
             if let Some(region_id) = self.region_id {
                 if key.region_id != region_id {
                     continue;
@@ -737,5 +707,84 @@ impl SegmentLogIterator {
 impl SyncLogIterator for SegmentLogIterator {
     fn next_log_entry(&mut self) -> crate::manager::Result<Option<LogEntry<&'_ [u8]>>> {
         self.next().box_err().context(Read)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use runtime::Builder;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn test_segment_creation() {
+        let dir = tempdir().unwrap();
+        let path = dir
+            .path()
+            .join("segment_0.wal")
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let segment = Segment::new(path.clone(), 0);
+        assert!(segment.is_ok());
+
+        let segment = segment.unwrap();
+        assert_eq!(segment.path, path);
+        assert_eq!(segment.id, 0);
+        assert_eq!(segment.size, HEADER.len() as u64);
+    }
+
+    #[test]
+    fn test_segment_open() {
+        let dir = tempdir().unwrap();
+        let path = dir
+            .path()
+            .join("segment_0.wal")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let mut segment = Segment::new(path.clone(), 0).unwrap();
+
+        let result = segment.open();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_segment_append_and_read() {
+        let dir = tempdir().unwrap();
+        let path = dir
+            .path()
+            .join("segment_0.wal")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let mut segment = Segment::new(path.clone(), 0).unwrap();
+        segment.open().unwrap();
+
+        let data = b"test_data";
+        let append_result = segment.append(data);
+        assert!(append_result.is_ok());
+
+        let read_result = segment.read(HEADER.len() as u64, data.len() as u64);
+        assert!(read_result.is_ok());
+        assert_eq!(read_result.unwrap(), data);
+    }
+
+    #[test]
+    fn test_segment_manager_creation() {
+        let dir = tempdir().unwrap();
+        let runtime = Arc::new(Builder::default().build().unwrap());
+
+        let segment_manager =
+            SegmentManager::new(1, dir.path().to_str().unwrap().to_string(), runtime);
+        assert!(segment_manager.is_ok());
+
+        let segment_manager = segment_manager.unwrap();
+        let segment = segment_manager.get_segment(0);
+        assert!(segment.is_ok());
     }
 }
