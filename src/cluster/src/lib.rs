@@ -71,9 +71,6 @@ pub enum Error {
     #[snafu(display("Compaction client execute failed, err:{source}."))]
     CompactionClientFailure { source: compaction_client::Error },
 
-    #[snafu(display("Compaction client is empty.\nBacktrace:\n{}", backtrace))]
-    EmptyCompactionClient { backtrace: Backtrace },
-
     #[snafu(display("Failed to init etcd client config, err:{source}.\nBacktrace:\n{backtrace}"))]
     InitEtcdClientConfig {
         source: std::io::Error,
