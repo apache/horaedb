@@ -29,7 +29,6 @@ use std::{
     },
 };
 
-use bytes_ext::BytesMut;
 use codec::Encoder;
 use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
 use generic_error::{BoxError, GenericError};
@@ -39,7 +38,7 @@ use runtime::Runtime;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
-    kv_encoder::{CommonLogEncoding, CommonLogKey},
+    kv_encoder::CommonLogEncoding,
     local_storage_impl::record_encoding::{Record, RecordEncoding},
     log_batch::{LogEntry, LogWriteBatch},
     manager::{
@@ -52,6 +51,9 @@ use crate::{
 pub enum Error {
     #[snafu(display("Failed to open or create file: {}", source))]
     FileOpen { source: io::Error },
+
+    #[snafu(display("Failed to open or create dir: {}", source))]
+    DirOpen { source: io::Error },
 
     #[snafu(display("Failed to map file to memory: {}", source))]
     Mmap { source: io::Error },
@@ -173,7 +175,8 @@ impl Segment {
     pub fn new(path: String, segment_id: u64) -> Result<Segment> {
         if !Path::new(&path).exists() {
             let mut file = File::create(&path).context(FileOpen)?;
-            file.write_all(&[NEWEST_WAL_SEGMENT_VERSION]).context(FileOpen)?;
+            file.write_all(&[NEWEST_WAL_SEGMENT_VERSION])
+                .context(FileOpen)?;
             file.write_all(SEGMENT_HEADER).context(FileOpen)?;
         }
         Ok(Segment {
@@ -311,7 +314,10 @@ impl Segment {
     }
 }
 
-pub struct SegmentManager {
+pub struct Region {
+    /// Identifier for regions.
+    _region_id: u64,
+
     /// All segments protected by a mutex
     /// todo: maybe use a RWLock?
     all_segments: Mutex<HashMap<u64, Arc<Mutex<Segment>>>>,
@@ -341,8 +347,13 @@ pub struct SegmentManager {
     runtime: Arc<Runtime>,
 }
 
-impl SegmentManager {
-    pub fn new(cache_size: usize, segment_dir: String, runtime: Arc<Runtime>) -> Result<Self> {
+impl Region {
+    pub fn new(
+        region_id: u64,
+        cache_size: usize,
+        segment_dir: String,
+        runtime: Arc<Runtime>,
+    ) -> Result<Self> {
         let mut all_segments = HashMap::new();
 
         // Scan the directory for existing WAL files
@@ -397,6 +408,7 @@ impl SegmentManager {
         }
 
         Ok(Self {
+            _region_id: region_id,
             all_segments: Mutex::new(all_segments),
             cache: Mutex::new(VecDeque::new()),
             cache_size,
@@ -463,27 +475,18 @@ impl SegmentManager {
         let mut segment = segment.lock().unwrap();
 
         let entries_num = batch.len() as u64;
-        let region_id = batch.location.region_id;
+        let table_id = batch.location.table_id;
 
         // Allocate sequence number
         let prev_sequence_num = self.alloc_sequence_num(entries_num);
         let mut next_sequence_num = prev_sequence_num;
 
-        let mut key_buf = BytesMut::new();
         let mut data = Vec::new();
         let mut record_position = Vec::new();
 
         for entry in &batch.entries {
-            self.log_encoding
-                .encode_key(
-                    &mut key_buf,
-                    &CommonLogKey::new(region_id, batch.location.table_id, next_sequence_num),
-                )
-                .box_err()
-                .context(Encoding)?;
-
             // Encode the record
-            let record = Record::new(&key_buf, &entry.payload)
+            let record = Record::new(table_id, next_sequence_num, &entry.payload)
                 .box_err()
                 .context(Encoding)?;
             self.record_encoding
@@ -537,7 +540,6 @@ impl SegmentManager {
             self.log_encoding.clone(),
             self.record_encoding.clone(),
             self.get_segment(0)?,
-            Some(req.location.region_id),
             Some(req.location.table_id),
             start,
             end,
@@ -549,12 +551,11 @@ impl SegmentManager {
         ))
     }
 
-    pub fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
+    pub fn scan(&self, ctx: &ScanContext, _req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
         let iter = SegmentLogIterator::new(
             self.log_encoding.clone(),
             self.record_encoding.clone(),
             self.get_segment(0)?,
-            Some(req.region_id),
             None,
             MIN_SEQUENCE_NUMBER,
             MAX_SEQUENCE_NUMBER,
@@ -586,6 +587,107 @@ impl SegmentManager {
     }
 }
 
+pub struct RegionManager {
+    root_dir: String,
+    regions: Mutex<HashMap<u64, Arc<Region>>>,
+    cache_size: usize,
+    runtime: Arc<Runtime>,
+}
+
+impl RegionManager {
+    // Create a RegionManager, and scans all the region folders located under
+    // root_dir.
+    pub fn new(root_dir: String, cache_size: usize, runtime: Arc<Runtime>) -> Result<Self> {
+        let mut regions = HashMap::new();
+
+        // Naming conversion: <root_dir>/<region_id>
+        for entry in fs::read_dir(&root_dir).context(DirOpen)? {
+            let entry = entry.context(DirOpen)?;
+
+            let path = entry.path();
+            if path.is_file() {
+                continue;
+            }
+
+            let dir_name = match path.file_name().and_then(|name| name.to_str()) {
+                Some(name) => name,
+                None => continue,
+            };
+
+            // Parse region id from dir name
+            let region_id = match dir_name.parse::<u64>().ok() {
+                Some(id) => id,
+                None => continue,
+            };
+
+            let region = Region::new(
+                region_id,
+                cache_size,
+                path.to_string_lossy().to_string(),
+                runtime.clone(),
+            )?;
+            regions.insert(region_id, Arc::new(region));
+        }
+
+        Ok(Self {
+            root_dir,
+            regions: Mutex::new(regions),
+            cache_size,
+            runtime,
+        })
+    }
+
+    /// Retrieve a region by its `region_id`. If the region does not exist,
+    /// create a new one.
+    fn get_region(&self, region_id: RegionId) -> Result<Arc<Region>> {
+        let mut regions = self.regions.lock().unwrap();
+        if let Some(region) = regions.get(&region_id) {
+            return Ok(region.clone());
+        }
+
+        let region_dir = Path::new(&self.root_dir).join(region_id.to_string());
+        fs::create_dir_all(&region_dir).context(DirOpen)?;
+
+        let region = Region::new(
+            region_id,
+            self.cache_size,
+            region_dir.to_string_lossy().to_string(),
+            self.runtime.clone(),
+        )?;
+
+        Ok(regions.entry(region_id).or_insert(Arc::new(region)).clone())
+    }
+
+    pub fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        let region = self.get_region(batch.location.region_id)?;
+        region.write(ctx, batch)
+    }
+
+    pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
+        let region = self.get_region(req.location.region_id)?;
+        region.read(ctx, req)
+    }
+
+    pub fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
+        let region = self.get_region(req.region_id)?;
+        region.scan(ctx, req)
+    }
+
+    pub fn mark_delete_entries_up_to(
+        &self,
+        location: WalLocation,
+        sequence_num: SequenceNumber,
+    ) -> Result<()> {
+        let region = self.get_region(location.region_id)?;
+        region.mark_delete_entries_up_to(location, sequence_num)
+    }
+
+    pub fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
+        let region = self.get_region(location.region_id)?;
+        region.sequence_num(location)
+    }
+}
+
 // TODO: handle the case when read requests involving multiple segments
 #[derive(Debug)]
 pub struct SegmentLogIterator {
@@ -597,9 +699,6 @@ pub struct SegmentLogIterator {
 
     /// Thread-safe, shared reference to the log segment.
     segment: Arc<Mutex<Segment>>,
-
-    /// Optional identifier for the region, which is used to filter logs.
-    region_id: Option<RegionId>,
 
     /// Optional identifier for the table, which is used to filter logs.
     table_id: Option<TableId>,
@@ -625,7 +724,6 @@ impl SegmentLogIterator {
         log_encoding: CommonLogEncoding,
         record_encoding: RecordEncoding,
         segment: Arc<Mutex<Segment>>,
-        region_id: Option<RegionId>,
         table_id: Option<TableId>,
         start: SequenceNumber,
         end: SequenceNumber,
@@ -634,7 +732,6 @@ impl SegmentLogIterator {
             log_encoding,
             record_encoding,
             segment,
-            region_id,
             table_id,
             start,
             end,
@@ -673,44 +770,34 @@ impl SegmentLogIterator {
                 .box_err()
                 .context(InvalidRecord)?;
 
-            // Decode key and value
-            let key = self
-                .log_encoding
-                .decode_key(record.key)
-                .box_err()
-                .context(InvalidRecord)?;
+            // Filter by sequence number
+            if record.sequence_num < self.start {
+                continue;
+            }
+            if record.sequence_num > self.end {
+                self.no_more_data = true;
+                return Ok(None);
+            }
+
+            // Filter by table_id
+            if let Some(table_id) = self.table_id {
+                if record.table_id != table_id {
+                    continue;
+                }
+            }
+
+            // Decode value
             let value = self
                 .log_encoding
                 .decode_value(record.value)
                 .box_err()
                 .context(InvalidRecord)?;
 
-            // Filter by sequence number
-            if key.sequence_num < self.start {
-                continue;
-            }
-            if key.sequence_num > self.end {
-                self.no_more_data = true;
-                return Ok(None);
-            }
-
-            // Filter by region_id and table_id
-            if let Some(region_id) = self.region_id {
-                if key.region_id != region_id {
-                    continue;
-                }
-            }
-            if let Some(table_id) = self.table_id {
-                if key.table_id != table_id {
-                    continue;
-                }
-            }
-
             self.current_payload = value.to_owned();
 
             return Ok(Some(LogEntry {
-                table_id: key.table_id,
-                sequence: key.sequence_num,
+                table_id: record.table_id,
+                sequence: record.sequence_num,
                 payload: self.current_payload.as_slice(),
             }));
         }
@@ -753,7 +840,10 @@ mod tests {
 
         let segment_content = fs::read(path).unwrap();
         assert_eq!(segment_content[0], NEWEST_WAL_SEGMENT_VERSION);
-        assert_eq!(&segment_content[VERSION_SIZE..VERSION_SIZE+SEGMENT_HEADER.len()], SEGMENT_HEADER);
+        assert_eq!(
+            &segment_content[VERSION_SIZE..VERSION_SIZE + SEGMENT_HEADER.len()],
+            SEGMENT_HEADER
+        );
     }
 
     #[test]
@@ -787,18 +877,20 @@ mod tests {
         let append_result = segment.append(data);
         assert!(append_result.is_ok());
 
-        let read_result = segment.read((VERSION_SIZE + SEGMENT_HEADER.len()) as u64, data.len() as u64);
+        let read_result = segment.read(
+            (VERSION_SIZE + SEGMENT_HEADER.len()) as u64,
+            data.len() as u64,
+        );
         assert!(read_result.is_ok());
         assert_eq!(read_result.unwrap(), data);
     }
 
     #[test]
-    fn test_segment_manager_creation() {
+    fn test_region_creation() {
         let dir = tempdir().unwrap();
         let runtime = Arc::new(Builder::default().build().unwrap());
 
-        let segment_manager =
-            SegmentManager::new(1, dir.path().to_str().unwrap().to_string(), runtime);
+        let segment_manager = Region::new(1, 1, dir.path().to_str().unwrap().to_string(), runtime);
         assert!(segment_manager.is_ok());
 
         let segment_manager = segment_manager.unwrap();

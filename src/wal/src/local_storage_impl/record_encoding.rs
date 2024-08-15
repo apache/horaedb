@@ -27,8 +27,6 @@ pub const NEWEST_RECORD_ENCODING_VERSION: u8 = RECORD_ENCODING_V0;
 pub const VERSION_SIZE: usize = 1;
 pub const CRC_SIZE: usize = 4;
 pub const RECORD_LENGTH_SIZE: usize = 4;
-pub const KEY_LENGTH_SIZE: usize = 4;
-pub const VALUE_LENGTH_SIZE: usize = 4;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -59,10 +57,10 @@ define_result!(Error);
 /// Record format:
 ///
 /// ```text
-/// +---------+--------+--------+------------+-----+--------------+-------+
-/// | version |  crc   | length | key length | key | value length | value |
-/// |  (u8)   | (u32)  | (u32)  |   (u32)    |     |     (u32)    |       |
-/// +---------+--------+--------+------------+-----+--------------+-------+
+/// +---------+--------+--------+------------+--------------+--------------+-------+
+/// | version |  crc   | length |  table id  | sequence num | value length | value |
+/// |  (u8)   | (u32)  | (u32)  |   (u64)    |    (u64)     |     (u32)    |       |
+/// +---------+--------+--------+------------+--------------+--------------+-------+
 /// ```
 pub struct Record<'a> {
     /// The version number of the record.
@@ -74,11 +72,11 @@ pub struct Record<'a> {
     /// The length of the record (excluding version, crc and length).
     pub length: u32,
 
-    /// The length of the key in bytes.
-    pub key_length: u32,
+    /// Identifier for tables.
+    pub table_id: u64,
 
-    /// Common log key.
-    pub key: &'a [u8],
+    /// Identifier for records, incrementing.
+    pub sequence_num: u64,
 
     /// The length of the value in bytes.
     pub value_length: u32,
@@ -88,21 +86,21 @@ pub struct Record<'a> {
 }
 
 impl<'a> Record<'a> {
-    pub fn new(key: &'a [u8], value: &'a [u8]) -> Result<Self> {
+    pub fn new(table_id: u64, sequence_num: u64, value: &'a [u8]) -> Result<Self> {
         let mut record = Record {
             version: NEWEST_RECORD_ENCODING_VERSION,
             crc: 0,
-            length: (KEY_LENGTH_SIZE + key.len() + VALUE_LENGTH_SIZE + value.len()) as u32,
-            key_length: key.len() as u32,
-            key,
+            length: (8 + 8 + 4 + value.len()) as u32,
+            table_id,
+            sequence_num,
             value_length: value.len() as u32,
             value,
         };
 
         // Calculate CRC
         let mut buf = Vec::new();
-        buf.try_put_u32(record.key_length).context(Encoding)?;
-        buf.extend_from_slice(key);
+        buf.try_put_u64(table_id).context(Encoding)?;
+        buf.try_put_u64(sequence_num).context(Encoding)?;
         buf.try_put_u32(record.value_length).context(Encoding)?;
         buf.extend_from_slice(value);
         record.crc = crc32fast::hash(&buf);
@@ -145,8 +143,8 @@ impl Encoder<Record<'_>> for RecordEncoding {
         buf.try_put_u8(record.version).context(Encoding)?;
         buf.try_put_u32(record.crc).context(Encoding)?;
         buf.try_put_u32(record.length).context(Encoding)?;
-        buf.try_put_u32(record.key_length).context(Encoding)?;
-        buf.try_put(record.key).context(Encoding)?;
+        buf.try_put_u64(record.table_id).context(Encoding)?;
+        buf.try_put_u64(record.sequence_num).context(Encoding)?;
         buf.try_put_u32(record.value_length).context(Encoding)?;
         buf.try_put(record.value).context(Encoding)?;
         Ok(())
@@ -206,12 +204,11 @@ impl RecordEncoding {
             }
         );
 
-        // Read key length
-        let key_length = buf.try_get_u32().context(Decoding)?;
+        // Read table id
+        let table_id = buf.try_get_u64().context(Decoding)?;
 
-        // Read key
-        let key = &buf[0..key_length as usize];
-        buf.advance(key_length as usize);
+        // Read sequence number
+        let sequence_num = buf.try_get_u64().context(Decoding)?;
 
         // Read value length
         let value_length = buf.try_get_u32().context(Decoding)?;
@@ -224,8 +221,8 @@ impl RecordEncoding {
             version,
             crc,
             length,
-            key_length,
-            key,
+            table_id,
+            sequence_num,
             value_length,
             value,
         })
@@ -241,9 +238,10 @@ mod tests {
 
     #[test]
     fn test_record_encoding() {
-        let key = b"test_key";
+        let table_id = 1;
+        let sequence_num = 2;
         let value = b"test_value";
-        let record = Record::new(key, value).unwrap();
+        let record = Record::new(table_id, sequence_num, value).unwrap();
 
         let encoder = RecordEncoding::newest();
         let mut buf = BytesMut::new();
@@ -255,9 +253,10 @@ mod tests {
 
     #[test]
     fn test_record_decoding() {
-        let key = b"test_key";
+        let table_id = 1;
+        let sequence_num = 2;
         let value = b"test_value";
-        let record = Record::new(key, value).unwrap();
+        let record = Record::new(table_id, sequence_num, value).unwrap();
 
         let encoder = RecordEncoding::newest();
         let mut buf = BytesMut::new();
@@ -268,8 +267,8 @@ mod tests {
         assert_eq!(decoded_record.version, record.version);
         assert_eq!(decoded_record.crc, record.crc);
         assert_eq!(decoded_record.length, record.length);
-        assert_eq!(decoded_record.key_length, record.key_length);
-        assert_eq!(decoded_record.key, record.key);
+        assert_eq!(decoded_record.table_id, record.table_id);
+        assert_eq!(decoded_record.sequence_num, record.sequence_num);
         assert_eq!(decoded_record.value_length, record.value_length);
         assert_eq!(decoded_record.value, record.value);
     }

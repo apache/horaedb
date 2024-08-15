@@ -31,7 +31,7 @@ use snafu::ResultExt;
 
 use crate::{
     config::{Config, StorageConfig},
-    local_storage_impl::{config::LocalStorageConfig, segment::SegmentManager},
+    local_storage_impl::{config::LocalStorageConfig, segment::RegionManager},
     log_batch::LogWriteBatch,
     manager::{
         error::*, BatchLogIteratorAdapter, Open, OpenedWals, ReadContext, ReadRequest, RegionId,
@@ -43,7 +43,7 @@ use crate::{
 pub struct LocalStorageImpl {
     config: LocalStorageConfig,
     _runtime: Arc<Runtime>,
-    segment_manager: SegmentManager,
+    segment_manager: RegionManager,
 }
 
 impl LocalStorageImpl {
@@ -54,12 +54,11 @@ impl LocalStorageImpl {
     ) -> Result<Self> {
         let LocalStorageConfig { cache_size, .. } = config.clone();
         let wal_path_str = wal_path.to_str().unwrap().to_string();
-        let segment_manager =
-            SegmentManager::new(cache_size, wal_path_str.clone(), runtime.clone())
-                .box_err()
-                .context(Open {
-                    wal_path: wal_path_str,
-                })?;
+        let segment_manager = RegionManager::new(wal_path_str.clone(), cache_size, runtime.clone())
+            .box_err()
+            .context(Open {
+                wal_path: wal_path_str,
+            })?;
         Ok(Self {
             config,
             _runtime: runtime,
