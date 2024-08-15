@@ -109,12 +109,29 @@ pub enum Error {
 
 define_result!(Error);
 
-const HEADER: &str = "HoraeDB WAL";
+const SEGMENT_HEADER: &[u8] = b"HoraeDBWAL";
+const WAL_SEGMENT_V0: u8 = 0;
+const NEWEST_WAL_SEGMENT_VERSION: u8 = WAL_SEGMENT_V0;
+const VERSION_SIZE: usize = 1;
+
 // todo: make MAX_FILE_SIZE configurable
 const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
 
+/// Segment file format:
+///
+/// ```text
+/// +-------------+--------+--------+--------+---+--------+
+/// | Version(u8) | Header | Record | Record |...| Record |
+/// +-------------+--------+--------+--------+---+--------+
+/// ```
+///
+/// The `Header` is a fixed string. The format of the `Record` can be referenced
+/// in the struct `Record`.
 #[derive(Debug)]
 pub struct Segment {
+    /// The version of the segment.
+    version: u8,
+
     /// The file path of the segment.
     path: String,
 
@@ -152,26 +169,18 @@ pub struct Position {
     end: u64,
 }
 
-/// Segment file format:
-///
-/// ```text
-/// +----------+--------+--------+---+--------+
-/// |  Header  | Record | Record |...| Record |
-/// +----------+--------+--------+---+--------+
-/// ```
-///
-/// The `Header` is a fixed string. The format of the `Record` can be referenced
-/// in the struct `Record`.
 impl Segment {
     pub fn new(path: String, segment_id: u64) -> Result<Segment> {
         if !Path::new(&path).exists() {
             let mut file = File::create(&path).context(FileOpen)?;
-            file.write_all(HEADER.as_bytes()).context(FileOpen)?;
+            file.write_all(&[NEWEST_WAL_SEGMENT_VERSION]).context(FileOpen)?;
+            file.write_all(SEGMENT_HEADER).context(FileOpen)?;
         }
         Ok(Segment {
+            version: NEWEST_WAL_SEGMENT_VERSION,
             path,
             id: segment_id,
-            size: HEADER.len() as u64,
+            size: SEGMENT_HEADER.len() as u64,
             min_seq: MAX_SEQUENCE_NUMBER,
             max_seq: MIN_SEQUENCE_NUMBER,
             record_encoding: RecordEncoding::newest(),
@@ -195,14 +204,18 @@ impl Segment {
         // Map the file in memory
         let mmap = unsafe { MmapOptions::new().map_mut(&file).context(Mmap)? };
 
+        // Validate segment version
+        let version = mmap[0];
+        ensure!(version == self.version, InvalidHeader);
+
         // Validate segment header
-        let header_len = HEADER.len();
+        let header_len = SEGMENT_HEADER.len();
         ensure!(size >= header_len as u64, InvalidHeader);
-        let header = &mmap[0..header_len];
-        ensure!(header == HEADER.as_bytes(), InvalidHeader);
+        let header = &mmap[VERSION_SIZE..VERSION_SIZE + header_len];
+        ensure!(header == SEGMENT_HEADER, InvalidHeader);
 
         // Read and validate all records
-        let mut pos = header_len;
+        let mut pos = VERSION_SIZE + header_len;
         let mut record_position = Vec::new();
         while pos < size as usize {
             let data = &mmap[pos..];
@@ -733,9 +746,14 @@ mod tests {
         assert!(segment.is_ok());
 
         let segment = segment.unwrap();
+        assert_eq!(segment.version, NEWEST_WAL_SEGMENT_VERSION);
         assert_eq!(segment.path, path);
         assert_eq!(segment.id, 0);
-        assert_eq!(segment.size, HEADER.len() as u64);
+        assert_eq!(segment.size, SEGMENT_HEADER.len() as u64);
+
+        let segment_content = fs::read(path).unwrap();
+        assert_eq!(segment_content[0], NEWEST_WAL_SEGMENT_VERSION);
+        assert_eq!(&segment_content[VERSION_SIZE..VERSION_SIZE+SEGMENT_HEADER.len()], SEGMENT_HEADER);
     }
 
     #[test]
@@ -769,7 +787,7 @@ mod tests {
         let append_result = segment.append(data);
         assert!(append_result.is_ok());
 
-        let read_result = segment.read(HEADER.len() as u64, data.len() as u64);
+        let read_result = segment.read((VERSION_SIZE + SEGMENT_HEADER.len()) as u64, data.len() as u64);
         assert!(read_result.is_ok());
         assert_eq!(read_result.unwrap(), data);
     }
