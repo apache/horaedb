@@ -368,6 +368,7 @@ impl Inner {
     }
 
     async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse> {
+        // TODO(leslie): Execute the compaction task locally when fails to build compaction client.
         let compact_resp = self
             .compaction_client()
             .await

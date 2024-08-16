@@ -568,11 +568,14 @@ impl FilePurgeQueue {
     }
 }
 
-impl TryFrom<horaedbproto::compaction_service::FilePurgeQueue> for FilePurgeQueue {
-    type Error = Error;
-
-    fn try_from(_value: horaedbproto::compaction_service::FilePurgeQueue) -> Result<Self> {
-        unimplemented!()
+impl From<horaedbproto::compaction_service::FilePurgeQueue> for FilePurgeQueue {
+    fn from(value: horaedbproto::compaction_service::FilePurgeQueue) -> Self {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        FilePurgeQueue::new(
+            value.space_id.into(), 
+            value.table_id.into(), 
+            tx
+        )
     }
 }
 

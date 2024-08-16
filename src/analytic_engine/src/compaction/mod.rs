@@ -84,9 +84,6 @@ pub enum Error {
     #[snafu(display("Empty purge queue.\nBacktrace:\n{}", backtrace))]
     EmptyPurgeQueue { backtrace: Backtrace },
 
-    #[snafu(display("Failed to convert purge queue, err:{}", source))]
-    ConvertPurgeQueue { source: GenericError },
-
     #[snafu(display("Failed to convert level, err:{}", source))]
     ConvertLevel { source: GenericError },
 }
@@ -364,9 +361,7 @@ impl TryFrom<horaedbproto::compaction_service::CompactionInputFiles> for Compact
             let purge_queue: FilePurgeQueue = file
                 .purge_queue
                 .context(EmptyPurgeQueue)?
-                .try_into()
-                .box_err()
-                .context(ConvertPurgeQueue)?;
+                .into();
 
             files.push({
                 let handle = FileHandle::new(meta, purge_queue);
