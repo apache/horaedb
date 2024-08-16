@@ -1460,6 +1460,7 @@ dependencies = [
  "bytes_ext",
  "catalog",
  "common_types",
+ "compaction_client",
  "etcd-client",
  "future_ext",
  "generic_error",
@@ -1557,6 +1558,28 @@ dependencies = [
  "snafu 0.6.10",
  "sqlparser",
  "uuid",
+]
+
+[[package]]
+name = "compaction_client"
+version = "2.0.0"
+dependencies = [
+ "async-trait",
+ "common_types",
+ "futures 0.3.28",
+ "generic_error",
+ "horaedbproto 2.0.0",
+ "logger",
+ "macros",
+ "prost 0.11.8",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "snafu 0.6.10",
+ "time_ext",
+ "tokio",
+ "tonic 0.8.3",
+ "url",
 ]
 
 [[package]]
@@ -3062,6 +3085,8 @@ dependencies = [
  "catalog_impls",
  "clap",
  "cluster",
+ "common_types",
+ "compaction_client",
  "datafusion",
  "df_operator",
  "etcd-client",
@@ -3135,7 +3160,7 @@ dependencies = [
 [[package]]
 name = "horaedbproto"
 version = "2.0.0"
-source = "git+https://github.com/apache/incubator-horaedb-proto.git?rev=19ece8f771fc0b3e8e734072cc3d8040de6c74cb#19ece8f771fc0b3e8e734072cc3d8040de6c74cb"
+source = "git+https://github.com/LeslieKid/incubator-horaedb-proto.git?rev=f5acee2e718d541ba04cd682b612a9fc7c93b25e#f5acee2e718d541ba04cd682b612a9fc7c93b25e"
 dependencies = [
  "prost 0.11.8",
  "protoc-bin-vendored",
@@ -6005,6 +6030,7 @@ dependencies = [
  "async-trait",
  "cluster",
  "common_types",
+ "compaction_client",
  "generic_error",
  "horaedbproto 2.0.0",
  "logger",
