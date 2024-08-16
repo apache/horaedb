@@ -189,6 +189,22 @@ pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
                     panic!("Message Queue WAL not bundled!");
                 }
             }
+            StorageConfig::Local(_) => {
+                #[cfg(feature = "wal-local-storage")]
+                {
+                    use wal::local_storage_impl::wal_manager::LocalStorageWalsOpener;
+                    run_server_with_runtimes::<LocalStorageWalsOpener>(
+                        config,
+                        engine_runtimes,
+                        log_runtime,
+                    )
+                    .await;
+                }
+                #[cfg(not(feature = "wal-local-storage"))]
+                {
+                    panic!("Local Storage WAL not bundled!");
+                }
+            }
         }
     });
 }
