@@ -102,6 +102,7 @@ thiserror = "1"
 bytes_ext = { path = "src/components/bytes_ext" }
 catalog = { path = "src/catalog" }
 catalog_impls = { path = "src/catalog_impls" }
+# TODO(leslie): modify it when the related pr in incubator-horaedb-proto is merged.
 horaedbproto = { git = "https://github.com/LeslieKid/incubator-horaedb-proto.git", rev = "f5acee2e718d541ba04cd682b612a9fc7c93b25e" }
 codec = { path = "src/components/codec" }
 chrono = "0.4"
