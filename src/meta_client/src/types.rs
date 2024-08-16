@@ -19,7 +19,6 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 pub use common_types::table::{ShardId, ShardVersion};
 use common_types::{
-    cluster::ClusterType,
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
 };
@@ -164,7 +163,6 @@ pub struct NodeMetaInfo {
     pub zone: String,
     pub idc: String,
     pub binary_version: String,
-    pub cluster_type: ClusterType,
 }
 
 impl NodeMetaInfo {
@@ -283,11 +281,6 @@ impl From<NodeInfo> for meta_service_pb::NodeInfo {
             binary_version: node_info.node_meta_info.binary_version,
             shard_infos,
             lease: 0,
-            cluster_type: if node_info.node_meta_info.cluster_type == ClusterType::HoraeDB {
-                meta_service_pb::node_info::ClusterType::HoraeDb
-            } else {
-                meta_service_pb::node_info::ClusterType::CompactionServer
-            } as i32,
         }
     }
 }
