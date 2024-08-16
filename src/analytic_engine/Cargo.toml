@@ -35,6 +35,7 @@ test = ["tempfile"]
 wal-table-kv = ["wal/wal-table-kv"]
 wal-message-queue = ["wal/wal-message-queue"]
 wal-rocksdb = ["wal/wal-rocksdb"]
+wal-local-storage = ["wal/wal-local-storage"]
 
 [dependencies]
 # In alphabetical order

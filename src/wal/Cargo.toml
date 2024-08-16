@@ -40,10 +40,11 @@ optional = true
 wal-message-queue = ["dep:message_queue"]
 wal-table-kv = ["dep:table_kv"]
 wal-rocksdb = ["dep:rocksdb"]
+wal-local-storage = ["memmap2", "crc32fast"]
 
 [[test]]
 name = "read_write"
-required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb"]
+required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb", "wal-local-storage"]
 
 [dependencies]
 async-trait = { workspace = true }
@@ -51,12 +52,14 @@ bytes_ext = { workspace = true }
 chrono = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
+crc32fast = { version = "1.4.2", optional = true }
 futures = { workspace = true, features = ["async-await"], optional = true }
 generic_error = { workspace = true }
 horaedbproto = { workspace = true }
 lazy_static = { workspace = true }
 logger = { workspace = true }
 macros = { workspace = true }
+memmap2 = { version = "0.9.4", optional = true }
 message_queue = { workspace = true, optional = true }
 prometheus = { workspace = true }
 prost = { workspace = true }

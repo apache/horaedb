@@ -15,21 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Write Ahead Log
-
-#![feature(trait_alias)]
-
 pub mod config;
-mod dummy;
-pub mod kv_encoder;
-#[cfg(feature = "wal-local-storage")]
-pub mod local_storage_impl;
-pub mod log_batch;
-pub mod manager;
-#[cfg(feature = "wal-message-queue")]
-pub mod message_queue_impl;
-pub(crate) mod metrics;
-#[cfg(feature = "wal-rocksdb")]
-pub mod rocksdb_impl;
-#[cfg(feature = "wal-table-kv")]
-pub mod table_kv_impl;
+mod record_encoding;
+mod segment;
+pub mod wal_manager;

@@ -35,6 +35,12 @@ pub type KafkaStorageConfig = crate::message_queue_impl::config::KafkaStorageCon
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct KafkaStorageConfig;
 
+#[cfg(feature = "wal-local-storage")]
+pub type LocalStorageConfig = crate::local_storage_impl::config::LocalStorageConfig;
+#[cfg(not(feature = "wal-local-storage"))]
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct LocalStorageConfig;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     // The flatten attribute inlines keys from a field into the parent struct.
@@ -63,4 +69,5 @@ pub enum StorageConfig {
     RocksDB(Box<RocksDBStorageConfig>),
     Obkv(Box<ObkvStorageConfig>),
     Kafka(Box<KafkaStorageConfig>),
+    Local(Box<LocalStorageConfig>),
 }
