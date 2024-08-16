@@ -17,8 +17,6 @@
 
 //! Error definitions for compaction service.
  
-#![allow(dead_code)]
-
 use generic_error::GenericError;
 use horaedbproto::common::ResponseHeader;
 use macros::define_result;
@@ -73,7 +71,6 @@ pub enum StatusCode {
     #[default]
     Ok = 0,
     BadRequest = 401,
-    NotFound = 404,
     Internal = 500,
 }
 
