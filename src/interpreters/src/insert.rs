@@ -30,7 +30,9 @@ use common_types::{
     column_block::{ColumnBlock, ColumnBlockBuilder},
     column_schema::ColumnId,
     datum::Datum,
-    row::RowGroup,
+    record_batch::RecordBatch as CommonRecordBatch,
+    row::{Row, RowBuilder, RowGroup},
+    schema::Schema,
 };
 use datafusion::{
     common::ToDFSchema,
@@ -42,11 +44,22 @@ use datafusion::{
     },
 };
 use df_operator::visitor::find_columns_by_expr;
+use futures::TryStreamExt;
+use generic_error::{BoxError, GenericError};
 use hash_ext::hash64;
 use macros::define_result;
-use query_frontend::plan::InsertPlan;
-use snafu::{OptionExt, ResultExt, Snafu};
-use table_engine::table::{TableRef, WriteRequest};
+use query_engine::{executor::ExecutorRef, physical_planner::PhysicalPlannerRef};
+use query_frontend::{
+    plan::{InsertPlan, InsertSource, QueryPlan},
+    planner::InsertMode,
+};
+use runtime::Priority;
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
+use table_engine::{
+    stream::SendableRecordBatchStream,
+    table::{TableRef, WriteRequest},
+};
+use tokio::sync::mpsc;
 
 use crate::{
     context::Context,
@@ -94,18 +107,55 @@ pub enum Error {
     BuildColumnBlock {
         source: common_types::column_block::Error,
     },
+
+    #[snafu(display("Failed to create query context, err:{}", source))]
+    CreateQueryContext { source: crate::context::Error },
+
+    #[snafu(display("Failed to execute select physical plan, msg:{}, err:{}", msg, source))]
+    ExecuteSelectPlan { msg: String, source: GenericError },
+
+    #[snafu(display("Failed to build row, err:{}", source))]
+    BuildRow { source: common_types::row::Error },
+
+    #[snafu(display("Record columns not enough, len:{}, index:{}", len, index))]
+    RecordColumnsNotEnough { len: usize, index: usize },
+
+    #[snafu(display("Failed to do select, err:{}", source))]
+    Select { source: table_engine::stream::Error },
+
+    #[snafu(display("Failed to send msg in channel, err:{}", msg))]
+    MsgChannel { msg: String },
+
+    #[snafu(display("Failed to join async task, err:{}", msg))]
+    AsyncTask { msg: String },
 }
 
 define_result!(Error);
 
+// TODO: make those configurable
+const INSERT_SELECT_ROW_BATCH_NUM: usize = 1000;
+const INSERT_SELECT_PENDING_BATCH_NUM: usize = 3;
+
 pub struct InsertInterpreter {
     ctx: Context,
     plan: InsertPlan,
+    executor: ExecutorRef,
+    physical_planner: PhysicalPlannerRef,
 }
 
 impl InsertInterpreter {
-    pub fn create(ctx: Context, plan: InsertPlan) -> InterpreterPtr {
-        Box::new(Self { ctx, plan })
+    pub fn create(
+        ctx: Context,
+        plan: InsertPlan,
+        executor: ExecutorRef,
+        physical_planner: PhysicalPlannerRef,
+    ) -> InterpreterPtr {
+        Box::new(Self {
+            ctx,
+            plan,
+            executor,
+            physical_planner,
+        })
     }
 }
 
@@ -113,67 +163,253 @@ impl InsertInterpreter {
 impl Interpreter for InsertInterpreter {
     async fn execute(mut self: Box<Self>) -> InterpreterResult<Output> {
         // Generate tsid if needed.
-        self.maybe_generate_tsid().context(Insert)?;
         let InsertPlan {
             table,
-            mut rows,
+            source,
             default_value_map,
         } = self.plan;
 
-        // Fill default values
-        fill_default_values(table.clone(), &mut rows, &default_value_map).context(Insert)?;
+        match source {
+            InsertSource::Values { row_group: rows } => {
+                let num_rows =
+                    prepare_and_write_table(table.clone(), rows, &default_value_map).await?;
 
-        // Context is unused now
-        let _ctx = self.ctx;
+                Ok(Output::AffectedRows(num_rows))
+            }
+            InsertSource::Select {
+                query: query_plan,
+                column_index_in_insert,
+            } => {
+                let mut record_batches_stream = exec_select_logical_plan(
+                    self.ctx,
+                    query_plan,
+                    self.executor,
+                    self.physical_planner,
+                )
+                .await
+                .context(Insert)?;
 
-        let request = WriteRequest { row_group: rows };
+                let (tx, rx) = mpsc::channel(INSERT_SELECT_PENDING_BATCH_NUM);
+                let producer = tokio::spawn(async move {
+                    while let Some(record_batch) = record_batches_stream
+                        .try_next()
+                        .await
+                        .context(Select)
+                        .context(Insert)?
+                    {
+                        if record_batch.is_empty() {
+                            continue;
+                        }
+                        if let Err(e) = tx.send(record_batch).await {
+                            return Err(Error::MsgChannel {
+                                msg: format!("{}", e),
+                            })
+                            .context(Insert)?;
+                        }
+                    }
+                    Ok(())
+                });
 
-        let num_rows = table
-            .write(request)
-            .await
-            .context(WriteTable)
-            .context(Insert)?;
+                let consumer = tokio::spawn(async move {
+                    let mut rx = rx;
+                    let mut result_rows = 0;
+                    let mut pending_rows = 0;
+                    let mut record_batches = Vec::new();
+                    while let Some(record_batch) = rx.recv().await {
+                        pending_rows += record_batch.num_rows();
+                        record_batches.push(record_batch);
+                        if pending_rows >= INSERT_SELECT_ROW_BATCH_NUM {
+                            pending_rows = 0;
+                            let num_rows = write_record_batches(
+                                &mut record_batches,
+                                column_index_in_insert.as_slice(),
+                                table.clone(),
+                                &default_value_map,
+                            )
+                            .await?;
+                            result_rows += num_rows;
+                        }
+                    }
 
-        Ok(Output::AffectedRows(num_rows))
+                    if !record_batches.is_empty() {
+                        let num_rows = write_record_batches(
+                            &mut record_batches,
+                            column_index_in_insert.as_slice(),
+                            table,
+                            &default_value_map,
+                        )
+                        .await?;
+                        result_rows += num_rows;
+                    }
+                    Ok(result_rows)
+                });
+
+                match tokio::try_join!(producer, consumer) {
+                    Ok((select_res, write_rows)) => {
+                        select_res?;
+                        Ok(Output::AffectedRows(write_rows?))
+                    }
+                    Err(e) => Err(Error::AsyncTask {
+                        msg: format!("{}", e),
+                    })
+                    .context(Insert)?,
+                }
+            }
+        }
     }
 }
 
-impl InsertInterpreter {
-    fn maybe_generate_tsid(&mut self) -> Result<()> {
-        let schema = self.plan.rows.schema();
-        let tsid_idx = schema.index_of_tsid();
+async fn write_record_batches(
+    record_batches: &mut Vec<CommonRecordBatch>,
+    column_index_in_insert: &[InsertMode],
+    table: TableRef,
+    default_value_map: &BTreeMap<usize, DfLogicalExpr>,
+) -> InterpreterResult<usize> {
+    let row_group = convert_records_to_row_group(
+        record_batches.as_slice(),
+        column_index_in_insert,
+        table.schema(),
+    )
+    .context(Insert)?;
+    record_batches.clear();
 
-        if let Some(idx) = tsid_idx {
-            // Vec of (`index of tag`, `column id of tag`).
-            let tag_idx_column_ids: Vec<_> = schema
-                .columns()
-                .iter()
-                .enumerate()
-                .filter_map(|(i, column)| {
-                    if column.is_tag {
-                        Some((i, column.id))
-                    } else {
-                        None
+    prepare_and_write_table(table, row_group, default_value_map).await
+}
+
+async fn prepare_and_write_table(
+    table: TableRef,
+    mut row_group: RowGroup,
+    default_value_map: &BTreeMap<usize, DfLogicalExpr>,
+) -> InterpreterResult<usize> {
+    maybe_generate_tsid(&mut row_group).context(Insert)?;
+
+    // Fill default values
+    fill_default_values(table.clone(), &mut row_group, default_value_map).context(Insert)?;
+
+    let request = WriteRequest { row_group };
+
+    let num_rows = table
+        .write(request)
+        .await
+        .context(WriteTable)
+        .context(Insert)?;
+
+    Ok(num_rows)
+}
+
+async fn exec_select_logical_plan(
+    ctx: Context,
+    query_plan: QueryPlan,
+    executor: ExecutorRef,
+    physical_planner: PhysicalPlannerRef,
+) -> Result<SendableRecordBatchStream> {
+    let priority = Priority::High;
+
+    let query_ctx = ctx
+        .new_query_context(priority)
+        .context(CreateQueryContext)?;
+
+    // Create select physical plan.
+    let physical_plan = physical_planner
+        .plan(&query_ctx, query_plan)
+        .await
+        .box_err()
+        .context(ExecuteSelectPlan {
+            msg: "failed to build select physical plan",
+        })?;
+
+    // Execute select physical plan.
+    let record_batch_stream: SendableRecordBatchStream = executor
+        .execute(&query_ctx, physical_plan)
+        .await
+        .box_err()
+        .context(ExecuteSelectPlan {
+            msg: "failed to execute select physical plan",
+        })?;
+
+    Ok(record_batch_stream)
+}
+
+fn convert_records_to_row_group(
+    record_batches: &[CommonRecordBatch],
+    column_index_in_insert: &[InsertMode],
+    schema: Schema,
+) -> Result<RowGroup> {
+    let mut data_rows: Vec<Row> = Vec::new();
+
+    for record in record_batches {
+        let num_cols = record.num_columns();
+        let num_rows = record.num_rows();
+        for row_idx in 0..num_rows {
+            let mut row_builder = RowBuilder::new(&schema);
+            // For each column in schema, append datum into row builder
+            for (index_opt, column_schema) in column_index_in_insert.iter().zip(schema.columns()) {
+                match index_opt {
+                    InsertMode::Direct(index) => {
+                        ensure!(
+                            *index < num_cols,
+                            RecordColumnsNotEnough {
+                                len: num_cols,
+                                index: *index
+                            }
+                        );
+                        let datum = record.column(*index).datum(row_idx);
+                        row_builder = row_builder.append_datum(datum).context(BuildRow)?;
                     }
-                })
-                .collect();
-
-            let mut hash_bytes = Vec::new();
-            for i in 0..self.plan.rows.num_rows() {
-                let row = self.plan.rows.get_row_mut(i).unwrap();
-
-                let mut tsid_builder = TsidBuilder::new(&mut hash_bytes);
-
-                for (idx, column_id) in &tag_idx_column_ids {
-                    tsid_builder.maybe_write_datum(*column_id, &row[*idx])?;
+                    InsertMode::Null => {
+                        // This is a null column
+                        row_builder = row_builder.append_datum(Datum::Null).context(BuildRow)?;
+                    }
+                    InsertMode::Auto => {
+                        // This is an auto generated column, fill by default value.
+                        let kind = &column_schema.data_type;
+                        row_builder = row_builder
+                            .append_datum(Datum::empty(kind))
+                            .context(BuildRow)?;
+                    }
                 }
-
-                let tsid = tsid_builder.finish();
-                row[idx] = Datum::UInt64(tsid);
             }
+            let row = row_builder.finish().context(BuildRow)?;
+            data_rows.push(row);
         }
-        Ok(())
     }
+    RowGroup::try_new(schema, data_rows).context(BuildRow)
+}
+
+fn maybe_generate_tsid(rows: &mut RowGroup) -> Result<()> {
+    let schema = rows.schema();
+    let tsid_idx = schema.index_of_tsid();
+
+    if let Some(idx) = tsid_idx {
+        // Vec of (`index of tag`, `column id of tag`).
+        let tag_idx_column_ids: Vec<_> = schema
+            .columns()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, column)| {
+                if column.is_tag {
+                    Some((i, column.id))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut hash_bytes = Vec::new();
+        for i in 0..rows.num_rows() {
+            let row = rows.get_row_mut(i).unwrap();
+
+            let mut tsid_builder = TsidBuilder::new(&mut hash_bytes);
+
+            for (idx, column_id) in &tag_idx_column_ids {
+                tsid_builder.maybe_write_datum(*column_id, &row[*idx])?;
+            }
+
+            let tsid = tsid_builder.finish();
+            row[idx] = Datum::UInt64(tsid);
+        }
+    }
+    Ok(())
 }
 
 struct TsidBuilder<'a> {

@@ -218,9 +218,7 @@ pub enum Error {
     CreateOpenFailedTable { table: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
-    OpenManifest {
-        source: crate::manifest::details::Error,
-    },
+    OpenManifest { source: crate::manifest::Error },
 
     #[snafu(display("Failed to find table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     TableNotExist { msg: String, backtrace: Backtrace },

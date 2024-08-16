@@ -30,35 +30,9 @@ use std::mem;
 use bytes_ext::{BufMut, BytesMut, SafeBuf, SafeBufMut};
 use codec::{memcomparable::MemComparable, Decoder, Encoder};
 use common_types::{row::Row, schema::Schema, SequenceNumber};
-use macros::define_result;
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
+use macros::ensure;
 
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Failed to encode key datum, err:{}", source))]
-    EncodeKeyDatum { source: codec::memcomparable::Error },
-
-    #[snafu(display("Failed to encode sequence, err:{}", source))]
-    EncodeSequence { source: bytes_ext::Error },
-
-    #[snafu(display("Failed to encode row index, err:{}", source))]
-    EncodeIndex { source: bytes_ext::Error },
-
-    #[snafu(display("Failed to decode sequence, err:{}", source))]
-    DecodeSequence { source: bytes_ext::Error },
-
-    #[snafu(display("Failed to decode row index, err:{}", source))]
-    DecodeIndex { source: bytes_ext::Error },
-
-    #[snafu(display(
-        "Insufficient internal key length, len:{}.\nBacktrace:\n{}",
-        len,
-        backtrace
-    ))]
-    InternalKeyLen { len: usize, backtrace: Backtrace },
-}
-
-define_result!(Error);
+use crate::memtable::{Error, Result};
 
 // u64 + u32
 const KEY_SEQUENCE_BYTES_LEN: usize = 12;
@@ -128,7 +102,9 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemComparable;
         for idx in self.schema.primary_key_indexes() {
-            encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
+            encoder
+                .encode(buf, &value[*idx])
+                .map_err(anyhow::Error::new)?;
         }
         SequenceCodec.encode(buf, &self.sequence)?;
 
@@ -156,7 +132,8 @@ impl Encoder<KeySequence> for SequenceCodec {
         // Encode sequence number and index in descend order
         encode_sequence_number(buf, value.sequence())?;
         let reversed_index = RowIndex::MAX - value.row_index();
-        buf.try_put_u32(reversed_index).context(EncodeIndex)?;
+        buf.try_put_u32(reversed_index)
+            .map_err(anyhow::Error::new)?;
 
         Ok(())
     }
@@ -170,10 +147,10 @@ impl Decoder<KeySequence> for SequenceCodec {
     type Error = Error;
 
     fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<KeySequence> {
-        let sequence = buf.try_get_u64().context(DecodeSequence)?;
+        let sequence = buf.try_get_u64().map_err(anyhow::Error::new)?;
         // Reverse sequence
         let sequence = SequenceNumber::MAX - sequence;
-        let row_index = buf.try_get_u32().context(DecodeIndex)?;
+        let row_index = buf.try_get_u32().map_err(anyhow::Error::new)?;
         // Reverse row index
         let row_index = RowIndex::MAX - row_index;
 
@@ -186,7 +163,8 @@ fn encode_sequence_number<B: SafeBufMut>(buf: &mut B, sequence: SequenceNumber) 
     // The sequence need to encode in descend order
     let reversed_sequence = SequenceNumber::MAX - sequence;
     // Encode sequence
-    buf.try_put_u64(reversed_sequence).context(EncodeSequence)?;
+    buf.try_put_u64(reversed_sequence)
+        .map_err(anyhow::Error::new)?;
     Ok(())
 }
 
@@ -219,9 +197,10 @@ pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequ
     // Empty user key is meaningless
     ensure!(
         internal_key.len() > KEY_SEQUENCE_BYTES_LEN,
-        InternalKeyLen {
-            len: internal_key.len(),
-        }
+        anyhow::anyhow!(
+            "Insufficient internal key length, len:{}",
+            internal_key.len()
+        )
     );
 
     let (left, mut right) = internal_key.split_at(internal_key.len() - KEY_SEQUENCE_BYTES_LEN);

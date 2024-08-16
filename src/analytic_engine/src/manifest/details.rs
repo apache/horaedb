@@ -28,17 +28,15 @@ use std::{
 };
 
 use async_trait::async_trait;
-use generic_error::{BoxError, GenericError, GenericResult};
+use generic_error::{BoxError, GenericResult};
 use horaedbproto::manifest as manifest_pb;
 use lazy_static::lazy_static;
 use logger::{debug, info, warn};
-use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use parquet::data_type::AsBytes;
 use prometheus::{exponential_buckets, register_histogram, Histogram};
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::table::TableId;
 use time_ext::ReadableDuration;
 use tokio::sync::Mutex;
@@ -57,103 +55,11 @@ use crate::{
             MetaEdit, MetaEditRequest, MetaUpdate, MetaUpdateDecoder, MetaUpdatePayload, Snapshot,
         },
         meta_snapshot::{MetaSnapshot, MetaSnapshotBuilder},
-        LoadRequest, Manifest, SnapshotRequest,
+        Error, LoadRequest, Manifest, Result, SnapshotRequest,
     },
     space::SpaceId,
     table::data::{TableDataRef, TableShardInfo},
 };
-
-#[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
-pub enum Error {
-    #[snafu(display(
-        "Failed to encode payloads, wal_location:{:?}, err:{}",
-        wal_location,
-        source
-    ))]
-    EncodePayloads {
-        wal_location: WalLocation,
-        source: wal::manager::Error,
-    },
-
-    #[snafu(display("Failed to write update to wal, err:{}", source))]
-    WriteWal { source: wal::manager::Error },
-
-    #[snafu(display("Failed to read wal, err:{}", source))]
-    ReadWal { source: wal::manager::Error },
-
-    #[snafu(display("Failed to read log entry, err:{}", source))]
-    ReadEntry { source: wal::manager::Error },
-
-    #[snafu(display("Failed to apply table meta update, err:{}", source))]
-    ApplyUpdate {
-        source: crate::manifest::meta_snapshot::Error,
-    },
-
-    #[snafu(display("Failed to clean wal, err:{}", source))]
-    CleanWal { source: wal::manager::Error },
-
-    #[snafu(display(
-        "Failed to store snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    StoreSnapshot {
-        source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to fetch snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    FetchSnapshot {
-        source: object_store::ObjectStoreError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display(
-        "Failed to decode snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
-    ))]
-    DecodeSnapshot {
-        source: prost::DecodeError,
-        backtrace: Backtrace,
-    },
-
-    #[snafu(display("Failed to build snapshot, msg:{}.\nBacktrace:\n{:?}", msg, backtrace))]
-    BuildSnapshotNoCause { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to build snapshot, msg:{}, err:{}", msg, source))]
-    BuildSnapshotWithCause { msg: String, source: GenericError },
-
-    #[snafu(display(
-        "Failed to apply edit to table, msg:{}.\nBacktrace:\n{:?}",
-        msg,
-        backtrace
-    ))]
-    ApplyUpdateToTableNoCause { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to apply edit to table, msg:{}, err:{}", msg, source))]
-    ApplyUpdateToTableWithCause { msg: String, source: GenericError },
-
-    #[snafu(display(
-        "Failed to apply snapshot to table, msg:{}.\nBacktrace:\n{:?}",
-        msg,
-        backtrace
-    ))]
-    ApplySnapshotToTableNoCause { msg: String, backtrace: Backtrace },
-
-    #[snafu(display("Failed to apply snapshot to table, msg:{}, err:{}", msg, source))]
-    ApplySnapshotToTableWithCause { msg: String, source: GenericError },
-
-    #[snafu(display("Failed to load snapshot, err:{}", source))]
-    LoadSnapshot { source: GenericError },
-}
-
-define_result!(Error);
 
 lazy_static! {
     static ref RECOVER_TABLE_META_FROM_SNAPSHOT_DURATION: Histogram = register_histogram!(
@@ -197,7 +103,7 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
                 .iter
                 .next_log_entries(decoder, |_| true, buffer)
                 .await
-                .context(ReadEntry)?;
+                .map_err(anyhow::Error::new)?;
         }
 
         match self.buffer.pop_front() {
@@ -277,7 +183,7 @@ where
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
-                .context(ApplyUpdate)?;
+                .map_err(anyhow::Error::new)?;
         }
         Ok(Snapshot {
             end_seq: latest_seq,
@@ -302,7 +208,7 @@ where
             latest_seq = seq;
             manifest_data_builder
                 .apply_update(update)
-                .context(ApplyUpdate)?;
+                .map_err(anyhow::Error::new)?;
             has_logs = true;
         }
 
@@ -633,7 +539,7 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
         self.store
             .put(&self.snapshot_path, payload.into())
             .await
-            .context(StoreSnapshot)?;
+            .map_err(anyhow::Error::new)?;
 
         Ok(())
     }
@@ -661,15 +567,13 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
         }
 
         let payload = get_res
-            .context(FetchSnapshot)?
+            .map_err(anyhow::Error::new)?
             .bytes()
             .await
-            .context(FetchSnapshot)?;
+            .map_err(anyhow::Error::new)?;
         let snapshot_pb =
-            manifest_pb::Snapshot::decode(payload.as_bytes()).context(DecodeSnapshot)?;
-        let snapshot = Snapshot::try_from(snapshot_pb)
-            .box_err()
-            .context(LoadSnapshot)?;
+            manifest_pb::Snapshot::decode(payload.as_bytes()).map_err(anyhow::Error::new)?;
+        let snapshot = Snapshot::try_from(snapshot_pb).map_err(anyhow::Error::new)?;
 
         Ok(Some(snapshot))
     }
@@ -702,7 +606,7 @@ impl MetaUpdateLogStore for WalBasedLogStore {
             .wal_manager
             .read_batch(&ctx, &read_req)
             .await
-            .context(ReadWal)?;
+            .map_err(anyhow::Error::new)?;
 
         Ok(MetaUpdateReaderImpl {
             iter,
@@ -714,8 +618,12 @@ impl MetaUpdateLogStore for WalBasedLogStore {
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
         let payload = MetaUpdatePayload::from(meta_update);
         let log_batch_encoder = LogBatchEncoder::create(self.location);
-        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            wal_location: self.location,
+        let log_batch = log_batch_encoder.encode(&payload).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to encode payloads, wal_location:{:?}, err:{}",
+                self.location,
+                e
+            )
         })?;
 
         let write_ctx = WriteContext {
@@ -725,14 +633,14 @@ impl MetaUpdateLogStore for WalBasedLogStore {
         self.wal_manager
             .write(&write_ctx, &log_batch)
             .await
-            .context(WriteWal)
+            .map_err(|e| Error::from(anyhow::Error::new(e)))
     }
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
         self.wal_manager
             .mark_delete_entries_up_to(self.location, inclusive_end)
             .await
-            .context(CleanWal)
+            .map_err(|e| Error::from(anyhow::Error::new(e)))
     }
 }
 
