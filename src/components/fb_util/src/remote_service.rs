@@ -37,14 +37,17 @@ impl FlatBufferBytes {
     ) -> Self {
         builder.finish(root_offset, None);
         let (mut data, head) = builder.collapse();
-        Self(data.drain(head..).collect())
+        data.drain(..head);
+        Self(data)
     }
 
     pub fn deserialize<'buf, T: flatbuffers::Follow<'buf> + flatbuffers::Verifiable + 'buf>(
         &'buf self,
     ) -> Result<T::Inner, Box<dyn std::error::Error>> {
-        flatbuffers::root::<T>(self.0.as_slice())
-            .map_err(|x| Box::new(x) as Box<dyn std::error::Error>)
+        // Internal request routing is supposed to be safe among servers.
+        Ok(unsafe { flatbuffers::root_unchecked::<T>(self.0.as_slice()) })
+        // flatbuffers::root::<T>(self.0.as_slice())
+        //     .map_err(|x| Box::new(x) as Box<dyn std::error::Error>)
     }
 }
 

@@ -24,7 +24,7 @@ use crate::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
-        contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
+        contiguous::{ContiguousRowReader, ContiguousRowWriter, InnerType, ProjectedContiguousRow},
         Row,
     },
     schema,
@@ -415,7 +415,8 @@ pub fn build_fetched_record_batch_by_rows(rows: Vec<Row>) -> FetchedRecordBatch 
 
     let mut buf = Vec::new();
     for row in rows {
-        let mut writer = ContiguousRowWriter::new(&mut buf, &schema, &index_in_writer);
+        let mut writer =
+            ContiguousRowWriter::new(InnerType::Buffer(&mut buf), &schema, &index_in_writer);
 
         writer.write_row(&row).unwrap();
 

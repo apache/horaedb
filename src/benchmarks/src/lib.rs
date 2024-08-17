@@ -24,6 +24,7 @@ pub mod merge_memtable_bench;
 pub mod merge_sst_bench;
 pub mod parquet_bench;
 pub mod replay_bench;
+pub mod request_serialization_bench;
 pub mod scan_memtable_bench;
 pub mod sst_bench;
 pub mod sst_tools;

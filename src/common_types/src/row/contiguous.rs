@@ -296,21 +296,27 @@ pub trait RowBuffer: DerefMut<Target = [u8]> {
     fn append_slice(&mut self, src: &[u8]);
 }
 
+pub enum InnerType<'a, 'b, 'c, T: RowBuffer + 'a> {
+    Buffer(&'a mut T),
+    FlatbufferBuilder(&'c mut flatbuffers::FlatBufferBuilder<'b>),
+}
+
 /// A writer to build a contiguous row.
-pub struct ContiguousRowWriter<'a, T> {
-    inner: &'a mut T,
+pub struct ContiguousRowWriter<'a, 'b, 'c, T: RowBuffer + 'a> {
+    inner: InnerType<'a, 'b, 'c, T>,
     /// The schema the row group need to be encoded into, the schema
     /// of the row need to be write compatible for the table schema.
     table_schema: &'a Schema,
     /// The index mapping from table schema to column in the
     /// schema of row group.
     index_in_writer: &'a IndexInWriterSchema,
+    // builder: Option<&'c mut flatbuffers::FlatBufferBuilder<'b>>,
 }
 
 // TODO(yingwen): Try to replace usage of row by contiguous row.
-impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
+impl<'a, 'b: 'a, 'c, T: RowBuffer + 'a> ContiguousRowWriter<'a, 'b, 'c, T> {
     pub fn new(
-        inner: &'a mut T,
+        inner: InnerType<'a, 'b, 'c, T>,
         table_schema: &'a Schema,
         index_in_writer: &'a IndexInWriterSchema,
     ) -> Self {
@@ -322,7 +328,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
     }
 
     fn write_datum(
-        inner: &mut T,
+        inner: &mut InnerType<'a, 'b, 'c, T>,
         datum: &Datum,
         offset: &mut usize,
         next_string_offset: &mut usize,
@@ -425,7 +431,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
     }
 
     /// Write a row to the buffer, the buffer will be reset first.
-    pub fn write_row(&mut self, row: &Row) -> Result<()> {
+    pub fn write_row(&mut self, row: &Row) -> Result<usize> {
         let mut num_null_cols = 0;
         for index_in_table in 0..self.table_schema.num_columns() {
             if let Some(writer_index) = self.index_in_writer.column_index_in_writer(index_in_table)
@@ -446,7 +452,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         }
     }
 
-    fn write_row_with_nulls(&mut self, row: &Row) -> Result<()> {
+    fn write_row_with_nulls(&mut self, row: &Row) -> Result<usize> {
         let mut encoded_len = 0;
         let mut num_bytes_of_variable_col = 0;
         for index_in_table in 0..self.table_schema.num_columns() {
@@ -477,7 +483,11 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         encoded_len += Encoding::size_of_num_bits() + nulls_bit_set.as_bytes().len();
 
         // Pre-allocate the memory.
-        self.inner.reset(encoded_len, 0);
+        match &mut self.inner {
+            InnerType::Buffer(inner) => inner.reset(encoded_len, 0),
+            InnerType::FlatbufferBuilder(inner) => inner.start_vector::<u8>(encoded_len),
+        }
+
         let mut next_string_offset = encoded_len - num_bytes_of_variable_col;
         let mut datum_offset = Encoding::size_of_num_bits() + nulls_bit_set.as_bytes().len();
         for index_in_table in 0..self.table_schema.num_columns() {
@@ -486,7 +496,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 let datum = &row[writer_index];
                 // Write datum bytes to the buffer.
                 Self::write_datum(
-                    self.inner,
+                    &mut self.inner,
                     datum,
                     &mut datum_offset,
                     &mut next_string_offset,
@@ -502,9 +512,9 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         }
 
         // Storing the number of null columns as u32 is enough.
-        Self::write_slice_to_offset(self.inner, &mut 0, &(num_bits as u32).to_ne_bytes());
+        Self::write_slice_to_offset(&mut self.inner, &mut 0, &(num_bits as u32).to_ne_bytes());
         Self::write_slice_to_offset(
-            self.inner,
+            &mut self.inner,
             &mut Encoding::size_of_num_bits(),
             nulls_bit_set.as_bytes(),
         );
@@ -512,10 +522,10 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         debug_assert_eq!(datum_offset, encoded_len - num_bytes_of_variable_col);
         debug_assert_eq!(next_string_offset, encoded_len);
 
-        Ok(())
+        Ok(encoded_len)
     }
 
-    fn write_row_without_nulls(&mut self, row: &Row) -> Result<()> {
+    fn write_row_without_nulls(&mut self, row: &Row) -> Result<usize> {
         let datum_buffer_len =
             self.table_schema.string_buffer_offset() + Encoding::size_of_num_bits();
         let mut encoded_len = datum_buffer_len;
@@ -534,7 +544,10 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         }
 
         // Pre-allocate memory for row.
-        self.inner.reset(encoded_len, DatumKind::Null.into_u8());
+        match &mut self.inner {
+            InnerType::Buffer(inner) => inner.reset(encoded_len, DatumKind::Null.into_u8()),
+            InnerType::FlatbufferBuilder(inner) => inner.start_vector::<u8>(encoded_len),
+        }
 
         // Offset to next string in string buffer.
         let mut next_string_offset = datum_buffer_len;
@@ -545,7 +558,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
                 let datum = &row[writer_index];
                 // Write datum bytes to the buffer.
                 Self::write_datum(
-                    self.inner,
+                    &mut self.inner,
                     datum,
                     &mut datum_offset,
                     &mut next_string_offset,
@@ -557,13 +570,27 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
         debug_assert_eq!(datum_offset, datum_buffer_len);
         debug_assert_eq!(next_string_offset, encoded_len);
-        Ok(())
+        Ok(encoded_len)
     }
 
     #[inline]
-    fn write_slice_to_offset(inner: &mut T, offset: &mut usize, value_buf: &[u8]) {
-        let dst = &mut inner[*offset..*offset + value_buf.len()];
-        dst.copy_from_slice(value_buf);
+    fn write_slice_to_offset(
+        inner: &mut InnerType<'a, 'b, 'c, T>,
+        offset: &mut usize,
+        value_buf: &[u8],
+    ) {
+        match inner {
+            InnerType::Buffer(inner) => {
+                let dst = &mut inner[*offset..*offset + value_buf.len()];
+                dst.copy_from_slice(value_buf);
+            }
+            InnerType::FlatbufferBuilder(builder) => {
+                for &v in value_buf {
+                    builder.push(v);
+                }
+            }
+        }
+
         *offset += value_buf.len();
     }
 
@@ -735,7 +762,8 @@ mod tests {
 
         let mut buf = Vec::new();
         for row in rows {
-            let mut writer = ContiguousRowWriter::new(&mut buf, &schema, &index_in_writer);
+            let mut writer =
+                ContiguousRowWriter::new(InnerType::Buffer(&mut buf), &schema, &index_in_writer);
 
             writer.write_row(&row).unwrap();
 
@@ -774,7 +802,8 @@ mod tests {
 
         let mut buf = Vec::new();
         for row in rows {
-            let mut writer = ContiguousRowWriter::new(&mut buf, &schema, &index_in_writer);
+            let mut writer =
+                ContiguousRowWriter::new(InnerType::Buffer(&mut buf), &schema, &index_in_writer);
 
             writer.write_row(&row).unwrap();
 
@@ -813,7 +842,8 @@ mod tests {
 
         let mut buf = Vec::new();
         for row in rows {
-            let mut writer = ContiguousRowWriter::new(&mut buf, &schema, &index_in_writer);
+            let mut writer =
+                ContiguousRowWriter::new(InnerType::Buffer(&mut buf), &schema, &index_in_writer);
 
             writer.write_row(&row).unwrap();
 

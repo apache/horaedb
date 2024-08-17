@@ -28,7 +28,7 @@ use common_types::{
     column_schema::VecColumnDescExt,
     request_id::RequestId,
     row::{
-        contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter},
+        contiguous::{ContiguousRow, ContiguousRowReader, ContiguousRowWriter, InnerType},
         Row, RowGroup,
     },
     schema::{IndexInWriterSchema, RecordSchema, Schema, Version},
@@ -340,7 +340,11 @@ impl WriteRequest {
         let index_in_schema = IndexInWriterSchema::for_same_schema(table_schema.num_columns());
         for row in &row_group {
             let mut buf = ByteVec::new();
-            let mut writer = ContiguousRowWriter::new(&mut buf, table_schema, &index_in_schema);
+            let mut writer = ContiguousRowWriter::new(
+                InnerType::Buffer(&mut buf),
+                table_schema,
+                &index_in_schema,
+            );
             writer.write_row(row).with_context(|| WriteRequestToPb {
                 table_ident: self.table.clone(),
             })?;
@@ -398,10 +402,19 @@ fn convert_into_single_fb<'a>(
     let index_in_schema = IndexInWriterSchema::for_same_schema(table_schema.num_columns());
     for row in row_group {
         let mut buf = ByteVec::new();
-        let mut writer = ContiguousRowWriter::new(&mut buf, table_schema, &index_in_schema);
-        writer.write_row(row).with_context(|| WriteRequestToFb {
+        // Tow ways to build the contiguous rows into bytes.
+        // 1) Build writer with InnerType::Buffer and duplicate with
+        //    `builder.create_vector` (current choice)
+        // 2) Build writer with InnerType::Flatbuffer and leverage `start_vector` `push`
+        //    `end_vector` to build the bytes into the flatbuffer.
+        // The latter one is not efficient as it is supposed to be.
+        let mut writer =
+            ContiguousRowWriter::new(InnerType::Buffer(&mut buf), table_schema, &index_in_schema);
+        let _res = writer.write_row(row).with_context(|| WriteRequestToFb {
             table_ident: request.table.clone(),
         })?;
+        // let bytes = builder.end_vector::<u8>(_res);
+
         let bytes = builder.create_vector(&buf);
         let encode_row = EncodedRow::create(builder, &EncodedRowArgs { bytes: Some(bytes) });
         encoded_rows.push(encode_row);

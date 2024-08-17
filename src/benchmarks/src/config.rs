@@ -39,6 +39,7 @@ pub struct BenchConfig {
     pub merge_memtable_bench: MergeMemTableBenchConfig,
     pub wal_write_bench: WalWriteBenchConfig,
     pub replay_bench: ReplayConfig,
+    pub request_serialization_bench: RequestSerializationBenchConfig,
 }
 
 // TODO(yingwen): Maybe we can use layze static to load config first.
@@ -154,4 +155,10 @@ pub struct ReplayConfig {
     pub bench_measurement_time: ReadableDuration,
     pub bench_sample_size: usize,
     pub batch_size: usize,
+}
+
+#[derive(Deserialize)]
+pub struct RequestSerializationBenchConfig {
+    pub bench_measurement_time: ReadableDuration,
+    pub bench_sample_size: usize,
 }

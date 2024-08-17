@@ -20,7 +20,7 @@ use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{FetchedRecordBatch, FetchedRecordBatchBuilder},
     row::{
-        contiguous::{ContiguousRowReader, ContiguousRowWriter, ProjectedContiguousRow},
+        contiguous::{ContiguousRowReader, ContiguousRowWriter, InnerType, ProjectedContiguousRow},
         Row,
     },
     schema::{IndexInWriterSchema, RecordSchemaWithKey, Schema},
@@ -95,7 +95,8 @@ pub fn build_fetched_record_batch_with_key(schema: Schema, rows: Vec<Row>) -> Fe
 
     let mut buf = Vec::new();
     for row in rows {
-        let mut writer = ContiguousRowWriter::new(&mut buf, &schema, &index_in_writer);
+        let mut writer =
+            ContiguousRowWriter::new(InnerType::Buffer(&mut buf), &schema, &index_in_writer);
 
         writer.write_row(&row).unwrap();
 

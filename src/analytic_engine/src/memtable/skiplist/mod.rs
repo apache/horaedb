@@ -27,7 +27,10 @@ use arena::{Arena, BasicStats};
 use bytes_ext::Bytes;
 use codec::Encoder;
 use common_types::{
-    row::{contiguous::ContiguousRowWriter, Row},
+    row::{
+        contiguous::{ContiguousRowWriter, InnerType},
+        Row,
+    },
     schema::Schema,
     time::TimeRange,
     SequenceNumber,
@@ -158,7 +161,8 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
 
         // Encode row value. The ContiguousRowWriter will clear the buf.
         let row_value = &mut ctx.value_buf;
-        let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
+        let mut row_writer =
+            ContiguousRowWriter::new(InnerType::Buffer(row_value), schema, &ctx.index_in_writer);
         row_writer.write_row(row).context("invalid row")?;
         let encoded_size = internal_key.len() + row_value.len();
         self.skiplist.put(internal_key, row_value);

@@ -25,6 +25,7 @@ use benchmarks::{
     merge_sst_bench::MergeSstBench,
     parquet_bench::ParquetBench,
     replay_bench::ReplayBench,
+    request_serialization_bench::RequestSerializationBench,
     scan_memtable_bench::ScanMemTableBench,
     sst_bench::SstBench,
     wal_write_bench::WalWriteBench,
@@ -227,6 +228,24 @@ fn bench_replay(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_request_serialization(c: &mut Criterion) {
+    let config = init_bench();
+
+    let mut group = c.benchmark_group("pb_write");
+
+    group.measurement_time(config.request_serialization_bench.bench_measurement_time.0);
+    group.sample_size(config.request_serialization_bench.bench_sample_size);
+
+    let bench = RequestSerializationBench::new();
+    group.bench_function(BenchmarkId::new("request_serialization", 0), |b| {
+        b.iter(|| {
+            bench.run_bench();
+        })
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
@@ -237,6 +256,7 @@ criterion_group!(
     bench_merge_memtable,
     bench_wal_write,
     bench_replay,
+    bench_request_serialization,
 );
 
 criterion_main!(benches);
