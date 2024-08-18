@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/test"
-	"github.com/apache/incubator-horaedb-meta/server/storage"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure/test"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 

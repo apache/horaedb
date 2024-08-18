@@ -23,9 +23,9 @@ import (
 	"context"
 	"sort"
 
-	"github.com/apache/incubator-horaedb-meta/pkg/assert"
-	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/apache/incubator-horaedb-meta/server/storage"
+	"github.com/LeslieKid/incubator-horaedb-meta/pkg/assert"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
 	"github.com/pkg/errors"
 )
 

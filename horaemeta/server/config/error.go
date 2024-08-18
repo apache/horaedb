@@ -20,7 +20,7 @@
 package config
 
 import (
-	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
+	"github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
 )
 
 var (

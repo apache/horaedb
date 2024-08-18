@@ -19,7 +19,7 @@
 
 package coordinator
 
-import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
+import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrNodeNumberNotEnough = coderr.NewCodeError(coderr.Internal, "node number not enough")

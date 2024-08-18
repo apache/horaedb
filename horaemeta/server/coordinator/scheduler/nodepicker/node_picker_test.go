@@ -26,9 +26,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/apache/incubator-horaedb-meta/server/coordinator/scheduler/nodepicker"
-	"github.com/apache/incubator-horaedb-meta/server/storage"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/scheduler/nodepicker"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )

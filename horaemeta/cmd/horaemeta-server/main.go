@@ -26,10 +26,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
-	"github.com/apache/incubator-horaedb-meta/pkg/log"
-	"github.com/apache/incubator-horaedb-meta/server"
-	"github.com/apache/incubator-horaedb-meta/server/config"
+	"github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
+	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
+	"github.com/LeslieKid/incubator-horaedb-meta/server"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/config"
 	"github.com/pelletier/go-toml/v2"
 	"go.uber.org/zap"
 )

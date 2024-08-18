@@ -19,7 +19,7 @@
 
 package etcdutil
 
-import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
+import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrEtcdKVGet         = coderr.NewCodeError(coderr.Internal, "etcd KV get failed")

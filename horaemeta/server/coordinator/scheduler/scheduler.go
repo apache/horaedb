@@ -22,9 +22,9 @@ package scheduler
 import (
 	"context"
 
-	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure"
-	"github.com/apache/incubator-horaedb-meta/server/storage"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
 )
 
 type ScheduleResult struct {

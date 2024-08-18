@@ -19,6 +19,6 @@
 
 package manager
 
-import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
+import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
 
 var ErrInvalidTopologyType = coderr.NewCodeError(coderr.InvalidParams, "invalid topology type")

@@ -27,8 +27,8 @@ import (
 	"path"
 	"strconv"
 
-	"github.com/apache/incubator-horaedb-meta/pkg/log"
-	"github.com/apache/incubator-horaedb-meta/server/etcdutil"
+	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/etcdutil"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/clientv3util"

@@ -27,10 +27,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/incubator-horaedb-meta/server/cluster"
-	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/apache/incubator-horaedb-meta/server/etcdutil"
-	"github.com/apache/incubator-horaedb-meta/server/storage"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/etcdutil"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
 	"github.com/stretchr/testify/require"
 	clientv3 "go.etcd.io/etcd/client/v3"
 )

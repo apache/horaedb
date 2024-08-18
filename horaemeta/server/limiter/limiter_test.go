@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/incubator-horaedb-meta/server/config"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/config"
 	"github.com/stretchr/testify/require"
 )
 

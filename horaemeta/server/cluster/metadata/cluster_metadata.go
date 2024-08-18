@@ -28,8 +28,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/apache/incubator-horaedb-meta/server/id"
-	"github.com/apache/incubator-horaedb-meta/server/storage"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/id"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
@@ -53,7 +53,8 @@ type ClusterMetadata struct {
 	topologyManager TopologyManager
 
 	// Manage the registered nodes from heartbeat.
-	registeredNodesCache map[string]RegisteredNode // nodeName -> NodeName
+	registeredHoraedbNodesCache    map[string]RegisteredNode // nodeName -> NodeName
+	registeredCompactionNodesCache map[string]RegisteredNode
 
 	storage      storage.Storage
 	kv           clientv3.KV
@@ -67,16 +68,17 @@ func NewClusterMetadata(logger *zap.Logger, meta storage.Cluster, storage storag
 	shardIDAlloc := id.NewReusableAllocatorImpl([]uint64{}, MinShardID)
 
 	cluster := &ClusterMetadata{
-		logger:               logger,
-		clusterID:            meta.ID,
-		lock:                 sync.RWMutex{},
-		metaData:             meta,
-		tableManager:         NewTableManagerImpl(logger, storage, meta.ID, schemaIDAlloc, tableIDAlloc),
-		topologyManager:      NewTopologyManagerImpl(logger, storage, meta.ID, shardIDAlloc),
-		registeredNodesCache: map[string]RegisteredNode{},
-		storage:              storage,
-		kv:                   kv,
-		shardIDAlloc:         shardIDAlloc,
+		logger:                         logger,
+		clusterID:                      meta.ID,
+		lock:                           sync.RWMutex{},
+		metaData:                       meta,
+		tableManager:                   NewTableManagerImpl(logger, storage, meta.ID, schemaIDAlloc, tableIDAlloc),
+		topologyManager:                NewTopologyManagerImpl(logger, storage, meta.ID, shardIDAlloc),
+		registeredHoraedbNodesCache:    map[string]RegisteredNode{},
+		registeredCompactionNodesCache: map[string]RegisteredNode{},
+		storage:                        storage,
+		kv:                             kv,
+		shardIDAlloc:                   shardIDAlloc,
 	}
 
 	return cluster
@@ -487,15 +489,34 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	return nil
 }
 
-func (c *ClusterMetadata) GetRegisteredNodes() []RegisteredNode {
+func (c *ClusterMetadata) GetRegisteredHoraedbNodes() []RegisteredNode {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	nodes := make([]RegisteredNode, 0, len(c.registeredNodesCache))
-	for _, node := range c.registeredNodesCache {
+	nodes := make([]RegisteredNode, 0, len(c.registeredHoraedbNodesCache))
+	for _, node := range c.registeredHoraedbNodesCache {
 		nodes = append(nodes, node)
 	}
 	return nodes
+}
+
+func (c *ClusterMetadata) GetRegisteredCompactionNodes() []RegisteredNode {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	nodes := make([]RegisteredNode, 0, len(c.registeredCompactionNodesCache))
+	for _, node := range c.registeredCompactionNodesCache {
+		nodes = append(nodes, node)
+	}
+	return nodes
+}
+
+func (c *ClusterMetadata) GetAllRegisteredNodes() []RegisteredNode {
+	horaedbNodes := c.GetRegisteredHoraedbNodes()
+	compactionNodes := c.GetRegisteredCompactionNodes()
+
+	allNodes := append(horaedbNodes, compactionNodes...)
+	return allNodes
 }
 
 func (c *ClusterMetadata) GetRegisteredNodeByName(nodeName string) (RegisteredNode, bool) {
@@ -703,7 +724,7 @@ func (c *ClusterMetadata) CreateShardViews(ctx context.Context, views []CreateSh
 func (c *ClusterMetadata) GetClusterSnapshot() Snapshot {
 	return Snapshot{
 		Topology:        c.topologyManager.GetTopology(),
-		RegisteredNodes: c.GetRegisteredNodes(),
+		RegisteredNodes: c.GetAllRegisteredNodes(),
 	}
 }
 

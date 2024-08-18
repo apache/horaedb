@@ -24,9 +24,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/apache/incubator-horaedb-meta/pkg/log"
-	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure"
-	"github.com/apache/incubator-horaedb-meta/server/storage"
+	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure"
+	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"

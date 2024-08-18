@@ -19,7 +19,7 @@
 
 package server
 
-import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
+import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrCreateEtcdClient    = coderr.NewCodeError(coderr.Internal, "create etcd etcdCli")
