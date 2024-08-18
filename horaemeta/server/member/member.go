@@ -25,8 +25,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/etcdutil"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/server/etcdutil"
 	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metastoragepb"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/api/v3/mvccpb"

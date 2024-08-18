@@ -24,10 +24,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"go.uber.org/zap"
 )
 

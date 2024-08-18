@@ -19,7 +19,7 @@
 
 package member
 
-import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
+import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrResetLeader        = coderr.NewCodeError(coderr.Internal, "reset leader by deleting leader key")

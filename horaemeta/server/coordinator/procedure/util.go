@@ -20,7 +20,7 @@
 package procedure
 
 import (
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/looplab/fsm"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"

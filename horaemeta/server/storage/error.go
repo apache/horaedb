@@ -19,7 +19,7 @@
 
 package storage
 
-import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
+import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrEncode = coderr.NewCodeError(coderr.Internal, "storage encode")

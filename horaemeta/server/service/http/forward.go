@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/member"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/service"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/server/member"
+	"github.com/apache/incubator-horaedb-meta/server/service"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )

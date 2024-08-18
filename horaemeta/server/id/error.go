@@ -19,7 +19,7 @@
 
 package id
 
-import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
+import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrTxnPutEndID         = coderr.NewCodeError(coderr.Internal, "put end id in txn")

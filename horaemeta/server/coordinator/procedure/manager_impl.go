@@ -24,9 +24,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/lock"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/lock"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"go.uber.org/zap"
 )
 

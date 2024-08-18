@@ -1,9 +1,9 @@
-module github.com/LeslieKid/incubator-horaedb-meta
+module github.com/apache/incubator-horaedb-meta
 
 go 1.21
 
 require (
-	github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240818051549-6215bf5edc43
+	github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240818091304-d9b1a57d787e
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/looplab/fsm v0.3.0
@@ -24,7 +24,6 @@ require (
 )
 
 require (
-	github.com/apache/incubator-horaedb-proto/golang v0.0.0-20240703150756-8d4530696277 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect

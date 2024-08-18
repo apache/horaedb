@@ -23,11 +23,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure/ddl/createpartitiontable"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure/test"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/ddl/createpartitiontable"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/test"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/stretchr/testify/require"
 )

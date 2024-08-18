@@ -38,8 +38,8 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/assert"
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/pkg/assert"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"go.uber.org/zap"
 )
 

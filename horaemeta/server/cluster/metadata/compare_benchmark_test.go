@@ -22,7 +22,7 @@ package metadata
 import (
 	"testing"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 )
 
 func buildRegisterNode(shardNumber int) RegisteredNode {

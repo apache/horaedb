@@ -23,9 +23,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure/operation/transferleader"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure/test"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/operation/transferleader"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/test"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"github.com/stretchr/testify/require"
 )
 

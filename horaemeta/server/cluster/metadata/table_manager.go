@@ -25,8 +25,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/server/id"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/server/id"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )

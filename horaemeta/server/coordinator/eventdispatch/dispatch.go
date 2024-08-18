@@ -22,7 +22,7 @@ package eventdispatch
 import (
 	"context"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 )
 
 type Dispatch interface {

@@ -22,8 +22,8 @@ package grpc
 import (
 	"context"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/service"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/server/service"
 	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"

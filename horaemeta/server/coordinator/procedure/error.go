@@ -19,7 +19,7 @@
 
 package procedure
 
-import "github.com/LeslieKid/incubator-horaedb-meta/pkg/coderr"
+import "github.com/apache/incubator-horaedb-meta/pkg/coderr"
 
 var (
 	ErrShardLeaderNotFound     = coderr.NewCodeError(coderr.Internal, "shard leader not found")

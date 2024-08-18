@@ -28,8 +28,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/server/id"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/server/id"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"

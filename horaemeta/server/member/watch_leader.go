@@ -23,9 +23,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/assert"
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/etcdutil"
+	"github.com/apache/incubator-horaedb-meta/pkg/assert"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/server/etcdutil"
 	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metastoragepb"
 	"go.uber.org/zap"
 )

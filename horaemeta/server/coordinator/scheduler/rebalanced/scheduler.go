@@ -26,13 +26,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/assert"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/cluster/metadata"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/procedure"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/scheduler"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/coordinator/scheduler/nodepicker"
-	"github.com/LeslieKid/incubator-horaedb-meta/server/storage"
+	"github.com/apache/incubator-horaedb-meta/pkg/assert"
+	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/scheduler"
+	"github.com/apache/incubator-horaedb-meta/server/coordinator/scheduler/nodepicker"
+	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"go.uber.org/zap"
 )
 

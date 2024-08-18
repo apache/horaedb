@@ -24,7 +24,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/LeslieKid/incubator-horaedb-meta/pkg/log"
+	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 )
