@@ -119,6 +119,9 @@ pub enum Error {
         backtrace,
     ))]
     ConvertRemoteExecuteRequest { msg: String, backtrace: Backtrace },
+
+    #[snafu(display("Cannot parse table identifier.",))]
+    InvalidTableIdentifier {},
 }
 
 define_result!(Error);
@@ -130,12 +133,19 @@ pub struct TableIdentifier {
     pub table: String,
 }
 
-impl From<FBTableIdentifier<'_>> for TableIdentifier {
-    fn from(fb: FBTableIdentifier<'_>) -> Self {
-        Self {
-            catalog: fb.catalog().unwrap().to_string(),
-            schema: fb.schema().unwrap().to_string(),
-            table: fb.table().unwrap().to_string(),
+impl TryFrom<FBTableIdentifier<'_>> for TableIdentifier {
+    type Error = Error;
+
+    fn try_from(fb: FBTableIdentifier<'_>) -> Result<Self> {
+        if let (Some(catalog), Some(schema), Some(table)) = (fb.catalog(), fb.schema(), fb.table())
+        {
+            Ok(Self {
+                catalog: catalog.to_string(),
+                schema: schema.to_string(),
+                table: table.to_string(),
+            })
+        } else {
+            Err(Error::InvalidTableIdentifier {})
         }
     }
 }

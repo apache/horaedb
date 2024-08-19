@@ -1273,7 +1273,12 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequestExt<'_>) -> Resu
                     code: StatusCode::BadRequest,
                     msg: "missing table ident",
                 })?
-                .into();
+                .try_into()
+                .box_err()
+                .context(ErrWithCause {
+                    code: StatusCode::BadRequest,
+                    msg: "fail to convert table ident",
+                })?;
             let rows_payload = v
                 .row_group()
                 .context(ErrNoCause {
@@ -1609,7 +1614,7 @@ fn find_schema_by_identifier(
 
 fn build_fb_write_response(resp: WriteResponse) -> FlatBufferBytes {
     let mut builder = flatbuffers::FlatBufferBuilder::with_capacity(1024);
-    let header = resp.header.unwrap();
+    let header = resp.header.unwrap_or_default();
 
     let error_message = if header.error.is_empty() {
         None
