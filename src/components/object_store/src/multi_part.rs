@@ -15,16 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::task::{Context, Poll};
+use std::{
+    io::Error as IoError,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use bytes::Bytes;
-use futures::ready;
-use tokio::task::JoinSet;
+use futures::{future::BoxFuture, ready, Future, FutureExt};
+use tokio::{io::AsyncWrite, sync::Mutex, task::JoinSet};
 pub use upstream::PutPayloadMut;
-use upstream::{Error, MultipartUpload, PutPayload, PutResult};
+use upstream::{path::Path, Error, MultipartUpload, PutPayload, PutResult};
+
+use crate::{ObjectStoreRef, WriteMultipartRef};
 
 #[derive(Debug)]
-pub struct WriteMultipart {
+pub struct ConcurrentMultipartUpload {
     upload: Box<dyn MultipartUpload>,
 
     buffer: PutPayloadMut,
@@ -34,7 +41,7 @@ pub struct WriteMultipart {
     tasks: JoinSet<Result<(), Error>>,
 }
 
-impl WriteMultipart {
+impl ConcurrentMultipartUpload {
     pub fn new(upload: Box<dyn MultipartUpload>, chunk_size: usize) -> Self {
         Self {
             upload,
@@ -102,5 +109,113 @@ impl WriteMultipart {
     pub async fn abort(&mut self) -> Result<(), Error> {
         self.tasks.shutdown().await;
         self.upload.abort().await
+    }
+}
+
+pub struct MultiUploadWriter {
+    pub multi_upload: WriteMultipartRef,
+    upload_task: Option<BoxFuture<'static, std::result::Result<usize, IoError>>>,
+    flush_task: Option<BoxFuture<'static, std::result::Result<(), IoError>>>,
+    completion_task: Option<BoxFuture<'static, std::result::Result<(), IoError>>>,
+}
+
+const CHUNK_SIZE: usize = 5 * 1024 * 1024;
+const MAX_CONCURRENCY: usize = 10;
+
+impl<'a> MultiUploadWriter {
+    pub async fn new(object_store: &'a ObjectStoreRef, location: &'a Path) -> Result<Self, Error> {
+        let upload_writer = object_store.put_multipart(location).await?;
+
+        let multi_upload = Arc::new(Mutex::new(ConcurrentMultipartUpload::new(
+            upload_writer,
+            CHUNK_SIZE,
+        )));
+
+        let multi_upload = Self {
+            multi_upload,
+            upload_task: None,
+            flush_task: None,
+            completion_task: None,
+        };
+
+        Ok(multi_upload)
+    }
+
+    pub fn aborter(&self) -> WriteMultipartRef {
+        self.multi_upload.clone()
+    }
+}
+
+impl AsyncWrite for MultiUploadWriter {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, IoError>> {
+        let multi_upload = self.multi_upload.clone();
+        let buf = buf.to_owned();
+
+        let upload_task = self.upload_task.insert(
+            async move {
+                multi_upload
+                    .lock()
+                    .await
+                    .flush(MAX_CONCURRENCY)
+                    .await
+                    .map_err(IoError::other)?;
+
+                multi_upload.lock().await.write(&buf);
+                Ok(buf.len())
+            }
+            .boxed(),
+        );
+
+        Pin::new(upload_task).poll(cx)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), IoError>> {
+        let multi_upload = self.multi_upload.clone();
+
+        let flush_task = self.flush_task.insert(
+            async move {
+                multi_upload
+                    .lock()
+                    .await
+                    .flush(0)
+                    .await
+                    .map_err(IoError::other)?;
+
+                Ok(())
+            }
+            .boxed(),
+        );
+
+        Pin::new(flush_task).poll(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), IoError>> {
+        let multi_upload = self.multi_upload.clone();
+
+        let completion_task = self.completion_task.get_or_insert_with(|| {
+            async move {
+                multi_upload
+                    .lock()
+                    .await
+                    .finish()
+                    .await
+                    .map_err(IoError::other)?;
+
+                Ok(())
+            }
+            .boxed()
+        });
+
+        Pin::new(completion_task).poll(cx)
     }
 }

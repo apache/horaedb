@@ -19,7 +19,7 @@
 
 use std::sync::Arc;
 
-pub use multi_part::WriteMultipart;
+pub use multi_part::{ConcurrentMultipartUpload, MultiUploadWriter};
 use tokio::sync::Mutex;
 pub use upstream::{
     local::LocalFileSystem, path::Path, Error as ObjectStoreError, Error, GetResult, ListResult,
@@ -39,4 +39,5 @@ pub mod test_util;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 
-pub type WriteMultipartRef = Arc<Mutex<WriteMultipart>>;
+// TODO: remove Mutex and make ConcurrentMultipartUpload thread-safe
+pub type WriteMultipartRef = Arc<Mutex<ConcurrentMultipartUpload>>;
