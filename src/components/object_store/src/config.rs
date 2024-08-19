@@ -51,6 +51,8 @@ impl Default for StorageOptions {
             disk_cache_partition_bits: 4,
             object_store: ObjectStoreOptions::Local(LocalOptions {
                 data_dir: root_path,
+                max_retries: 3,
+                timeout: Default::default(),
             }),
         }
     }
@@ -68,6 +70,10 @@ pub enum ObjectStoreOptions {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LocalOptions {
     pub data_dir: String,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
+    #[serde(default)]
+    pub timeout: TimeoutOptions,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -77,10 +83,12 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
     #[serde(default)]
     pub http: HttpOptions,
     #[serde(default)]
-    pub retry: RetryOptions,
+    pub timeout: TimeoutOptions,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -91,10 +99,12 @@ pub struct S3Options {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
     #[serde(default)]
     pub http: HttpOptions,
     #[serde(default)]
-    pub retry: RetryOptions,
+    pub timeout: TimeoutOptions,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -117,16 +127,21 @@ impl Default for HttpOptions {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RetryOptions {
-    pub max_retries: usize,
-    pub retry_timeout: ReadableDuration,
+pub struct TimeoutOptions {
+    pub timeout: ReadableDuration,
+    pub io_timeout: ReadableDuration,
 }
 
-impl Default for RetryOptions {
+impl Default for TimeoutOptions {
     fn default() -> Self {
         Self {
-            max_retries: 3,
-            retry_timeout: ReadableDuration::from(Duration::from_secs(3 * 60)),
+            timeout: ReadableDuration::from(Duration::from_secs(10)),
+            io_timeout: ReadableDuration::from(Duration::from_secs(10)),
         }
     }
+}
+
+#[inline]
+fn default_max_retries() -> usize {
+    3
 }

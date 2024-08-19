@@ -28,7 +28,7 @@ use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use generic_error::BoxError;
 use logger::{debug, error};
-use object_store::{MultiUploadWriter, ObjectStore, ObjectStoreRef, Path, WriteMultipartRef};
+use object_store::{MultiUploadRef, MultiUploadWriter, ObjectStore, ObjectStoreRef, Path};
 use snafu::{OptionExt, ResultExt};
 use tokio::io::AsyncWrite;
 
@@ -417,7 +417,7 @@ async fn write_metadata(
     Ok(buf_size)
 }
 
-async fn multi_upload_abort(aborter: WriteMultipartRef) {
+async fn multi_upload_abort(aborter: MultiUploadRef) {
     // The uploading file will be leaked if failed to abort. A repair command
     // will be provided to clean up the leaked files.
     if let Err(e) = aborter.lock().await.abort().await {

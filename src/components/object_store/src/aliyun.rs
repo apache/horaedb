@@ -15,9 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use upstream::{
-    aws::{AmazonS3, AmazonS3Builder},
-    ClientOptions, RetryConfig,
+use object_store_opendal::OpendalStore;
+use opendal::{
+    layers::{RetryLayer, TimeoutLayer},
+    raw::HttpClient,
+    services::Oss,
+    Operator, Result,
 };
 
 use crate::config::AliyunOptions;
@@ -34,36 +37,35 @@ fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
     }
 }
 
-pub fn try_new(aliyun_opts: &AliyunOptions) -> upstream::Result<AmazonS3> {
-    let cli_opt = ClientOptions::new()
-        .with_allow_http(true)
-        .with_pool_max_idle_per_host(aliyun_opts.http.pool_max_idle_per_host)
-        .with_http2_keep_alive_timeout(aliyun_opts.http.keep_alive_timeout.0)
-        .with_http2_keep_alive_while_idle()
-        .with_http2_keep_alive_interval(aliyun_opts.http.keep_alive_interval.0)
-        .with_timeout(aliyun_opts.http.timeout.0);
-    let retry_config = RetryConfig {
-        max_retries: aliyun_opts.retry.max_retries,
-        retry_timeout: aliyun_opts.retry.retry_timeout.0,
-        ..Default::default()
-    };
+pub fn try_new(aliyun_opts: &AliyunOptions) -> Result<OpendalStore> {
+    let http_builder = reqwest::ClientBuilder::new()
+        .pool_max_idle_per_host(aliyun_opts.http.pool_max_idle_per_host)
+        .http2_keep_alive_timeout(aliyun_opts.http.keep_alive_timeout.0)
+        .http2_keep_alive_while_idle(true)
+        .http2_keep_alive_interval(aliyun_opts.http.keep_alive_interval.0)
+        .timeout(aliyun_opts.http.timeout.0);
+    let http_client = HttpClient::build(http_builder)?;
 
     let endpoint = &aliyun_opts.endpoint;
     let bucket = &aliyun_opts.bucket;
     let endpoint = normalize_endpoint(endpoint, bucket);
-    AmazonS3Builder::new()
-        .with_virtual_hosted_style_request(true)
-        // region is not used when virtual_hosted_style is true,
-        // but is required, so dummy is used here
-        // https://github.com/apache/arrow-rs/issues/3827
-        .with_region("dummy")
-        .with_access_key_id(&aliyun_opts.key_id)
-        .with_secret_access_key(&aliyun_opts.key_secret)
-        .with_endpoint(endpoint)
-        .with_bucket_name(bucket)
-        .with_client_options(cli_opt)
-        .with_retry(retry_config)
-        .build()
+
+    let builder = Oss::default()
+        .access_key_id(&aliyun_opts.key_id)
+        .access_key_secret(&aliyun_opts.key_secret)
+        .endpoint(&endpoint)
+        .bucket(bucket)
+        .http_client(http_client);
+    let op = Operator::new(builder)?
+        .layer(
+            TimeoutLayer::new()
+                .with_timeout(aliyun_opts.timeout.timeout.0)
+                .with_io_timeout(aliyun_opts.timeout.io_timeout.0),
+        )
+        .layer(RetryLayer::new().with_max_times(aliyun_opts.max_retries))
+        .finish();
+
+    Ok(OpendalStore::new(op))
 }
 
 #[cfg(test)]
