@@ -19,7 +19,6 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use table_kv::config::ObkvConfig;
 use time_ext::ReadableDuration;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -63,7 +62,6 @@ impl Default for StorageOptions {
 pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
-    Obkv(ObkvOptions),
     S3(S3Options),
 }
 
@@ -83,39 +81,6 @@ pub struct AliyunOptions {
     pub http: HttpOptions,
     #[serde(default)]
     pub retry: RetryOptions,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObkvOptions {
-    pub prefix: String,
-    #[serde(default = "ObkvOptions::default_shard_num")]
-    pub shard_num: usize,
-    #[serde(default = "ObkvOptions::default_part_size")]
-    pub part_size: ReadableSize,
-    #[serde(default = "ObkvOptions::default_max_object_size")]
-    pub max_object_size: ReadableSize,
-    #[serde(default = "ObkvOptions::default_upload_parallelism")]
-    pub upload_parallelism: usize,
-    /// Obkv client config
-    pub client: ObkvConfig,
-}
-
-impl ObkvOptions {
-    fn default_max_object_size() -> ReadableSize {
-        ReadableSize::gb(1)
-    }
-
-    fn default_part_size() -> ReadableSize {
-        ReadableSize::mb(1)
-    }
-
-    fn default_shard_num() -> usize {
-        512
-    }
-
-    fn default_upload_parallelism() -> usize {
-        8
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

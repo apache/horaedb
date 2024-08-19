@@ -20,10 +20,10 @@ use std::{fmt::Display, ops::Range};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{stream::BoxStream, StreamExt};
-use tokio::io::AsyncWrite;
 use upstream::{
     path::{self, Path, DELIMITER},
-    Error, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, Result,
+    Error, GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload, ObjectMeta,
+    ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
 };
 
 use crate::ObjectStoreRef;
@@ -96,28 +96,55 @@ impl StoreWithPrefix {
 
 #[async_trait]
 impl ObjectStore for StoreWithPrefix {
-    async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
+    async fn put(&self, location: &Path, payload: PutPayload) -> Result<PutResult> {
         let new_loc = self.add_prefix_to_loc(location);
-        self.store.put(&new_loc, bytes).await
+        self.store.put(&new_loc, payload).await
     }
 
-    async fn put_multipart(
+    async fn put_opts(
         &self,
         location: &Path,
-    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        payload: PutPayload,
+        opts: PutOptions,
+    ) -> Result<PutResult> {
+        let new_loc = self.add_prefix_to_loc(location);
+        self.store.put_opts(&new_loc, payload, opts).await
+    }
+
+    async fn put_multipart(&self, location: &Path) -> Result<Box<dyn MultipartUpload>> {
         let new_loc = self.add_prefix_to_loc(location);
         self.store.put_multipart(&new_loc).await
     }
 
-    async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
+    async fn put_multipart_opts(
+        &self,
+        location: &Path,
+        opts: PutMultipartOpts,
+    ) -> Result<Box<dyn MultipartUpload>> {
         let new_loc = self.add_prefix_to_loc(location);
-        self.store.abort_multipart(&new_loc, multipart_id).await
+        self.store.put_multipart_opts(&new_loc, opts).await
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
         let new_loc = self.add_prefix_to_loc(location);
         let res = self.store.get(&new_loc).await?;
-        if let GetResult::File(_, _) = &res {
+        if let GetResultPayload::File(_, _) = &res.payload {
+            let err = ErrorWithMsg {
+                msg: "StoreWithPrefix doesn't support object store based on local file system"
+                    .to_string(),
+            };
+            return Err(Error::NotSupported {
+                source: Box::new(err),
+            });
+        }
+
+        Ok(res)
+    }
+
+    async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
+        let new_loc = self.add_prefix_to_loc(location);
+        let res = self.store.get_opts(&new_loc, options).await?;
+        if let GetResultPayload::File(_, _) = &res.payload {
             let err = ErrorWithMsg {
                 msg: "StoreWithPrefix doesn't support object store based on local file system"
                     .to_string(),
@@ -154,12 +181,12 @@ impl ObjectStore for StoreWithPrefix {
         self.store.delete(&new_loc).await
     }
 
-    async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+    fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
         let objects = if let Some(loc) = prefix {
             let new_loc = self.add_prefix_to_loc(loc);
-            self.store.list(Some(&new_loc)).await?
+            self.store.list(Some(&new_loc))
         } else {
-            self.store.list(Some(&self.prefix)).await?
+            self.store.list(Some(&self.prefix))
         };
 
         let new_objects = objects.map(|mut obj| {
@@ -169,7 +196,7 @@ impl ObjectStore for StoreWithPrefix {
 
             obj
         });
-        Ok(new_objects.boxed())
+        new_objects.boxed()
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
@@ -209,7 +236,7 @@ mod tests {
     use std::sync::Arc;
 
     use chrono::{DateTime, Utc};
-    use futures::stream;
+    use futures::{stream, stream::StreamExt};
     use tempfile::tempdir;
     use upstream::local::LocalFileSystem;
 
@@ -242,28 +269,37 @@ mod tests {
 
     #[async_trait]
     impl ObjectStore for MockObjectStore {
-        async fn put(&self, location: &Path, _bytes: Bytes) -> Result<()> {
+        async fn put(&self, location: &Path, _payload: PutPayload) -> Result<PutResult> {
             self.prefix_checker.check(location);
-            Ok(())
+            Ok(PutResult {
+                e_tag: None,
+                version: None,
+            })
         }
 
-        async fn put_multipart(
+        async fn put_opts(
             &self,
             _location: &Path,
-        ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
-            todo!()
+            _payload: PutPayload,
+            _opts: PutOptions,
+        ) -> Result<PutResult> {
+            Err(Error::NotImplemented)
         }
 
-        async fn abort_multipart(
+        async fn put_multipart_opts(
             &self,
             _location: &Path,
-            _multipart_id: &MultipartId,
-        ) -> Result<()> {
-            todo!()
+            _opts: PutMultipartOpts,
+        ) -> Result<Box<dyn MultipartUpload>> {
+            Err(Error::NotImplemented)
         }
 
         async fn get(&self, location: &Path) -> Result<GetResult> {
             self.prefix_checker.check(location);
+            Err(Error::NotImplemented)
+        }
+
+        async fn get_opts(&self, _location: &Path, _options: GetOptions) -> Result<GetResult> {
             Err(Error::NotImplemented)
         }
 
@@ -279,6 +315,8 @@ mod tests {
                 location: location.clone(),
                 last_modified: DateTime::<Utc>::default(),
                 size: 0,
+                e_tag: None,
+                version: None,
             })
         }
 
@@ -288,7 +326,7 @@ mod tests {
             Err(Error::NotImplemented)
         }
 
-        async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+        fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
             if let Some(loc) = prefix {
                 self.prefix_checker.check(loc);
             }
@@ -301,11 +339,13 @@ mod tests {
                     location: filepath,
                     last_modified: DateTime::<Utc>::default(),
                     size: 0,
+                    e_tag: None,
+                    version: None,
                 };
                 objects.push(Ok(object));
             }
 
-            Ok(stream::iter(objects).boxed())
+            stream::iter(objects).boxed()
         }
 
         async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
@@ -346,7 +386,7 @@ mod tests {
         // Ignore the result and let the `prefix_checker` in the `MockObjectStore` to do
         // the assertion.
         let _ = prefix_store
-            .put(&test_filepath, Bytes::from_static(b"1111"))
+            .put(&test_filepath, Bytes::from_static(b"1111").into())
             .await;
 
         let _ = prefix_store.get(&test_filepath).await;
@@ -360,8 +400,6 @@ mod tests {
 
         for meta in prefix_store
             .list(Some(&test_filepath))
-            .await
-            .unwrap()
             .collect::<Vec<_>>()
             .await
         {
