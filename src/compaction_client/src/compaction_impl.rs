@@ -20,17 +20,17 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use generic_error::BoxError;
 use horaedbproto::{
-    common::ResponseHeader, 
-    compaction_service::{self, compaction_service_client::CompactionServiceClient}
+    common::ResponseHeader,
+    compaction_service::{self, compaction_service_client::CompactionServiceClient},
 };
 use logger::info;
 use serde::{Deserialize, Serialize};
-use snafu::{ResultExt, OptionExt};
+use snafu::{OptionExt, ResultExt};
 use time_ext::ReadableDuration;
 
 use crate::{
-    BadResponse, CompactionClient, CompactionClientRef, ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse,
-    FailConnect, FailExecuteCompactionTask, MissingHeader, Result,
+    BadResponse, CompactionClient, CompactionClientRef, ExecuteCompactionTaskRequest,
+    ExecuteCompactionTaskResponse, FailConnect, FailExecuteCompactionTask, MissingHeader, Result,
 };
 
 type CompactionServiceGrpcClient = CompactionServiceClient<tonic::transport::Channel>;
@@ -49,7 +49,8 @@ impl Default for CompactionClientConfig {
     }
 }
 
-/// Default compaction client impl, will interact with the remote compaction node.
+/// Default compaction client impl, will interact with the remote compaction
+/// node.
 pub struct CompactionClientImpl {
     client: CompactionServiceGrpcClient,
 }
@@ -57,12 +58,13 @@ pub struct CompactionClientImpl {
 impl CompactionClientImpl {
     pub async fn connect(config: CompactionClientConfig) -> Result<Self> {
         let client = {
-            let endpoint = tonic::transport::Endpoint::from_shared(config.compaction_server_addr.to_string())
-                .box_err()
-                .context(FailConnect {
-                    addr: &config.compaction_server_addr,
-                })?
-                .timeout(config.timeout.0);
+            let endpoint =
+                tonic::transport::Endpoint::from_shared(config.compaction_server_addr.to_string())
+                    .box_err()
+                    .context(FailConnect {
+                        addr: &config.compaction_server_addr,
+                    })?
+                    .timeout(config.timeout.0);
             CompactionServiceGrpcClient::connect(endpoint)
                 .await
                 .box_err()
@@ -71,9 +73,7 @@ impl CompactionClientImpl {
                 })?
         };
 
-        Ok(Self {
-            client,
-        })
+        Ok(Self { client })
     }
 
     #[inline]
@@ -82,17 +82,18 @@ impl CompactionClientImpl {
     }
 }
 
-
 #[async_trait]
 impl CompactionClient for CompactionClientImpl {
-    async fn execute_compaction_task(&self, req: ExecuteCompactionTaskRequest)
-        -> Result<ExecuteCompactionTaskResponse> {
+    async fn execute_compaction_task(
+        &self,
+        req: ExecuteCompactionTaskRequest,
+    ) -> Result<ExecuteCompactionTaskResponse> {
         let pb_req = compaction_service::ExecuteCompactionTaskRequest::from(req);
 
         // TODO(leslie): Add request header for ExecuteCompactionTaskRequest.
 
         info!(
-            "Compaction client try to execute compaction task in remote compaction node, req:{:?}", 
+            "Compaction client try to execute compaction task in remote compaction node, req:{:?}",
             pb_req
         );
 
@@ -102,7 +103,7 @@ impl CompactionClient for CompactionClientImpl {
             .await
             .box_err()
             .context(FailExecuteCompactionTask)?
-            .into_inner(); 
+            .into_inner();
 
         info!(
             "Compaction client finish executing compaction task in remote compaction node, req:{:?}",
@@ -114,7 +115,8 @@ impl CompactionClient for CompactionClientImpl {
     }
 }
 
-// TODO(leslie): Consider to refactor and reuse the similar function in meta_client.
+// TODO(leslie): Consider to refactor and reuse the similar function in
+// meta_client.
 fn check_response_header(header: &Option<ResponseHeader>) -> Result<()> {
     let header = header.as_ref().context(MissingHeader)?;
     if header.code == 0 {

@@ -178,7 +178,7 @@ impl Server {
                 .context(OpenLocalTables)?;
         }
 
-        // Run in cluster mode 
+        // Run in cluster mode
         if let Some(cluster) = &self.cluster {
             info!("Server start, start cluster");
             cluster.start().await.context(StartCluster)?;

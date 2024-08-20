@@ -16,16 +16,16 @@
 // under the License.
 
 //! Error definitions for compaction service.
- 
+
 use generic_error::GenericError;
 use horaedbproto::common::ResponseHeader;
 use macros::define_result;
 use snafu::Snafu;
 
 use crate::error_util;
- 
+
 define_result!(Error);
- 
+
 #[derive(Snafu, Debug)]
 #[snafu(visibility(pub))]
 pub enum Error {

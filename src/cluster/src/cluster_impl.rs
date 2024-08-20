@@ -24,10 +24,8 @@ use async_trait::async_trait;
 use common_types::table::ShardId;
 use compaction_client::{
     compaction_impl::{build_compaction_client, CompactionClientConfig},
-    types::{
-        ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse
-    },
-    CompactionClientRef
+    types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse},
+    CompactionClientRef,
 };
 use etcd_client::{Certificate, ConnectOptions, Identity, TlsOptions};
 use generic_error::BoxError;
@@ -52,9 +50,10 @@ use crate::{
     shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef},
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, ClusterType, CompactionClientFailure,
-    CompactionOffloadNotAllowed, EtcdClientFailureWithCause, InitEtcdClientConfig, InvalidArguments,
-    MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound, TableStatus
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, NodeType, CompactionClientFailure,
+    CompactionOffloadNotAllowed, EtcdClientFailureWithCause, InitEtcdClientConfig,
+    InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
+    TableStatus,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -349,7 +348,8 @@ impl Inner {
         shards.iter().map(|shard| shard.shard_info()).collect()
     }
 
-    /// Get proper remote compaction node for compaction offload with meta client.
+    /// Get proper remote compaction node for compaction offload with meta
+    /// client.
     async fn get_compaction_node(&self) -> Result<CompactionClientConfig> {
         unimplemented!()
     }
@@ -367,8 +367,12 @@ impl Inner {
             .expect("fail to build compaction client")
     }
 
-    async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse> {
-        // TODO(leslie): Execute the compaction task locally when fails to build compaction client.
+    async fn compact(
+        &self,
+        req: &ExecuteCompactionTaskRequest,
+    ) -> Result<ExecuteCompactionTaskResponse> {
+        // TODO(leslie): Execute the compaction task locally when fails to build
+        // compaction client.
         let compact_resp = self
             .compaction_client()
             .await
@@ -383,7 +387,7 @@ impl Inner {
 #[async_trait]
 impl Cluster for ClusterImpl {
     /// Type of the server in cluster mode.
-    type ClusterType = ClusterType;
+    type NodeType = NodeType;
 
     async fn start(&self) -> Result<()> {
         info!("Cluster is starting with config:{:?}", self.config);
@@ -416,8 +420,8 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    fn cluster_type(&self) -> ClusterType {
-        self.config.cluster_type.clone()
+    fn node_type(&self) -> NodeType {
+        self.config.node_type.clone()
     }
 
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
@@ -454,12 +458,15 @@ impl Cluster for ClusterImpl {
         self.shard_lock_manager.clone()
     }
 
-    async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse> {
+    async fn compact(
+        &self,
+        req: &ExecuteCompactionTaskRequest,
+    ) -> Result<ExecuteCompactionTaskResponse> {
         ensure!(
-            self.cluster_type() == ClusterType::HoraeDB,
+            self.node_type() == NodeType::HoraeDB,
             CompactionOffloadNotAllowed {
-                cluster_type: self.cluster_type()
-            } 
+                node_type: self.node_type()
+            }
         );
         self.inner.compact(req).await
     }

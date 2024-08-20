@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use table_engine::ANALYTIC_ENGINE_TYPE;
 use time_ext::ReadableDuration;
 
-use crate::ClusterType;
+use crate::NodeType;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
@@ -135,7 +135,7 @@ impl Default for TlsConfig {
 #[serde(default)]
 pub struct ClusterConfig {
     pub cmd_channel_buffer_size: usize,
-    pub cluster_type: ClusterType,
+    pub node_type: NodeType,
     pub meta_client: MetaClientConfig,
     pub etcd_client: EtcdClientConfig,
 }

@@ -26,8 +26,8 @@ use size_ext::ReadableSize;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct NodeInfo {
-    /// The address of the horaedb (or compaction server) node. It can be a domain 
-    /// name or an IP address without port followed.
+    /// The address of the horaedb (or compaction server) node. It can be a
+    /// domain name or an IP address without port followed.
     pub addr: String,
     pub zone: String,
     pub idc: String,

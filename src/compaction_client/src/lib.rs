@@ -20,11 +20,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use generic_error::GenericError;
 use macros::define_result;
-use types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 use snafu::{Backtrace, Snafu};
+use types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 
-pub mod types;
 pub mod compaction_impl;
+pub mod types;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
@@ -62,12 +62,14 @@ pub enum Error {
 
 define_result!(Error);
 
-/// CompactionClient is the abstraction of client used for HoraeDB to 
+/// CompactionClient is the abstraction of client used for HoraeDB to
 /// communicate with CompactionServer cluster.
 #[async_trait]
 pub trait CompactionClient: Send + Sync {
-    async fn execute_compaction_task(&self, req: ExecuteCompactionTaskRequest)
-        -> Result<ExecuteCompactionTaskResponse>;
+    async fn execute_compaction_task(
+        &self,
+        req: ExecuteCompactionTaskRequest,
+    ) -> Result<ExecuteCompactionTaskResponse>;
 }
 
 pub type CompactionClientRef = Arc<dyn CompactionClient>;

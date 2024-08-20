@@ -119,11 +119,7 @@ impl From<LayeredMemtableOptions> for manifest::LayeredMemtableOptions {
     fn from(value: LayeredMemtableOptions) -> Self {
         Self {
             mutable_segment_switch_threshold: value.mutable_segment_switch_threshold.0,
-            disable: if value.mutable_segment_switch_threshold.0 == 0 {
-                true
-            } else {
-                false
-            },
+            disable: value.mutable_segment_switch_threshold.0 == 0,
         }
     }
 }

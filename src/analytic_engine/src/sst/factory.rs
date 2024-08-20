@@ -25,7 +25,7 @@ use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use runtime::Runtime;
-use snafu::{Backtrace, ResultExt, Snafu, OptionExt};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;
 
@@ -196,9 +196,7 @@ impl TryFrom<horaedbproto::compaction_service::SstWriteOptions> for SstWriteOpti
         let column_stats: HashMap<String, ColumnStats> = value
             .column_stats
             .into_iter()
-            .map(|(k,v)| (k.into(), ColumnStats {
-                low_cardinality: v
-            }))
+            .map(|(k, v)| (k, ColumnStats { low_cardinality: v }))
             .collect();
 
         Ok(SstWriteOptions {
@@ -206,7 +204,7 @@ impl TryFrom<horaedbproto::compaction_service::SstWriteOptions> for SstWriteOpti
             num_rows_per_row_group,
             compression,
             max_buffer_size,
-            column_stats, 
+            column_stats,
         })
     }
 }
