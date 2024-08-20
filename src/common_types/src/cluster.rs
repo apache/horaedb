@@ -17,9 +17,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Type to distinguish different server type in cluster mode.
+/// Type to distinguish different node type in cluster mode.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ClusterType {
+pub enum NodeType {
     #[default]
     HoraeDB,
     CompactionServer,

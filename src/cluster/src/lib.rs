@@ -28,7 +28,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::{cluster::ClusterType, schema::SchemaName};
+use common_types::{cluster::NodeType, schema::SchemaName};
 use compaction_client::types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 use generic_error::GenericError;
 use macros::define_result;
@@ -167,10 +167,10 @@ pub enum Error {
     ClusterNodesNotFound { version: u64, backtrace: Backtrace },
 
     #[snafu(display(
-        "Not allowed to execute compaction offload in cluster_type:{cluster_type:?}.\nBacktrace:\n{backtrace:?}"
+        "Not allowed to execute compaction offload in node_type:{node_type:?}.\nBacktrace:\n{backtrace:?}"
     ))]
     CompactionOffloadNotAllowed {
-        cluster_type: ClusterType,
+        node_type: NodeType,
         backtrace: Backtrace,
     },
 }
@@ -194,7 +194,7 @@ impl From<ShardStatus> for TableStatus {
     }
 }
 
-pub type ClusterRef = Arc<dyn Cluster<ClusterType = ClusterType> + Send + Sync>;
+pub type ClusterRef = Arc<dyn Cluster<NodeType = NodeType> + Send + Sync>;
 
 #[derive(Clone, Debug)]
 pub struct ClusterNodesResp {
@@ -207,13 +207,13 @@ pub struct ClusterNodesResp {
 /// + (Optional) Executes compaction task remotely.
 #[async_trait]
 pub trait Cluster {
-    type ClusterType: Send + Sync;
+    type NodeType: Send + Sync;
 
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
 
     /// Get cluster type.
-    fn cluster_type(&self) -> ClusterType;
+    fn node_type(&self) -> NodeType;
 
     /// Fetch related information and open shard.
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef>;

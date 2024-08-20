@@ -205,7 +205,7 @@ mod tests {
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
         TableStatus,
     };
-    use common_types::{cluster::ClusterType, table::ShardId};
+    use common_types::{cluster::NodeType, table::ShardId};
     use compaction_client::types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
     use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use meta_client::types::{
@@ -219,7 +219,7 @@ mod tests {
 
     #[async_trait]
     impl Cluster for MockClusterImpl {
-        type ClusterType = ClusterType;
+        type NodeType = NodeType;
 
         async fn start(&self) -> cluster::Result<()> {
             unimplemented!();
@@ -229,7 +229,7 @@ mod tests {
             unimplemented!();
         }
 
-        fn cluster_type(&self) -> ClusterType {
+        fn node_type(&self) -> NodeType {
             unimplemented!()
         }
 

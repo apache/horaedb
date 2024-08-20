@@ -26,7 +26,7 @@ use analytic_engine::{
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
-use common_types::cluster::ClusterType;
+use common_types::cluster::NodeType;
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
@@ -381,7 +381,7 @@ async fn build_with_meta<T: WalsOpener>(
         .opened_wals(opened_wals)
         .router(router)
         .schema_config_provider(schema_config_provider);
-    if let ClusterType::CompactionServer = cluster_config.cluster_type {
+    if let NodeType::CompactionServer = cluster_config.node_type {
         builder =
             builder.compaction_runner(local_compaction_runner.expect("Empty compaction runner."));
     }

@@ -26,7 +26,7 @@ use std::{
 
 use analytic_engine::compaction::runner::CompactionRunnerRef;
 use cluster::ClusterRef;
-use common_types::{cluster::ClusterType, column_schema};
+use common_types::{cluster::NodeType, column_schema};
 use compaction_service::CompactionServiceImpl;
 use futures::FutureExt;
 use generic_error::GenericError;
@@ -332,8 +332,8 @@ impl Builder {
         self.cluster
             .map(|v| {
                 let result: Result<()> = (|| {
-                    match v.cluster_type() {
-                        ClusterType::HoraeDB => {
+                    match v.node_type() {
+                        NodeType::HoraeDB => {
                             // Support meta rpc service.
                             let opened_wals = self.opened_wals.context(MissingWals)?;
                             let builder = meta_event_service::Builder {
@@ -344,7 +344,7 @@ impl Builder {
                             };
                             meta_rpc_server = Some(MetaEventServiceServer::new(builder.build()));
                         }
-                        ClusterType::CompactionServer => {
+                        NodeType::CompactionServer => {
                             // Support remote rpc service.
                             let compaction_runner =
                                 self.compaction_runner.context(MissingCompactionRunner)?;

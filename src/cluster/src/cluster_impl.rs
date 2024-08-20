@@ -50,7 +50,7 @@ use crate::{
     shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef},
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, ClusterType, CompactionClientFailure,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, NodeType, CompactionClientFailure,
     CompactionOffloadNotAllowed, EtcdClientFailureWithCause, InitEtcdClientConfig,
     InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
     TableStatus,
@@ -387,7 +387,7 @@ impl Inner {
 #[async_trait]
 impl Cluster for ClusterImpl {
     /// Type of the server in cluster mode.
-    type ClusterType = ClusterType;
+    type NodeType = NodeType;
 
     async fn start(&self) -> Result<()> {
         info!("Cluster is starting with config:{:?}", self.config);
@@ -420,8 +420,8 @@ impl Cluster for ClusterImpl {
         Ok(())
     }
 
-    fn cluster_type(&self) -> ClusterType {
-        self.config.cluster_type.clone()
+    fn node_type(&self) -> NodeType {
+        self.config.node_type.clone()
     }
 
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {
@@ -463,9 +463,9 @@ impl Cluster for ClusterImpl {
         req: &ExecuteCompactionTaskRequest,
     ) -> Result<ExecuteCompactionTaskResponse> {
         ensure!(
-            self.cluster_type() == ClusterType::HoraeDB,
+            self.node_type() == NodeType::HoraeDB,
             CompactionOffloadNotAllowed {
-                cluster_type: self.cluster_type()
+                node_type: self.node_type()
             }
         );
         self.inner.compact(req).await
