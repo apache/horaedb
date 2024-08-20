@@ -3,7 +3,7 @@ module github.com/apache/incubator-horaedb-meta
 go 1.21
 
 require (
-	github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240818091304-d9b1a57d787e
+	github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240819012818-8c9fb72d9547
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/looplab/fsm v0.3.0

@@ -279,6 +279,7 @@ type NodeStats struct {
 	Lease       uint32
 	Zone        string
 	NodeVersion string
+	NodeType    clusterpb.NodeType
 }
 
 func NewEmptyNodeStats() NodeStats {
@@ -549,6 +550,7 @@ func convertNodeStatsToPB(stats NodeStats) clusterpb.NodeStats {
 		Lease:       stats.Lease,
 		Zone:        stats.Zone,
 		NodeVersion: stats.NodeVersion,
+		NodeType:    stats.NodeType,
 	}
 }
 
@@ -557,6 +559,7 @@ func convertNodeStatsPB(stats *clusterpb.NodeStats) NodeStats {
 		Lease:       stats.Lease,
 		Zone:        stats.Zone,
 		NodeVersion: stats.NodeVersion,
+		NodeType:    stats.NodeType,
 	}
 }
 

@@ -28,6 +28,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/clusterpb"
 	"github.com/apache/incubator-horaedb-meta/server/id"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
 	"github.com/pkg/errors"
@@ -53,8 +54,13 @@ type ClusterMetadata struct {
 	topologyManager TopologyManager
 
 	// Manage the registered nodes from heartbeat.
-	registeredHoraedbNodesCache    map[string]RegisteredNode // nodeName -> NodeName
-	registeredCompactionNodesCache map[string]RegisteredNode
+	// TODO(leslie): Rename it to registeredHoraedbNodesCache?
+	registeredNodesCache           map[string]RegisteredNode // nodeName -> NodeName
+	registeredCompactionNodesCache map[string]RegisteredNode // nodeName -> NodeName
+
+	// Maintain a list to store the keys of compaction nodes.
+	// TODO(leslie): Unused now, will be used in compaction nodes scheduling strategy.
+	compactionNodesKeyList []string
 
 	storage      storage.Storage
 	kv           clientv3.KV
@@ -74,8 +80,9 @@ func NewClusterMetadata(logger *zap.Logger, meta storage.Cluster, storage storag
 		metaData:                       meta,
 		tableManager:                   NewTableManagerImpl(logger, storage, meta.ID, schemaIDAlloc, tableIDAlloc),
 		topologyManager:                NewTopologyManagerImpl(logger, storage, meta.ID, shardIDAlloc),
-		registeredHoraedbNodesCache:    map[string]RegisteredNode{},
+		registeredNodesCache:           map[string]RegisteredNode{},
 		registeredCompactionNodesCache: map[string]RegisteredNode{},
+		compactionNodesKeyList:         []string{},
 		storage:                        storage,
 		kv:                             kv,
 		shardIDAlloc:                   shardIDAlloc,
@@ -439,6 +446,20 @@ func (c *ClusterMetadata) GetShardNodeByTableIDs(tableIDs []storage.TableID) (Ge
 
 func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode RegisteredNode) error {
 	registeredNode.Node.State = storage.NodeStateOnline
+	// Register compaction node.
+	if registeredNode.Node.NodeStats.NodeType == clusterpb.NodeType_CompactionServer {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+
+		_, exists := c.registeredCompactionNodesCache[registeredNode.Node.Name]
+		c.registeredCompactionNodesCache[registeredNode.Node.Name] = registeredNode
+
+		if !exists {
+			c.compactionNodesKeyList = append(c.compactionNodesKeyList, registeredNode.Node.Name)
+		}
+		return nil
+	}
+
 	err := c.storage.CreateOrUpdateNode(ctx, storage.CreateOrUpdateNodeRequest{
 		ClusterID: c.clusterID,
 		Node:      registeredNode.Node,
@@ -458,10 +479,11 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 		}
 	}
 
-	// Update shard node mapping.
-	// Check whether to update persistence data.
+	// Register horaedb node.
 	oldCache, exists := c.registeredNodesCache[registeredNode.Node.Name]
 	c.registeredNodesCache[registeredNode.Node.Name] = registeredNode
+
+	// Check whether to update persistent data.
 	enableUpdateWhenStable := c.metaData.TopologyType == storage.TopologyTypeDynamic
 	if !enableUpdateWhenStable && c.topologyManager.GetClusterState() == storage.ClusterStateStable {
 		return nil
@@ -472,6 +494,7 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 		return nil
 	}
 
+	// Update shard node mapping.
 	shardNodes := make(map[string][]storage.ShardNode, 1)
 	shardNodes[registeredNode.Node.Name] = make([]storage.ShardNode, 0, len(registeredNode.ShardInfos))
 	for _, shardInfo := range registeredNode.ShardInfos {
@@ -489,12 +512,12 @@ func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode Regis
 	return nil
 }
 
-func (c *ClusterMetadata) GetRegisteredHoraedbNodes() []RegisteredNode {
+func (c *ClusterMetadata) GetRegisteredNodes() []RegisteredNode {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	nodes := make([]RegisteredNode, 0, len(c.registeredHoraedbNodesCache))
-	for _, node := range c.registeredHoraedbNodesCache {
+	nodes := make([]RegisteredNode, 0, len(c.registeredNodesCache))
+	for _, node := range c.registeredNodesCache {
 		nodes = append(nodes, node)
 	}
 	return nodes
@@ -509,14 +532,6 @@ func (c *ClusterMetadata) GetRegisteredCompactionNodes() []RegisteredNode {
 		nodes = append(nodes, node)
 	}
 	return nodes
-}
-
-func (c *ClusterMetadata) GetAllRegisteredNodes() []RegisteredNode {
-	horaedbNodes := c.GetRegisteredHoraedbNodes()
-	compactionNodes := c.GetRegisteredCompactionNodes()
-
-	allNodes := append(horaedbNodes, compactionNodes...)
-	return allNodes
 }
 
 func (c *ClusterMetadata) GetRegisteredNodeByName(nodeName string) (RegisteredNode, bool) {
@@ -724,7 +739,7 @@ func (c *ClusterMetadata) CreateShardViews(ctx context.Context, views []CreateSh
 func (c *ClusterMetadata) GetClusterSnapshot() Snapshot {
 	return Snapshot{
 		Topology:        c.topologyManager.GetTopology(),
-		RegisteredNodes: c.GetAllRegisteredNodes(),
+		RegisteredNodes: c.GetRegisteredNodes(),
 	}
 }
 

@@ -25,9 +25,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/clusterpb"
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/apache/incubator-horaedb-meta/server/etcdutil"
-	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/clusterpb"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/clientv3util"
@@ -137,7 +137,7 @@ func (s *metaStorageImpl) UpdateCluster(ctx context.Context, req UpdateClusterRe
 	c := convertClusterToPB(req.Cluster)
 	value, err := proto.Marshal(&c)
 	if err != nil {
-		return ErrEncode.WithCausef("encode cluster，clusterID:%d, err:%v", req.Cluster.ID, err)
+		return ErrEncode.WithCausef("encode cluster, clusterID:%d, err:%v", req.Cluster.ID, err)
 	}
 
 	key := makeClusterKey(s.rootPath, c.Id)

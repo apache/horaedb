@@ -1,8 +1,8 @@
 cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 cloud.google.com/go v0.34.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240818091304-d9b1a57d787e h1:GuUbVjG2PTc6PfNX6zzF0bJ49jzbBlSa+Ad6UYNskAA=
-github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240818091304-d9b1a57d787e/go.mod h1:t/7JfFthJlt10wB33SEoYBuR8IetRxFwekd3v4QZYXk=
+github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240819012818-8c9fb72d9547 h1:X/YU9jswF/FTnBANq+2SprBn4pA9Ca93PuA2kZPeV/s=
+github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240819012818-8c9fb72d9547/go.mod h1:lNDTvwHO70v9gtVzaefpPmBdTs63hs57wFT2WdmJI+Q=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/benbjohnson/clock v1.1.0/go.mod h1:J11/hYXuz8f4ySSvYwY0FKfm+ezbsZBKZxNJlLklBHA=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=

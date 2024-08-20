@@ -26,6 +26,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/clusterpb"
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/commonpb"
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/apache/incubator-horaedb-meta/server/cluster"
@@ -34,9 +37,6 @@ import (
 	"github.com/apache/incubator-horaedb-meta/server/limiter"
 	"github.com/apache/incubator-horaedb-meta/server/member"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
-	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/clusterpb"
-	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/commonpb"
-	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -92,6 +92,7 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 				Lease:       req.GetInfo().Lease,
 				Zone:        req.GetInfo().Zone,
 				NodeVersion: req.GetInfo().BinaryVersion,
+				NodeType:    req.GetInfo().NodeType,
 			},
 			LastTouchTime: uint64(time.Now().UnixMilli()),
 			State:         storage.NodeStateOnline,
