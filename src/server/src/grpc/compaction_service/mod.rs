@@ -22,6 +22,7 @@ use std::sync::Arc;
 use analytic_engine::compaction::runner::{CompactionRunnerRef, CompactionRunnerTask};
 use async_trait::async_trait;
 use cluster::ClusterRef;
+use error::{build_err_header, build_ok_header, ErrWithCause, StatusCode};
 use generic_error::BoxError;
 use horaedbproto::compaction_service::{
     compaction_service_server::CompactionService, ExecResult, ExecuteCompactionTaskRequest,
@@ -31,7 +32,6 @@ use proxy::instance::InstanceRef;
 use runtime::Runtime;
 use snafu::ResultExt;
 use tonic::{Request, Response, Status};
-use error::{build_err_header, build_ok_header, ErrWithCause, StatusCode};
 
 mod error;
 
@@ -75,23 +75,29 @@ impl CompactionService for CompactionServiceImpl {
         &self,
         request: Request<ExecuteCompactionTaskRequest>,
     ) -> Result<Response<ExecuteCompactionTaskResponse>, Status> {
-        let request: Result<CompactionRunnerTask, error::Error> = request.into_inner().try_into().box_err().context(ErrWithCause { 
-            code: StatusCode::BadRequest,
-            msg: "fail to convert the execute compaction task request",
-        });
+        let request: Result<CompactionRunnerTask, error::Error> = request
+            .into_inner()
+            .try_into()
+            .box_err()
+            .context(ErrWithCause {
+                code: StatusCode::BadRequest,
+                msg: "fail to convert the execute compaction task request",
+            });
 
         let mut resp: ExecuteCompactionTaskResponse = ExecuteCompactionTaskResponse::default();
         match request {
             Ok(task) => {
                 let request_id = task.request_id.clone();
-                let res = self.compaction_runner.run(task).await
-                    .box_err().with_context(|| {
-                        ErrWithCause {
-                            code: StatusCode::Internal,
-                            msg: format!("fail to compact task, request:{request_id}")
-                        }
-                });
-                
+                let res = self
+                    .compaction_runner
+                    .run(task)
+                    .await
+                    .box_err()
+                    .with_context(|| ErrWithCause {
+                        code: StatusCode::Internal,
+                        msg: format!("fail to compact task, request:{request_id}"),
+                    });
+
                 match res {
                     Ok(res) => {
                         resp.header = Some(build_ok_header());
@@ -100,13 +106,13 @@ impl CompactionService for CompactionServiceImpl {
                             sst_info: Some(res.sst_info.into()),
                             sst_meta: Some(res.sst_meta.into()),
                         });
-                        // TODO(leslie): Add status.    
+                        // TODO(leslie): Add status.
                     }
                     Err(e) => {
                         resp.header = Some(build_err_header(e));
                     }
                 }
-            },
+            }
             Err(e) => {
                 resp.header = Some(build_err_header(e));
             }

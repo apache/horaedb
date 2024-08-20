@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Type to distinguish different server type in cluster mode.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]

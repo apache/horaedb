@@ -38,6 +38,6 @@ impl TryFrom<compaction_service::ExecuteCompactionTaskResponse> for ExecuteCompa
     type Error = Error;
 
     fn try_from(_value: compaction_service::ExecuteCompactionTaskResponse) -> Result<Self> {
-        unimplemented!() 
+        unimplemented!()
     }
 }

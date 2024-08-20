@@ -41,7 +41,7 @@ use macros::define_result;
 use metric_ext::Meter;
 use object_store::{ObjectStoreRef, Path};
 use runtime::{JoinHandle, Runtime};
-use snafu::{Backtrace, ResultExt, OptionExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 use tokio::sync::{
     mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -112,10 +112,7 @@ impl TryFrom<u32> for Level {
     type Error = Error;
 
     fn try_from(value: u32) -> Result<Self> {
-        let value: u16 = value
-            .try_into()
-            .box_err()
-            .context(ConvertOverflow)?;
+        let value: u16 = value.try_into().box_err().context(ConvertOverflow)?;
         Ok(value.into())
     }
 }
@@ -571,11 +568,7 @@ impl FilePurgeQueue {
 impl From<horaedbproto::compaction_service::FilePurgeQueue> for FilePurgeQueue {
     fn from(value: horaedbproto::compaction_service::FilePurgeQueue) -> Self {
         let (tx, _rx) = mpsc::unbounded_channel();
-        FilePurgeQueue::new(
-            value.space_id.into(), 
-            value.table_id.into(), 
-            tx
-        )
+        FilePurgeQueue::new(value.space_id, value.table_id.into(), tx)
     }
 }
 

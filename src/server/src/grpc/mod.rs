@@ -326,41 +326,43 @@ impl Builder {
         let proxy = self.proxy.context(MissingProxy)?;
         let hotspot_recorder = self.hotspot_recorder.context(MissingHotspotRecorder)?;
         let mut meta_rpc_server: Option<MetaEventServiceServer<MetaServiceImpl>> = None;
-        let mut compaction_rpc_server: Option<CompactionServiceServer<CompactionServiceImpl>> = None;
+        let mut compaction_rpc_server: Option<CompactionServiceServer<CompactionServiceImpl>> =
+            None;
 
         self.cluster
-        .map(|v| {
-            let result: Result<()> = (|| {
-                match v.cluster_type() {
-                    ClusterType::HoraeDB => {
-                        // Support meta rpc service.
-                        let opened_wals = self.opened_wals.context(MissingWals)?;
-                        let builder = meta_event_service::Builder {
-                            cluster: v,
-                            instance: instance.clone(),
-                            runtime: runtimes.meta_runtime.clone(),
-                            opened_wals,
-                        };
-                        meta_rpc_server = Some(MetaEventServiceServer::new(builder.build()));
+            .map(|v| {
+                let result: Result<()> = (|| {
+                    match v.cluster_type() {
+                        ClusterType::HoraeDB => {
+                            // Support meta rpc service.
+                            let opened_wals = self.opened_wals.context(MissingWals)?;
+                            let builder = meta_event_service::Builder {
+                                cluster: v,
+                                instance: instance.clone(),
+                                runtime: runtimes.meta_runtime.clone(),
+                                opened_wals,
+                            };
+                            meta_rpc_server = Some(MetaEventServiceServer::new(builder.build()));
+                        }
+                        ClusterType::CompactionServer => {
+                            // Support remote rpc service.
+                            let compaction_runner =
+                                self.compaction_runner.context(MissingCompactionRunner)?;
+                            let builder = compaction_service::Builder {
+                                cluster: v,
+                                instance: instance.clone(),
+                                runtime: runtimes.compact_runtime.clone(),
+                                compaction_runner,
+                            };
+                            compaction_rpc_server =
+                                Some(CompactionServiceServer::new(builder.build()));
+                        }
                     }
-                    ClusterType::CompactionServer => {
-                        // Support remote rpc service.
-                        let compaction_runner = self
-                            .compaction_runner
-                            .context(MissingCompactionRunner)?;
-                        let builder = compaction_service::Builder {
-                            cluster: v,
-                            instance: instance.clone(),
-                            runtime: runtimes.compact_runtime.clone(),
-                            compaction_runner,
-                        };
-                        compaction_rpc_server = Some(CompactionServiceServer::new(builder.build()));
-                    }
-                }
-                Ok(())
-            })();
-            result
-        }).transpose()?;
+                    Ok(())
+                })();
+                result
+            })
+            .transpose()?;
 
         let remote_engine_server = {
             let query_dedup = self

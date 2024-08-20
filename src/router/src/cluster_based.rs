@@ -203,7 +203,7 @@ mod tests {
 
     use cluster::{
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
-        TableStatus
+        TableStatus,
     };
     use common_types::{cluster::ClusterType, table::ShardId};
     use compaction_client::types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
@@ -296,7 +296,10 @@ mod tests {
             unimplemented!();
         }
 
-        async fn compact(&self, _req: &ExecuteCompactionTaskRequest) -> cluster::Result<ExecuteCompactionTaskResponse> {
+        async fn compact(
+            &self,
+            _req: &ExecuteCompactionTaskRequest,
+        ) -> cluster::Result<ExecuteCompactionTaskResponse> {
             unimplemented!()
         }
     }

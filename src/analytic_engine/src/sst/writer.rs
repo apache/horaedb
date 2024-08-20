@@ -125,7 +125,7 @@ impl From<SstInfo> for horaedbproto::compaction_service::SstInfo {
             storage_format: value.storage_format.into(),
             meta_path: value.meta_path,
             time_range: Some(value.time_range.into()),
-        }    
+        }
     }
 }
 

@@ -24,26 +24,28 @@ use common_types::{request_id::RequestId, schema::Schema, SequenceNumber};
 use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use object_store::Path;
-use snafu::{Backtrace, Snafu, OptionExt, ResultExt};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::TableId;
 
 use crate::{
     compaction::CompactionInputFiles,
-    instance::flush_compaction, 
+    instance::flush_compaction,
     row_iter::IterOptions,
-    space::SpaceId, 
+    space::SpaceId,
     sst::{
         factory::SstWriteOptions,
         writer::{MetaData, SstInfo},
-    }, 
+    },
     table::data::TableData,
 };
 
 /// Compaction runner
 #[async_trait]
 pub trait CompactionRunner: Send + Sync + 'static {
-    async fn run(&self, task: CompactionRunnerTask) -> 
-        flush_compaction::Result<CompactionRunnerResult>;
+    async fn run(
+        &self,
+        task: CompactionRunnerTask,
+    ) -> flush_compaction::Result<CompactionRunnerResult>;
 }
 
 pub type CompactionRunnerPtr = Box<dyn CompactionRunner>;
@@ -71,7 +73,7 @@ pub enum Error {
 
     #[snafu(display("Failed to convert input context, err:{}", source))]
     ConvertInputContext { source: GenericError },
-        
+
     #[snafu(display("Failed to convert ouput context, err:{}", source))]
     ConvertOuputContext { source: GenericError },
 
@@ -152,10 +154,14 @@ impl CompactionRunnerTask {
     }
 }
 
-impl TryFrom<horaedbproto::compaction_service::ExecuteCompactionTaskRequest> for CompactionRunnerTask {
+impl TryFrom<horaedbproto::compaction_service::ExecuteCompactionTaskRequest>
+    for CompactionRunnerTask
+{
     type Error = Error;
 
-    fn try_from(request: horaedbproto::compaction_service::ExecuteCompactionTaskRequest) -> Result<Self> {
+    fn try_from(
+        request: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+    ) -> Result<Self> {
         let task_key = request.task_key;
         let request_id: RequestId = request.request_id.into();
 
@@ -166,9 +172,9 @@ impl TryFrom<horaedbproto::compaction_service::ExecuteCompactionTaskRequest> for
             .box_err()
             .context(ConvertTableSchema)?;
 
-        let space_id: SpaceId = request.space_id.into();
+        let space_id: SpaceId = request.space_id;
         let table_id: TableId = request.table_id.into();
-        let sequence: SequenceNumber = request.sequence.into();
+        let sequence: SequenceNumber = request.sequence;
 
         let input_ctx: InputContext = request
             .input_ctx
@@ -218,7 +224,7 @@ impl TryFrom<horaedbproto::compaction_service::InputContext> for InputContext {
     fn try_from(value: horaedbproto::compaction_service::InputContext) -> Result<Self> {
         let num_rows_per_row_group: usize = value.num_rows_per_row_group as usize;
         let merge_iter_options = IterOptions {
-            batch_size: value.merge_iter_options as usize 
+            batch_size: value.merge_iter_options as usize,
         };
         let need_dedup = value.need_dedup;
 

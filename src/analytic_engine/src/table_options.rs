@@ -370,7 +370,7 @@ impl From<StorageFormat> for i32 {
     fn from(value: StorageFormat) -> Self {
         match value {
             StorageFormat::Columnar => 0,
-        } 
+        }
     }
 }
 
@@ -405,7 +405,7 @@ impl TryFrom<i32> for StorageFormat {
             0 => Self::Columnar,
             _ => return UnknownStorageFormatType { value }.fail(),
         };
-        Ok(format) 
+        Ok(format)
     }
 }
 

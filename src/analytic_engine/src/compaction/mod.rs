@@ -24,13 +24,13 @@ use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, OptionExt, Snafu};
+use snafu::{ensure, Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use time_ext::TimeUnit;
 use tokio::sync::oneshot;
 
 use crate::{
     compaction::picker::{CommonCompactionPicker, CompactionPickerRef},
-    sst::file::{FileHandle, Level, FileMeta, FilePurgeQueue},
+    sst::file::{FileHandle, FileMeta, FilePurgeQueue, Level},
     table::data::TableDataRef,
 };
 
@@ -75,12 +75,12 @@ pub enum Error {
     #[snafu(display("Invalid compaction option value, err: {}", error))]
     InvalidOption { error: String, backtrace: Backtrace },
 
-   #[snafu(display("Empty file meta.\nBacktrace:\n{}", backtrace))]
+    #[snafu(display("Empty file meta.\nBacktrace:\n{}", backtrace))]
     EmptyFileMeta { backtrace: Backtrace },
 
     #[snafu(display("Failed to convert file meta, err:{}", source))]
     ConvertFileMeta { source: GenericError },
-    
+
     #[snafu(display("Empty purge queue.\nBacktrace:\n{}", backtrace))]
     EmptyPurgeQueue { backtrace: Backtrace },
 
@@ -347,21 +347,22 @@ impl TryFrom<horaedbproto::compaction_service::CompactionInputFiles> for Compact
 
     fn try_from(value: horaedbproto::compaction_service::CompactionInputFiles) -> Result<Self> {
         let level: Level = value.level.try_into().box_err().context(ConvertLevel)?;
-        let output_level: Level = value.output_level.try_into().box_err().context(ConvertLevel)?;
-        
+        let output_level: Level = value
+            .output_level
+            .try_into()
+            .box_err()
+            .context(ConvertLevel)?;
+
         let mut files: Vec<FileHandle> = Vec::with_capacity(value.files.len());
         for file in value.files {
-            let meta: FileMeta = file 
+            let meta: FileMeta = file
                 .meta
                 .context(EmptyFileMeta)?
                 .try_into()
                 .box_err()
                 .context(ConvertFileMeta)?;
 
-            let purge_queue: FilePurgeQueue = file
-                .purge_queue
-                .context(EmptyPurgeQueue)?
-                .into();
+            let purge_queue: FilePurgeQueue = file.purge_queue.context(EmptyPurgeQueue)?.into();
 
             files.push({
                 let handle = FileHandle::new(meta, purge_queue);

@@ -211,7 +211,7 @@ pub trait Cluster {
 
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
-    
+
     /// Get cluster type.
     fn cluster_type(&self) -> ClusterType;
 
@@ -239,5 +239,8 @@ pub trait Cluster {
     fn shard_lock_manager(&self) -> ShardLockManagerRef;
 
     /// Execute compaction task in remote compaction node.
-    async fn compact(&self, req: &ExecuteCompactionTaskRequest) -> Result<ExecuteCompactionTaskResponse>;
+    async fn compact(
+        &self,
+        req: &ExecuteCompactionTaskRequest,
+    ) -> Result<ExecuteCompactionTaskResponse>;
 }
