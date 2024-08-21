@@ -183,6 +183,7 @@ impl RecordEncoding {
 
         // Read length
         let length = buf.try_get_u32().context(Decoding)?;
+        ensure!(length > 0, LengthMismatch { expected: 1usize, actual: 0usize });
 
         // Ensure the buf is long enough
         ensure!(

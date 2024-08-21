@@ -174,10 +174,12 @@ pub struct Position {
 impl Segment {
     pub fn new(path: String, segment_id: u64) -> Result<Segment> {
         if !Path::new(&path).exists() {
+            // If the file does not exist, create a new one
             let mut file = File::create(&path).context(FileOpen)?;
             file.write_all(&[NEWEST_WAL_SEGMENT_VERSION])
                 .context(FileOpen)?;
             file.write_all(SEGMENT_HEADER).context(FileOpen)?;
+            file.set_len(MAX_FILE_SIZE).context(FileOpen)?;
         }
         Ok(Segment {
             version: NEWEST_WAL_SEGMENT_VERSION,
@@ -197,51 +199,52 @@ impl Segment {
         // Open the segment file
         let file = OpenOptions::new()
             .read(true)
-            .append(true)
+            .write(true)
             .open(&self.path)
             .context(FileOpen)?;
-
+    
         let metadata = file.metadata().context(FileOpen)?;
-        let size = metadata.len();
-
-        // Map the file in memory
+        let file_size = metadata.len();
+    
+        // Map the file to memory
         let mmap = unsafe { MmapOptions::new().map_mut(&file).context(Mmap)? };
-
+    
         // Validate segment version
         let version = mmap[0];
         ensure!(version == self.version, InvalidHeader);
-
+    
         // Validate segment header
         let header_len = SEGMENT_HEADER.len();
-        ensure!(size >= header_len as u64, InvalidHeader);
+        ensure!(file_size >= (VERSION_SIZE + header_len) as u64, InvalidHeader);
         let header = &mmap[VERSION_SIZE..VERSION_SIZE + header_len];
         ensure!(header == SEGMENT_HEADER, InvalidHeader);
-
+    
         // Read and validate all records
         let mut pos = VERSION_SIZE + header_len;
         let mut record_position = Vec::new();
-        while pos < size as usize {
+    
+        while pos < file_size as usize {
             let data = &mmap[pos..];
-
-            let record = self
-                .record_encoding
-                .decode(data)
-                .box_err()
-                .context(InvalidRecord)?;
-
-            record_position.push(Position {
-                start: pos as u64,
-                end: (pos + record.len()) as u64,
-            });
-
-            // Move to the next record
-            pos += record.len();
+    
+            match self.record_encoding.decode(data).box_err() {
+                Ok(record) => {
+                    record_position.push(Position {
+                        start: pos as u64,
+                        end: (pos + record.len()) as u64,
+                    });
+                    pos += record.len();
+                }
+                Err(_) => {
+                    // If decoding fails, we've reached the end of valid data
+                    break;
+                }
+            }
         }
-
+    
         self.file = Some(file);
         self.mmap = Some(mmap);
         self.record_position = Some(record_position);
-        self.size = size;
+        self.size = pos as u64;
         Ok(())
     }
 
@@ -255,23 +258,20 @@ impl Segment {
     /// Append a slice to the segment file.
     pub fn append(&mut self, data: &[u8]) -> Result<()> {
         ensure!(self.size + data.len() as u64 <= MAX_FILE_SIZE, SegmentFull);
-
+    
         // Ensure the segment file is open
-        let Some(file) = &mut self.file else {
+        let Some(mmap) = &mut self.mmap else {
             return SegmentNotOpen { id: self.id }.fail();
         };
-
-        // Append to the file
-        file.write_all(data).context(SegmentAppend)?;
-        file.flush().context(Flush)?;
-
-        // Remap
-        // todo: Do not remap every time you append; instead, create a large enough file
-        // at the beginning.
-        let mmap = unsafe { MmapOptions::new().map_mut(&*file).context(Mmap)? };
-        self.mmap = Some(mmap);
+    
+        // Append to mmap
+        let start = self.size as usize;
+        let end = start + data.len();
+        mmap[start..end].copy_from_slice(data);
+        mmap.flush_range(start, data.len()).context(Flush)?;
+    
         self.size += data.len() as u64;
-
+    
         Ok(())
     }
 
