@@ -31,6 +31,7 @@ use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
 use logger::{info, warn, RuntimeLevel};
 use meta_client::{meta_impl, types::NodeMetaInfo};
+use metric_engine::*;
 use proxy::{
     limiter::Limiter,
     schema_config_provider::{

@@ -51,6 +51,7 @@ logger          = { workspace = true }
 meta_client     = { workspace = true }
 moka            = { version = "0.10", features = ["future"] }
 panic_ext       = { workspace = true }
+metric_engine = { workspace = true }
 proxy           = { workspace = true }
 query_engine    = { workspace = true }
 router          = { workspace = true }
