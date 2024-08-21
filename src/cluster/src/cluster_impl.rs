@@ -50,10 +50,10 @@ use crate::{
     shard_lock_manager::{self, ShardLockManager, ShardLockManagerRef},
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
-    Cluster, ClusterNodesNotFound, ClusterNodesResp, NodeType, CompactionClientFailure,
+    Cluster, ClusterNodesNotFound, ClusterNodesResp, CompactionClientFailure,
     CompactionOffloadNotAllowed, EtcdClientFailureWithCause, InitEtcdClientConfig,
-    InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause, Result, ShardNotFound,
-    TableStatus,
+    InvalidArguments, MetaClientFailure, NodeType, OpenShard, OpenShardWithCause, Result,
+    ShardNotFound, TableStatus,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].

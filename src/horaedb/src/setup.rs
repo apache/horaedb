@@ -314,6 +314,7 @@ async fn build_with_meta<T: WalsOpener>(
         zone: config.node.zone.clone(),
         idc: config.node.idc.clone(),
         binary_version: config.node.binary_version.clone(),
+        node_type: cluster_config.node_type.clone(),
     };
 
     info!("Build horaedb with node meta info:{node_meta_info:?}");
