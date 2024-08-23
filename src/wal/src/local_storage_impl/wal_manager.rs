@@ -52,13 +52,22 @@ impl LocalStorageImpl {
         config: LocalStorageConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let LocalStorageConfig { cache_size, max_segment_size, .. } = config.clone();
+        let LocalStorageConfig {
+            cache_size,
+            max_segment_size,
+            ..
+        } = config.clone();
         let wal_path_str = wal_path.to_str().unwrap().to_string();
-        let region_manager = RegionManager::new(wal_path_str.clone(), cache_size, max_segment_size, runtime.clone())
-            .box_err()
-            .context(Open {
-                wal_path: wal_path_str,
-            })?;
+        let region_manager = RegionManager::new(
+            wal_path_str.clone(),
+            cache_size,
+            max_segment_size,
+            runtime.clone(),
+        )
+        .box_err()
+        .context(Open {
+            wal_path: wal_path_str,
+        })?;
         Ok(Self {
             config,
             _runtime: runtime,
@@ -106,7 +115,10 @@ impl WalManager for LocalStorageImpl {
             "Close region for LocalStorage based WAL is noop operation, region_id:{}",
             region_id
         );
-        self.region_manager.close(region_id).box_err().context(Close)?;
+        self.region_manager
+            .close(region_id)
+            .box_err()
+            .context(Close)?;
         Ok(())
     }
 
