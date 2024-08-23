@@ -342,29 +342,9 @@ impl Segment {
     }
 }
 
-#[derive(Debug)]
-struct SegmentManager {
-    /// All segments protected by a mutex
-    segments: Mutex<HashMap<u64, Arc<RwLock<Segment>>>>,
-
-    /// Cache for opened segments
-    cache: Mutex<VecDeque<u64>>,
-
-    /// Maximum size of the cache
-    cache_size: usize,
-
-    /// Maximum size of a segment file
-    max_file_size: u64,
-
-    /// Directory for segment storage
-    _segment_dir: String,
-}
 
 #[derive(Debug)]
-pub struct Region {
-    /// Identifier for regions.
-    _region_id: u64,
-
+pub struct SegmentManager {
     /// All segments protected by a mutex
     all_segments: Mutex<HashMap<u64, Arc<RwLock<Segment>>>>,
 
@@ -383,25 +363,26 @@ pub struct Region {
     /// Index of the latest segment for appending logs
     current: Mutex<u64>,
 
+    /// Sequence number for the next log
+    next_sequence_num: AtomicU64,
+
     /// Encoding method for logs
     log_encoding: CommonLogEncoding,
 
     /// Encoding method for records
     record_encoding: RecordEncoding,
 
-    /// Sequence number for the next log
-    next_sequence_num: AtomicU64,
-
     /// Runtime for handling write requests
     runtime: Arc<Runtime>,
 }
 
-impl Region {
+impl SegmentManager {
     pub fn new(
-        region_id: u64,
         cache_size: usize,
         max_file_size: u64,
         segment_dir: String,
+        log_encoding: CommonLogEncoding,
+        record_encoding: RecordEncoding,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
         let mut all_segments = HashMap::new();
@@ -460,22 +441,22 @@ impl Region {
         }
 
         Ok(Self {
-            _region_id: region_id,
             all_segments: Mutex::new(all_segments),
             cache: Mutex::new(VecDeque::new()),
             cache_size,
             max_file_size,
             _segment_dir: segment_dir,
             current: Mutex::new(max_segment_id as u64),
-            log_encoding: CommonLogEncoding::newest(),
-            record_encoding: RecordEncoding::newest(),
             next_sequence_num: AtomicU64::new(next_sequence_num),
+            log_encoding,
+            record_encoding,
             runtime,
         })
     }
 
     /// Obtain the target segment. If it is not open, then open it and put it to
     /// the cache.
+    /// todo: the caller of this function needs to re-require the lock, which is not safe
     fn get_segment(&self, segment_id: u64) -> Result<Arc<RwLock<Segment>>> {
         let mut cache = self.cache.lock().unwrap();
         let all_segments = self.all_segments.lock().unwrap();
@@ -510,7 +491,7 @@ impl Region {
                     return SegmentNotFound {
                         id: evicted_segment_id,
                     }
-                    .fail();
+                        .fail();
                 }
             }
         }
@@ -554,14 +535,14 @@ impl Region {
         {
             let segment = self.get_segment(*current)?;
             let segment = segment.read().unwrap();
-    
+
             // Check if the current segment has enough space for the new data
             // If not, create a new segment and update the current segment ID
             if segment.size + data.len() as u64 > segment.max_file_size {
                 let new_segment_id = *current + 1;
                 let new_segment = Segment::new(format!("{}/segment_{}.wal", self._segment_dir, new_segment_id), new_segment_id, self.max_file_size)?;
                 let new_segment = Arc::new(RwLock::new(new_segment));
-    
+
                 let mut all_segments = self.all_segments.lock().unwrap();
                 all_segments.insert(new_segment_id, new_segment.clone());
                 *current = new_segment_id;
@@ -579,6 +560,7 @@ impl Region {
         }
 
         // TODO: spawn a new task to write to segment
+        // RwLockWriteGuard cannot be moved, how to spawn a new task?
         // Update the record position
         segment.append_record_position(&mut record_position)?;
 
@@ -592,7 +574,74 @@ impl Region {
 
     }
 
-    pub fn read(&self, ctx: &ReadContext, req: &ReadRequest, region: Arc<Region>) -> Result<BatchLogIteratorAdapter> {
+    pub fn mark_delete_entries_up_to(
+        &self,
+        _location: WalLocation,
+        _sequence_num: SequenceNumber,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    #[inline]
+    fn alloc_sequence_num(&self, number: u64) -> SequenceNumber {
+        self.next_sequence_num.fetch_add(number, Ordering::Relaxed)
+    }
+
+    pub fn sequence_num(&self, _location: WalLocation) -> Result<SequenceNumber> {
+        let next_seq_num = self.next_sequence_num.load(Ordering::Relaxed);
+        debug_assert!(next_seq_num > 0);
+        Ok(next_seq_num - 1)
+    }
+}
+
+#[derive(Debug)]
+pub struct Region {
+    /// Identifier for regions.
+    _region_id: u64,
+
+    segment_manager: Arc<SegmentManager>,
+
+    /// Encoding method for logs
+    log_encoding: CommonLogEncoding,
+
+    /// Encoding method for records
+    record_encoding: RecordEncoding,
+
+    /// Runtime for handling write requests
+    runtime: Arc<Runtime>,
+}
+
+impl Region {
+    pub fn new(
+        region_id: u64,
+        cache_size: usize,
+        max_file_size: u64,
+        segment_dir: String,
+        runtime: Arc<Runtime>,
+    ) -> Result<Self> {
+        let segment_manager = SegmentManager::new(
+            cache_size,
+            max_file_size,
+            segment_dir.clone(),
+            CommonLogEncoding::newest(),
+            RecordEncoding::newest(),
+            runtime.clone(),
+        )?;
+
+        Ok(Self {
+            _region_id: region_id,
+            segment_manager: Arc::new(segment_manager),
+            log_encoding: CommonLogEncoding::newest(),
+            record_encoding: RecordEncoding::newest(),
+            runtime,
+        })
+    }
+
+    pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        self.segment_manager.write(_ctx, batch)
+    }
+
+    pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
         // Check read range's validity.
         let start = if let Some(start) = req.start.as_start_sequence_number() {
             start
@@ -609,7 +658,7 @@ impl Region {
         }
 
         let iter = MultiSegmentLogIterator::new(
-            region,
+            self.segment_manager.clone(),
             self.log_encoding.clone(),
             self.record_encoding.clone(),
             Some(req.location.table_id),
@@ -624,9 +673,9 @@ impl Region {
         ))
     }
 
-    pub fn scan(&self, ctx: &ScanContext, _req: &ScanRequest, region: Arc<Region>) -> Result<BatchLogIteratorAdapter> {
+    pub fn scan(&self, ctx: &ScanContext, _req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
         let iter = MultiSegmentLogIterator::new(
-            region,
+            self.segment_manager.clone(),
             self.log_encoding.clone(),
             self.record_encoding.clone(),
             None,
@@ -648,15 +697,8 @@ impl Region {
         todo!()
     }
 
-    #[inline]
-    fn alloc_sequence_num(&self, number: u64) -> SequenceNumber {
-        self.next_sequence_num.fetch_add(number, Ordering::Relaxed)
-    }
-
-    pub fn sequence_num(&self, _location: WalLocation) -> Result<SequenceNumber> {
-        let next_seq_num = self.next_sequence_num.load(Ordering::Relaxed);
-        debug_assert!(next_seq_num > 0);
-        Ok(next_seq_num - 1)
+    pub fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
+        self.segment_manager.sequence_num(location)
     }
 }
 
@@ -742,12 +784,12 @@ impl RegionManager {
 
     pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
         let region = self.get_region(req.location.region_id)?;
-        region.read(ctx, req, region.clone())
+        region.read(ctx, req)
     }
 
     pub fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
         let region = self.get_region(req.region_id)?;
-        region.scan(ctx, req, region.clone())
+        region.scan(ctx, req)
     }
 
     pub fn mark_delete_entries_up_to(
@@ -765,7 +807,6 @@ impl RegionManager {
     }
 }
 
-// TODO: handle the case when read requests involving multiple segments
 #[derive(Debug)]
 struct SegmentLogIterator {
     /// Encoding method for common log.
@@ -886,8 +927,8 @@ impl SegmentLogIterator {
 
 #[derive(Debug)]
 pub struct MultiSegmentLogIterator {
-    /// Region that contains all segments involved in this read operation.
-    region: Arc<Region>,
+    /// Segment manager that contains all segments involved in this read operation.
+    segment_manager: Arc<SegmentManager>,
 
     /// All segments involved in this read operation.
     segments: Vec<u64>,
@@ -919,7 +960,7 @@ pub struct MultiSegmentLogIterator {
 
 impl MultiSegmentLogIterator {
     pub fn new(
-        region: Arc<Region>,
+        segment_manager: Arc<SegmentManager>,
         log_encoding: CommonLogEncoding,
         record_encoding: RecordEncoding,
         table_id: Option<TableId>,
@@ -930,7 +971,7 @@ impl MultiSegmentLogIterator {
         let mut relevant_segments = Vec::new();
 
         {
-            let all_segments = region.all_segments.lock().unwrap();
+            let all_segments = segment_manager.all_segments.lock().unwrap();
 
             for (_, segment) in all_segments.iter() {
                 let segment: RwLockReadGuard<Segment> = segment.read().unwrap();
@@ -944,7 +985,7 @@ impl MultiSegmentLogIterator {
         relevant_segments.sort_unstable();
 
         let mut iter = Self {
-            region,
+            segment_manager,
             segments: relevant_segments,
             current_segment_idx: 0,
             current_iterator: None,
@@ -969,7 +1010,7 @@ impl MultiSegmentLogIterator {
         }
 
         let segment = self.segments[self.current_segment_idx].clone();
-        let segment = self.region.get_segment(segment)?;
+        let segment = self.segment_manager.get_segment(segment)?;
         let iterator = SegmentLogIterator::new(
             self.log_encoding.clone(),
             self.record_encoding.clone(),
@@ -1097,8 +1138,8 @@ mod tests {
         let region = Region::new(1, 1, MAX_FILE_SIZE, dir.path().to_str().unwrap().to_string(), runtime);
         assert!(region.is_ok());
 
-        let segment_manager = region.unwrap();
-        let segment = segment_manager.get_segment(0);
+        let region = region.unwrap();
+        let segment = region.segment_manager.get_segment(0);
         assert!(segment.is_ok());
     }
 
@@ -1153,7 +1194,7 @@ mod tests {
             start: ReadBoundary::Min,
             end: ReadBoundary::Max,
         };
-        let mut iterator = region.read(&read_ctx, &read_req, region.clone()).unwrap();
+        let mut iterator = region.read(&read_ctx, &read_req).unwrap();
 
         // Collect read entries
         let dec = MemoryPayloadDecoder;
@@ -1169,7 +1210,7 @@ mod tests {
         }
 
         // Verify that multiple segments were created
-        let all_segments = region.all_segments.lock().unwrap();
+        let all_segments = region.segment_manager.all_segments.lock().unwrap();
         assert!(all_segments.len() > 1, "Expected multiple segments, but got {}", all_segments.len());
     }
 
