@@ -1243,9 +1243,11 @@ mod tests {
             assert_eq!(expected.payload, actual.payload);
         }
 
-        // Verify that multiple segments were created
-        let all_segments = region.segment_manager.all_segments.lock().unwrap();
-        assert!(all_segments.len() > 1, "Expected multiple segments, but got {}", all_segments.len());
+        {
+            // Verify that multiple segments were created
+            let all_segments = region.segment_manager.all_segments.lock().unwrap();
+            assert!(all_segments.len() > 1, "Expected multiple segments, but got {}", all_segments.len());
+        }
 
         region.close().unwrap()
     }
