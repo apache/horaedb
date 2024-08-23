@@ -456,7 +456,7 @@ impl SegmentManager {
 
     /// Obtain the target segment. If it is not open, then open it and put it to
     /// the cache.
-    /// todo: the caller of this function needs to re-require the lock, which is not safe
+    /// todo: the caller of this function needs to re-acquire the lock, which is not safe
     fn get_segment(&self, segment_id: u64) -> Result<Arc<RwLock<Segment>>> {
         let mut cache = self.cache.lock().unwrap();
         let all_segments = self.all_segments.lock().unwrap();
@@ -553,7 +553,6 @@ impl SegmentManager {
         let segment = self.get_segment(*current)?;
         let mut segment = segment.write().unwrap();
 
-
         for pos in record_position.iter_mut() {
             pos.start += segment.size;
             pos.end += segment.size;
@@ -561,6 +560,7 @@ impl SegmentManager {
 
         // TODO: spawn a new task to write to segment
         // RwLockWriteGuard cannot be moved, how to spawn a new task?
+
         // Update the record position
         segment.append_record_position(&mut record_position)?;
 
@@ -580,6 +580,16 @@ impl SegmentManager {
         _sequence_num: SequenceNumber,
     ) -> Result<()> {
         todo!()
+    }
+
+    pub fn close_all(&self) -> Result<()> {
+        let mut cache = self.cache.lock().unwrap();
+        cache.clear();
+        let mut all_segments = self.all_segments.lock().unwrap();
+        for segment in all_segments.values() {
+            segment.write().unwrap().close()?;
+        }
+        Ok(())
     }
 
     #[inline]
@@ -697,6 +707,10 @@ impl Region {
         todo!()
     }
 
+    pub fn close(&self) -> Result<()> {
+        self.segment_manager.close_all()
+    }
+
     pub fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
         self.segment_manager.sequence_num(location)
     }
@@ -799,6 +813,18 @@ impl RegionManager {
     ) -> Result<()> {
         let region = self.get_region(location.region_id)?;
         region.mark_delete_entries_up_to(location, sequence_num)
+    }
+
+    pub fn close(&self, region_id: RegionId) -> Result<()> {
+        let region = self.get_region(region_id)?;
+        region.close()
+    }
+
+    pub fn close_all(&self) -> Result<()> {
+        for region in self.regions.lock().unwrap().values() {
+            region.close()?;
+        }
+        Ok(())
     }
 
     pub fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
@@ -1102,8 +1128,7 @@ mod tests {
             .to_string();
         let mut segment = Segment::new(path.clone(), 0, MAX_FILE_SIZE).unwrap();
 
-        let result = segment.open();
-        assert!(result.is_ok());
+        segment.open().expect("Expected to open segment successfully");
     }
 
     #[test]
@@ -1131,16 +1156,25 @@ mod tests {
     }
 
     #[test]
-    fn test_region_creation() {
+    fn test_region_create_and_close() {
         let dir = tempdir().unwrap();
         let runtime = Arc::new(Builder::default().build().unwrap());
 
-        let region = Region::new(1, 1, MAX_FILE_SIZE, dir.path().to_str().unwrap().to_string(), runtime);
-        assert!(region.is_ok());
+        let region = Region::new(1, 1, MAX_FILE_SIZE, dir.path().to_str().unwrap().to_string(), runtime).unwrap();
 
-        let region = region.unwrap();
-        let segment = region.segment_manager.get_segment(0);
-        assert!(segment.is_ok());
+        let segment = region.segment_manager.get_segment(0).unwrap();
+
+        region.close().unwrap()
+    }
+
+    #[test]
+    fn test_region_manager_create_and_close() {
+        let dir = tempdir().unwrap();
+        let runtime = Arc::new(Builder::default().build().unwrap());
+
+        let region_manager = RegionManager::new(dir.path().to_str().unwrap().to_string(), 1, MAX_FILE_SIZE, runtime).unwrap();
+
+        region_manager.close_all().unwrap();
     }
 
     async fn test_multi_segment_write_and_read_inner(runtime: Arc<Runtime>) {
@@ -1212,6 +1246,8 @@ mod tests {
         // Verify that multiple segments were created
         let all_segments = region.segment_manager.all_segments.lock().unwrap();
         assert!(all_segments.len() > 1, "Expected multiple segments, but got {}", all_segments.len());
+
+        region.close().unwrap()
     }
 
     #[test]

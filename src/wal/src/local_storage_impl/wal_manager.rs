@@ -106,13 +106,13 @@ impl WalManager for LocalStorageImpl {
             "Close region for LocalStorage based WAL is noop operation, region_id:{}",
             region_id
         );
-
+        self.region_manager.close(region_id).box_err().context(Close)?;
         Ok(())
     }
 
     async fn close_gracefully(&self) -> Result<()> {
         info!("Close local storage wal gracefully");
-        // todo: close all opened files
+        self.region_manager.close_all().box_err().context(Close)?;
         Ok(())
     }
 
