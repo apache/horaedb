@@ -940,6 +940,9 @@ impl MultiSegmentLogIterator {
             }
         }
 
+        // Sort by segment id
+        relevant_segments.sort_unstable();
+
         let mut iter = Self {
             region,
             segments: relevant_segments,
@@ -1010,8 +1013,12 @@ impl SyncLogIterator for MultiSegmentLogIterator {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
+    use std::time::Duration;
     use runtime::Builder;
     use tempfile::tempdir;
+    use crate::kv_encoder::LogBatchEncoder;
+    use crate::log_batch::{LogWriteEntry, MemoryPayload, MemoryPayloadDecoder};
+    use crate::manager::ReadBoundary;
     use super::*;
 
     const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
@@ -1093,6 +1100,83 @@ mod tests {
         let segment_manager = region.unwrap();
         let segment = segment_manager.get_segment(0);
         assert!(segment.is_ok());
+    }
+
+    async fn test_multi_segment_write_and_read_inner(runtime: Arc<Runtime>) {
+        // Set a small max segment size
+        const MAX_FILE_SIZE :u64 = 4096;
+
+        // Create a temporary directory
+        let dir = tempdir().unwrap();
+
+        // Create a new Region
+        let region = Region::new(
+            1,
+            2,
+            MAX_FILE_SIZE,
+            dir.path().to_str().unwrap().to_string(),
+            runtime.clone(),
+        ).unwrap();
+        let region = Arc::new(region);
+
+        // Write data
+        let mut expected_entries = Vec::new();
+        let mut sequence = MIN_SEQUENCE_NUMBER + 1;
+        let location = WalLocation::new(1, 1);
+        for i in 0..10 {  // Write 10 batches, 100 entries each
+            let log_entries = 0..100;
+            let log_batch_encoder = LogBatchEncoder::create(location);
+            let log_batch = log_batch_encoder
+                .encode_batch(log_entries.clone().map(|v| MemoryPayload { val: v }))
+                .expect("should succeed to encode payloads");
+            for j in log_entries {
+                let payload = MemoryPayload { val: j };
+                expected_entries.push(LogEntry {
+                    table_id: 1,
+                    sequence,
+                    payload,
+                });
+                sequence += 1;
+            }
+
+            let write_ctx = WriteContext::default();
+            region.write(&write_ctx, &log_batch).unwrap();
+        }
+
+        // Read data
+        let read_ctx = ReadContext {
+            timeout: Duration::from_secs(5),
+            batch_size: 1000,
+        };
+        let read_req = ReadRequest {
+            location: WalLocation::new(1, 1),
+            start: ReadBoundary::Min,
+            end: ReadBoundary::Max,
+        };
+        let mut iterator = region.read(&read_ctx, &read_req, region.clone()).unwrap();
+
+        // Collect read entries
+        let dec = MemoryPayloadDecoder;
+        let read_entries = iterator.next_log_entries(dec, |_| true, VecDeque::new()).await.unwrap(); 
+
+        // Verify that read data matches written data
+        assert_eq!(expected_entries.len(), read_entries.len());
+
+        for (expected, actual) in expected_entries.iter().zip(read_entries.iter()) {
+            assert_eq!(expected.table_id, actual.table_id);
+            assert_eq!(expected.sequence, actual.sequence);
+            assert_eq!(expected.payload, actual.payload);
+        }
+
+        // Verify that multiple segments were created
+        let all_segments = region.all_segments.lock().unwrap();
+        assert!(all_segments.len() > 1, "Expected multiple segments, but got {}", all_segments.len());
+    }
+
+    #[test]
+    fn test_multi_segment_write_and_read() {
+        let runtime = Arc::new(Builder::default().build().unwrap());
+        runtime.block_on(test_multi_segment_write_and_read_inner(runtime.clone()));
     }
 }
 
