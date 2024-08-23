@@ -43,7 +43,7 @@ use crate::{
 pub struct LocalStorageImpl {
     config: LocalStorageConfig,
     _runtime: Arc<Runtime>,
-    segment_manager: RegionManager,
+    region_manager: RegionManager,
 }
 
 impl LocalStorageImpl {
@@ -52,9 +52,9 @@ impl LocalStorageImpl {
         config: LocalStorageConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let LocalStorageConfig { cache_size, .. } = config.clone();
+        let LocalStorageConfig { cache_size, max_segment_size, .. } = config.clone();
         let wal_path_str = wal_path.to_str().unwrap().to_string();
-        let segment_manager = RegionManager::new(wal_path_str.clone(), cache_size, runtime.clone())
+        let region_manager = RegionManager::new(wal_path_str.clone(), cache_size, max_segment_size, runtime.clone())
             .box_err()
             .context(Open {
                 wal_path: wal_path_str,
@@ -62,7 +62,7 @@ impl LocalStorageImpl {
         Ok(Self {
             config,
             _runtime: runtime,
-            segment_manager,
+            region_manager,
         })
     }
 }
@@ -84,8 +84,9 @@ impl Debug for LocalStorageImpl {
 #[async_trait]
 impl WalManager for LocalStorageImpl {
     async fn sequence_num(&self, location: WalLocation) -> Result<u64> {
-        self.segment_manager
+        self.region_manager
             .sequence_num(location)
+            .await
             .box_err()
             .context(Read)
     }
@@ -95,8 +96,9 @@ impl WalManager for LocalStorageImpl {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        self.segment_manager
+        self.region_manager
             .mark_delete_entries_up_to(location, sequence_num)
+            .await
             .box_err()
             .context(Delete)
     }
@@ -121,18 +123,19 @@ impl WalManager for LocalStorageImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        self.segment_manager.read(ctx, req).box_err().context(Read)
+        self.region_manager.read(ctx, req).await.box_err().context(Read)
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        self.segment_manager
+        self.region_manager
             .write(ctx, batch)
+            .await
             .box_err()
             .context(Write)
     }
 
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
-        self.segment_manager.scan(ctx, req).box_err().context(Read)
+        self.region_manager.scan(ctx, req).await.box_err().context(Read)
     }
 
     async fn get_statistics(&self) -> Option<String> {
