@@ -86,7 +86,6 @@ impl WalManager for LocalStorageImpl {
     async fn sequence_num(&self, location: WalLocation) -> Result<u64> {
         self.region_manager
             .sequence_num(location)
-            .await
             .box_err()
             .context(Read)
     }
@@ -98,7 +97,6 @@ impl WalManager for LocalStorageImpl {
     ) -> Result<()> {
         self.region_manager
             .mark_delete_entries_up_to(location, sequence_num)
-            .await
             .box_err()
             .context(Delete)
     }
@@ -123,19 +121,18 @@ impl WalManager for LocalStorageImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        self.region_manager.read(ctx, req).await.box_err().context(Read)
+        self.region_manager.read(ctx, req).box_err().context(Read)
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         self.region_manager
             .write(ctx, batch)
-            .await
             .box_err()
             .context(Write)
     }
 
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
-        self.region_manager.scan(ctx, req).await.box_err().context(Read)
+        self.region_manager.scan(ctx, req).box_err().context(Read)
     }
 
     async fn get_statistics(&self) -> Option<String> {

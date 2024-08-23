@@ -23,7 +23,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc
+        Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard
     },
 };
 
@@ -35,7 +35,6 @@ use macros::define_result;
 use memmap2::{MmapMut, MmapOptions};
 use runtime::Runtime;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
-use tokio::sync::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
     kv_encoder::CommonLogEncoding,
@@ -477,10 +476,9 @@ impl Region {
 
     /// Obtain the target segment. If it is not open, then open it and put it to
     /// the cache.
-    /// todo: need to re-require the lock, cache may be unconsistent with segment
-    async fn get_segment(&self, segment_id: u64) -> Result<Arc<RwLock<Segment>>> {
-        let mut cache = self.cache.lock().await;
-        let all_segments = self.all_segments.lock().await;
+    fn get_segment(&self, segment_id: u64) -> Result<Arc<RwLock<Segment>>> {
+        let mut cache = self.cache.lock().unwrap();
+        let all_segments = self.all_segments.lock().unwrap();
 
         let segment = all_segments.get(&segment_id);
 
@@ -499,7 +497,7 @@ impl Region {
         }
 
         // If not in cache, load from disk
-        segment.write().await.open()?;
+        segment.write().unwrap().open()?;
 
         // Add to cache
         if cache.len() == self.cache_size {
@@ -507,7 +505,7 @@ impl Region {
             if let Some(evicted_segment_id) = evicted_segment_id {
                 let evicted_segment = all_segments.get(&evicted_segment_id);
                 if let Some(evicted_segment) = evicted_segment {
-                    evicted_segment.write().await.close()?;
+                    evicted_segment.write().unwrap().close()?;
                 } else {
                     return SegmentNotFound {
                         id: evicted_segment_id,
@@ -521,9 +519,9 @@ impl Region {
         Ok(segment.clone())
     }
 
-    pub async fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+    pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         // Lock
-        let mut current = self.current.lock().await;
+        let mut current = self.current.lock().unwrap();
 
         let entries_num = batch.len() as u64;
         let table_id = batch.location.table_id;
@@ -554,8 +552,8 @@ impl Region {
         }
 
         {
-            let segment = self.get_segment(*current).await?;
-            let segment = segment.read().await;
+            let segment = self.get_segment(*current)?;
+            let segment = segment.read().unwrap();
     
             // Check if the current segment has enough space for the new data
             // If not, create a new segment and update the current segment ID
@@ -564,15 +562,15 @@ impl Region {
                 let new_segment = Segment::new(format!("{}/segment_{}.wal", self._segment_dir, new_segment_id), new_segment_id, self.max_file_size)?;
                 let new_segment = Arc::new(RwLock::new(new_segment));
     
-                let mut all_segments = self.all_segments.lock().await;
+                let mut all_segments = self.all_segments.lock().unwrap();
                 all_segments.insert(new_segment_id, new_segment.clone());
                 *current = new_segment_id;
             }
         }
 
 
-        let segment = self.get_segment(*current).await?;
-        let mut segment = segment.write().await;
+        let segment = self.get_segment(*current)?;
+        let mut segment = segment.write().unwrap();
 
 
         for pos in record_position.iter_mut() {
@@ -594,7 +592,7 @@ impl Region {
 
     }
 
-    pub async fn read(&self, ctx: &ReadContext, req: &ReadRequest, region: Arc<Region>) -> Result<BatchLogIteratorAdapter> {
+    pub fn read(&self, ctx: &ReadContext, req: &ReadRequest, region: Arc<Region>) -> Result<BatchLogIteratorAdapter> {
         // Check read range's validity.
         let start = if let Some(start) = req.start.as_start_sequence_number() {
             start
@@ -617,15 +615,16 @@ impl Region {
             Some(req.location.table_id),
             start,
             end,
-        ).await?;
+        )?;
 
-        Ok(BatchLogIteratorAdapter::new_with_async(
+        Ok(BatchLogIteratorAdapter::new_with_sync(
             Box::new(iter),
+            self.runtime.clone(),
             ctx.batch_size,
         ))
     }
 
-    pub async fn scan(&self, ctx: &ScanContext, _req: &ScanRequest, region: Arc<Region>) -> Result<BatchLogIteratorAdapter> {        
+    pub fn scan(&self, ctx: &ScanContext, _req: &ScanRequest, region: Arc<Region>) -> Result<BatchLogIteratorAdapter> {
         let iter = MultiSegmentLogIterator::new(
             region,
             self.log_encoding.clone(),
@@ -633,9 +632,10 @@ impl Region {
             None,
             MIN_SEQUENCE_NUMBER,
             MAX_SEQUENCE_NUMBER,
-        ).await?;
-        Ok(BatchLogIteratorAdapter::new_with_async(
+        )?;
+        Ok(BatchLogIteratorAdapter::new_with_sync(
             Box::new(iter),
+            self.runtime.clone(),
             ctx.batch_size,
         ))
     }
@@ -715,8 +715,8 @@ impl RegionManager {
 
     /// Retrieve a region by its `region_id`. If the region does not exist,
     /// create a new one.
-    async fn get_region(&self, region_id: RegionId) -> Result<Arc<Region>> {
-        let mut regions = self.regions.lock().await;
+    fn get_region(&self, region_id: RegionId) -> Result<Arc<Region>> {
+        let mut regions = self.regions.lock().unwrap();
         if let Some(region) = regions.get(&region_id) {
             return Ok(region.clone());
         }
@@ -735,32 +735,32 @@ impl RegionManager {
         Ok(regions.entry(region_id).or_insert(Arc::new(region)).clone())
     }
 
-    pub async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        let region = self.get_region(batch.location.region_id).await?;
-        region.write(ctx, batch).await
+    pub fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        let region = self.get_region(batch.location.region_id)?;
+        region.write(ctx, batch)
     }
 
-    pub async fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
-        let region = self.get_region(req.location.region_id).await?;
-        region.read(ctx, req, region.clone()).await
+    pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
+        let region = self.get_region(req.location.region_id)?;
+        region.read(ctx, req, region.clone())
     }
 
-    pub async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
-        let region = self.get_region(req.region_id).await?;
-        region.scan(ctx, req, region.clone()).await
+    pub fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
+        let region = self.get_region(req.region_id)?;
+        region.scan(ctx, req, region.clone())
     }
 
-    pub async fn mark_delete_entries_up_to(
+    pub fn mark_delete_entries_up_to(
         &self,
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        let region = self.get_region(location.region_id).await?;
+        let region = self.get_region(location.region_id)?;
         region.mark_delete_entries_up_to(location, sequence_num)
     }
 
-    pub async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
-        let region = self.get_region(location.region_id).await?;
+    pub fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
+        let region = self.get_region(location.region_id)?;
         region.sequence_num(location)
     }
 }
@@ -797,7 +797,7 @@ struct SegmentLogIterator {
 }
 
 impl SegmentLogIterator {
-    pub async fn new(
+    pub fn new(
         log_encoding: CommonLogEncoding,
         record_encoding: RecordEncoding,
         segment: Arc<RwLock<Segment>>,
@@ -805,7 +805,7 @@ impl SegmentLogIterator {
         start: SequenceNumber,
         end: SequenceNumber,
     ) -> Result<Self> {
-        let segment = segment.read().await;
+        let segment = segment.read().unwrap();
         
         // Read the entire content of the segment
         let segment_content = segment.read(0, segment.size)?;
@@ -830,7 +830,7 @@ impl SegmentLogIterator {
         })
     }
 
-    async fn next(&mut self) -> Result<Option<LogEntry<Vec<u8>>>> {
+    fn next(&mut self) -> Result<Option<LogEntry<Vec<u8>>>> {
         if self.no_more_data {
             return Ok(None);
         }
@@ -918,7 +918,7 @@ pub struct MultiSegmentLogIterator {
 }
 
 impl MultiSegmentLogIterator {
-    pub async fn new(
+    pub fn new(
         region: Arc<Region>,
         log_encoding: CommonLogEncoding,
         record_encoding: RecordEncoding,
@@ -930,10 +930,10 @@ impl MultiSegmentLogIterator {
         let mut relevant_segments = Vec::new();
 
         {
-            let all_segments = region.all_segments.lock().await;
+            let all_segments = region.all_segments.lock().unwrap();
 
             for (_, segment) in all_segments.iter() {
-                let segment: RwLockReadGuard<Segment> = segment.read().await;
+                let segment: RwLockReadGuard<Segment> = segment.read().unwrap();
                 if segment.min_seq <= end && segment.max_seq >= start {
                     relevant_segments.push(segment.id);
                 }
@@ -954,19 +954,19 @@ impl MultiSegmentLogIterator {
         };
 
         // Load the first segment iterator
-        iter.load_next_segment_iterator().await?;
+        iter.load_next_segment_iterator()?;
 
         Ok(iter)
     }
 
-    async fn load_next_segment_iterator(&mut self) -> Result<bool> {
+    fn load_next_segment_iterator(&mut self) -> Result<bool> {
         if self.current_segment_idx >= self.segments.len() {
             self.current_iterator = None;
             return Ok(false);
         }
 
         let segment = self.segments[self.current_segment_idx].clone();
-        let segment = self.region.get_segment(segment).await?;
+        let segment = self.region.get_segment(segment)?;
         let iterator = SegmentLogIterator::new(
             self.log_encoding.clone(),
             self.record_encoding.clone(),
@@ -974,7 +974,7 @@ impl MultiSegmentLogIterator {
             self.table_id,
             self.start,
             self.end,
-        ).await?;
+        )?;
 
         self.current_iterator = Some(iterator);
         self.current_segment_idx += 1;
@@ -982,10 +982,10 @@ impl MultiSegmentLogIterator {
         Ok(true)
     }
 
-    async fn next(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
+    fn next(&mut self) -> Result<Option<LogEntry<&'_ [u8]>>> {
         loop {
             if let Some(ref mut iterator) = self.current_iterator {
-                if let Some(entry) = iterator.next().await? {
+                if let Some(entry) = iterator.next()? {
                     self.current_payload = entry.payload.to_owned();
                     return Ok(Some(LogEntry{
                         table_id: entry.table_id,
@@ -994,33 +994,30 @@ impl MultiSegmentLogIterator {
                     }));
                 }
             } 
-            if !self.load_next_segment_iterator().await? {
+            if !self.load_next_segment_iterator()? {
                 return Ok(None);
             }
         }
     }
 }
 
-#[async_trait]
-impl AsyncLogIterator for MultiSegmentLogIterator {
-    async fn next_log_entry(&mut self) -> crate::manager::Result<Option<LogEntry<&'_ [u8]>>> {
-        self.next().await.box_err().context(Read)
+impl SyncLogIterator for MultiSegmentLogIterator {
+    fn next_log_entry(&mut self) -> crate::manager::Result<Option<LogEntry<&'_ [u8]>>> {
+        self.next().box_err().context(Read)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-
     use runtime::Builder;
     use tempfile::tempdir;
-
     use super::*;
 
-    const MAX_FILE_SIZE :u64 = 64 * 1024 * 1024;
-
-    #[tokio::test]
-    async fn test_segment_creation() {
+    const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
+    
+    #[test]
+    fn test_segment_creation() {
         let dir = tempdir().unwrap();
         let path = dir
             .path()
@@ -1046,8 +1043,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_segment_open() {
+    #[test]
+    fn test_segment_open() {
         let dir = tempdir().unwrap();
         let path = dir
             .path()
@@ -1061,8 +1058,8 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
-    async fn test_segment_append_and_read() {
+    #[test]
+    fn test_segment_append_and_read() {
         let dir = tempdir().unwrap();
         let path = dir
             .path()
@@ -1085,8 +1082,8 @@ mod tests {
         assert_eq!(read_result.unwrap(), data);
     }
 
-    #[tokio::test]
-    async fn test_region_creation() {
+    #[test]
+    fn test_region_creation() {
         let dir = tempdir().unwrap();
         let runtime = Arc::new(Builder::default().build().unwrap());
 
@@ -1094,7 +1091,7 @@ mod tests {
         assert!(region.is_ok());
 
         let segment_manager = region.unwrap();
-        let segment = segment_manager.get_segment(0).await;
+        let segment = segment_manager.get_segment(0);
         assert!(segment.is_ok());
     }
 }
