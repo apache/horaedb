@@ -238,9 +238,9 @@ mod tests {
     use chrono::{DateTime, Utc};
     use futures::{stream, stream::StreamExt};
     use tempfile::tempdir;
-    use upstream::local::LocalFileSystem;
 
     use super::*;
+    use crate::{config::LocalOptions, local_file};
 
     #[derive(Debug, Clone)]
     struct PathPrefixChecker {
@@ -423,8 +423,13 @@ mod tests {
             ("/0/1/", "100/101.sst", "0/1/100/101.sst"),
         ];
 
-        let local_path = tempdir().unwrap();
-        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+        let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
+        let local_opts = LocalOptions {
+            data_dir: local_path,
+            max_retries: 3,
+            timeout: Default::default(),
+        };
+        let local_store = Arc::new(local_file::try_new(&local_opts).unwrap());
         for (prefix, filename, expect_loc) in cases.clone() {
             let prefix_store =
                 StoreWithPrefix::new(prefix.to_string(), local_store.clone()).unwrap();

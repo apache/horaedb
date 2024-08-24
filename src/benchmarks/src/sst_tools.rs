@@ -48,7 +48,7 @@ use common_types::{
 };
 use generic_error::BoxError;
 use logger::info;
-use object_store::{LocalFileSystem, ObjectStoreRef, Path};
+use object_store::{config::LocalOptions, local_file, ObjectStoreRef, Path};
 use runtime::Runtime;
 use serde::Deserialize;
 use table_engine::{predicate::Predicate, table::TableId};
@@ -80,8 +80,12 @@ async fn create_sst_from_stream(config: SstConfig, record_batch_stream: RecordBa
         config, sst_write_options
     );
 
-    let store: ObjectStoreRef =
-        Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap());
+    let local_opts = LocalOptions {
+        data_dir: config.store_path,
+        max_retries: 3,
+        timeout: Default::default(),
+    };
+    let store: ObjectStoreRef = Arc::new(local_file::try_new(&local_opts).unwrap());
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let sst_file_path = Path::from(config.sst_file_name);
 
@@ -115,7 +119,13 @@ pub struct RebuildSstConfig {
 pub async fn rebuild_sst(config: RebuildSstConfig, runtime: Arc<Runtime>) {
     info!("Start rebuild sst, config:{:?}", config);
 
-    let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap()) as _;
+    let local_opts = LocalOptions {
+        data_dir: config.store_path.clone(),
+        max_retries: 3,
+        timeout: Default::default(),
+    };
+
+    let store = Arc::new(local_file::try_new(&local_opts).unwrap()) as _;
     let input_path = Path::from(config.input_file_name);
 
     let parquet_metadata = util::parquet_metadata(&store, &input_path).await;
@@ -210,7 +220,13 @@ pub async fn merge_sst(config: MergeSstConfig, runtime: Arc<Runtime>) {
 
     let space_id = config.space_id;
     let table_id = config.table_id;
-    let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path.clone()).unwrap()) as _;
+    let local_opts = LocalOptions {
+        data_dir: config.store_path.clone(),
+        max_retries: 3,
+        timeout: Default::default(),
+    };
+    let store = Arc::new(local_file::try_new(&local_opts).unwrap()) as _;
+
     let (tx, _rx) = mpsc::unbounded_channel();
     let purge_queue = FilePurgeQueue::new(space_id, table_id, tx);
 

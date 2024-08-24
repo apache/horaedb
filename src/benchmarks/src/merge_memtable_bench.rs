@@ -45,7 +45,7 @@ use common_types::{
     projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema, time::TimeRange,
 };
 use logger::info;
-use object_store::{LocalFileSystem, ObjectStoreRef};
+use object_store::{config::LocalOptions, local_file, ObjectStoreRef};
 use runtime::Runtime;
 use table_engine::{predicate::Predicate, table::TableId};
 
@@ -69,7 +69,13 @@ impl MergeMemTableBench {
     pub fn new(config: MergeMemTableBenchConfig) -> Self {
         assert!(!config.sst_file_ids.is_empty());
 
-        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
+        let local_opts = LocalOptions {
+            data_dir: config.store_path,
+            max_retries: 3,
+            timeout: Default::default(),
+        };
+        let store = Arc::new(local_file::try_new(&local_opts).unwrap()) as _;
+
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let space_id = config.space_id;
         let table_id = config.table_id;
