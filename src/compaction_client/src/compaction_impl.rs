@@ -45,7 +45,11 @@ pub struct CompactionClientConfig {
 
 impl Default for CompactionClientConfig {
     fn default() -> Self {
-        unimplemented!()
+        Self {
+            cluster_name: String::new(),
+            compaction_server_addr: "127.0.0.1:7878".to_string(),
+            timeout: ReadableDuration::secs(5),
+        }
     }
 }
 
