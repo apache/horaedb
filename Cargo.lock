@@ -3135,7 +3135,7 @@ dependencies = [
 [[package]]
 name = "horaedbproto"
 version = "2.0.0"
-source = "git+https://github.com/apache/incubator-horaedb-proto.git?rev=19ece8f771fc0b3e8e734072cc3d8040de6c74cb#19ece8f771fc0b3e8e734072cc3d8040de6c74cb"
+source = "git+https://github.com/LeslieKid/incubator-horaedb-proto.git?rev=1e480ac702d07e18b876dca558d6d32ad731852b#1e480ac702d07e18b876dca558d6d32ad731852b"
 dependencies = [
  "prost 0.11.8",
  "protoc-bin-vendored",

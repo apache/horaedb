@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/apache/incubator-horaedb-meta/server/cluster"
 	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/eventdispatch"
@@ -31,7 +32,6 @@ import (
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/ddl/droptable"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/test"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/stretchr/testify/require"
 )
 

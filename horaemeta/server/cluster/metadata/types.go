@@ -22,8 +22,8 @@ package metadata
 import (
 	"time"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/pkg/errors"
 )
 

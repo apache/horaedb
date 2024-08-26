@@ -25,9 +25,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/clusterpb"
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/apache/incubator-horaedb-meta/server/etcdutil"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/clusterpb"
 	"github.com/pkg/errors"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/clientv3util"

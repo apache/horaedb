@@ -3,7 +3,8 @@ module github.com/apache/incubator-horaedb-meta
 go 1.21
 
 require (
-	github.com/apache/incubator-horaedb-proto/golang v0.0.0-20231228071726-92152841fc8a
+	// Modify the dependency (tmp) for horaemeta development.
+	github.com/LeslieKid/incubator-horaedb-proto/golang v0.0.0-20240826035726-1e480ac702d0
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/looplab/fsm v0.3.0
