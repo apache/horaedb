@@ -653,7 +653,7 @@ mod tests {
         column_schema, datum::DatumKind, schema, schema::Schema, table::DEFAULT_SHARD_ID,
     };
     use futures::future::BoxFuture;
-    use object_store::{config::LocalOptions, local_file};
+    use object_store::local_file;
     use runtime::Runtime;
     use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
     use wal::rocksdb_impl::manager::Builder as WalBuilder;
@@ -837,12 +837,7 @@ mod tests {
                 .unwrap();
 
             let local_path = self.dir.to_string_lossy().to_string();
-            let local_opts = LocalOptions {
-                data_dir: local_path,
-                max_retries: 3,
-                timeout: Default::default(),
-            };
-            let object_store = local_file::try_new(&local_opts).unwrap();
+            let object_store = local_file::try_new_with_default(local_path).unwrap();
 
             ManifestImpl::open(
                 self.options.clone(),

@@ -180,7 +180,7 @@ mod tests {
         schema::Builder as CustomSchemaBuilder,
         time::{TimeRange, Timestamp},
     };
-    use object_store::{config::LocalOptions, local_file, ObjectStoreRef};
+    use object_store::{local_file, ObjectStoreRef};
     use parquet::{arrow::ArrowWriter, file::footer};
     use parquet_ext::ParquetMetaData;
 
@@ -331,12 +331,7 @@ mod tests {
         };
 
         let local_path = temp_dir.as_ref().to_string_lossy().to_string();
-        let local_opts = LocalOptions {
-            data_dir: local_path,
-            max_retries: 3,
-            timeout: Default::default(),
-        };
-        let store = Arc::new(local_file::try_new(&local_opts).unwrap());
+        let store = Arc::new(local_file::try_new_with_default(local_path).unwrap());
         write_parquet_file_with_metadata(
             store.clone(),
             parquet_file_path.as_path(),

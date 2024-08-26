@@ -37,3 +37,8 @@ pub fn try_new(local_opts: &LocalOptions) -> Result<OpendalStore> {
 
     Ok(OpendalStore::new(op))
 }
+
+pub fn try_new_with_default(data_dir: String) -> Result<OpendalStore> {
+    let local_opts = LocalOptions::new_with_default(data_dir);
+    try_new(&local_opts)
+}

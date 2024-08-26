@@ -592,7 +592,7 @@ mod tests {
         time::{TimeRange, Timestamp},
     };
     use futures::stream;
-    use object_store::{config::LocalOptions, local_file};
+    use object_store::local_file;
     use runtime::{self, Runtime};
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
@@ -639,12 +639,7 @@ mod tests {
             };
 
             let root = tempdir().unwrap().as_ref().to_string_lossy().to_string();
-            let local_opts = LocalOptions {
-                data_dir: root,
-                max_retries: 3,
-                timeout: Default::default(),
-            };
-            let store: ObjectStoreRef = Arc::new(local_file::try_new(&local_opts).unwrap());
+            let store: ObjectStoreRef = Arc::new(local_file::try_new_with_default(root).unwrap());
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
 

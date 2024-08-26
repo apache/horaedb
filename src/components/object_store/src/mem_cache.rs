@@ -296,16 +296,11 @@ mod test {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::{config::LocalOptions, local_file};
+    use crate::local_file;
 
     fn prepare_store(bits: usize, mem_cap: usize) -> MemCacheStore {
         let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
-        let local_opts = LocalOptions {
-            data_dir: local_path,
-            max_retries: 3,
-            timeout: Default::default(),
-        };
-        let local_store = Arc::new(local_file::try_new(&local_opts).unwrap());
+        let local_store = Arc::new(local_file::try_new_with_default(local_path).unwrap());
 
         let mem_cache =
             Arc::new(MemCache::try_new(bits, NonZeroUsize::new(mem_cap).unwrap()).unwrap());

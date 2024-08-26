@@ -1035,7 +1035,7 @@ mod test {
     use tempfile::{tempdir, TempDir};
 
     use super::*;
-    use crate::{config::LocalOptions, local_file, test_util::MemoryStore};
+    use crate::{local_file, test_util::MemoryStore};
 
     struct StoreWithCacheDir {
         inner: DiskCacheStore,
@@ -1334,12 +1334,8 @@ mod test {
             let first_create_time = {
                 let _store = {
                     let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
-                    let local_opts = LocalOptions {
-                        data_dir: local_path,
-                        max_retries: 3,
-                        timeout: Default::default(),
-                    };
-                    let local_store = Arc::new(local_file::try_new(&local_opts).unwrap());
+                    let local_store =
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
 
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
@@ -1366,12 +1362,8 @@ mod test {
             {
                 let _store = {
                     let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
-                    let local_opts = LocalOptions {
-                        data_dir: local_path,
-                        max_retries: 3,
-                        timeout: Default::default(),
-                    };
-                    let local_store = Arc::new(local_file::try_new(&local_opts).unwrap());
+                    let local_store =
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,
@@ -1396,12 +1388,7 @@ mod test {
             // open again, but with different page_size
             {
                 let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
-                let local_opts = LocalOptions {
-                    data_dir: local_path,
-                    max_retries: 3,
-                    timeout: Default::default(),
-                };
-                let local_store = Arc::new(local_file::try_new(&local_opts).unwrap());
+                let local_store = Arc::new(local_file::try_new_with_default(local_path).unwrap());
                 let store = DiskCacheStore::try_new(
                     cache_dir.as_ref().to_string_lossy().to_string(),
                     160,
@@ -1428,12 +1415,8 @@ mod test {
             {
                 let store = {
                     let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
-                    let local_opts = LocalOptions {
-                        data_dir: local_path,
-                        max_retries: 3,
-                        timeout: Default::default(),
-                    };
-                    let local_store = Arc::new(local_file::try_new(&local_opts).unwrap());
+                    let local_store =
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         10240,
@@ -1465,12 +1448,8 @@ mod test {
             {
                 let store = {
                     let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
-                    let local_opts = LocalOptions {
-                        data_dir: local_path,
-                        max_retries: 3,
-                        timeout: Default::default(),
-                    };
-                    let local_store = Arc::new(local_file::try_new(&local_opts).unwrap());
+                    let local_store =
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,

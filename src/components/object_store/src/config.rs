@@ -49,11 +49,7 @@ impl Default for StorageOptions {
             disk_cache_capacity: ReadableSize::gb(0),
             disk_cache_page_size: ReadableSize::mb(2),
             disk_cache_partition_bits: 4,
-            object_store: ObjectStoreOptions::Local(LocalOptions {
-                data_dir: root_path,
-                max_retries: 3,
-                timeout: Default::default(),
-            }),
+            object_store: ObjectStoreOptions::Local(LocalOptions::new_with_default(root_path)),
         }
     }
 }
@@ -74,6 +70,16 @@ pub struct LocalOptions {
     pub max_retries: usize,
     #[serde(default)]
     pub timeout: TimeoutOptions,
+}
+
+impl LocalOptions {
+    pub fn new_with_default(data_dir: String) -> Self {
+        Self {
+            data_dir,
+            max_retries: default_max_retries(),
+            timeout: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -128,7 +134,11 @@ impl Default for HttpOptions {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct TimeoutOptions {
+    // Non IO Operation like stat and delete, they operate on a single file, we control them by
+    // setting timeout.
     pub timeout: ReadableDuration,
+    // IO Operation like read and write, they operate on data directly, we control them by setting
+    // io_timeout.
     pub io_timeout: ReadableDuration,
 }
 
