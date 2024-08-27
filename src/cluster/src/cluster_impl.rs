@@ -32,8 +32,8 @@ use generic_error::BoxError;
 use logger::{error, info, warn};
 use meta_client::{
     types::{
-        GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest, RouteTablesResponse,
-        ShardInfo,
+        FetchCompactionNodeRequest, GetNodesRequest, GetTablesOfShardsRequest, RouteTablesRequest,
+        RouteTablesResponse, ShardInfo,
     },
     MetaClientRef,
 };
@@ -348,10 +348,20 @@ impl Inner {
         shards.iter().map(|shard| shard.shard_info()).collect()
     }
 
-    /// Get proper remote compaction node for compaction offload with meta
+    /// Get proper remote compaction node info for compaction offload with meta
     /// client.
     async fn get_compaction_node(&self) -> Result<CompactionClientConfig> {
-        unimplemented!()
+        let mut config = CompactionClientConfig::default();
+
+        let req = FetchCompactionNodeRequest::default();
+        let resp = self
+            .meta_client
+            .fetch_compaction_node(req)
+            .await
+            .context(MetaClientFailure)?;
+
+        config.compaction_server_addr = resp.endpoint;
+        Ok(config)
     }
 
     /// Return a new compaction client.

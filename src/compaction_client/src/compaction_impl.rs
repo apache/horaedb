@@ -38,7 +38,6 @@ type CompactionServiceGrpcClient = CompactionServiceClient<tonic::transport::Cha
 #[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(default)]
 pub struct CompactionClientConfig {
-    pub cluster_name: String,
     pub compaction_server_addr: String,
     pub timeout: ReadableDuration,
 }
@@ -46,7 +45,6 @@ pub struct CompactionClientConfig {
 impl Default for CompactionClientConfig {
     fn default() -> Self {
         Self {
-            cluster_name: String::new(),
             compaction_server_addr: "127.0.0.1:7878".to_string(),
             timeout: ReadableDuration::secs(5),
         }

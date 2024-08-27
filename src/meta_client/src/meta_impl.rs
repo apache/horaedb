@@ -31,12 +31,14 @@ use time_ext::ReadableDuration;
 use crate::{
     types::{
         AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-        DropTableRequest, DropTableResponse, GetNodesRequest, GetNodesResponse,
-        GetTablesOfShardsRequest, GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader,
-        RouteTablesRequest, RouteTablesResponse, ShardInfo,
+        DropTableRequest, DropTableResponse, FetchCompactionNodeRequest,
+        FetchCompactionNodeResponse, GetNodesRequest, GetNodesResponse, GetTablesOfShardsRequest,
+        GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
+        RouteTablesResponse, ShardInfo,
     },
-    BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
-    FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
+    BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable,
+    FailFetchCompactionNode, FailGetTables, FailRouteTables, FailSendHeartbeat, MetaClient,
+    MetaClientRef, MissingHeader, Result,
 };
 
 type MetaServiceGrpcClient = MetaRpcServiceClient<tonic::transport::Channel>;
@@ -234,6 +236,32 @@ impl MetaClient for MetaClientImpl {
 
         check_response_header(&pb_resp.header)?;
         GetNodesResponse::try_from(pb_resp)
+    }
+
+    async fn fetch_compaction_node(
+        &self,
+        req: FetchCompactionNodeRequest,
+    ) -> Result<FetchCompactionNodeResponse> {
+        let mut pb_req = meta_service::FetchCompactionNodeRequest::from(req);
+        pb_req.header = Some(self.request_header().into());
+
+        debug!("Meta client try to fetch compaction node, req:{:?}", pb_req);
+
+        let pb_resp = self
+            .client()
+            .fetch_compaction_node(pb_req)
+            .await
+            .box_err()
+            .context(FailFetchCompactionNode)?
+            .into_inner();
+
+        debug!(
+            "Meta client finish fetching compaction node, resp:{:?}",
+            pb_resp
+        );
+
+        check_response_header(&pb_resp.header)?;
+        Ok(FetchCompactionNodeResponse::from(pb_resp))
     }
 
     async fn send_heartbeat(&self, shard_infos: Vec<ShardInfo>) -> Result<()> {
