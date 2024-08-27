@@ -45,6 +45,9 @@ const (
 	defaultTopologyType                = storage.TopologyTypeStatic
 	node1                              = "127.0.0.1:8081"
 	node2                              = "127.0.0.2:8081"
+	node3                              = "127.0.0.3:8081"
+	nodeTypeHoraeDB                    = storage.NodeTypeHoraeDB
+	nodeTypeCompactionServer           = storage.NodeTypeCompactionServer
 	defaultSchemaID                    = 0
 	testRootPath                       = "/rootPath"
 	defaultIDAllocatorStep             = 20
@@ -76,8 +79,11 @@ func TestClusterManager(t *testing.T) {
 
 	testCreateCluster(ctx, re, manager, cluster1)
 
-	testRegisterNode(ctx, re, manager, cluster1, node1)
-	testRegisterNode(ctx, re, manager, cluster1, node2)
+	testRegisterNode(ctx, re, manager, cluster1, node1, nodeTypeHoraeDB)
+	testRegisterNode(ctx, re, manager, cluster1, node2, nodeTypeHoraeDB)
+	testRegisterNode(ctx, re, manager, cluster1, node3, nodeTypeCompactionServer)
+
+	testFetchCompactionNode(ctx, re, manager, cluster1)
 
 	testInitShardView(ctx, re, manager, cluster1)
 
@@ -151,18 +157,34 @@ func testCreateCluster(ctx context.Context, re *require.Assertions, manager clus
 }
 
 func testRegisterNode(ctx context.Context, re *require.Assertions, manager cluster.Manager,
-	clusterName, nodeName string,
+	clusterName, nodeName string, nodeType storage.NodeType,
 ) {
+	var nodeStats storage.NodeStats
+
+	if nodeType == nodeTypeHoraeDB {
+		nodeStats = storage.NewEmptyNodeStats()
+	} else {
+		nodeStats = storage.NewCompactionNodeStats()
+	}
+
 	node := metadata.RegisteredNode{
 		Node: storage.Node{
 			Name:          nodeName,
 			LastTouchTime: uint64(time.Now().UnixMilli()),
 			State:         storage.NodeStateOnline,
-			NodeStats:     storage.NewEmptyNodeStats(),
+			NodeStats:     nodeStats,
 		}, ShardInfos: []metadata.ShardInfo{},
 	}
 	err := manager.RegisterNode(ctx, clusterName, node)
 	re.NoError(err)
+}
+
+func testFetchCompactionNode(ctx context.Context, re *require.Assertions, manager cluster.Manager,
+	clusterName string,
+) {
+	node, err := manager.FetchCompactionNode(ctx, clusterName)
+	re.NoError(err)
+	re.Equal(node, node3)
 }
 
 func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager cluster.Manager,

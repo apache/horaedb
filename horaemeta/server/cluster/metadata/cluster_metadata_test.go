@@ -41,6 +41,7 @@ func TestClusterMetadata(t *testing.T) {
 	testRegisterNode(ctx, re, metadata)
 	testTableOperation(ctx, re, metadata)
 	testShardOperation(ctx, re, metadata)
+	testCompactionNodeOperation(ctx, re, metadata)
 	testMetadataOperation(ctx, re, metadata)
 }
 
@@ -219,6 +220,32 @@ func testShardOperation(ctx context.Context, re *require.Assertions, m *metadata
 		NodeName:  shardNodeResult.NodeShards[0].ShardNode.NodeName,
 	}})
 	re.NoError(err)
+}
+
+func testCompactionNodeOperation(ctx context.Context, re *require.Assertions, m *metadata.ClusterMetadata) {
+	// Fetch a compaction node, it will throw error because cluster does not register compaction node yet.
+	nodeName, err := m.FetchCompactionNode(ctx)
+	re.Error(err)
+	re.Equal("", nodeName)
+
+	// Register a compaction node.
+	newNodeName := "testCompactionNode"
+	lastTouchTime := uint64(time.Now().UnixMilli())
+	err = m.RegisterNode(ctx, metadata.RegisteredNode{
+		Node: storage.Node{
+			Name:          newNodeName,
+			NodeStats:     storage.NewCompactionNodeStats(),
+			LastTouchTime: lastTouchTime,
+			State:         0,
+		},
+		ShardInfos: nil,
+	})
+	re.NoError(err)
+
+	// Fetch a compaction node, it will return the new registered node with no error.
+	nodeName, err = m.FetchCompactionNode(ctx)
+	re.NoError(err)
+	re.Equal(newNodeName, nodeName)
 }
 
 func testMetadataOperation(ctx context.Context, re *require.Assertions, m *metadata.ClusterMetadata) {
