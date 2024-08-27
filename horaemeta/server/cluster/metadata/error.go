@@ -33,6 +33,7 @@ var (
 	ErrShardNotFound        = coderr.NewCodeError(coderr.NotFound, "shard not found")
 	ErrVersionNotFound      = coderr.NewCodeError(coderr.NotFound, "version not found")
 	ErrNodeNotFound         = coderr.NewCodeError(coderr.NotFound, "NodeName not found")
+	ErrFetchCompactionNode  = coderr.NewCodeError(coderr.NotFound, "valid compaction node not found")
 	ErrTableAlreadyExists   = coderr.NewCodeError(coderr.Internal, "table already exists")
 	ErrOpenTable            = coderr.NewCodeError(coderr.Internal, "open table")
 	ErrParseTopologyType    = coderr.NewCodeError(coderr.Internal, "parse topology type")

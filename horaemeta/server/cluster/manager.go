@@ -58,6 +58,7 @@ type Manager interface {
 	DropTable(ctx context.Context, clusterName, schemaName, tableName string) error
 	RouteTables(ctx context.Context, clusterName, schemaName string, tableNames []string) (metadata.RouteTablesResult, error)
 	GetNodeShards(ctx context.Context, clusterName string) (metadata.GetNodeShardsResult, error)
+	FetchCompactionNode(ctx context.Context, clusterName string) (metadata.FetchCompactionNodeResult, error)
 
 	RegisterNode(ctx context.Context, clusterName string, registeredNode metadata.RegisteredNode) error
 	GetRegisteredNode(ctx context.Context, clusterName string, node string) (metadata.RegisteredNode, error)
@@ -522,6 +523,20 @@ func (m *managerImpl) GetNodeShards(ctx context.Context, clusterName string) (me
 	ret, err := cluster.metadata.GetNodeShards(ctx)
 	if err != nil {
 		return metadata.GetNodeShardsResult{}, errors.WithMessage(err, "cluster get NodeShards")
+	}
+
+	return ret, nil
+}
+
+func (m *managerImpl) FetchCompactionNode(ctx context.Context, clusterName string) (metadata.FetchCompactionNodeResult, error) {
+	cluster, err := m.getCluster(clusterName)
+	if err != nil {
+		return metadata.FetchCompactionNodeResult{}, errors.WithMessage(err, "get cluster")
+	}
+
+	ret, err := cluster.metadata.FetchCompactionNode(ctx)
+	if err != nil {
+		return metadata.FetchCompactionNodeResult{}, errors.WithMessage(err, "cluster fetch compaction node")
 	}
 
 	return ret, nil

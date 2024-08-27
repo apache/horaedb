@@ -35,6 +35,7 @@ type (
 	ClusterState int
 	ShardRole    int
 	ShardStatus  int
+	NodeType     int
 	NodeState    int
 	TopologyType string
 )
@@ -58,6 +59,11 @@ const (
 	ShardStatusUnknown ShardStatus = iota
 	ShardStatusReady
 	ShardStatusPartialOpen
+)
+
+const (
+	NodeTypeHoraeDB NodeType = iota + 1
+	NodeTypeCompactionServer
 )
 
 const (
@@ -279,10 +285,17 @@ type NodeStats struct {
 	Lease       uint32
 	Zone        string
 	NodeVersion string
+	NodeType    NodeType
 }
 
 func NewEmptyNodeStats() NodeStats {
 	var stats NodeStats
+	return stats
+}
+
+func NewCompactionNodeStats() NodeStats {
+	var stats NodeStats
+	stats.NodeType = NodeTypeCompactionServer
 	return stats
 }
 
@@ -544,11 +557,32 @@ func convertShardViewPB(shardTopology *clusterpb.ShardView) ShardView {
 	}
 }
 
+func ConvertNodeTypePB(nodeType clusterpb.NodeType) NodeType {
+	switch nodeType {
+	case clusterpb.NodeType_HoraeDB:
+		return NodeTypeHoraeDB
+	case clusterpb.NodeType_CompactionServer:
+		return NodeTypeCompactionServer
+	}
+	return NodeTypeHoraeDB
+}
+
+func ConvertNodeTypeToPB(nodeType NodeType) clusterpb.NodeType {
+	switch nodeType {
+	case NodeTypeHoraeDB:
+		return clusterpb.NodeType_HoraeDB
+	case NodeTypeCompactionServer:
+		return clusterpb.NodeType_CompactionServer
+	}
+	return clusterpb.NodeType_HoraeDB
+}
+
 func convertNodeStatsToPB(stats NodeStats) clusterpb.NodeStats {
 	return clusterpb.NodeStats{
 		Lease:       stats.Lease,
 		Zone:        stats.Zone,
 		NodeVersion: stats.NodeVersion,
+		NodeType:    ConvertNodeTypeToPB(stats.NodeType),
 	}
 }
 
@@ -557,6 +591,7 @@ func convertNodeStatsPB(stats *clusterpb.NodeStats) NodeStats {
 		Lease:       stats.Lease,
 		Zone:        stats.Zone,
 		NodeVersion: stats.NodeVersion,
+		NodeType:    ConvertNodeTypePB(stats.NodeType),
 	}
 }
 

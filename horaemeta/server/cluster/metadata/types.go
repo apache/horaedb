@@ -156,6 +156,10 @@ type GetNodeShardsResult struct {
 	NodeShards             []ShardNodeWithVersion
 }
 
+type FetchCompactionNodeResult struct {
+	Endpoint string
+}
+
 type RegisteredNode struct {
 	Node       storage.Node
 	ShardInfos []ShardInfo

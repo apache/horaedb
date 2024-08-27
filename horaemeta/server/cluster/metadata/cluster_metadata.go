@@ -52,7 +52,10 @@ type ClusterMetadata struct {
 	tableManager    TableManager
 	topologyManager TopologyManager
 
-	// Manage the registered nodes from heartbeat.
+	compactionNodeManager CompactionNodeManager
+
+	// Manage the registered horaedb nodes from heartbeat.
+	// TODO(leslie): Rename it to registeredHoraedbNodesCache? The term "Node" may make code confusing.
 	registeredNodesCache map[string]RegisteredNode // nodeName -> NodeName
 
 	storage      storage.Storage
@@ -67,16 +70,17 @@ func NewClusterMetadata(logger *zap.Logger, meta storage.Cluster, storage storag
 	shardIDAlloc := id.NewReusableAllocatorImpl([]uint64{}, MinShardID)
 
 	cluster := &ClusterMetadata{
-		logger:               logger,
-		clusterID:            meta.ID,
-		lock:                 sync.RWMutex{},
-		metaData:             meta,
-		tableManager:         NewTableManagerImpl(logger, storage, meta.ID, schemaIDAlloc, tableIDAlloc),
-		topologyManager:      NewTopologyManagerImpl(logger, storage, meta.ID, shardIDAlloc),
-		registeredNodesCache: map[string]RegisteredNode{},
-		storage:              storage,
-		kv:                   kv,
-		shardIDAlloc:         shardIDAlloc,
+		logger:                logger,
+		clusterID:             meta.ID,
+		lock:                  sync.RWMutex{},
+		metaData:              meta,
+		tableManager:          NewTableManagerImpl(logger, storage, meta.ID, schemaIDAlloc, tableIDAlloc),
+		topologyManager:       NewTopologyManagerImpl(logger, storage, meta.ID, shardIDAlloc),
+		compactionNodeManager: NewCompactionNodeManagerImpl(logger),
+		registeredNodesCache:  map[string]RegisteredNode{},
+		storage:               storage,
+		kv:                    kv,
+		shardIDAlloc:          shardIDAlloc,
 	}
 
 	return cluster
@@ -436,6 +440,13 @@ func (c *ClusterMetadata) GetShardNodeByTableIDs(tableIDs []storage.TableID) (Ge
 }
 
 func (c *ClusterMetadata) RegisterNode(ctx context.Context, registeredNode RegisteredNode) error {
+	// Register compaction node.
+	if registeredNode.Node.NodeStats.NodeType == storage.NodeTypeCompactionServer {
+		c.compactionNodeManager.RegisterCompactionNode(registeredNode)
+		return nil
+	}
+
+	// Register horaedb node.
 	registeredNode.Node.State = storage.NodeStateOnline
 	err := c.storage.CreateOrUpdateNode(ctx, storage.CreateOrUpdateNodeRequest{
 		ClusterID: c.clusterID,
@@ -612,6 +623,16 @@ func (c *ClusterMetadata) GetNodeShards(_ context.Context) (GetNodeShardsResult,
 		ClusterTopologyVersion: c.topologyManager.GetVersion(),
 		NodeShards:             shardNodesWithVersion,
 	}, nil
+}
+
+func (c *ClusterMetadata) FetchCompactionNode(_ context.Context) (FetchCompactionNodeResult, error) {
+	compactionNodeName, err := c.compactionNodeManager.FetchCompactionNode()
+
+	if err != nil {
+		return FetchCompactionNodeResult{}, errors.WithMessage(err, "compaction manager fetch compaction node.")
+	}
+
+	return FetchCompactionNodeResult{Endpoint: compactionNodeName}, nil
 }
 
 func (c *ClusterMetadata) GetClusterViewVersion() uint64 {
