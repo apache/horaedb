@@ -54,7 +54,7 @@ alter table root
 这样 `[A,E)`还会写到 Region1 中，而 `[E, H)`则会写入新的 Region（系统会自动创建）。
 这时 `[A, H)`的分区可以删掉，写入时根据最新的路由规则进行，查询时由于无法精确到 Region，所以只能查询所有 Region。
 
-#### 讨论
+### 问题讨论
 如果查询时可以定位到涉及的 Region，比如 ID 采用 `hash(metric+固定TagKey)` 的生成方式，那么在分裂时可以通过记录 Region TTL 的方式来减少查询所涉及的 Region 范围。
 对于上面的分裂 case 来说，对于 `[A, E)` 写入、查询路由不变  `[E, H)`则需要根据时间戳来区分，假设 split 的分区时间为 t，表的 TTL 为 30d，那么
 
@@ -67,14 +67,11 @@ alter table root
 
 | 规则 | TTL | CreatedAt |
 | --- | --- | --- |
-| [A, H) | t+30 |
- |
+| [A, H) | t+30 | |
 | [A, E) | MAX | t |
 | [E, H) | MAX | t |
-| [H, S) | MAX |
- |
-| [S, Z) | MAX |
- |
+| [H, S) | MAX | |
+| [S, Z) | MAX | |
 
 写入时是需要找到对应区间内 TTL 最大的即可，查询则需要根据时间戳来与分区键来路由。
 
@@ -99,7 +96,7 @@ index: {Date}-{TagKey}-{TagValue}-{TSID}
 ```
 
 - Date 默认为天
-- TSID 采用 Hash 方式生成
+- TSID，与 metricID 作用类似，但采用 Hash 方式生成
 - SeriesKey 为所有排序后的 TagKV
 
 采用 Table 来管理上述结构，不同字段可以直接对应 parquet 的一个列，便于进行针对性 encoding。
@@ -117,10 +114,8 @@ index: {Date}-{TagKey}-{TagValue}-{TSID}
 **series**
 
 | MetricId | TSID | SeriesKey |
- |
-| --- | --- | --- | --- |
+| --- | --- | --- |
 | uint64 | uint64 | bytes |
- |
 
 **tags(可选)**
 这个表是为了加速 LabelValues 的查询，如果没有的话，也可以通过 index 表查出来，具体来说分两步：
