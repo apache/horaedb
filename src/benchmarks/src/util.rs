@@ -308,6 +308,8 @@ impl Builder {
                 disk_cache_partition_bits: 0,
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_dir: dir.path().to_str().unwrap().to_string(),
+                    max_retries: 3,
+                    timeout: Default::default(),
                 }),
             },
             wal: WalConfig {
@@ -386,6 +388,8 @@ impl Default for RocksDBEngineBuildContext {
                 disk_cache_partition_bits: 0,
                 object_store: ObjectStoreOptions::Local(LocalOptions {
                     data_dir: dir.path().to_str().unwrap().to_string(),
+                    max_retries: 3,
+                    timeout: Default::default(),
                 }),
             },
             wal: WalConfig {
@@ -419,6 +423,8 @@ impl Clone for RocksDBEngineBuildContext {
             disk_cache_partition_bits: 0,
             object_store: ObjectStoreOptions::Local(LocalOptions {
                 data_dir: dir.path().to_str().unwrap().to_string(),
+                max_retries: 3,
+                timeout: Default::default(),
             }),
         };
 

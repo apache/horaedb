@@ -23,7 +23,7 @@ use analytic_engine::sst::meta_data::cache::MetaCacheRef;
 use common_types::schema::Schema;
 use futures::StreamExt;
 use logger::info;
-use object_store::{LocalFileSystem, ObjectStoreRef, Path};
+use object_store::{local_file, ObjectStoreRef, Path};
 use parquet::arrow::{
     arrow_reader::ParquetRecordBatchReaderBuilder, ParquetRecordBatchStreamBuilder,
 };
@@ -46,7 +46,7 @@ pub struct ParquetBench {
 
 impl ParquetBench {
     pub fn new(config: SstBenchConfig) -> Self {
-        let store = Arc::new(LocalFileSystem::new_with_prefix(&config.store_path).unwrap()) as _;
+        let store = Arc::new(local_file::try_new_with_default(config.store_path).unwrap()) as _;
 
         let runtime = util::new_runtime(config.runtime_thread_num);
 

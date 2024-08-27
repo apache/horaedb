@@ -1033,10 +1033,9 @@ impl ObjectStore for DiskCacheStore {
 mod test {
     use runtime::{Builder, RuntimeRef};
     use tempfile::{tempdir, TempDir};
-    use upstream::local::LocalFileSystem;
 
     use super::*;
-    use crate::test_util::MemoryStore;
+    use crate::{local_file, test_util::MemoryStore};
 
     struct StoreWithCacheDir {
         inner: DiskCacheStore,
@@ -1334,9 +1333,10 @@ mod test {
             let page_size = 8;
             let first_create_time = {
                 let _store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
+
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,
@@ -1361,9 +1361,9 @@ mod test {
             // open again
             {
                 let _store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,
@@ -1387,9 +1387,8 @@ mod test {
 
             // open again, but with different page_size
             {
-                let local_path = tempdir().unwrap();
-                let local_store =
-                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
+                let local_store = Arc::new(local_file::try_new_with_default(local_path).unwrap());
                 let store = DiskCacheStore::try_new(
                     cache_dir.as_ref().to_string_lossy().to_string(),
                     160,
@@ -1407,7 +1406,7 @@ mod test {
 
     #[test]
     fn test_disk_cache_recovery() {
-        let rt = Arc::new(Builder::default().build().unwrap());
+        let rt = Arc::new(Builder::default().enable_all().build().unwrap());
         rt.block_on(async {
             let cache_dir = tempdir().unwrap();
             let cache_root_dir = cache_dir.as_ref().to_string_lossy().to_string();
@@ -1415,9 +1414,9 @@ mod test {
             let location = Path::from("recovery.sst");
             {
                 let store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         10240,
@@ -1448,9 +1447,9 @@ mod test {
             // recover
             {
                 let store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,

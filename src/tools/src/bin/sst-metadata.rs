@@ -23,7 +23,7 @@ use analytic_engine::sst::{meta_data::cache::MetaData, parquet::async_reader::Ch
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::StreamExt;
-use object_store::{LocalFileSystem, ObjectMeta, ObjectStoreRef, Path};
+use object_store::{config::LocalOptions, local_file, ObjectMeta, ObjectStoreRef, Path};
 use parquet_ext::{meta_data::fetch_parquet_metadata, reader::ObjectStoreReader};
 use runtime::Runtime;
 use time_ext::format_as_ymdhms;
@@ -141,7 +141,12 @@ fn main() {
 
 async fn run(args: Args) -> Result<()> {
     let handle = Handle::current();
-    let storage = LocalFileSystem::new_with_prefix(&args.dir)?;
+    let local_opts = LocalOptions {
+        data_dir: args.dir,
+        max_retries: 3,
+        timeout: Default::default(),
+    };
+    let storage = local_file::try_new(&local_opts)?;
     let storage: ObjectStoreRef = Arc::new(storage);
 
     let mut join_set = JoinSet::new();

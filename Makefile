@@ -126,7 +126,7 @@ dev-setup:
 	echo "Installing dependencies using Homebrew..."
 	HOMEBREW_NO_AUTO_UPDATE=1 brew install git openssl protobuf cmake pre-commit
 	cargo install cargo-udeps
-	cargo install cargo-sort
+	cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
 else ifeq ($(shell uname), Linux)
 dev-setup:
 	echo "Detecting Linux system..."
@@ -137,7 +137,7 @@ dev-setup:
 		sudo apt-get update; \
 		sudo apt install -y git gcc g++ libssl-dev pkg-config protobuf-compiler cmake pre-commit; \
 		cargo install cargo-udeps; \
-		cargo install cargo-sort; \
+		cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked; \
 	else \
 		echo "Error: Unsupported Linux distribution. Exiting..."; \
 		exit 1; \

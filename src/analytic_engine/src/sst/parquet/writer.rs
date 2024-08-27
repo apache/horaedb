@@ -28,7 +28,10 @@ use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use generic_error::BoxError;
 use logger::{debug, error};
-use object_store::{MultiUploadWriter, ObjectStore, ObjectStoreRef, Path, WriteMultipartRef};
+use object_store::{
+    multi_part::{MultiUploadRef, MultiUploadWriter},
+    ObjectStore, ObjectStoreRef, Path,
+};
 use snafu::{OptionExt, ResultExt};
 use tokio::io::AsyncWrite;
 
@@ -417,7 +420,7 @@ async fn write_metadata(
     Ok(buf_size)
 }
 
-async fn multi_upload_abort(aborter: WriteMultipartRef) {
+async fn multi_upload_abort(aborter: MultiUploadRef) {
     // The uploading file will be leaked if failed to abort. A repair command
     // will be provided to clean up the leaked files.
     if let Err(e) = aborter.lock().await.abort().await {
@@ -589,7 +592,7 @@ mod tests {
         time::{TimeRange, Timestamp},
     };
     use futures::stream;
-    use object_store::LocalFileSystem;
+    use object_store::local_file;
     use runtime::{self, Runtime};
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
@@ -613,7 +616,7 @@ mod tests {
     fn test_parquet_build_and_read() {
         test_util::init_log_for_test();
 
-        let runtime = Arc::new(runtime::Builder::default().build().unwrap());
+        let runtime = Arc::new(runtime::Builder::default().enable_all().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
         parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
         parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
@@ -635,9 +638,8 @@ mod tests {
                 column_stats: Default::default(),
             };
 
-            let dir = tempdir().unwrap();
-            let root = dir.path();
-            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
+            let root = tempdir().unwrap().as_ref().to_string_lossy().to_string();
+            let store: ObjectStoreRef = Arc::new(local_file::try_new_with_default(root).unwrap());
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
 

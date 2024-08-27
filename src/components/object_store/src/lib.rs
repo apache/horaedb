@@ -19,25 +19,22 @@
 
 use std::sync::Arc;
 
-pub use multi_part::{ConcurrentMultipartUpload, MultiUploadWriter};
-use tokio::sync::Mutex;
+pub use opendal::Error as OpenDalError;
 pub use upstream::{
-    local::LocalFileSystem, path::Path, Error as ObjectStoreError, Error, GetResult, ListResult,
-    ObjectMeta, ObjectStore, PutPayloadMut,
+    path::Path, Error as ObjectStoreError, GetResult, ListResult, ObjectMeta, ObjectStore,
+    PutPayloadMut,
 };
 
 pub mod aliyun;
 pub mod config;
 pub mod disk_cache;
+pub mod local_file;
 pub mod mem_cache;
 pub mod metrics;
-mod multi_part;
+pub mod multi_part;
 pub mod prefix;
 pub mod s3;
 #[cfg(test)]
 pub mod test_util;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
-
-// TODO: remove Mutex and make ConcurrentMultipartUpload thread-safe
-pub type WriteMultipartRef = Arc<Mutex<ConcurrentMultipartUpload>>;

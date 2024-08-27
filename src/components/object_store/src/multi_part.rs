@@ -28,7 +28,13 @@ use tokio::{io::AsyncWrite, sync::Mutex, task::JoinSet};
 pub use upstream::PutPayloadMut;
 use upstream::{path::Path, Error, MultipartUpload, PutPayload, PutResult};
 
-use crate::{ObjectStoreRef, WriteMultipartRef};
+use crate::ObjectStoreRef;
+
+// TODO: remove Mutex and make ConcurrentMultipartUpload thread-safe
+pub type MultiUploadRef = Arc<Mutex<ConcurrentMultipartUpload>>;
+
+const CHUNK_SIZE: usize = 5 * 1024 * 1024;
+const MAX_CONCURRENCY: usize = 10;
 
 #[derive(Debug)]
 pub struct ConcurrentMultipartUpload {
@@ -113,14 +119,11 @@ impl ConcurrentMultipartUpload {
 }
 
 pub struct MultiUploadWriter {
-    pub multi_upload: WriteMultipartRef,
+    pub multi_upload: MultiUploadRef,
     upload_task: Option<BoxFuture<'static, std::result::Result<usize, IoError>>>,
     flush_task: Option<BoxFuture<'static, std::result::Result<(), IoError>>>,
     completion_task: Option<BoxFuture<'static, std::result::Result<(), IoError>>>,
 }
-
-const CHUNK_SIZE: usize = 5 * 1024 * 1024;
-const MAX_CONCURRENCY: usize = 10;
 
 impl<'a> MultiUploadWriter {
     pub async fn new(object_store: &'a ObjectStoreRef, location: &'a Path) -> Result<Self, Error> {
@@ -141,7 +144,7 @@ impl<'a> MultiUploadWriter {
         Ok(multi_upload)
     }
 
-    pub fn aborter(&self) -> WriteMultipartRef {
+    pub fn aborter(&self) -> MultiUploadRef {
         self.multi_upload.clone()
     }
 }

@@ -294,13 +294,13 @@ impl ObjectStore for MemCacheStore {
 #[cfg(test)]
 mod test {
     use tempfile::tempdir;
-    use upstream::local::LocalFileSystem;
 
     use super::*;
+    use crate::local_file;
 
     fn prepare_store(bits: usize, mem_cap: usize) -> MemCacheStore {
-        let local_path = tempdir().unwrap();
-        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+        let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
+        let local_store = Arc::new(local_file::try_new_with_default(local_path).unwrap());
 
         let mem_cache =
             Arc::new(MemCache::try_new(bits, NonZeroUsize::new(mem_cap).unwrap()).unwrap());
