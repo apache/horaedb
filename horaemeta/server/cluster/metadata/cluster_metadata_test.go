@@ -224,9 +224,8 @@ func testShardOperation(ctx context.Context, re *require.Assertions, m *metadata
 
 func testCompactionNodeOperation(ctx context.Context, re *require.Assertions, m *metadata.ClusterMetadata) {
 	// Fetch a compaction node, it will throw error because cluster does not register compaction node yet.
-	nodeName, err := m.FetchCompactionNode(ctx)
+	_, err := m.FetchCompactionNode(ctx)
 	re.Error(err)
-	re.Equal("", nodeName)
 
 	// Register a compaction node.
 	newNodeName := "testCompactionNode"
@@ -243,9 +242,9 @@ func testCompactionNodeOperation(ctx context.Context, re *require.Assertions, m 
 	re.NoError(err)
 
 	// Fetch a compaction node, it will return the new registered node with no error.
-	nodeName, err = m.FetchCompactionNode(ctx)
+	nodeName, err := m.FetchCompactionNode(ctx)
 	re.NoError(err)
-	re.Equal(newNodeName, nodeName)
+	re.Equal(newNodeName, nodeName.Endpoint)
 }
 
 func testMetadataOperation(ctx context.Context, re *require.Assertions, m *metadata.ClusterMetadata) {

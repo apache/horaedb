@@ -184,7 +184,7 @@ func testFetchCompactionNode(ctx context.Context, re *require.Assertions, manage
 ) {
 	node, err := manager.FetchCompactionNode(ctx, clusterName)
 	re.NoError(err)
-	re.Equal(node, node3)
+	re.Equal(node.Endpoint, node3)
 }
 
 func testAllocSchemaID(ctx context.Context, re *require.Assertions, manager cluster.Manager,
