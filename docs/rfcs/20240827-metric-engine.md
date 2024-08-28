@@ -197,10 +197,10 @@ metadata: min_timestamp: 2024-08-15, max_timestamp: 2024-08-15,
 | 2 | le=0.1 => 4 |
 | 3 | le=0.2 => 2 |
 | 4 | le=0.3 => 3 |
-| 5 | __name__=http_requests_latency_bucket => 1 |
-| 6 | __name__=http_requests_latency_bucket => 2 |
-| 7 | __name__=http_requests_latency_bucket => 3 |
-| 8 | __name__=grpc_requests_latency_bucket => 4 |
+| 5 | `__name__=http_requests_latency_bucket => 1` |
+| 6 | `__name__=http_requests_latency_bucket => 2` |
+| 7 | `__name__=http_requests_latency_bucket => 3` |
+| 8 | `__name__=grpc_requests_latency_bucket => 4` |
 | 9 | http_requests_latency_bucket, le=0.1 => 1 |
 | 10 | http_requests_latency_bucket, le=0.1 => 4 |
 | 11 | http_requests_latency_bucket, le=0.2 => 2 |
@@ -219,8 +219,10 @@ VM 这样的好处是为了可以查询没有指定 metric name 的查询，为�
 
 与索引设计类似，采用带 segment duation 的表来管理
 
-| MetricID | TSID | Timestamp | Field1 | Field2 |
+| MetricID | TSID | FieldID | Timestamp | Value |
 | --- | --- | --- | --- | --- |
-| uint64 | uint64 | int64 | double... | double... |
+| uint64 | uint64 | int32 | opaque bytes |  opaque bytes |
+
+Timestamp 与 value 上层自己编码，会进行数据攒批，比如会把 30 分钟的数据压缩到一行里面。
 
 底层 SST 文件会对应一个 sequence，不同文件之间 compact 时，如果遇到主键相同时，根据 seq 来去重，seq 大的值，为最新的值。
