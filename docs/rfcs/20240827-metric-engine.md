@@ -223,6 +223,10 @@ VM 这样的好处是为了可以查询没有指定 metric name 的查询，为�
 | --- | --- | --- | --- | --- |
 | uint64 | uint64 | int32 | opaque bytes |  opaque bytes |
 
-Timestamp 与 value 上层自己编码，会进行数据攒批，比如会把 30 分钟的数据压缩到一行里面。
+Timestamp 与 Value 上层自己编码，会进行数据攒批，比如会把 30 分钟的数据压缩到一行里面。
 
-底层 SST 文件会对应一个 sequence，不同文件之间 compact 时，如果遇到主键相同时，根据 seq 来去重，seq 大的值，为最新的值。
+为了能够快速定位数据，做如下几点设计：
+1. 前三列为主键，在写入时会排好序，这样就可以利用 parquet 自身的 min/max 信息来过滤不需要的数据。
+2. 由于 Timestamp 会进行压缩，因此这一列的 min/max 数据需要我们自己来更新，不能依赖 parquet-rs。
+
+此外，每个 SST 文件会对应一个 sequence，不同文件之间 compact 时，如果遇到主键相同，时间戳相同的数据，需根据 seq 来进行数据去重，seq 大的为最新的值。
