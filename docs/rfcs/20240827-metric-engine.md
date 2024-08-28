@@ -107,9 +107,9 @@ index: {Date}-{TagKey}-{TagValue}-{TSID}
 
 **metrics**
 
-| MetricName | MetricId | FieldName | FieldId |
-| --- | --- | --- | --- |
-| string | uint64 | string | uint32 |
+| MetricName | MetricId | FieldName | FieldId | FieldType |
+| --- | --- | --- | --- | --- |
+| string | uint64 | string | uint32 | uint8 |
 
 **series**
 
@@ -147,9 +147,9 @@ VM 就是采用上述做法。
 #### metrics
 metadata: min_timestamp: 2024-08-15, max_timestamp: 2024-08-15,
 
-| MetricName | MetricId | FieldName | FieldId |
-| --- | --- | --- | --- |
-| http_requests | 1 | value | 1 |
+| MetricName | MetricId | FieldName | FieldId | FieldType |
+| --- | --- | --- | --- | --- |
+| http_requests | 1 | value | 1 | 0 |
 
 #### series
 | MetricId | TSID | SeriesKey |
