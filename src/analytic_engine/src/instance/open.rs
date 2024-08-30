@@ -22,22 +22,26 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use common_types::table::ShardId;
+use cluster::ClusterRef;
+use common_types::{cluster::NodeType, table::ShardId};
 use logger::{error, info};
 use object_store::ObjectStoreRef;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
 
 use crate::{
     compaction::{
-        runner::{local_runner::LocalCompactionRunner, CompactionRunnerPtr, CompactionRunnerRef},
+        runner::{
+            local_runner::LocalCompactionRunner, remote_runner::RemoteCompactionRunner,
+            CompactionRunner, CompactionRunnerPtr, CompactionRunnerRef,
+        },
         scheduler::SchedulerImpl,
     },
     context::OpenContext,
     engine,
     instance::{
-        engine::{OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
+        engine::{ClusterNotExist, OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
         flush_compaction::Flusher,
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
@@ -68,14 +72,34 @@ impl InstanceContext {
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
+        cluster: Option<ClusterRef>,
     ) -> Result<Self> {
-        let compaction_runner = Box::new(LocalCompactionRunner::new(
-            ctx.runtimes.compact_runtime.clone(),
-            &ctx.config,
-            sst_factory.clone(),
-            store_picker.clone(),
-            ctx.meta_cache.clone(),
-        ));
+        let compaction_runner: CompactionRunnerPtr = match ctx.config.compaction_offload {
+            true => Box::new(RemoteCompactionRunner {
+                cluster: cluster.context(ClusterNotExist)?,
+            }),
+            false => Box::new(LocalCompactionRunner::new(
+                ctx.runtimes.compact_runtime.clone(),
+                &ctx.config,
+                sst_factory.clone(),
+                store_picker.clone(),
+                ctx.meta_cache.clone(),
+            )),
+        };
+
+        let local_compaction_runner: Option<Arc<dyn CompactionRunner>> =
+            if let NodeType::CompactionServer = ctx.node_type {
+                // The compaction runner for compaction node.
+                Some(Arc::new(LocalCompactionRunner::new(
+                    ctx.runtimes.compact_runtime.clone(),
+                    &ctx.config,
+                    sst_factory.clone(),
+                    store_picker.clone(),
+                    ctx.meta_cache.clone(),
+                )))
+            } else {
+                None
+            };
 
         let instance = Instance::open(
             ctx,
@@ -89,7 +113,7 @@ impl InstanceContext {
 
         Ok(Self {
             instance,
-            local_compaction_runner: None,
+            local_compaction_runner,
         })
     }
 }

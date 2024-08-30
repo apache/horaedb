@@ -351,6 +351,8 @@ async fn build_with_meta<T: WalsOpener>(
         config: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
+        cluster: Some(cluster.clone()),
+        node_type: cluster_config.node_type.clone(),
     };
     let TableEngineContext {
         table_engine,
@@ -405,6 +407,8 @@ async fn build_without_meta<T: WalsOpener>(
         config: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
+        cluster: None,
+        node_type: NodeType::HoraeDB,
     };
     let TableEngineContext { table_engine, .. } = engine_builder
         .build()

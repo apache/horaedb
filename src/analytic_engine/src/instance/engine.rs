@@ -253,6 +253,12 @@ pub enum Error {
         sequence: SequenceNumber,
         source: wal::manager::Error,
     },
+
+    #[snafu(display(
+        "Failed to find cluster to construct remote compaction runner.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    ClusterNotExist { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -290,6 +296,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
             | Error::PurgeWal { .. }
+            | Error::ClusterNotExist { .. }
             | Error::ReplayWalWithCause { .. } => Self::Unexpected {
                 source: Box::new(err),
             },

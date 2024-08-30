@@ -15,34 +15,25 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Context for instance
+use async_trait::async_trait;
+use cluster::ClusterRef;
 
-use std::{fmt, sync::Arc};
+use crate::{
+    compaction::runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
+    instance::flush_compaction::Result,
+};
 
-use common_types::cluster::NodeType;
-use table_engine::engine::EngineRuntimes;
-
-use crate::{sst::meta_data::cache::MetaCacheRef, Config};
-
-/// Context for instance open
-pub struct OpenContext {
-    /// Engine config
-    pub config: Config,
-
-    /// Background job runtime
-    pub runtimes: Arc<EngineRuntimes>,
-
-    /// Sst meta data cache.
-    pub meta_cache: Option<MetaCacheRef>,
-
-    /// The type of the node.
-    pub node_type: NodeType,
+pub struct RemoteCompactionRunner {
+    pub cluster: ClusterRef,
 }
 
-impl fmt::Debug for OpenContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("OpenContext")
-            .field("config", &self.config)
-            .finish()
+#[async_trait]
+impl CompactionRunner for RemoteCompactionRunner {
+    async fn run(&self, _task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
+        // TODO(leslie): Impl the function.
+        // 1. Transfer `CompactionRunnerTask` into `ExecuteCompactionTaskRequest`.
+        // 2. Call `self.cluster.compact(req)`.
+        // 3. Transfer `ExecuteCompactionTaskResponse` into `CompactionRunnerResult`.
+        unimplemented!()
     }
 }

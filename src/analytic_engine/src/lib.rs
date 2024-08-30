@@ -71,6 +71,9 @@ pub struct Config {
 
     pub compaction: SchedulerConfig,
 
+    /// Offload the compaction task to remote nodes or not.
+    pub compaction_offload: bool,
+
     /// sst meta cache capacity
     pub sst_meta_cache_cap: Option<usize>,
     /// sst data cache capacity
@@ -184,6 +187,7 @@ impl Default for Config {
             max_replay_tables_per_batch: 64,
             table_opts: TableOptions::default(),
             compaction: SchedulerConfig::default(),
+            compaction_offload: false,
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),

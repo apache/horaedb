@@ -48,8 +48,10 @@ async-trait = { workspace = true }
 atomic_enum = { workspace = true }
 base64 = { workspace = true }
 bytes_ext = { workspace = true }
+cluster = { workspace = true }
 codec = { workspace = true }
 common_types = { workspace = true }
+compaction_client = { workspace = true }
 datafusion = { workspace = true }
 future_ext = { workspace = true }
 futures = { workspace = true }

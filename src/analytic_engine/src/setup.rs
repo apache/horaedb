@@ -19,6 +19,8 @@
 
 use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
+use cluster::ClusterRef;
+use common_types::cluster::NodeType;
 use futures::Future;
 use macros::define_result;
 use object_store::{
@@ -97,6 +99,8 @@ pub struct EngineBuilder<'a> {
     pub config: &'a Config,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
+    pub cluster: Option<ClusterRef>,
+    pub node_type: NodeType,
 }
 
 impl<'a> EngineBuilder<'a> {
@@ -117,6 +121,8 @@ impl<'a> EngineBuilder<'a> {
             self.opened_wals.data_wal,
             manifest_storages,
             Arc::new(opened_storages),
+            self.cluster,
+            self.node_type,
         )
         .await?;
 
@@ -135,6 +141,8 @@ async fn build_instance_context(
     wal_manager: WalManagerRef,
     manifest_storages: ManifestStorages,
     store_picker: ObjectStorePickerRef,
+    cluster: Option<ClusterRef>,
+    node_type: NodeType,
 ) -> Result<InstanceContext> {
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
@@ -144,6 +152,7 @@ async fn build_instance_context(
         config,
         runtimes: engine_runtimes,
         meta_cache,
+        node_type,
     };
 
     let instance_ctx = InstanceContext::new(
@@ -152,6 +161,7 @@ async fn build_instance_context(
         wal_manager,
         store_picker,
         Arc::new(FactoryImpl),
+        cluster,
     )
     .await
     .context(OpenInstance)?;
