@@ -252,11 +252,22 @@ impl TryFrom<i32> for Compression {
             0 => Compression::Uncompressed,
             1 => Compression::Lz4,
             2 => Compression::Snappy,
-            4 => Compression::Zstd,
+            3 => Compression::Zstd,
             _ => return UnknownCompressionType { value: compression }.fail(),
         };
 
         Ok(compression)
+    }
+}
+
+impl From<Compression> for i32 {
+    fn from(value: Compression) -> Self {
+        match value {
+            Compression::Uncompressed => 0,
+            Compression::Lz4 => 1,
+            Compression::Snappy => 2,
+            Compression::Zstd => 3,
+        }
     }
 }
 

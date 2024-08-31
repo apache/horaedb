@@ -209,6 +209,24 @@ impl TryFrom<horaedbproto::compaction_service::SstWriteOptions> for SstWriteOpti
     }
 }
 
+impl From<SstWriteOptions> for horaedbproto::compaction_service::SstWriteOptions {
+    fn from(value: SstWriteOptions) -> Self {
+        let column_stats = value
+            .column_stats
+            .into_iter()
+            .map(|(k, v)| (k, v.low_cardinality))
+            .collect();
+
+        Self {
+            storage_format_hint: Some(value.storage_format_hint.into()),
+            num_rows_per_row_group: value.num_rows_per_row_group as u64,
+            compression: value.compression.into(),
+            max_buffer_size: value.max_buffer_size as u64,
+            column_stats,
+        }
+    }
+}
+
 impl From<&ColumnStats> for ColumnEncoding {
     fn from(value: &ColumnStats) -> Self {
         ColumnEncoding {

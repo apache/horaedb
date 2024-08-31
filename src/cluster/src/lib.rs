@@ -29,7 +29,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_types::{cluster::NodeType, schema::SchemaName};
-use compaction_client::types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 use generic_error::GenericError;
 use macros::define_result;
 use meta_client::types::{
@@ -241,6 +240,6 @@ pub trait Cluster {
     /// Execute compaction task in remote compaction node.
     async fn compact(
         &self,
-        req: &ExecuteCompactionTaskRequest,
-    ) -> Result<ExecuteCompactionTaskResponse>;
+        req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+    ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse>;
 }

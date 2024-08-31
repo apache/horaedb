@@ -379,6 +379,30 @@ impl TryFrom<horaedbproto::compaction_service::CompactionInputFiles> for Compact
     }
 }
 
+impl From<CompactionInputFiles> for horaedbproto::compaction_service::CompactionInputFiles {
+    fn from(value: CompactionInputFiles) -> Self {
+        let mut files = Vec::with_capacity(value.files.len());
+        for file in value.files {
+            let handle = horaedbproto::compaction_service::FileHandle {
+                meta: Some(file.meta().into()),
+                purge_queue: Some(horaedbproto::compaction_service::FilePurgeQueue {
+                    space_id: file.space_id(),
+                    table_id: file.table_id().into(),
+                }),
+                being_compacted: file.being_compacted(),
+                metrics: Some(horaedbproto::compaction_service::SstMetrics {}),
+            };
+            files.push(handle);
+        }
+
+        Self {
+            level: value.level.as_u32(),
+            files,
+            output_level: value.output_level.as_u32(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct ExpiredFiles {
     /// Level of the expired files.

@@ -220,6 +220,16 @@ impl FileHandle {
     }
 
     #[inline]
+    pub fn space_id(&self) -> SpaceId {
+        self.inner.purge_queue.space_id()
+    }
+
+    #[inline]
+    pub fn table_id(&self) -> TableId {
+        self.inner.purge_queue.table_id()
+    }
+
+    #[inline]
     pub fn read_meter(&self) -> Arc<Meter> {
         self.inner.metrics.read_meter.clone()
     }
@@ -515,6 +525,20 @@ impl TryFrom<horaedbproto::compaction_service::FileMeta> for FileMeta {
     }
 }
 
+impl From<FileMeta> for horaedbproto::compaction_service::FileMeta {
+    fn from(value: FileMeta) -> Self {
+        Self {
+            file_id: value.id,
+            max_seq: value.max_seq,
+            time_range: Some(value.time_range.into()),
+            size: value.size,
+            row_num: value.row_num,
+            storage_format: value.storage_format.into(),
+            associated_files: value.associated_files,
+        }
+    }
+}
+
 // Queue to store files to be deleted for a table.
 #[derive(Clone)]
 pub struct FilePurgeQueue {
@@ -562,6 +586,16 @@ impl FilePurgeQueue {
                 send_res.0
             );
         }
+    }
+
+    #[inline]
+    pub fn space_id(&self) -> SpaceId {
+        self.inner.space_id
+    }
+
+    #[inline]
+    pub fn table_id(&self) -> TableId {
+        self.inner.table_id
     }
 }
 

@@ -20,8 +20,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use generic_error::BoxError;
 use horaedbproto::{
-    common::ResponseHeader,
-    compaction_service::{self, compaction_service_client::CompactionServiceClient},
+    common::ResponseHeader, compaction_service::compaction_service_client::CompactionServiceClient,
 };
 use logger::info;
 use serde::{Deserialize, Serialize};
@@ -29,8 +28,8 @@ use snafu::{OptionExt, ResultExt};
 use time_ext::ReadableDuration;
 
 use crate::{
-    BadResponse, CompactionClient, CompactionClientRef, ExecuteCompactionTaskRequest,
-    ExecuteCompactionTaskResponse, FailConnect, FailExecuteCompactionTask, MissingHeader, Result,
+    BadResponse, CompactionClient, CompactionClientRef, FailConnect, FailExecuteCompactionTask,
+    MissingHeader, Result,
 };
 
 type CompactionServiceGrpcClient = CompactionServiceClient<tonic::transport::Channel>;
@@ -90,10 +89,8 @@ impl CompactionClientImpl {
 impl CompactionClient for CompactionClientImpl {
     async fn execute_compaction_task(
         &self,
-        req: ExecuteCompactionTaskRequest,
-    ) -> Result<ExecuteCompactionTaskResponse> {
-        let pb_req = compaction_service::ExecuteCompactionTaskRequest::from(req);
-
+        pb_req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+    ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse> {
         // TODO(leslie): Add request header for ExecuteCompactionTaskRequest.
 
         info!(
@@ -115,7 +112,7 @@ impl CompactionClient for CompactionClientImpl {
         );
 
         check_response_header(&pb_resp.header)?;
-        ExecuteCompactionTaskResponse::try_from(pb_resp)
+        Ok(pb_resp)
     }
 }
 
