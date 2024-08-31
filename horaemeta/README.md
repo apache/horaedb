@@ -45,7 +45,7 @@ HoraeMeta refers to the excellent project [pd](https://github.com/tikv/pd) in de
 
 ## Contributing
 The project is under rapid development so that any contribution is welcome.
-Check our [Contributing Guide](https://github.com/apache/incubator-horaedb-meta/blob/main/CONTRIBUTING.md) and make your first contribution!
+Check our [Contributing Guide](https://github.com/apache/horaedb/blob/main/horaemeta/CONTRIBUTING.md) and make your first contribution!
 
 ## License
 [Apache License 2.0](./LICENSE)
