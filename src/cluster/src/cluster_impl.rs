@@ -24,7 +24,6 @@ use async_trait::async_trait;
 use common_types::table::ShardId;
 use compaction_client::{
     compaction_impl::{build_compaction_client, CompactionClientConfig},
-    types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse},
     CompactionClientRef,
 };
 use etcd_client::{Certificate, ConnectOptions, Identity, TlsOptions};
@@ -379,8 +378,8 @@ impl Inner {
 
     async fn compact(
         &self,
-        req: &ExecuteCompactionTaskRequest,
-    ) -> Result<ExecuteCompactionTaskResponse> {
+        req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+    ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse> {
         // TODO(leslie): Execute the compaction task locally when fails to build
         // compaction client.
         let compact_resp = self
@@ -470,8 +469,8 @@ impl Cluster for ClusterImpl {
 
     async fn compact(
         &self,
-        req: &ExecuteCompactionTaskRequest,
-    ) -> Result<ExecuteCompactionTaskResponse> {
+        req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+    ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse> {
         ensure!(
             self.node_type() == NodeType::HoraeDB,
             CompactionOffloadNotAllowed {

@@ -206,7 +206,6 @@ mod tests {
         TableStatus,
     };
     use common_types::{cluster::NodeType, table::ShardId};
-    use compaction_client::types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
     use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
@@ -298,8 +297,9 @@ mod tests {
 
         async fn compact(
             &self,
-            _req: &ExecuteCompactionTaskRequest,
-        ) -> cluster::Result<ExecuteCompactionTaskResponse> {
+            _req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+        ) -> cluster::Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse>
+        {
             unimplemented!()
         }
     }

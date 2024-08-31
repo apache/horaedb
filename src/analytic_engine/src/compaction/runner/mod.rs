@@ -204,6 +204,22 @@ impl TryFrom<horaedbproto::compaction_service::ExecuteCompactionTaskRequest>
     }
 }
 
+// TODO(leslie): Unused now, will be used in remote compaction runner impl.
+impl From<CompactionRunnerTask> for horaedbproto::compaction_service::ExecuteCompactionTaskRequest {
+    fn from(task: CompactionRunnerTask) -> Self {
+        Self {
+            task_key: task.task_key,
+            request_id: task.request_id.into(),
+            schema: Some((&(task.schema)).into()),
+            space_id: task.space_id,
+            table_id: task.table_id.into(),
+            sequence: task.sequence,
+            input_ctx: Some(task.input_ctx.into()),
+            output_ctx: Some(task.output_ctx.into()),
+        }
+    }
+}
+
 pub struct CompactionRunnerResult {
     pub output_file_path: Path,
     pub sst_info: SstInfo,
@@ -245,6 +261,17 @@ impl TryFrom<horaedbproto::compaction_service::InputContext> for InputContext {
     }
 }
 
+impl From<InputContext> for horaedbproto::compaction_service::InputContext {
+    fn from(value: InputContext) -> Self {
+        Self {
+            files: Some(value.files.into()),
+            num_rows_per_row_group: value.num_rows_per_row_group as u64,
+            merge_iter_options: value.merge_iter_options.batch_size as u64,
+            need_dedup: value.need_dedup,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct OutputContext {
     /// Output sst file path
@@ -269,5 +296,14 @@ impl TryFrom<horaedbproto::compaction_service::OutputContext> for OutputContext 
             file_path,
             write_options,
         })
+    }
+}
+
+impl From<OutputContext> for horaedbproto::compaction_service::OutputContext {
+    fn from(value: OutputContext) -> Self {
+        Self {
+            file_path: value.file_path.into(),
+            write_options: Some(value.write_options.into()),
+        }
     }
 }

@@ -21,10 +21,8 @@ use async_trait::async_trait;
 use generic_error::GenericError;
 use macros::define_result;
 use snafu::{Backtrace, Snafu};
-use types::{ExecuteCompactionTaskRequest, ExecuteCompactionTaskResponse};
 
 pub mod compaction_impl;
-pub mod types;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
@@ -68,8 +66,8 @@ define_result!(Error);
 pub trait CompactionClient: Send + Sync {
     async fn execute_compaction_task(
         &self,
-        req: ExecuteCompactionTaskRequest,
-    ) -> Result<ExecuteCompactionTaskResponse>;
+        req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+    ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse>;
 }
 
 pub type CompactionClientRef = Arc<dyn CompactionClient>;
