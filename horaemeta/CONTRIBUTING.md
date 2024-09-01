@@ -50,6 +50,14 @@ There are some tips on verifying the above in the [next section](#running-tests)
 * ask for help on the PR if any of the status checks are 🔴, and you don't know why;
 * wait patiently for one of the team to review your PR, which could take a few days.
 
+## Building the project
+
+The rule for building the project has been configured in the [Makefile](./Makefile) so just run:
+
+```shell
+make build
+```
+
 ## Running Tests
 
 The rule for running test has been configured in the [Makefile](./Makefile) so just run:
