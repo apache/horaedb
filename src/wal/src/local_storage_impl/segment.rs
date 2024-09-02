@@ -145,11 +145,11 @@ pub struct Segment {
     /// A unique identifier for the segment.
     id: u64,
 
-    /// The size of the segment in bytes.
-    size: u64,
+    /// The current size in use.
+    current_size: u64,
 
-    /// The maximum size of the segment file.
-    max_file_size: u64,
+    /// The size of the segment file.
+    segment_size: u64,
 
     /// The minimum sequence number of records within this segment.
     min_seq: SequenceNumber,
@@ -160,17 +160,12 @@ pub struct Segment {
     /// The encoding format used for records within this segment.
     record_encoding: RecordEncoding,
 
-    /// An optional file handle for the segment.
-    /// This may be `None` if the file is not currently open.
-    file: Option<File>,
-
     /// An optional memory-mapped mutable buffer of the segment.
     /// This may be `None` if the segment is not memory-mapped.
     mmap: Option<MmapMut>,
 
     /// An optional vector of positions within the segment.
-    /// This may be `None` if the segment is not memory-mapped.
-    record_position: Option<Vec<Position>>,
+    record_position: Vec<Position>,
 }
 
 #[derive(Debug, Clone)]
@@ -180,19 +175,18 @@ pub struct Position {
 }
 
 impl Segment {
-    pub fn new(path: String, segment_id: u64, max_file_size: u64) -> Result<Segment> {
+    pub fn new(path: String, segment_id: u64, segment_size: u64) -> Result<Segment> {
         let mut segment = Segment {
             version: NEWEST_WAL_SEGMENT_VERSION,
             path: path.clone(),
             id: segment_id,
-            size: SEGMENT_HEADER.len() as u64,
-            max_file_size,
+            current_size: SEGMENT_HEADER.len() as u64,
+            segment_size,
             min_seq: MAX_SEQUENCE_NUMBER,
             max_seq: MIN_SEQUENCE_NUMBER,
             record_encoding: RecordEncoding::newest(),
-            file: None,
             mmap: None,
-            record_position: None,
+            record_position: Vec::new(),
         };
 
         if !Path::new(&path).exists() {
@@ -201,7 +195,7 @@ impl Segment {
             file.write_all(&[NEWEST_WAL_SEGMENT_VERSION])
                 .context(FileOpen)?;
             file.write_all(SEGMENT_HEADER).context(FileOpen)?;
-            file.set_len(max_file_size).context(FileOpen)?;
+            file.set_len(segment_size).context(FileOpen)?;
             return Ok(segment);
         }
 
@@ -270,29 +264,27 @@ impl Segment {
             }
         }
 
-        self.file = Some(file);
         self.mmap = Some(mmap);
-        self.record_position = Some(record_position);
-        self.size = pos as u64;
+        self.record_position = record_position;
+        self.current_size = pos as u64;
         self.min_seq = min_seq;
         self.max_seq = max_seq;
         Ok(())
     }
 
     pub fn close(&mut self) -> Result<()> {
-        self.file.take();
         self.mmap.take();
         Ok(())
     }
 
     pub fn is_open(&self) -> bool {
-        self.file.is_some() && self.mmap.is_some()
+        self.mmap.is_some()
     }
 
     /// Append a slice to the segment file.
     fn append(&mut self, data: &[u8]) -> Result<()> {
         ensure!(
-            self.size + data.len() as u64 <= self.max_file_size,
+            self.current_size + data.len() as u64 <= self.segment_size,
             SegmentFull
         );
 
@@ -302,12 +294,12 @@ impl Segment {
         };
 
         // Append to mmap
-        let start = self.size as usize;
+        let start = self.current_size as usize;
         let end = start + data.len();
         mmap[start..end].copy_from_slice(data);
         mmap.flush_range(start, data.len()).context(Flush)?;
 
-        self.size += data.len() as u64;
+        self.current_size += data.len() as u64;
 
         Ok(())
     }
@@ -315,10 +307,10 @@ impl Segment {
     pub fn read(&self, offset: u64, size: u64) -> Result<Vec<u8>> {
         // Ensure that the reading range is within the file
         ensure!(
-            offset + size <= self.size,
+            offset + size <= self.current_size,
             LengthMismatch {
                 expected: (offset + size) as usize,
-                actual: self.size as usize
+                actual: self.current_size as usize
             }
         );
 
@@ -337,19 +329,17 @@ impl Segment {
         prev_sequence_num: SequenceNumber,
         next_sequence_num: SequenceNumber,
     ) -> Result<()> {
-        match self.record_position.as_mut() {
-            // Update record position
-            Some(record_position) => {
-                record_position.append(positions);
-            }
-            None => return SegmentNotOpen { id: self.id }.fail(),
-        }
+        // Append logs to segment file
+        self.append(data)?;
+
+        // Update record position
+        self.record_position.append(positions);
+
         // Update min and max sequence number
         self.min_seq = self.min_seq.min(prev_sequence_num);
         self.max_seq = self.max_seq.max(next_sequence_num - 1);
 
-        // Append logs to segment file
-        self.append(data)
+        Ok(())
     }
 }
 
@@ -437,7 +427,8 @@ pub struct Region {
     /// Identifier for regions.
     _region_id: u64,
 
-    /// Contains all segments and manages the opening and closing of each segment
+    /// Contains all segments and manages the opening and closing of each
+    /// segment
     segment_manager: Arc<SegmentManager>,
 
     /// Encoding method for logs
@@ -449,8 +440,8 @@ pub struct Region {
     /// Runtime for handling write requests
     runtime: Arc<Runtime>,
 
-    /// Maximum size of a segment file
-    max_segment_size: u64,
+    /// All segments are fixed size
+    segment_size: u64,
 
     /// Directory of segment files
     region_dir: String,
@@ -469,7 +460,7 @@ impl Region {
     pub fn new(
         region_id: u64,
         cache_size: usize,
-        max_file_size: u64,
+        segment_size: u64,
         region_dir: String,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
@@ -509,11 +500,8 @@ impl Region {
                 None => continue,
             };
 
-            let segment = Segment::new(
-                path.to_string_lossy().to_string(),
-                segment_id,
-                max_file_size,
-            )?;
+            let segment =
+                Segment::new(path.to_string_lossy().to_string(), segment_id, segment_size)?;
             next_sequence_num = next_sequence_num.max(segment.max_seq + 1);
             let segment = Arc::new(Mutex::new(segment));
 
@@ -527,7 +515,7 @@ impl Region {
         if max_segment_id == -1 {
             max_segment_id = 0;
             let path = format!("{}/segment_{}.wal", region_dir, max_segment_id);
-            let new_segment = Segment::new(path, max_segment_id as u64, max_file_size)?;
+            let new_segment = Segment::new(path, max_segment_id as u64, segment_size)?;
             let new_segment = Arc::new(Mutex::new(new_segment));
             all_segments.insert(0, new_segment);
         }
@@ -543,7 +531,7 @@ impl Region {
             segment_manager: Arc::new(segment_manager),
             log_encoding: CommonLogEncoding::newest(),
             record_encoding: RecordEncoding::newest(),
-            max_segment_size: max_file_size,
+            segment_size,
             region_dir,
             current: Mutex::new(max_segment_id as u64),
             next_sequence_num: AtomicU64::new(next_sequence_num),
@@ -602,12 +590,12 @@ impl Region {
 
                 // Check if the current segment has enough space for the new data
                 // If not, create a new segment and update the current segment ID
-                if segment.size + data.len() as u64 > segment.max_file_size {
+                if segment.current_size + data.len() as u64 > segment.segment_size {
                     let new_segment_id = *current + 1;
                     let new_segment = Segment::new(
                         format!("{}/segment_{}.wal", self.region_dir, new_segment_id),
                         new_segment_id,
-                        self.max_segment_size,
+                        self.segment_size,
                     )?;
                     let new_segment = Arc::new(Mutex::new(new_segment));
                     segment_manager.add_segment(new_segment_id, new_segment)?;
@@ -624,8 +612,8 @@ impl Region {
                 let mut segment = segment.lock().unwrap();
                 segment_manager.open_segment(&mut segment)?;
                 for pos in record_position.iter_mut() {
-                    pos.start += segment.size;
-                    pos.end += segment.size;
+                    pos.start += segment.current_size;
+                    pos.end += segment.current_size;
                 }
                 // Append logs to segment file
                 segment.append_records(
@@ -723,7 +711,7 @@ pub struct RegionManager {
     root_dir: String,
     regions: Mutex<HashMap<u64, Arc<Region>>>,
     cache_size: usize,
-    max_file_size: u64,
+    segment_size: u64,
     runtime: Arc<Runtime>,
 }
 
@@ -733,7 +721,7 @@ impl RegionManager {
     pub fn new(
         root_dir: String,
         cache_size: usize,
-        max_file_size: u64,
+        segment_size: u64,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
         let mut regions = HashMap::new();
@@ -761,7 +749,7 @@ impl RegionManager {
             let region = Region::new(
                 region_id,
                 cache_size,
-                max_file_size,
+                segment_size,
                 path.to_string_lossy().to_string(),
                 runtime.clone(),
             )?;
@@ -772,7 +760,7 @@ impl RegionManager {
             root_dir,
             regions: Mutex::new(regions),
             cache_size,
-            max_file_size,
+            segment_size,
             runtime,
         })
     }
@@ -791,7 +779,7 @@ impl RegionManager {
         let region = Region::new(
             region_id,
             self.cache_size,
-            self.max_file_size,
+            self.segment_size,
             region_dir.to_string_lossy().to_string(),
             self.runtime.clone(),
         )?;
@@ -888,14 +876,10 @@ impl SegmentLogIterator {
         }
 
         // Read the entire content of the segment
-        let segment_content = segment.read(0, segment.size)?;
+        let segment_content = segment.read(0, segment.current_size)?;
 
         // Get record positions
-        let record_positions = if let Some(positions) = segment.record_position.as_ref() {
-            positions.clone()
-        } else {
-            Vec::new()
-        };
+        let record_positions = segment.record_position.clone();
 
         Ok(Self {
             log_encoding,
@@ -1108,7 +1092,7 @@ mod tests {
         manager::ReadBoundary,
     };
 
-    const MAX_FILE_SIZE: u64 = 64 * 1024 * 1024;
+    const SEGMENT_SIZE: u64 = 64 * 1024 * 1024;
 
     #[test]
     fn test_segment_creation() {
@@ -1120,14 +1104,14 @@ mod tests {
             .unwrap()
             .to_string();
 
-        let segment = Segment::new(path.clone(), 0, MAX_FILE_SIZE);
+        let segment = Segment::new(path.clone(), 0, SEGMENT_SIZE);
         assert!(segment.is_ok());
 
         let segment = segment.unwrap();
         assert_eq!(segment.version, NEWEST_WAL_SEGMENT_VERSION);
         assert_eq!(segment.path, path);
         assert_eq!(segment.id, 0);
-        assert_eq!(segment.size, SEGMENT_HEADER.len() as u64);
+        assert_eq!(segment.current_size, SEGMENT_HEADER.len() as u64);
 
         let segment_content = fs::read(path).unwrap();
         assert_eq!(segment_content[0], NEWEST_WAL_SEGMENT_VERSION);
@@ -1146,7 +1130,7 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
-        let mut segment = Segment::new(path.clone(), 0, MAX_FILE_SIZE).unwrap();
+        let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
 
         segment
             .open()
@@ -1162,7 +1146,7 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
-        let mut segment = Segment::new(path.clone(), 0, MAX_FILE_SIZE).unwrap();
+        let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
         segment.open().unwrap();
 
         let data = b"test_data";
@@ -1185,11 +1169,11 @@ mod tests {
         let region = Region::new(
             1,
             1,
-            MAX_FILE_SIZE,
+            SEGMENT_SIZE,
             dir.path().to_str().unwrap().to_string(),
             runtime,
         )
-            .unwrap();
+        .unwrap();
 
         let _segment = region.segment_manager.get_segment(0).unwrap();
 
@@ -1204,17 +1188,17 @@ mod tests {
         let region_manager = RegionManager::new(
             dir.path().to_str().unwrap().to_string(),
             1,
-            MAX_FILE_SIZE,
+            SEGMENT_SIZE,
             runtime,
         )
-            .unwrap();
+        .unwrap();
 
         region_manager.close_all().unwrap();
     }
 
     async fn test_multi_segment_write_and_read_inner(runtime: Arc<Runtime>) {
         // Set a small max segment size
-        const MAX_FILE_SIZE: u64 = 4096;
+        const SEGMENT_SIZE: u64 = 4096;
 
         // Create a temporary directory
         let dir = tempdir().unwrap();
@@ -1223,11 +1207,11 @@ mod tests {
         let region = Region::new(
             1,
             2,
-            MAX_FILE_SIZE,
+            SEGMENT_SIZE,
             dir.path().to_str().unwrap().to_string(),
             runtime.clone(),
         )
-            .unwrap();
+        .unwrap();
         let region = Arc::new(region);
 
         // Write data
