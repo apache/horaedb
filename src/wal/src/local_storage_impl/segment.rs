@@ -23,7 +23,7 @@ use std::{
     path::Path,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc, Mutex, RwLock, RwLockReadGuard,
+        Arc, Mutex,
     },
 };
 
@@ -282,12 +282,15 @@ impl Segment {
     pub fn close(&mut self) -> Result<()> {
         self.file.take();
         self.mmap.take();
-        self.record_position.take();
         Ok(())
     }
 
+    pub fn is_open(&self) -> bool {
+        self.file.is_some() && self.mmap.is_some()
+    }
+
     /// Append a slice to the segment file.
-    pub fn append(&mut self, data: &[u8]) -> Result<()> {
+    fn append(&mut self, data: &[u8]) -> Result<()> {
         ensure!(
             self.size + data.len() as u64 <= self.max_file_size,
             SegmentFull
@@ -327,43 +330,130 @@ impl Segment {
         }
     }
 
-    pub fn append_record_position(&mut self, pos: &mut Vec<Position>) -> Result<()> {
+    pub fn append_records(
+        &mut self,
+        data: &[u8],
+        positions: &mut Vec<Position>,
+        prev_sequence_num: SequenceNumber,
+        next_sequence_num: SequenceNumber,
+    ) -> Result<()> {
         match self.record_position.as_mut() {
+            // Update record position
             Some(record_position) => {
-                record_position.append(pos);
-                Ok(())
+                record_position.append(positions);
             }
-            None => SegmentNotOpen { id: self.id }.fail(),
+            None => return SegmentNotOpen { id: self.id }.fail(),
         }
-    }
+        // Update min and max sequence number
+        self.min_seq = self.min_seq.min(prev_sequence_num);
+        self.max_seq = self.max_seq.max(next_sequence_num - 1);
 
-    pub fn update_seq(&mut self, min_seq: u64, max_seq: u64) -> Result<()> {
-        if min_seq < self.min_seq {
-            self.min_seq = min_seq;
-        }
-        if max_seq > self.max_seq {
-            self.max_seq = max_seq;
-        }
-        Ok(())
+        // Append logs to segment file
+        self.append(data)
     }
 }
 
 #[derive(Debug)]
 pub struct SegmentManager {
     /// All segments protected by a mutex
-    all_segments: Mutex<HashMap<u64, Arc<RwLock<Segment>>>>,
+    all_segments: Mutex<HashMap<u64, Arc<Mutex<Segment>>>>,
 
     /// Cache for opened segments
     cache: Mutex<VecDeque<u64>>,
 
     /// Maximum size of the cache
     cache_size: usize,
+}
+
+impl SegmentManager {
+    fn add_segment(&self, id: u64, segment: Arc<Mutex<Segment>>) -> Result<()> {
+        let mut all_segments = self.all_segments.lock().unwrap();
+        all_segments.insert(id, segment);
+        Ok(())
+    }
+
+    /// Obtain the target segment
+    fn get_segment(&self, segment_id: u64) -> Result<Arc<Mutex<Segment>>> {
+        let all_segments = self.all_segments.lock().unwrap();
+
+        let segment = all_segments.get(&segment_id);
+
+        let segment = match segment {
+            Some(segment) => segment,
+            None => return SegmentNotFound { id: segment_id }.fail(),
+        };
+
+        Ok(segment.clone())
+    }
+
+    /// Open segment if it is not in cache, need to acquire the lock outside
+    fn open_segment(&self, segment: &mut Segment) -> Result<()> {
+        let mut cache = self.cache.lock().unwrap();
+
+        // Check if segment is already in cache
+        if cache.iter().any(|id| *id == segment.id) {
+            return Ok(());
+        }
+
+        // If not in cache, load from disk
+        segment.open()?;
+
+        // Add to cache
+        if cache.len() == self.cache_size {
+            let evicted_segment_id = cache.pop_front();
+            if let Some(evicted_segment_id) = evicted_segment_id {
+                // The evicted segment should be closed first
+                let evicted_segment = self.get_segment(evicted_segment_id)?;
+                let mut evicted_segment = evicted_segment.lock().unwrap();
+                evicted_segment.close()?;
+            }
+        }
+        cache.push_back(segment.id);
+
+        Ok(())
+    }
+
+    pub fn mark_delete_entries_up_to(
+        &self,
+        _location: WalLocation,
+        _sequence_num: SequenceNumber,
+    ) -> Result<()> {
+        todo!()
+    }
+
+    pub fn close_all(&self) -> Result<()> {
+        let mut cache = self.cache.lock().unwrap();
+        cache.clear();
+        let all_segments = self.all_segments.lock().unwrap();
+        for segment in all_segments.values() {
+            segment.lock().unwrap().close()?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct Region {
+    /// Identifier for regions.
+    _region_id: u64,
+
+    /// Contains all segments and manages the opening and closing of each segment
+    segment_manager: Arc<SegmentManager>,
+
+    /// Encoding method for logs
+    log_encoding: CommonLogEncoding,
+
+    /// Encoding method for records
+    record_encoding: RecordEncoding,
+
+    /// Runtime for handling write requests
+    runtime: Arc<Runtime>,
 
     /// Maximum size of a segment file
-    max_file_size: u64,
+    max_segment_size: u64,
 
-    /// Directory for segment storage
-    _segment_dir: String,
+    /// Directory of segment files
+    region_dir: String,
 
     /// Index of the latest segment for appending logs
     current: Mutex<u64>,
@@ -371,23 +461,16 @@ pub struct SegmentManager {
     /// Sequence number for the next log
     next_sequence_num: AtomicU64,
 
-    /// Encoding method for logs
-    _log_encoding: CommonLogEncoding,
-
-    /// Encoding method for records
-    record_encoding: RecordEncoding,
-
-    /// Runtime for handling write requests
-    _runtime: Arc<Runtime>,
+    /// A lock used to serialize all write operations
+    write_mutex: tokio::sync::Mutex<()>,
 }
 
-impl SegmentManager {
+impl Region {
     pub fn new(
+        region_id: u64,
         cache_size: usize,
         max_file_size: u64,
-        segment_dir: String,
-        log_encoding: CommonLogEncoding,
-        record_encoding: RecordEncoding,
+        region_dir: String,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
         let mut all_segments = HashMap::new();
@@ -397,7 +480,7 @@ impl SegmentManager {
         let mut next_sequence_num: u64 = MIN_SEQUENCE_NUMBER + 1;
 
         // Segment file naming convention: segment_<id>.wal
-        for entry in fs::read_dir(&segment_dir).context(FileOpen)? {
+        for entry in fs::read_dir(&region_dir).context(FileOpen)? {
             let entry = entry.context(FileOpen)?;
 
             let path = entry.path();
@@ -432,7 +515,7 @@ impl SegmentManager {
                 max_file_size,
             )?;
             next_sequence_num = next_sequence_num.max(segment.max_seq + 1);
-            let segment = Arc::new(RwLock::new(segment));
+            let segment = Arc::new(Mutex::new(segment));
 
             if segment_id as i32 > max_segment_id {
                 max_segment_id = segment_id as i32;
@@ -443,76 +526,44 @@ impl SegmentManager {
         // If no existing segments, create a new one
         if max_segment_id == -1 {
             max_segment_id = 0;
-            let path = format!("{}/segment_{}.wal", segment_dir, max_segment_id);
+            let path = format!("{}/segment_{}.wal", region_dir, max_segment_id);
             let new_segment = Segment::new(path, max_segment_id as u64, max_file_size)?;
-            let new_segment = Arc::new(RwLock::new(new_segment));
+            let new_segment = Arc::new(Mutex::new(new_segment));
             all_segments.insert(0, new_segment);
         }
 
-        Ok(Self {
+        let segment_manager = SegmentManager {
             all_segments: Mutex::new(all_segments),
             cache: Mutex::new(VecDeque::new()),
             cache_size,
-            max_file_size,
-            _segment_dir: segment_dir,
+        };
+
+        Ok(Self {
+            _region_id: region_id,
+            segment_manager: Arc::new(segment_manager),
+            log_encoding: CommonLogEncoding::newest(),
+            record_encoding: RecordEncoding::newest(),
+            max_segment_size: max_file_size,
+            region_dir,
             current: Mutex::new(max_segment_id as u64),
             next_sequence_num: AtomicU64::new(next_sequence_num),
-            _log_encoding: log_encoding,
-            record_encoding,
-            _runtime: runtime,
+            runtime,
+            write_mutex: tokio::sync::Mutex::new(()),
         })
     }
 
-    /// Obtain the target segment. If it is not open, then open it and put it to
-    /// the cache.
-    /// todo: the caller of this function needs to re-acquire the lock, which is
-    /// not safe
-    fn get_segment(&self, segment_id: u64) -> Result<Arc<RwLock<Segment>>> {
-        let mut cache = self.cache.lock().unwrap();
-        let all_segments = self.all_segments.lock().unwrap();
-
-        let segment = all_segments.get(&segment_id);
-
-        let segment = match segment {
-            Some(segment) => segment,
-            None => return SegmentNotFound { id: segment_id }.fail(),
-        };
-
-        // Check if segment is already in cache
-        if cache.iter().any(|id| *id == segment_id) {
-            let segment = all_segments.get(&segment_id);
-            return match segment {
-                Some(segment) => Ok(segment.clone()),
-                None => SegmentNotFound { id: segment_id }.fail(),
-            };
-        }
-
-        // If not in cache, load from disk
-        segment.write().unwrap().open()?;
-
-        // Add to cache
-        if cache.len() == self.cache_size {
-            let evicted_segment_id = cache.pop_front();
-            if let Some(evicted_segment_id) = evicted_segment_id {
-                let evicted_segment = all_segments.get(&evicted_segment_id);
-                if let Some(evicted_segment) = evicted_segment {
-                    evicted_segment.write().unwrap().close()?;
-                } else {
-                    return SegmentNotFound {
-                        id: evicted_segment_id,
-                    }
-                    .fail();
-                }
-            }
-        }
-        cache.push_back(segment_id);
-
-        Ok(segment.clone())
-    }
-
-    pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        // Lock
-        let mut current = self.current.lock().unwrap();
+    async fn write_inner(
+        &self,
+        segment_manager: Arc<SegmentManager>,
+        _ctx: &WriteContext,
+        batch: &LogWriteBatch,
+    ) -> Result<SequenceNumber> {
+        // In the WAL based on local storage, we need to ensure the sequence number in
+        // segment is monotonically increasing. So we need to acquire a lock here.
+        // Perhaps we could avoid acquiring the lock here and instead allocate the
+        // position that needs to be written in the segment, then fill it within
+        // spawn_blocking. However, I’m not sure about the correctness of this approach.
+        let _write_mutex = self.write_mutex.lock().await;
 
         let entries_num = batch.len() as u64;
         let table_id = batch.location.table_id;
@@ -542,125 +593,57 @@ impl SegmentManager {
             next_sequence_num += 1;
         }
 
-        {
-            let segment = self.get_segment(*current)?;
-            let segment = segment.read().unwrap();
+        let segment = {
+            let mut current = self.current.lock().unwrap();
 
-            // Check if the current segment has enough space for the new data
-            // If not, create a new segment and update the current segment ID
-            if segment.size + data.len() as u64 > segment.max_file_size {
-                let new_segment_id = *current + 1;
-                let new_segment = Segment::new(
-                    format!("{}/segment_{}.wal", self._segment_dir, new_segment_id),
-                    new_segment_id,
-                    self.max_file_size,
-                )?;
-                let new_segment = Arc::new(RwLock::new(new_segment));
+            {
+                let segment = segment_manager.get_segment(*current)?;
+                let segment = segment.lock().unwrap();
 
-                let mut all_segments = self.all_segments.lock().unwrap();
-                all_segments.insert(new_segment_id, new_segment.clone());
-                *current = new_segment_id;
+                // Check if the current segment has enough space for the new data
+                // If not, create a new segment and update the current segment ID
+                if segment.size + data.len() as u64 > segment.max_file_size {
+                    let new_segment_id = *current + 1;
+                    let new_segment = Segment::new(
+                        format!("{}/segment_{}.wal", self.region_dir, new_segment_id),
+                        new_segment_id,
+                        self.max_segment_size,
+                    )?;
+                    let new_segment = Arc::new(Mutex::new(new_segment));
+                    segment_manager.add_segment(new_segment_id, new_segment)?;
+                    *current = new_segment_id;
+                }
             }
-        }
 
-        let segment = self.get_segment(*current)?;
-        let mut segment = segment.write().unwrap();
+            segment_manager.get_segment(*current)?
+        };
 
-        for pos in record_position.iter_mut() {
-            pos.start += segment.size;
-            pos.end += segment.size;
-        }
-
-        // TODO: spawn a new task to write to segment
-        // RwLockWriteGuard cannot be moved, how to spawn a new task?
-
-        // Update the record position
-        segment.append_record_position(&mut record_position)?;
-
-        // Update the min and max sequence numbers
-        segment.update_seq(prev_sequence_num, next_sequence_num - 1)?;
-
-        // Append logs to segment file
-        segment.append(&data)?;
-
-        Ok(next_sequence_num - 1)
+        // Spawn a blocking task to append logs to segment file
+        self.runtime
+            .spawn_blocking(move || {
+                let mut segment = segment.lock().unwrap();
+                segment_manager.open_segment(&mut segment)?;
+                for pos in record_position.iter_mut() {
+                    pos.start += segment.size;
+                    pos.end += segment.size;
+                }
+                // Append logs to segment file
+                segment.append_records(
+                    &data,
+                    &mut record_position,
+                    prev_sequence_num,
+                    next_sequence_num - 1,
+                )?;
+                Ok(next_sequence_num - 1)
+            })
+            .await
+            .box_err()
+            .context(WriteExec)?
     }
 
-    pub fn mark_delete_entries_up_to(
-        &self,
-        _location: WalLocation,
-        _sequence_num: SequenceNumber,
-    ) -> Result<()> {
-        todo!()
-    }
-
-    pub fn close_all(&self) -> Result<()> {
-        let mut cache = self.cache.lock().unwrap();
-        cache.clear();
-        let all_segments = self.all_segments.lock().unwrap();
-        for segment in all_segments.values() {
-            segment.write().unwrap().close()?;
-        }
-        Ok(())
-    }
-
-    #[inline]
-    fn alloc_sequence_num(&self, number: u64) -> SequenceNumber {
-        self.next_sequence_num.fetch_add(number, Ordering::Relaxed)
-    }
-
-    pub fn sequence_num(&self, _location: WalLocation) -> Result<SequenceNumber> {
-        let next_seq_num = self.next_sequence_num.load(Ordering::Relaxed);
-        debug_assert!(next_seq_num > 0);
-        Ok(next_seq_num - 1)
-    }
-}
-
-#[derive(Debug)]
-pub struct Region {
-    /// Identifier for regions.
-    _region_id: u64,
-
-    segment_manager: Arc<SegmentManager>,
-
-    /// Encoding method for logs
-    log_encoding: CommonLogEncoding,
-
-    /// Encoding method for records
-    record_encoding: RecordEncoding,
-
-    /// Runtime for handling write requests
-    runtime: Arc<Runtime>,
-}
-
-impl Region {
-    pub fn new(
-        region_id: u64,
-        cache_size: usize,
-        max_file_size: u64,
-        segment_dir: String,
-        runtime: Arc<Runtime>,
-    ) -> Result<Self> {
-        let segment_manager = SegmentManager::new(
-            cache_size,
-            max_file_size,
-            segment_dir.clone(),
-            CommonLogEncoding::newest(),
-            RecordEncoding::newest(),
-            runtime.clone(),
-        )?;
-
-        Ok(Self {
-            _region_id: region_id,
-            segment_manager: Arc::new(segment_manager),
-            log_encoding: CommonLogEncoding::newest(),
-            record_encoding: RecordEncoding::newest(),
-            runtime,
-        })
-    }
-
-    pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        self.segment_manager.write(_ctx, batch)
+    pub async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        self.write_inner(self.segment_manager.clone(), ctx, batch)
+            .await
     }
 
     pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
@@ -724,8 +707,15 @@ impl Region {
         self.segment_manager.close_all()
     }
 
-    pub fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber> {
-        self.segment_manager.sequence_num(location)
+    #[inline]
+    fn alloc_sequence_num(&self, number: u64) -> SequenceNumber {
+        self.next_sequence_num.fetch_add(number, Ordering::Relaxed)
+    }
+
+    pub fn sequence_num(&self, _location: WalLocation) -> Result<SequenceNumber> {
+        let next_seq_num = self.next_sequence_num.load(Ordering::Relaxed);
+        debug_assert!(next_seq_num > 0);
+        Ok(next_seq_num - 1)
     }
 }
 
@@ -809,9 +799,9 @@ impl RegionManager {
         Ok(regions.entry(region_id).or_insert(Arc::new(region)).clone())
     }
 
-    pub fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+    pub async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         let region = self.get_region(batch.location.region_id)?;
-        region.write(ctx, batch)
+        region.write(ctx, batch).await
     }
 
     pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
@@ -885,12 +875,17 @@ impl SegmentLogIterator {
     pub fn new(
         log_encoding: CommonLogEncoding,
         record_encoding: RecordEncoding,
-        segment: Arc<RwLock<Segment>>,
+        segment: Arc<Mutex<Segment>>,
+        segment_manager: Arc<SegmentManager>,
         table_id: Option<TableId>,
         start: SequenceNumber,
         end: SequenceNumber,
     ) -> Result<Self> {
-        let segment = segment.read().unwrap();
+        // Open the segment if it is not open
+        let mut segment = segment.lock().unwrap();
+        if !segment.is_open() {
+            segment_manager.open_segment(&mut segment)?;
+        }
 
         // Read the entire content of the segment
         let segment_content = segment.read(0, segment.size)?;
@@ -1021,7 +1016,7 @@ impl MultiSegmentLogIterator {
             let all_segments = segment_manager.all_segments.lock().unwrap();
 
             for (_, segment) in all_segments.iter() {
-                let segment: RwLockReadGuard<Segment> = segment.read().unwrap();
+                let segment = segment.lock().unwrap();
                 if segment.min_seq <= end && segment.max_seq >= start {
                     relevant_segments.push(segment.id);
                 }
@@ -1062,6 +1057,7 @@ impl MultiSegmentLogIterator {
             self.log_encoding.clone(),
             self.record_encoding.clone(),
             segment,
+            self.segment_manager.clone(),
             self.table_id,
             self.start,
             self.end,
@@ -1193,7 +1189,7 @@ mod tests {
             dir.path().to_str().unwrap().to_string(),
             runtime,
         )
-        .unwrap();
+            .unwrap();
 
         let _segment = region.segment_manager.get_segment(0).unwrap();
 
@@ -1211,7 +1207,7 @@ mod tests {
             MAX_FILE_SIZE,
             runtime,
         )
-        .unwrap();
+            .unwrap();
 
         region_manager.close_all().unwrap();
     }
@@ -1231,7 +1227,7 @@ mod tests {
             dir.path().to_str().unwrap().to_string(),
             runtime.clone(),
         )
-        .unwrap();
+            .unwrap();
         let region = Arc::new(region);
 
         // Write data
@@ -1256,7 +1252,7 @@ mod tests {
             }
 
             let write_ctx = WriteContext::default();
-            region.write(&write_ctx, &log_batch).unwrap();
+            region.write(&write_ctx, &log_batch).await.unwrap();
         }
 
         // Read data
