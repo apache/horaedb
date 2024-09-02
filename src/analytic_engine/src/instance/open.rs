@@ -74,6 +74,11 @@ impl InstanceContext {
         sst_factory: SstFactoryRef,
         cluster: Option<ClusterRef>,
     ) -> Result<Self> {
+        info!(
+            "Construct compaction runner with compaction_offload:{}",
+            ctx.config.compaction_offload
+        );
+
         let compaction_runner: CompactionRunnerPtr = match ctx.config.compaction_offload {
             true => Box::new(RemoteCompactionRunner {
                 cluster: cluster.context(ClusterNotExist)?,
