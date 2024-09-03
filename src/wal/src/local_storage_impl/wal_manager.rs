@@ -64,10 +64,10 @@ impl LocalStorageImpl {
             max_segment_size,
             runtime.clone(),
         )
-        .box_err()
-        .context(Open {
-            wal_path: wal_path_str,
-        })?;
+            .box_err()
+            .context(Open {
+                wal_path: wal_path_str,
+            })?;
         Ok(Self {
             config,
             _runtime: runtime,
@@ -139,7 +139,6 @@ impl WalManager for LocalStorageImpl {
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         self.region_manager
             .write(ctx, batch)
-            .await
             .box_err()
             .context(Write)
     }
