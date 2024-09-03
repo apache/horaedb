@@ -64,10 +64,10 @@ impl LocalStorageImpl {
             max_segment_size,
             runtime.clone(),
         )
-            .box_err()
-            .context(Open {
-                wal_path: wal_path_str,
-            })?;
+        .box_err()
+        .context(Open {
+            wal_path: wal_path_str,
+        })?;
         Ok(Self {
             config,
             _runtime: runtime,

@@ -15,13 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use codec::Encoder;
-use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
-use generic_error::{BoxError, GenericError};
-use macros::define_result;
-use memmap2::{MmapMut, MmapOptions};
-use runtime::Runtime;
-use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use std::{
     collections::{HashMap, VecDeque},
     fmt::Debug,
@@ -33,6 +26,14 @@ use std::{
         Arc, Mutex,
     },
 };
+
+use codec::Encoder;
+use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQUENCE_NUMBER};
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
+use memmap2::{MmapMut, MmapOptions};
+use runtime::Runtime;
+use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
     kv_encoder::CommonLogEncoding,
@@ -122,6 +123,7 @@ const SEGMENT_HEADER: &[u8] = b"HoraeDBWAL";
 const WAL_SEGMENT_V0: u8 = 0;
 const NEWEST_WAL_SEGMENT_VERSION: u8 = WAL_SEGMENT_V0;
 const VERSION_SIZE: usize = 1;
+const FLUSH_INTERVAL: usize = 10;
 
 /// Segment file format:
 ///
@@ -145,10 +147,10 @@ pub struct Segment {
     id: u64,
 
     /// The current size in use.
-    current_size: u64,
+    current_size: usize,
 
     /// The size of the segment file.
-    segment_size: u64,
+    segment_size: usize,
 
     /// The minimum sequence number of records within this segment.
     min_seq: SequenceNumber,
@@ -165,27 +167,35 @@ pub struct Segment {
 
     /// An optional vector of positions within the segment.
     record_position: Vec<Position>,
+
+    /// A counter to keep track of write operations before flushing.
+    write_count: usize,
+
+    /// The last flushed position in the memory-mapped file.
+    last_flushed_position: usize,
 }
 
 #[derive(Debug, Clone)]
 pub struct Position {
-    start: u64,
-    end: u64,
+    start: usize,
+    end: usize,
 }
 
 impl Segment {
-    pub fn new(path: String, segment_id: u64, segment_size: u64) -> Result<Segment> {
+    pub fn new(path: String, segment_id: u64, segment_size: usize) -> Result<Segment> {
         let mut segment = Segment {
             version: NEWEST_WAL_SEGMENT_VERSION,
             path: path.clone(),
             id: segment_id,
-            current_size: SEGMENT_HEADER.len() as u64,
+            current_size: SEGMENT_HEADER.len(),
             segment_size,
             min_seq: MAX_SEQUENCE_NUMBER,
             max_seq: MIN_SEQUENCE_NUMBER,
             record_encoding: RecordEncoding::newest(),
             mmap: None,
             record_position: Vec::new(),
+            write_count: 0,
+            last_flushed_position: SEGMENT_HEADER.len(),
         };
 
         if !Path::new(&path).exists() {
@@ -194,7 +204,7 @@ impl Segment {
             file.write_all(&[NEWEST_WAL_SEGMENT_VERSION])
                 .context(FileOpen)?;
             file.write_all(SEGMENT_HEADER).context(FileOpen)?;
-            file.set_len(segment_size).context(FileOpen)?;
+            file.set_len(segment_size as u64).context(FileOpen)?;
             return Ok(segment);
         }
 
@@ -249,8 +259,8 @@ impl Segment {
             match self.record_encoding.decode(data).box_err() {
                 Ok(record) => {
                     record_position.push(Position {
-                        start: pos as u64,
-                        end: (pos + record.len()) as u64,
+                        start: pos,
+                        end: pos + record.len(),
                     });
                     min_seq = min_seq.min(record.sequence_num);
                     max_seq = max_seq.max(record.sequence_num);
@@ -265,13 +275,24 @@ impl Segment {
 
         self.mmap = Some(mmap);
         self.record_position = record_position;
-        self.current_size = pos as u64;
+        self.current_size = pos;
+        self.write_count = 0;
+        self.last_flushed_position = pos;
         self.min_seq = min_seq;
         self.max_seq = max_seq;
         Ok(())
     }
 
     pub fn close(&mut self) -> Result<()> {
+        if let Some(ref mut mmap) = self.mmap {
+            // Flush before closing
+            mmap.flush_range(self.last_flushed_position, self.current_size)
+                .context(Flush)?;
+            // Reset the write count
+            self.write_count = 0;
+            // Update the last flushed position
+            self.last_flushed_position = self.current_size;
+        }
         self.mmap.take();
         Ok(())
     }
@@ -283,7 +304,7 @@ impl Segment {
     /// Append a slice to the segment file.
     fn append(&mut self, data: &[u8]) -> Result<()> {
         ensure!(
-            self.current_size + data.len() as u64 <= self.segment_size,
+            self.current_size + data.len() <= self.segment_size,
             SegmentFull
         );
 
@@ -293,28 +314,41 @@ impl Segment {
         };
 
         // Append to mmap
-        let start = self.current_size as usize;
+        let start = self.current_size;
         let end = start + data.len();
         mmap[start..end].copy_from_slice(data);
-        mmap.flush_range(start, data.len()).context(Flush)?;
 
-        self.current_size += data.len() as u64;
+        // Increment the write count
+        self.write_count += 1;
+
+        // Update the current size
+        self.current_size += data.len();
+
+        // Only flush if the write_count reaches FLUSH_INTERVAL
+        if self.write_count >= FLUSH_INTERVAL {
+            mmap.flush_range(self.last_flushed_position, self.current_size)
+                .context(Flush)?;
+            // Reset the write count
+            self.write_count = 0;
+            // Update the last flushed position
+            self.last_flushed_position = self.current_size;
+        }
 
         Ok(())
     }
 
-    pub fn read(&self, offset: u64, size: u64) -> Result<Vec<u8>> {
+    pub fn read(&self, offset: usize, size: usize) -> Result<Vec<u8>> {
         // Ensure that the reading range is within the file
         ensure!(
             offset + size <= self.current_size,
             LengthMismatch {
-                expected: (offset + size) as usize,
-                actual: self.current_size as usize
+                expected: (offset + size),
+                actual: self.current_size
             }
         );
 
-        let start = offset as usize;
-        let end = start + size as usize;
+        let start = offset;
+        let end = start + size;
         match &self.mmap {
             Some(mmap) => Ok(mmap[start..end].to_vec()),
             None => SegmentNotOpen { id: self.id }.fail(),
@@ -440,7 +474,7 @@ pub struct Region {
     runtime: Arc<Runtime>,
 
     /// All segments are fixed size
-    segment_size: u64,
+    segment_size: usize,
 
     /// Directory of segment files
     region_dir: String,
@@ -456,7 +490,7 @@ impl Region {
     pub fn new(
         region_id: u64,
         cache_size: usize,
-        segment_size: u64,
+        segment_size: usize,
         region_dir: String,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
@@ -566,8 +600,8 @@ impl Region {
                 .context(Encoding)?;
 
             record_position.push(Position {
-                start: (data.len() - record.len()) as u64,
-                end: data.len() as u64,
+                start: data.len() - record.len(),
+                end: data.len(),
             });
 
             next_sequence_num += 1;
@@ -577,7 +611,7 @@ impl Region {
 
         // Check if the current segment has enough space for the new data
         // If not, create a new segment and update current_segment
-        if guard.current_size + data.len() as u64 > guard.segment_size {
+        if guard.current_size + data.len() > guard.segment_size {
             let new_segment_id = guard.id + 1;
             // We need to drop guard to allow the update of current_segment
             drop(guard);
@@ -589,7 +623,8 @@ impl Region {
                 self.segment_size,
             )?;
             let new_segment = Arc::new(Mutex::new(new_segment));
-            self.segment_manager.add_segment(new_segment_id, new_segment.clone())?;
+            self.segment_manager
+                .add_segment(new_segment_id, new_segment.clone())?;
 
             // Update current segment
             *current_segment = new_segment;
@@ -693,7 +728,7 @@ pub struct RegionManager {
     root_dir: String,
     regions: Mutex<HashMap<u64, Arc<Region>>>,
     cache_size: usize,
-    segment_size: u64,
+    segment_size: usize,
     runtime: Arc<Runtime>,
 }
 
@@ -703,7 +738,7 @@ impl RegionManager {
     pub fn new(
         root_dir: String,
         cache_size: usize,
-        segment_size: u64,
+        segment_size: usize,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
         let mut regions = HashMap::new();
@@ -891,7 +926,7 @@ impl SegmentLogIterator {
             self.current_record_idx += 1;
 
             // Extract the record data from the segment content
-            let record_data = &self.segment_content[pos.start as usize..pos.end as usize];
+            let record_data = &self.segment_content[pos.start..pos.end];
 
             // Decode the record
             let record = self
@@ -1074,7 +1109,7 @@ mod tests {
         manager::ReadBoundary,
     };
 
-    const SEGMENT_SIZE: u64 = 64 * 1024 * 1024;
+    const SEGMENT_SIZE: usize = 64 * 1024 * 1024;
 
     #[test]
     fn test_segment_creation() {
@@ -1093,7 +1128,7 @@ mod tests {
         assert_eq!(segment.version, NEWEST_WAL_SEGMENT_VERSION);
         assert_eq!(segment.path, path);
         assert_eq!(segment.id, 0);
-        assert_eq!(segment.current_size, SEGMENT_HEADER.len() as u64);
+        assert_eq!(segment.current_size, SEGMENT_HEADER.len());
 
         let segment_content = fs::read(path).unwrap();
         assert_eq!(segment_content[0], NEWEST_WAL_SEGMENT_VERSION);
@@ -1135,10 +1170,7 @@ mod tests {
         let append_result = segment.append(data);
         assert!(append_result.is_ok());
 
-        let read_result = segment.read(
-            (VERSION_SIZE + SEGMENT_HEADER.len()) as u64,
-            data.len() as u64,
-        );
+        let read_result = segment.read(VERSION_SIZE + SEGMENT_HEADER.len(), data.len());
         assert!(read_result.is_ok());
         assert_eq!(read_result.unwrap(), data);
     }
@@ -1155,7 +1187,7 @@ mod tests {
             dir.path().to_str().unwrap().to_string(),
             runtime,
         )
-            .unwrap();
+        .unwrap();
 
         let _segment = region.segment_manager.get_segment(0).unwrap();
 
@@ -1173,14 +1205,14 @@ mod tests {
             SEGMENT_SIZE,
             runtime,
         )
-            .unwrap();
+        .unwrap();
 
         region_manager.close_all().unwrap();
     }
 
     async fn test_multi_segment_write_and_read_inner(runtime: Arc<Runtime>) {
         // Set a small max segment size
-        const SEGMENT_SIZE: u64 = 4096;
+        const SEGMENT_SIZE: usize = 4096;
 
         // Create a temporary directory
         let dir = tempdir().unwrap();
@@ -1193,7 +1225,7 @@ mod tests {
             dir.path().to_str().unwrap().to_string(),
             runtime.clone(),
         )
-            .unwrap();
+        .unwrap();
         let region = Arc::new(region);
 
         // Write data
