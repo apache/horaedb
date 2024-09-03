@@ -69,6 +69,15 @@ pub enum Error {
     #[snafu(display("Empty write options.\nBacktrace:\n{}", backtrace))]
     EmptySstWriteOptions { backtrace: Backtrace },
 
+    #[snafu(display("Sst meta data is empty.\nBacktrace:\n{backtrace}"))]
+    EmptySstMeta { backtrace: Backtrace },
+
+    #[snafu(display("Empty sst info.\nBacktrace:\n{}", backtrace))]
+    EmptySstInfo { backtrace: Backtrace },
+
+    #[snafu(display("Empty compaction task exec result.\nBacktrace:\n{}", backtrace))]
+    EmptyExecResult { backtrace: Backtrace },
+
     #[snafu(display("Failed to convert table schema, err:{}", source))]
     ConvertTableSchema { source: GenericError },
 
@@ -83,6 +92,12 @@ pub enum Error {
 
     #[snafu(display("Failed to convert write options, err:{}", source))]
     ConvertSstWriteOptions { source: GenericError },
+
+    #[snafu(display("Failed to convert sst info, err:{}", source))]
+    ConvertSstInfo { source: GenericError },
+
+    #[snafu(display("Failed to convert sst meta, err:{}", source))]
+    ConvertSstMeta { source: GenericError },
 }
 
 define_result!(Error);
@@ -204,7 +219,6 @@ impl TryFrom<horaedbproto::compaction_service::ExecuteCompactionTaskRequest>
     }
 }
 
-// TODO(leslie): Unused now, will be used in remote compaction runner impl.
 impl From<CompactionRunnerTask> for horaedbproto::compaction_service::ExecuteCompactionTaskRequest {
     fn from(task: CompactionRunnerTask) -> Self {
         Self {
@@ -224,6 +238,36 @@ pub struct CompactionRunnerResult {
     pub output_file_path: Path,
     pub sst_info: SstInfo,
     pub sst_meta: MetaData,
+}
+
+impl TryFrom<horaedbproto::compaction_service::ExecuteCompactionTaskResponse>
+    for CompactionRunnerResult
+{
+    type Error = Error;
+
+    fn try_from(
+        resp: horaedbproto::compaction_service::ExecuteCompactionTaskResponse,
+    ) -> Result<Self> {
+        let res = resp.result.context(EmptyExecResult)?;
+        let sst_info = res
+            .sst_info
+            .context(EmptySstInfo)?
+            .try_into()
+            .box_err()
+            .context(ConvertSstInfo)?;
+        let sst_meta = res
+            .sst_meta
+            .context(EmptySstMeta)?
+            .try_into()
+            .box_err()
+            .context(ConvertSstMeta)?;
+
+        Ok(Self {
+            output_file_path: res.output_file_path.into(),
+            sst_info,
+            sst_meta,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]

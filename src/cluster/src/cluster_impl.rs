@@ -381,7 +381,7 @@ impl Inner {
         req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
     ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse> {
         // TODO(leslie): Execute the compaction task locally when fails to build
-        // compaction client.
+        // compaction client or execute compaction task remotely.
         let compact_resp = self
             .compaction_client()
             .await

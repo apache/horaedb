@@ -17,10 +17,12 @@
 
 use async_trait::async_trait;
 use cluster::ClusterRef;
+use generic_error::BoxError;
+use snafu::ResultExt;
 
 use crate::{
     compaction::runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
-    instance::flush_compaction::Result,
+    instance::flush_compaction::{ConvertCompactionTaskResponse, RemoteCompact, Result},
 };
 
 pub struct RemoteCompactionRunner {
@@ -29,11 +31,18 @@ pub struct RemoteCompactionRunner {
 
 #[async_trait]
 impl CompactionRunner for RemoteCompactionRunner {
-    async fn run(&self, _task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
-        // TODO(leslie): Impl the function.
-        // 1. Transfer `CompactionRunnerTask` into `ExecuteCompactionTaskRequest`.
-        // 2. Call `self.cluster.compact(req)`.
-        // 3. Transfer `ExecuteCompactionTaskResponse` into `CompactionRunnerResult`.
-        unimplemented!()
+    async fn run(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
+        let pb_resp = self
+            .cluster
+            .compact(task.into())
+            .await
+            .context(RemoteCompact)?;
+
+        let resp = pb_resp
+            .try_into()
+            .box_err()
+            .context(ConvertCompactionTaskResponse)?;
+
+        Ok(resp)
     }
 }

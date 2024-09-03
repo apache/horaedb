@@ -158,6 +158,12 @@ pub enum Error {
 
     #[snafu(display("Failed to alloc file id, err:{}", source))]
     AllocFileId { source: data::Error },
+
+    #[snafu(display("Failed to convert compaction task response, err:{}", source))]
+    ConvertCompactionTaskResponse { source: GenericError },
+
+    #[snafu(display("Failed to execute compaction task remotely, err:{}", source))]
+    RemoteCompact { source: cluster::Error },
 }
 
 define_result!(Error);
