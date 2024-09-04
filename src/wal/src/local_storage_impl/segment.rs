@@ -319,9 +319,6 @@ impl Segment {
         let end = start + data.len();
         mmap[start..end].copy_from_slice(data);
 
-        // Update the current size
-        self.current_size += data.len();
-
         // Increment the write count
         self.write_count += 1;
 
@@ -334,6 +331,9 @@ impl Segment {
             // Update the last flushed position
             self.last_flushed_position = self.current_size;
         }
+
+        // Update the current size
+        self.current_size += data.len();
 
         Ok(())
     }
