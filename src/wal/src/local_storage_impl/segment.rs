@@ -329,7 +329,7 @@ impl Segment {
             // Reset the write count
             self.write_count = 0;
             // Update the last flushed position
-            self.last_flushed_position = self.current_size;
+            self.last_flushed_position = self.current_size + data.len();
         }
 
         // Update the current size
