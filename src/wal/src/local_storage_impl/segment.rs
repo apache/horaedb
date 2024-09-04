@@ -268,6 +268,7 @@ impl Segment {
                 }
                 Err(_) => {
                     // If decoding fails, we've reached the end of valid data
+                    // TODO: too tricky, refactor later
                     break;
                 }
             }
@@ -318,11 +319,11 @@ impl Segment {
         let end = start + data.len();
         mmap[start..end].copy_from_slice(data);
 
-        // Increment the write count
-        self.write_count += 1;
-
         // Update the current size
         self.current_size += data.len();
+
+        // Increment the write count
+        self.write_count += 1;
 
         // Only flush if the write_count reaches FLUSH_INTERVAL
         if self.write_count >= FLUSH_INTERVAL {
