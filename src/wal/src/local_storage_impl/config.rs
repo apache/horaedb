@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalStorageConfig {
     pub path: String,
-    pub max_segment_size: u64,
+    pub max_segment_size: usize,
     pub cache_size: usize,
 }
 
