@@ -324,7 +324,7 @@ impl Segment {
 
         // Only flush if the write_count reaches FLUSH_INTERVAL
         if self.write_count >= FLUSH_INTERVAL {
-            mmap.flush_range(self.last_flushed_position, self.current_size)
+            mmap.flush_range(self.last_flushed_position, self.current_size + data.len())
                 .context(Flush)?;
             // Reset the write count
             self.write_count = 0;
