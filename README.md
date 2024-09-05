@@ -18,9 +18,8 @@ Apache HoraeDB (incubating) is a high-performance, distributed, cloud native tim
 
 ## Documentation
 
-- [User Guide](https://horaedb.apache.org)
-- [Development Guide](https://horaedb.apache.org/dev/compile_run.html)
-- [Roadmap](https://horaedb.apache.org/dev/roadmap.html)
+- [User Guide](https://horaedb.apache.org/docs/getting-started/)
+- [Development Guide](https://horaedb.apache.org/docs/dev/)
 
 ## Quick Start
 
