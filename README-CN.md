@@ -1,8 +1,8 @@
 ![HoraeDB](docs/logo/horaedb-banner-white-small.jpg)
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
-[![CI](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml)
-[![OpenIssue](https://img.shields.io/github/issues/apache/incubator-horaedb)](https://github.com/apache/incubator-horaedb/issues)
+[![CI](https://github.com/apache/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/horaedb/actions/workflows/ci.yml)
+[![OpenIssue](https://img.shields.io/github/issues/apache/horaedb)](https://github.com/apache/horaedb/issues)
 [![HoraeDB Docker](https://img.shields.io/docker/v/apache/horaedb-server?logo=docker&label=horaedb-server)](https://hub.docker.com/r/apache/horaedb-server)
 [![HoraeMeta Docker](https://img.shields.io/docker/v/apache/horaemeta-server?logo=docker&label=horaemeta-server)](https://hub.docker.com/r/apache/horaemeta-server)
 
@@ -11,9 +11,9 @@
 Apache HoraeDB (incubating) 是一款高性能、分布式的云原生时序数据库。
 
 ## 文档
-- [用户文档](https://horaedb.apache.org)
-- [研发文档](https://horaedb.apache.org/dev/compile_run.html)
-- [Roadmap](https://horaedb.apache.org/dev/roadmap.html)
+
+- [User Guide](https://horaedb.apache.org/docs/getting-started/)
+- [Development Guide](https://horaedb.apache.org/docs/dev/)
 
 ## 快速开始
 ### 通过 Docker 运行
@@ -31,9 +31,6 @@ docker run -d --name horaedb-server \
 ```
 docker compose -f docker/docker-compose.yaml up
 ```
-
-### 通过源码编译运行
-详见[文档](https://horaedb.apache.org/dev/compile_run.html)。
 
 ### 基本操作
 
@@ -84,9 +81,7 @@ Drop TABLE `demo`
 
 - [订阅邮箱参与讨论](mailto:dev-subscribe@horaedb.apache.org) ([订阅](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [取消订阅](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [查看邮件历史记录](https://lists.apache.org/list.html?dev@horaedb.apache.org))
 - 发送 [请求](mailto:dev@horaedb.apache.org?subject=(Request%to%20join%20HoraeDB%20slack)) 至 `dev@horaedb.apache.org` 加入HoraeDB Slack
-- 通过[这里的链接](https://github.com/apache/incubator-horaedb-docs/blob/main/static/dingtalk.jpg)，加入钉钉用户群
-
-[约定式提交](https://apache.github.io/incubator-horaedb-docs/cn/dev/conventional_commit)
+- 通过[这里的链接](http://horaedb.apache.org/community/)，加入我们的社区。
 
 [如何参与贡献](CONTRIBUTING.md)
 
