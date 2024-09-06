@@ -16,6 +16,7 @@
 // under the License.
 
 use std::{
+    cmp::{max, min},
     collections::{HashMap, VecDeque},
     fmt::Debug,
     fs::{self, File, OpenOptions},
@@ -158,6 +159,10 @@ pub struct Segment {
     /// The maximum sequence number of records within this segment.
     max_seq: SequenceNumber,
 
+    /// A hashmap storing both min and max sequence numbers of records within
+    /// this segment for each `TableId`.
+    seq_ranges: HashMap<TableId, (SequenceNumber, SequenceNumber)>,
+
     /// The encoding format used for records within this segment.
     record_encoding: RecordEncoding,
 
@@ -191,6 +196,7 @@ impl Segment {
             segment_size,
             min_seq: MAX_SEQUENCE_NUMBER,
             max_seq: MIN_SEQUENCE_NUMBER,
+            seq_ranges: HashMap::new(),
             record_encoding: RecordEncoding::newest(),
             mmap: None,
             record_position: Vec::new(),
@@ -249,10 +255,9 @@ impl Segment {
         let mut pos = VERSION_SIZE + header_len;
         let mut record_position = Vec::new();
 
-        // Update min and max sequence number
-        let mut min_seq = MAX_SEQUENCE_NUMBER;
-        let mut max_seq = MIN_SEQUENCE_NUMBER;
+        self.seq_ranges.clear();
 
+        // Scan all records in the segment
         while pos < file_size as usize {
             let data = &mmap[pos..];
 
@@ -262,8 +267,20 @@ impl Segment {
                         start: pos,
                         end: pos + record.len(),
                     });
-                    min_seq = min_seq.min(record.sequence_num);
-                    max_seq = max_seq.max(record.sequence_num);
+
+                    // Update min and max sequence number
+                    self.min_seq = min(self.min_seq, record.sequence_num);
+                    self.max_seq = max(self.max_seq, record.sequence_num);
+
+                    // Update seq_ranges
+                    self.seq_ranges
+                        .entry(record.table_id)
+                        .and_modify(|seq_range| {
+                            seq_range.0 = min(seq_range.0, record.sequence_num);
+                            seq_range.1 = max(seq_range.1, record.sequence_num);
+                        })
+                        .or_insert((record.sequence_num, record.sequence_num));
+
                     pos += record.len();
                 }
                 Err(_) => {
@@ -279,8 +296,6 @@ impl Segment {
         self.current_size = pos;
         self.write_count = 0;
         self.last_flushed_position = pos;
-        self.min_seq = min_seq;
-        self.max_seq = max_seq;
         Ok(())
     }
 
@@ -360,6 +375,7 @@ impl Segment {
         &mut self,
         data: &[u8],
         positions: &mut Vec<Position>,
+        table_id: TableId,
         prev_sequence_num: SequenceNumber,
         next_sequence_num: SequenceNumber,
     ) -> Result<()> {
@@ -370,8 +386,17 @@ impl Segment {
         self.record_position.append(positions);
 
         // Update min and max sequence number
-        self.min_seq = self.min_seq.min(prev_sequence_num);
-        self.max_seq = self.max_seq.max(next_sequence_num - 1);
+        self.min_seq = min(self.min_seq, prev_sequence_num);
+        self.max_seq = max(self.max_seq, next_sequence_num - 1);
+
+        // Update sequence range
+        self.seq_ranges
+            .entry(table_id)
+            .and_modify(|seq_range| {
+                seq_range.0 = min(seq_range.0, prev_sequence_num);
+                seq_range.1 = max(seq_range.1, next_sequence_num);
+            })
+            .or_insert((prev_sequence_num, next_sequence_num - 1));
 
         Ok(())
     }
@@ -437,14 +462,6 @@ impl SegmentManager {
         Ok(())
     }
 
-    pub fn mark_delete_entries_up_to(
-        &self,
-        _location: WalLocation,
-        _sequence_num: SequenceNumber,
-    ) -> Result<()> {
-        todo!()
-    }
-
     pub fn close_all(&self) -> Result<()> {
         let mut cache = self.cache.lock().unwrap();
         cache.clear();
@@ -485,6 +502,8 @@ pub struct Region {
 
     /// The latest segment for appending logs
     current_segment: Mutex<Arc<Mutex<Segment>>>,
+
+    last_mark_deleted: Mutex<HashMap<TableId, SequenceNumber>>,
 }
 
 impl Region {
@@ -569,6 +588,7 @@ impl Region {
             next_sequence_num: AtomicU64::new(next_sequence_num),
             runtime,
             current_segment: Mutex::new(latest_segment),
+            last_mark_deleted: Mutex::new(HashMap::new()),
         })
     }
 
@@ -646,6 +666,7 @@ impl Region {
         guard.append_records(
             &data,
             &mut record_position,
+            table_id,
             prev_sequence_num,
             next_sequence_num - 1,
         )?;
@@ -655,7 +676,16 @@ impl Region {
     pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
         // Check read range's validity.
         let start = if let Some(start) = req.start.as_start_sequence_number() {
-            start
+            if let Some(last_mark_deleted) = self
+                .last_mark_deleted
+                .lock()
+                .unwrap()
+                .get(&req.location.table_id)
+            {
+                max(start, *last_mark_deleted + 1)
+            } else {
+                start
+            }
         } else {
             MAX_SEQUENCE_NUMBER
         };
@@ -675,6 +705,7 @@ impl Region {
             Some(req.location.table_id),
             start,
             end,
+            None,
         )?;
 
         Ok(BatchLogIteratorAdapter::new_with_sync(
@@ -692,6 +723,7 @@ impl Region {
             None,
             MIN_SEQUENCE_NUMBER,
             MAX_SEQUENCE_NUMBER,
+            Some(self.last_mark_deleted.lock().unwrap().clone()),
         )?;
         Ok(BatchLogIteratorAdapter::new_with_sync(
             Box::new(iter),
@@ -705,8 +737,9 @@ impl Region {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        self.segment_manager
-            .mark_delete_entries_up_to(location, sequence_num)
+        let mut guard = self.last_mark_deleted.lock().unwrap();
+        guard.insert(location.table_id, sequence_num);
+        Ok(())
     }
 
     pub fn close(&self) -> Result<()> {
@@ -864,6 +897,10 @@ struct SegmentLogIterator {
     /// Optional identifier for the table, which is used to filter logs.
     table_id: Option<TableId>,
 
+    /// Optional reference to a hashmap of last mark deleted sequence number,
+    /// which is used to filter logs.
+    last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
+
     /// Starting sequence number for log iteration.
     start: SequenceNumber,
 
@@ -884,8 +921,8 @@ impl SegmentLogIterator {
         segment: Arc<Mutex<Segment>>,
         segment_manager: Arc<SegmentManager>,
         table_id: Option<TableId>,
-        start: SequenceNumber,
-        end: SequenceNumber,
+        last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
+        range: (SequenceNumber, SequenceNumber),
     ) -> Result<Self> {
         // Open the segment if it is not open
         let mut segment = segment.lock().unwrap();
@@ -905,8 +942,9 @@ impl SegmentLogIterator {
             segment_content,
             record_positions,
             table_id,
-            start,
-            end,
+            last_mark_deleted,
+            start: range.0,
+            end: range.1,
             current_record_idx: 0,
             no_more_data: false,
         })
@@ -952,6 +990,15 @@ impl SegmentLogIterator {
                 }
             }
 
+            // Filter by last_mark_deleted
+            if let Some(last_mark_deleted) = &self.last_mark_deleted {
+                if let Some(&last_deleted_seq) = last_mark_deleted.get(&record.table_id) {
+                    if record.sequence_num <= last_deleted_seq {
+                        continue;
+                    }
+                }
+            }
+
             // Decode the value
             let value = self
                 .log_encoding
@@ -992,6 +1039,10 @@ pub struct MultiSegmentLogIterator {
     /// Optional identifier for the table, which is used to filter logs.
     table_id: Option<TableId>,
 
+    /// Optional hashmap of last mark deleted sequence number, which is used to
+    /// filter logs.
+    last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
+
     /// Starting sequence number for log iteration.
     start: SequenceNumber,
 
@@ -1010,6 +1061,7 @@ impl MultiSegmentLogIterator {
         table_id: Option<TableId>,
         start: SequenceNumber,
         end: SequenceNumber,
+        last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
     ) -> Result<Self> {
         // Find all segments that contain the requested sequence numbers
         let mut relevant_segments = Vec::new();
@@ -1036,6 +1088,7 @@ impl MultiSegmentLogIterator {
             log_encoding,
             record_encoding,
             table_id,
+            last_mark_deleted,
             start,
             end,
             current_payload: Vec::new(),
@@ -1055,14 +1108,14 @@ impl MultiSegmentLogIterator {
 
         let segment = self.segments[self.current_segment_idx];
         let segment = self.segment_manager.get_segment(segment)?;
-        let iterator = SegmentLogIterator::new(
+        let iterator: SegmentLogIterator = SegmentLogIterator::new(
             self.log_encoding.clone(),
             self.record_encoding.clone(),
             segment,
             self.segment_manager.clone(),
             self.table_id,
-            self.start,
-            self.end,
+            self.last_mark_deleted.clone(),
+            (self.start, self.end)
         )?;
 
         self.current_iterator = Some(iterator);

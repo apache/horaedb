@@ -72,7 +72,6 @@ fn test_kafka_wal() {
 }
 
 #[test]
-#[ignore = "this test cannot pass completely, since delete is not supported yet"]
 fn test_local_storage_wal() {
     let builder = LocalStorageWalBuilder;
     test_all(builder, false);
