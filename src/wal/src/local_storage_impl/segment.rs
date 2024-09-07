@@ -307,8 +307,11 @@ impl Segment {
     pub fn close(&mut self) -> Result<()> {
         if let Some(ref mut mmap) = self.mmap {
             // Flush before closing
-            mmap.flush_range(self.last_flushed_position, self.current_size)
-                .context(Flush)?;
+            mmap.flush_range(
+                self.last_flushed_position,
+                self.current_size - self.last_flushed_position,
+            )
+            .context(Flush)?;
             // Reset the write count
             self.write_count = 0;
             // Update the last flushed position
@@ -344,8 +347,11 @@ impl Segment {
 
         // Only flush if the write_count reaches FLUSH_INTERVAL
         if self.write_count >= FLUSH_INTERVAL {
-            mmap.flush_range(self.last_flushed_position, self.current_size + data.len())
-                .context(Flush)?;
+            mmap.flush_range(
+                self.last_flushed_position,
+                self.current_size + data.len() - self.last_flushed_position,
+            )
+            .context(Flush)?;
             // Reset the write count
             self.write_count = 0;
             // Update the last flushed position
@@ -865,7 +871,7 @@ impl RegionManager {
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
         fs::create_dir_all(&root_dir).context(DirOpen)?;
-        
+
         let mut regions = HashMap::new();
 
         // Naming conversion: <root_dir>/<region_id>
