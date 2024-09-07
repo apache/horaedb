@@ -19,7 +19,7 @@ use std::{
     cmp::{max, min},
     collections::{HashMap, VecDeque},
     fmt::Debug,
-    fs::{self, File, OpenOptions},
+    fs::{self, remove_file, File, OpenOptions},
     io::{self, Write},
     path::Path,
     sync::{
@@ -161,7 +161,7 @@ pub struct Segment {
 
     /// A hashmap storing both min and max sequence numbers of records within
     /// this segment for each `TableId`.
-    seq_ranges: HashMap<TableId, (SequenceNumber, SequenceNumber)>,
+    table_ranges: HashMap<TableId, (SequenceNumber, SequenceNumber)>,
 
     /// The encoding format used for records within this segment.
     record_encoding: RecordEncoding,
@@ -192,16 +192,16 @@ impl Segment {
             version: NEWEST_WAL_SEGMENT_VERSION,
             path: path.clone(),
             id: segment_id,
-            current_size: SEGMENT_HEADER.len(),
+            current_size: VERSION_SIZE + SEGMENT_HEADER.len(),
             segment_size,
             min_seq: MAX_SEQUENCE_NUMBER,
             max_seq: MIN_SEQUENCE_NUMBER,
-            seq_ranges: HashMap::new(),
+            table_ranges: HashMap::new(),
             record_encoding: RecordEncoding::newest(),
             mmap: None,
             record_position: Vec::new(),
             write_count: 0,
-            last_flushed_position: SEGMENT_HEADER.len(),
+            last_flushed_position: VERSION_SIZE + SEGMENT_HEADER.len(),
         };
 
         if !Path::new(&path).exists() {
@@ -215,7 +215,7 @@ impl Segment {
         }
 
         // Open the segment file to update min and max sequence number and file size
-        segment.open()?;
+        segment.open(true)?;
 
         // Close the segment file. If the segment is to be used for read or write, it
         // will be opened again
@@ -224,7 +224,7 @@ impl Segment {
         Ok(segment)
     }
 
-    pub fn open(&mut self) -> Result<()> {
+    pub fn open(&mut self, update_meta: bool) -> Result<()> {
         // Open the segment file
         let file = OpenOptions::new()
             .read(true)
@@ -251,11 +251,16 @@ impl Segment {
         let header = &mmap[VERSION_SIZE..VERSION_SIZE + header_len];
         ensure!(header == SEGMENT_HEADER, InvalidHeader);
 
+        if !update_meta {
+            self.mmap = Some(mmap);
+            return Ok(());
+        }
+
         // Read and validate all records
         let mut pos = VERSION_SIZE + header_len;
         let mut record_position = Vec::new();
 
-        self.seq_ranges.clear();
+        self.table_ranges.clear();
 
         // Scan all records in the segment
         while pos < file_size as usize {
@@ -272,8 +277,8 @@ impl Segment {
                     self.min_seq = min(self.min_seq, record.sequence_num);
                     self.max_seq = max(self.max_seq, record.sequence_num);
 
-                    // Update seq_ranges
-                    self.seq_ranges
+                    // Update table_ranges
+                    self.table_ranges
                         .entry(record.table_id)
                         .and_modify(|seq_range| {
                             seq_range.0 = min(seq_range.0, record.sequence_num);
@@ -390,14 +395,37 @@ impl Segment {
         self.max_seq = max(self.max_seq, next_sequence_num - 1);
 
         // Update sequence range
-        self.seq_ranges
+        self.table_ranges
             .entry(table_id)
             .and_modify(|seq_range| {
                 seq_range.0 = min(seq_range.0, prev_sequence_num);
-                seq_range.1 = max(seq_range.1, next_sequence_num);
+                seq_range.1 = max(seq_range.1, next_sequence_num - 1);
             })
             .or_insert((prev_sequence_num, next_sequence_num - 1));
 
+        Ok(())
+    }
+
+    fn contains_table(&self, table_id: TableId) -> bool {
+        self.table_ranges.contains_key(&table_id)
+    }
+
+    fn mark_deleted(&mut self, table_id: TableId, sequence_num: SequenceNumber) {
+        if let Some(range) = self.table_ranges.get_mut(&table_id) {
+            range.0 = max(range.0, sequence_num + 1);
+            if range.0 > range.1 {
+                self.table_ranges.remove(&table_id);
+            }
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.table_ranges.is_empty()
+    }
+
+    fn delete(&mut self) -> Result<()> {
+        self.close()?;
+        remove_file(&self.path).context(SegmentAppend)?;
         Ok(())
     }
 }
@@ -412,6 +440,9 @@ pub struct SegmentManager {
 
     /// Maximum size of the cache
     cache_size: usize,
+
+    /// The latest segment for appending logs
+    current_segment: Mutex<Arc<Mutex<Segment>>>,
 }
 
 impl SegmentManager {
@@ -445,7 +476,7 @@ impl SegmentManager {
         }
 
         // If not in cache, load from disk
-        segment.open()?;
+        segment.open(false)?;
 
         // Add to cache
         if cache.len() == self.cache_size {
@@ -470,6 +501,81 @@ impl SegmentManager {
             segment.lock().unwrap().close()?;
         }
         Ok(())
+    }
+
+    pub fn mark_delete_entries_up_to(
+        &self,
+        location: WalLocation,
+        sequence_num: SequenceNumber,
+    ) -> Result<()> {
+        let mut segments_to_remove: Vec<u64> = Vec::new();
+        let mut all_segments = self.all_segments.lock().unwrap();
+        let current_segment_id = self.current_segment.lock().unwrap().lock().unwrap().id;
+
+        for (_, segment) in all_segments.iter() {
+            let mut segment = segment.lock().unwrap();
+
+            // Skip segments that are not relevant
+            if segment.min_seq > sequence_num || !segment.contains_table(location.table_id) {
+                continue;
+            }
+
+            segment.mark_deleted(location.table_id, sequence_num);
+
+            // Delete this segment if it is empty
+            if segment.is_empty() && segment.id != current_segment_id {
+                let mut cache = self.cache.lock().unwrap();
+
+                // Check if segment is already in cache
+                if let Some(index) = cache.iter().position(|id| *id == segment.id) {
+                    cache.remove(index);
+                }
+
+                segments_to_remove.push(segment.id);
+                segment.delete()?;
+            }
+        }
+
+        for segment_id in segments_to_remove {
+            all_segments.remove(&segment_id);
+        }
+
+        Ok(())
+    }
+
+    pub fn get_relevant_segments(
+        &self,
+        table_id: Option<TableId>,
+        start: SequenceNumber,
+        end: SequenceNumber,
+    ) -> Result<Vec<u64>> {
+        // Find all segments that contain the requested sequence numbers
+        let mut relevant_segments = Vec::new();
+
+        let all_segments = self.all_segments.lock().unwrap();
+
+        for (_, segment) in all_segments.iter() {
+            let segment = segment.lock().unwrap();
+            match table_id {
+                Some(table_id) => {
+                    if let Some(range) = segment.table_ranges.get(&table_id) {
+                        if range.0 <= end && range.1 >= start {
+                            relevant_segments.push(segment.id);
+                        }
+                    }
+                }
+                None => {
+                    if segment.min_seq <= end && segment.max_seq >= start {
+                        relevant_segments.push(segment.id);
+                    }
+                }
+            }
+        }
+
+        // Sort by segment id
+        relevant_segments.sort_unstable();
+
+        Ok(relevant_segments)
     }
 }
 
@@ -499,11 +605,6 @@ pub struct Region {
 
     /// Sequence number for the next log
     next_sequence_num: AtomicU64,
-
-    /// The latest segment for appending logs
-    current_segment: Mutex<Arc<Mutex<Segment>>>,
-
-    last_mark_deleted: Mutex<HashMap<TableId, SequenceNumber>>,
 }
 
 impl Region {
@@ -576,6 +677,7 @@ impl Region {
             all_segments: Mutex::new(all_segments),
             cache: Mutex::new(VecDeque::new()),
             cache_size,
+            current_segment: Mutex::new(latest_segment),
         };
 
         Ok(Self {
@@ -587,8 +689,6 @@ impl Region {
             region_dir,
             next_sequence_num: AtomicU64::new(next_sequence_num),
             runtime,
-            current_segment: Mutex::new(latest_segment),
-            last_mark_deleted: Mutex::new(HashMap::new()),
         })
     }
 
@@ -598,7 +698,7 @@ impl Region {
         // Perhaps we could avoid acquiring the lock here and instead allocate the
         // position that needs to be written in the segment, then fill it within
         // spawn_blocking. However, I’m not sure about the correctness of this approach.
-        let mut current_segment = self.current_segment.lock().unwrap();
+        let mut current_segment = self.segment_manager.current_segment.lock().unwrap();
 
         let entries_num = batch.len() as u64;
         let table_id = batch.location.table_id;
@@ -668,7 +768,7 @@ impl Region {
             &mut record_position,
             table_id,
             prev_sequence_num,
-            next_sequence_num - 1,
+            next_sequence_num,
         )?;
         Ok(next_sequence_num - 1)
     }
@@ -676,16 +776,7 @@ impl Region {
     pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
         // Check read range's validity.
         let start = if let Some(start) = req.start.as_start_sequence_number() {
-            if let Some(last_mark_deleted) = self
-                .last_mark_deleted
-                .lock()
-                .unwrap()
-                .get(&req.location.table_id)
-            {
-                max(start, *last_mark_deleted + 1)
-            } else {
-                start
-            }
+            start
         } else {
             MAX_SEQUENCE_NUMBER
         };
@@ -705,7 +796,6 @@ impl Region {
             Some(req.location.table_id),
             start,
             end,
-            None,
         )?;
 
         Ok(BatchLogIteratorAdapter::new_with_sync(
@@ -723,7 +813,6 @@ impl Region {
             None,
             MIN_SEQUENCE_NUMBER,
             MAX_SEQUENCE_NUMBER,
-            Some(self.last_mark_deleted.lock().unwrap().clone()),
         )?;
         Ok(BatchLogIteratorAdapter::new_with_sync(
             Box::new(iter),
@@ -737,8 +826,8 @@ impl Region {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        let mut guard = self.last_mark_deleted.lock().unwrap();
-        guard.insert(location.table_id, sequence_num);
+        self.segment_manager
+            .mark_delete_entries_up_to(location, sequence_num)?;
         Ok(())
     }
 
@@ -897,9 +986,8 @@ struct SegmentLogIterator {
     /// Optional identifier for the table, which is used to filter logs.
     table_id: Option<TableId>,
 
-    /// Optional reference to a hashmap of last mark deleted sequence number,
-    /// which is used to filter logs.
-    last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
+    /// A hashmap of start and end sequence number for each table.
+    table_ranges: HashMap<TableId, (SequenceNumber, SequenceNumber)>,
 
     /// Starting sequence number for log iteration.
     start: SequenceNumber,
@@ -921,8 +1009,8 @@ impl SegmentLogIterator {
         segment: Arc<Mutex<Segment>>,
         segment_manager: Arc<SegmentManager>,
         table_id: Option<TableId>,
-        last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
-        range: (SequenceNumber, SequenceNumber),
+        start: SequenceNumber,
+        end: SequenceNumber,
     ) -> Result<Self> {
         // Open the segment if it is not open
         let mut segment = segment.lock().unwrap();
@@ -936,15 +1024,18 @@ impl SegmentLogIterator {
         // Get record positions
         let record_positions = segment.record_position.clone();
 
+        // Get sequence number ranges
+        let table_ranges = segment.table_ranges.clone();
+
         Ok(Self {
             log_encoding,
             record_encoding,
             segment_content,
             record_positions,
             table_id,
-            last_mark_deleted,
-            start: range.0,
-            end: range.1,
+            table_ranges,
+            start,
+            end,
             current_record_idx: 0,
             no_more_data: false,
         })
@@ -990,13 +1081,13 @@ impl SegmentLogIterator {
                 }
             }
 
-            // Filter by last_mark_deleted
-            if let Some(last_mark_deleted) = &self.last_mark_deleted {
-                if let Some(&last_deleted_seq) = last_mark_deleted.get(&record.table_id) {
-                    if record.sequence_num <= last_deleted_seq {
-                        continue;
-                    }
+            // Filter by sequence range
+            if let Some((start, end)) = &self.table_ranges.get(&record.table_id) {
+                if record.sequence_num < *start || record.sequence_num > *end {
+                    continue;
                 }
+            } else {
+                continue;
             }
 
             // Decode the value
@@ -1039,10 +1130,6 @@ pub struct MultiSegmentLogIterator {
     /// Optional identifier for the table, which is used to filter logs.
     table_id: Option<TableId>,
 
-    /// Optional hashmap of last mark deleted sequence number, which is used to
-    /// filter logs.
-    last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
-
     /// Starting sequence number for log iteration.
     start: SequenceNumber,
 
@@ -1061,24 +1148,8 @@ impl MultiSegmentLogIterator {
         table_id: Option<TableId>,
         start: SequenceNumber,
         end: SequenceNumber,
-        last_mark_deleted: Option<HashMap<TableId, SequenceNumber>>,
     ) -> Result<Self> {
-        // Find all segments that contain the requested sequence numbers
-        let mut relevant_segments = Vec::new();
-
-        {
-            let all_segments = segment_manager.all_segments.lock().unwrap();
-
-            for (_, segment) in all_segments.iter() {
-                let segment = segment.lock().unwrap();
-                if segment.min_seq <= end && segment.max_seq >= start {
-                    relevant_segments.push(segment.id);
-                }
-            }
-        }
-
-        // Sort by segment id
-        relevant_segments.sort_unstable();
+        let relevant_segments = segment_manager.get_relevant_segments(table_id, start, end)?;
 
         let mut iter = Self {
             segment_manager,
@@ -1088,7 +1159,6 @@ impl MultiSegmentLogIterator {
             log_encoding,
             record_encoding,
             table_id,
-            last_mark_deleted,
             start,
             end,
             current_payload: Vec::new(),
@@ -1114,8 +1184,8 @@ impl MultiSegmentLogIterator {
             segment,
             self.segment_manager.clone(),
             self.table_id,
-            self.last_mark_deleted.clone(),
-            (self.start, self.end)
+            self.start,
+            self.end,
         )?;
 
         self.current_iterator = Some(iterator);
@@ -1204,7 +1274,7 @@ mod tests {
         let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
 
         segment
-            .open()
+            .open(false)
             .expect("Expected to open segment successfully");
     }
 
@@ -1218,7 +1288,7 @@ mod tests {
             .unwrap()
             .to_string();
         let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
-        segment.open().unwrap();
+        segment.open(false).unwrap();
 
         let data = b"test_data";
         let append_result = segment.append(data);
@@ -1227,6 +1297,26 @@ mod tests {
         let read_result = segment.read(VERSION_SIZE + SEGMENT_HEADER.len(), data.len());
         assert!(read_result.is_ok());
         assert_eq!(read_result.unwrap(), data);
+    }
+
+    #[test]
+    fn test_segment_delete() {
+        let dir = tempdir().unwrap();
+
+        let path = dir
+            .path()
+            .join("segment_0.wal")
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
+
+        segment.open(false).unwrap();
+        assert!(Path::new(&path).exists());
+
+        segment.delete().unwrap();
+        assert!(!Path::new(&path).exists());
     }
 
     #[test]
@@ -1352,5 +1442,64 @@ mod tests {
     fn test_multi_segment_write_and_read() {
         let runtime = Arc::new(Builder::default().build().unwrap());
         runtime.block_on(test_multi_segment_write_and_read_inner(runtime.clone()));
+    }
+
+    #[test]
+    fn test_region_mark_delete_entries_up_to() {
+        const SEGMENT_SIZE: usize = 4096;
+
+        let dir = tempdir().unwrap();
+        let runtime = Arc::new(Builder::default().build().unwrap());
+
+        // Create a new region
+        let region = Region::new(
+            1,
+            2,
+            SEGMENT_SIZE,
+            dir.path().to_str().unwrap().to_string(),
+            runtime.clone(),
+        )
+        .unwrap();
+        let region = Arc::new(region);
+
+        // Write some log entries
+        let location = WalLocation::new(1, 1); // region_id = 1, table_id = 1
+        let mut sequence = MIN_SEQUENCE_NUMBER + 1;
+
+        for _i in 0..10 {
+            let log_entries = 0..100;
+            let log_batch_encoder = LogBatchEncoder::create(location);
+            let log_batch = log_batch_encoder
+                .encode_batch(log_entries.clone().map(|v| MemoryPayload { val: v }))
+                .expect("should succeed to encode payloads");
+
+            let write_ctx = WriteContext::default();
+            region.write(&write_ctx, &log_batch).unwrap();
+            sequence += 100;
+        }
+
+        // Expect more than one segment
+        {
+            let all_segments = region.segment_manager.all_segments.lock().unwrap();
+            assert!(
+                all_segments.len() > 1,
+                "Expected multiple segments, but got {}",
+                all_segments.len()
+            );
+        }
+
+        // Mark delete entries up to sequence - 1, so only the last segment should
+        // remain
+        let mark_delete_sequence = sequence - 1;
+        region
+            .mark_delete_entries_up_to(location, mark_delete_sequence)
+            .unwrap();
+
+        {
+            let all_segments = region.segment_manager.all_segments.lock().unwrap();
+            assert_eq!(all_segments.len(), 1);
+        }
+
+        region.close().unwrap();
     }
 }
