@@ -864,6 +864,8 @@ impl RegionManager {
         segment_size: usize,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
+        fs::create_dir_all(&root_dir).context(DirOpen)?;
+        
         let mut regions = HashMap::new();
 
         // Naming conversion: <root_dir>/<region_id>
