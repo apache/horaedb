@@ -19,7 +19,7 @@ use std::{
     cmp::{max, min},
     collections::{HashMap, VecDeque},
     fmt::Debug,
-    fs::{self, remove_file, File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::{self, Write},
     path::Path,
     sync::{
@@ -116,6 +116,9 @@ pub enum Error {
         source: GenericError,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("{}", source))]
+    Internal { source: anyhow::Error },
 }
 
 define_result!(Error);
@@ -296,6 +299,7 @@ impl Segment {
             }
         }
 
+        self.segment_size = file_size as usize;
         self.mmap = Some(mmap);
         self.record_position = record_position;
         self.current_size = pos;
@@ -418,6 +422,11 @@ impl Segment {
 
     fn mark_deleted(&mut self, table_id: TableId, sequence_num: SequenceNumber) {
         if let Some(range) = self.table_ranges.get_mut(&table_id) {
+            // If sequence number is MAX, remove the range directly to prevent overflow
+            if sequence_num == MAX_SEQUENCE_NUMBER {
+                self.table_ranges.remove(&table_id);
+                return;
+            }
             range.0 = max(range.0, sequence_num + 1);
             if range.0 > range.1 {
                 self.table_ranges.remove(&table_id);
@@ -431,7 +440,9 @@ impl Segment {
 
     fn delete(&mut self) -> Result<()> {
         self.close()?;
-        remove_file(&self.path).context(SegmentAppend)?;
+        fs::remove_file(&self.path)
+            .map_err(anyhow::Error::new)
+            .context(Internal)?;
         Ok(())
     }
 }
@@ -833,8 +844,7 @@ impl Region {
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         self.segment_manager
-            .mark_delete_entries_up_to(location, sequence_num)?;
-        Ok(())
+            .mark_delete_entries_up_to(location, sequence_num)
     }
 
     pub fn close(&self) -> Result<()> {
@@ -1186,7 +1196,7 @@ impl MultiSegmentLogIterator {
 
         let segment = self.segments[self.current_segment_idx];
         let segment = self.segment_manager.get_segment(segment)?;
-        let iterator: SegmentLogIterator = SegmentLogIterator::new(
+        let iterator = SegmentLogIterator::new(
             self.log_encoding.clone(),
             self.record_encoding.clone(),
             segment,
