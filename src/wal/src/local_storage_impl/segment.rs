@@ -416,10 +416,6 @@ impl Segment {
         Ok(())
     }
 
-    fn contains_table(&self, table_id: TableId) -> bool {
-        self.table_ranges.contains_key(&table_id)
-    }
-
     fn mark_deleted(&mut self, table_id: TableId, sequence_num: SequenceNumber) {
         if let Some(range) = self.table_ranges.get_mut(&table_id) {
             // If sequence number is MAX, remove the range directly to prevent overflow
@@ -525,17 +521,12 @@ impl SegmentManager {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
+        let current_segment_id = self.current_segment.lock().unwrap().lock().unwrap().id;
         let mut segments_to_remove: Vec<u64> = Vec::new();
         let mut all_segments = self.all_segments.lock().unwrap();
-        let current_segment_id = self.current_segment.lock().unwrap().lock().unwrap().id;
 
         for (_, segment) in all_segments.iter() {
             let mut segment = segment.lock().unwrap();
-
-            // Skip segments that are not relevant
-            if segment.min_seq > sequence_num || !segment.contains_table(location.table_id) {
-                continue;
-            }
 
             segment.mark_deleted(location.table_id, sequence_num);
 
