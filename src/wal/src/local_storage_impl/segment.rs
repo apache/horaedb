@@ -1261,7 +1261,7 @@ mod tests {
         assert_eq!(segment.version, NEWEST_WAL_SEGMENT_VERSION);
         assert_eq!(segment.path, path);
         assert_eq!(segment.id, 0);
-        assert_eq!(segment.current_size, SEGMENT_HEADER.len());
+        assert_eq!(segment.current_size, SEGMENT_HEADER.len() + VERSION_SIZE);
 
         let segment_content = fs::read(path).unwrap();
         assert_eq!(segment_content[0], NEWEST_WAL_SEGMENT_VERSION);
