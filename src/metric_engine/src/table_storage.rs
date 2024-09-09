@@ -41,9 +41,11 @@ pub struct TableManager {
 /// Such as: metrics, series, indexes, etc.
 ///
 /// Columns for design:
-/// metrics: {MetricName}-{MetricID}-{FieldName}
-/// series: {TSID}-{SeriesKey}
-/// index: {TagKey}-{TagValue}-{TSID}
+/// ```plaintext
+/// metrics: {MetricName:string}-{MetricID:uint64}-{FieldName:string}-{FieldID:uint32}-{FieldType:uint8}
+/// series: {MetricID:uint64}-{TSID:uint64}-{SeriesKey:bytes}
+/// index: {MetricID:uint64}-{TagKey:string}-{TagValue:string}-{TSID:uint64}
+/// ```
 pub struct TableStorage {
     name: String,
     id: u64,
