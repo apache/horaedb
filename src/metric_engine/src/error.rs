@@ -15,11 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+use thiserror::Error;
 
-pub mod error;
-mod sst;
-pub mod table_storage;
-pub mod types;
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum Error {
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
 
-pub use error::{Error, Result};
+pub type Result<T> = std::result::Result<T, Error>;

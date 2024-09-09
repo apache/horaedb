@@ -15,11 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+pub enum Value {
+    Int64(i64),
+    Int32(i32),
+    Float64(f64),
+    Bytes(Vec<u8>),
+}
 
-pub mod error;
-mod sst;
-pub mod table_storage;
-pub mod types;
+pub type Row = Vec<Value>;
 
-pub use error::{Error, Result};
+pub enum Predicate {
+    Equal(Value),
+    NotEqual(Value),
+    RegexMatch(Value),
+    NotRegexMatch(Value),
+}

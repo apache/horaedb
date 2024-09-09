@@ -15,11 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+use object_store::ObjectStoreRef;
 
-pub mod error;
-mod sst;
-pub mod table_storage;
-pub mod types;
-
-pub use error::{Error, Result};
+pub struct SSTable {
+    pub table_id: u64,
+    pub sst_id: u64,
+    pub storage: ObjectStoreRef,
+}
