@@ -31,7 +31,12 @@ pub struct CompactContext {}
 pub trait TMStorage {
     fn schema(&self) -> Result<&Schema>;
     async fn write(&self, batch: RecordBatch) -> Result<()>;
-    async fn scan(&self, range: TimeRange, predicate: Predicate) -> Result<()>;
+    async fn scan(
+        &self,
+        range: TimeRange,
+        predicate: Predicate,
+        projection: Vec<usize>,
+    ) -> Result<RecordBatch>;
     async fn compact(&self, ctx: CompactContext) -> Result<()>;
 }
 
@@ -64,7 +69,12 @@ impl TMStorage for CloudObjectStorage {
         todo!()
     }
 
-    async fn scan(&self, range: TimeRange, predicate: Predicate) -> Result<()> {
+    async fn scan(
+        &self,
+        range: TimeRange,
+        predicate: Predicate,
+        projection: Vec<usize>,
+    ) -> Result<RecordBatch> {
         todo!()
     }
 

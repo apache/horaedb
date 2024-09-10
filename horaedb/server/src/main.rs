@@ -16,7 +16,6 @@
 // under the License.
 
 use tracing::info;
-use tracing_subscriber;
 
 fn main() {
     // install global collector configured based on RUST_LOG env var.
