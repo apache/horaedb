@@ -3144,7 +3144,6 @@ dependencies = [
  "interpreters",
  "logger",
  "meta_client",
- "metric_engine",
  "moka",
  "panic_ext",
  "proxy",
@@ -4166,32 +4165,6 @@ dependencies = [
  "tokio",
  "tonic 0.8.3",
  "url",
-]
-
-[[package]]
-name = "metric_engine"
-version = "2.0.0"
-dependencies = [
- "anyhow",
- "common_types",
- "env_logger",
- "future_ext",
- "futures 0.3.28",
- "horaedbproto 2.0.0",
- "itertools 0.10.5",
- "lazy_static",
- "logger",
- "macros",
- "object_store 2.0.0",
- "pin-project-lite",
- "prometheus 0.12.0",
- "rand 0.8.5",
- "skiplist",
- "test_util",
- "thiserror",
- "time_ext",
- "tokio",
- "wal",
 ]
 
 [[package]]

@@ -15,11 +15,24 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+use std::{ops::Range, sync::Arc};
 
-pub mod error;
-mod sst;
-pub mod table_storage;
-pub mod types;
+use object_store::ObjectStore;
 
-pub use error::{Error, Result};
+pub enum Value {
+    Int64(i64),
+    Int32(i32),
+    Float64(f64),
+    Bytes(Vec<u8>),
+}
+
+pub enum Predicate {
+    Equal(String, Value),
+    NotEqual(String, Value),
+    RegexMatch(String, Value),
+    NotRegexMatch(String, Value),
+}
+
+pub type TimeRange = Range<i64>;
+
+pub type ObjectStoreRef = Arc<dyn ObjectStore>;

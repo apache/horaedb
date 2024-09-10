@@ -29,7 +29,6 @@ members = [
     "integration_tests",
     "integration_tests/sdk/rust",
     "src/analytic_engine",
-    "src/metric_engine",
     "src/benchmarks",
     "src/catalog",
     "src/catalog_impls",
@@ -91,7 +90,6 @@ arrow = { version = "49.0.0", features = ["prettyprint"] }
 arrow_ipc = { version = "49.0.0" }
 arrow_ext = { path = "src/components/arrow_ext" }
 analytic_engine = { path = "src/analytic_engine" }
-metric_engine = { path = "src/metric_engine" }
 anyhow = { version = "1.0" }
 arena = { path = "src/components/arena" }
 async-stream = "0.3.4"

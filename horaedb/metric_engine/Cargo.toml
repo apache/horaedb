@@ -31,28 +31,12 @@ workspace = true
 workspace = true
 
 [dependencies]
-# In alphabetical order
 anyhow = { workspace = true }
-common_types = { workspace = true }
-future_ext = { workspace = true }
+arrow = { workspace = true }
+async-trait = { workspace = true }
 futures = { workspace = true }
-horaedbproto = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
-logger = { workspace = true }
-macros = { workspace = true }
 object_store = { workspace = true }
-prometheus = { workspace = true }
-skiplist = { path = "../components/skiplist" }
 thiserror = { workspace = true }
-time_ext = { workspace = true }
 tokio = { workspace = true }
-wal = { workspace = true }
-
-[dev-dependencies]
-common_types = { workspace = true, features = ["test"] }
-env_logger = { workspace = true }
-pin-project-lite = { workspace = true }
-rand = { workspace = true }
-test_util = { workspace = true }
-wal = { workspace = true, features = ["wal-message-queue", "wal-rocksdb", "wal-table-kv"] }

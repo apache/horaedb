@@ -15,18 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub enum Value {
-    Int64(i64),
-    Int32(i32),
-    Float64(f64),
-    Bytes(Vec<u8>),
-}
+use crate::types::ObjectStoreRef;
 
-pub type Row = Vec<Value>;
-
-pub enum Predicate {
-    Equal(Value),
-    NotEqual(Value),
-    RegexMatch(Value),
-    NotRegexMatch(Value),
+pub struct SSTable {
+    pub sst_id: u64,
+    pub storage: ObjectStoreRef,
 }
