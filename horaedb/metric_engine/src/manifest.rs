@@ -15,12 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+pub struct Manifest {}
 
-pub mod error;
-mod manifest;
-mod sst;
-pub mod storage;
-pub mod types;
-
-pub use error::{Error, Result};
+impl Manifest {
+    pub fn new(id: u64) -> Self {
+        // Recover the manifest using the id from storage.
+        Self {}
+    }
+}

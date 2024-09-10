@@ -28,7 +28,6 @@ on:
       - 'horaedb/**'
   pull_request:
     paths:
-      - 'src/**'
       - 'horaedb/**'
 
 # Common environment variables
@@ -45,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - run: |
@@ -63,3 +62,7 @@ jobs:
         working-directory: horaedb
         run: |
           make fmt sort clippy
+      - name: Check lock
+        working-directory: horaedb
+        run: |
+          git diff --exit-code

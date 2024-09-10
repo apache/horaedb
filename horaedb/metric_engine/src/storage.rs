@@ -19,6 +19,7 @@ use arrow::{array::RecordBatch, datatypes::Schema};
 use async_trait::async_trait;
 
 use crate::{
+    manifest::Manifest,
     sst::SSTable,
     types::{ObjectStoreRef, Predicate, TimeRange},
     Result,
@@ -46,6 +47,7 @@ pub struct CloudObjectStorage {
     id: u64,
     store: ObjectStoreRef,
     sstables: Vec<SSTable>,
+    manifest: Manifest,
 }
 
 impl CloudObjectStorage {
@@ -55,6 +57,7 @@ impl CloudObjectStorage {
             id,
             store,
             sstables: Vec::new(),
+            manifest: Manifest::new(id),
         }
     }
 }
