@@ -22,9 +22,9 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use cluster::ClusterRef;
 use common_types::{cluster::NodeType, table::ShardId};
 use logger::{error, info};
+use meta_client::MetaClientRef;
 use object_store::ObjectStoreRef;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableDef, table::TableId};
@@ -33,15 +33,16 @@ use wal::manager::WalManagerRef;
 use crate::{
     compaction::{
         runner::{
-            local_runner::LocalCompactionRunner, remote_runner::RemoteCompactionRunner,
-            CompactionRunner, CompactionRunnerPtr, CompactionRunnerRef,
+            local_runner::LocalCompactionRunner, node_picker::RemoteCompactionNodePickerImpl,
+            remote_runner::RemoteCompactionRunner, CompactionRunner, CompactionRunnerPtr,
+            CompactionRunnerRef,
         },
         scheduler::SchedulerImpl,
     },
     context::OpenContext,
     engine,
     instance::{
-        engine::{ClusterNotExist, OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
+        engine::{MetaClientNotExist, OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
         flush_compaction::Flusher,
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
@@ -72,7 +73,7 @@ impl InstanceContext {
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
-        cluster: Option<ClusterRef>,
+        meta_client: Option<MetaClientRef>,
     ) -> Result<Self> {
         info!(
             "Construct compaction runner with compaction_offload:{}",
@@ -81,7 +82,9 @@ impl InstanceContext {
 
         let compaction_runner: CompactionRunnerPtr = match ctx.config.compaction_offload {
             true => Box::new(RemoteCompactionRunner {
-                cluster: cluster.context(ClusterNotExist)?,
+                node_picker: Arc::new(RemoteCompactionNodePickerImpl {
+                    meta_client: meta_client.context(MetaClientNotExist)?,
+                }),
             }),
             false => Box::new(LocalCompactionRunner::new(
                 ctx.runtimes.compact_runtime.clone(),

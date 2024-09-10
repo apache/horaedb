@@ -294,14 +294,6 @@ mod tests {
         fn shard_lock_manager(&self) -> ShardLockManagerRef {
             unimplemented!();
         }
-
-        async fn compact(
-            &self,
-            _req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
-        ) -> cluster::Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse>
-        {
-            unimplemented!()
-        }
     }
 
     #[tokio::test]

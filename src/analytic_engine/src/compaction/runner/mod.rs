@@ -16,6 +16,7 @@
 // under the License.
 
 pub mod local_runner;
+pub mod node_picker;
 pub mod remote_runner;
 
 use std::sync::Arc;

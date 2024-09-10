@@ -19,10 +19,10 @@
 
 use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
-use cluster::ClusterRef;
 use common_types::cluster::NodeType;
 use futures::Future;
 use macros::define_result;
+use meta_client::MetaClientRef;
 use object_store::{
     aliyun,
     config::{ObjectStoreOptions, StorageOptions},
@@ -99,7 +99,8 @@ pub struct EngineBuilder<'a> {
     pub config: &'a Config,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
-    pub cluster: Option<ClusterRef>,
+    // Meta client is needed when compaction offload.
+    pub meta_client: Option<MetaClientRef>,
     pub node_type: NodeType,
 }
 
@@ -121,7 +122,7 @@ impl<'a> EngineBuilder<'a> {
             self.opened_wals.data_wal,
             manifest_storages,
             Arc::new(opened_storages),
-            self.cluster,
+            self.meta_client,
             self.node_type,
         )
         .await?;
@@ -141,7 +142,7 @@ async fn build_instance_context(
     wal_manager: WalManagerRef,
     manifest_storages: ManifestStorages,
     store_picker: ObjectStorePickerRef,
-    cluster: Option<ClusterRef>,
+    meta_client: Option<MetaClientRef>,
     node_type: NodeType,
 ) -> Result<InstanceContext> {
     let meta_cache: Option<MetaCacheRef> = config
@@ -161,7 +162,7 @@ async fn build_instance_context(
         wal_manager,
         store_picker,
         Arc::new(FactoryImpl),
-        cluster,
+        meta_client.clone(),
     )
     .await
     .context(OpenInstance)?;

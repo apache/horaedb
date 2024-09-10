@@ -16,27 +16,55 @@
 // under the License.
 
 use async_trait::async_trait;
-use cluster::ClusterRef;
+use compaction_client::{
+    compaction_impl::{build_compaction_client, CompactionClientConfig},
+    CompactionClientRef,
+};
 use generic_error::BoxError;
 use snafu::ResultExt;
 
+use super::node_picker::RemoteCompactionNodePickerRef;
 use crate::{
     compaction::runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
-    instance::flush_compaction::{ConvertCompactionTaskResponse, RemoteCompact, Result},
+    instance::flush_compaction::{
+        BuildCompactionClientFailed, ConvertCompactionTaskResponse, GetCompactionClientFailed,
+        PickCompactionNodeFailed, RemoteCompactFailed, Result,
+    },
 };
 
 pub struct RemoteCompactionRunner {
-    pub cluster: ClusterRef,
+    pub node_picker: RemoteCompactionNodePickerRef,
+}
+
+impl RemoteCompactionRunner {
+    async fn get_compaction_client(&self) -> Result<CompactionClientRef> {
+        let mut config = CompactionClientConfig::default();
+        let node_addr = self
+            .node_picker
+            .get_compaction_node()
+            .await
+            .context(PickCompactionNodeFailed)?;
+        config.compaction_server_addr = node_addr;
+
+        let client = build_compaction_client(config)
+            .await
+            .context(BuildCompactionClientFailed)?;
+        Ok(client)
+    }
 }
 
 #[async_trait]
 impl CompactionRunner for RemoteCompactionRunner {
     async fn run(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
-        let pb_resp = self
-            .cluster
-            .compact(task.into())
+        let client = self
+            .get_compaction_client()
             .await
-            .context(RemoteCompact)?;
+            .box_err()
+            .context(GetCompactionClientFailed)?;
+        let pb_resp = client
+            .execute_compaction_task(task.into())
+            .await
+            .context(RemoteCompactFailed)?;
 
         let resp = pb_resp
             .try_into()

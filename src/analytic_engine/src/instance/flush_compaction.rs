@@ -41,6 +41,7 @@ use tokio::{sync::oneshot, time::Instant};
 use wal::manager::WalLocation;
 
 use crate::{
+    compaction::runner::node_picker,
     instance::{
         self, reorder_memtable::Reorder, serial_executor::TableFlushScheduler, SpaceStoreRef,
     },
@@ -162,8 +163,17 @@ pub enum Error {
     #[snafu(display("Failed to convert compaction task response, err:{}", source))]
     ConvertCompactionTaskResponse { source: GenericError },
 
+    #[snafu(display("Failed to pick remote compaction node, err:{}", source))]
+    PickCompactionNodeFailed { source: node_picker::Error },
+
+    #[snafu(display("Failed to build compaction client, err:{}", source))]
+    BuildCompactionClientFailed { source: compaction_client::Error },
+
+    #[snafu(display("Failed to get compaction client, err:{}", source))]
+    GetCompactionClientFailed { source: GenericError },
+
     #[snafu(display("Failed to execute compaction task remotely, err:{}", source))]
-    RemoteCompact { source: cluster::Error },
+    RemoteCompactFailed { source: compaction_client::Error },
 }
 
 define_result!(Error);

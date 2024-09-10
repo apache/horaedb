@@ -67,6 +67,7 @@ logger = { workspace = true }
 lru = { workspace = true }
 macros = { workspace = true }
 message_queue = { workspace = true }
+meta_client = { workspace = true }
 metric_ext = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true }

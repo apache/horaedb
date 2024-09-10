@@ -255,10 +255,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to find cluster to construct remote compaction runner.\nBacktrace:\n{}",
+        "Failed to find meta client to construct remote compaction runner.\nBacktrace:\n{}",
         backtrace
     ))]
-    ClusterNotExist { backtrace: Backtrace },
+    MetaClientNotExist { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -296,7 +296,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
             | Error::PurgeWal { .. }
-            | Error::ClusterNotExist { .. }
+            | Error::MetaClientNotExist { .. }
             | Error::ReplayWalWithCause { .. } => Self::Unexpected {
                 source: Box::new(err),
             },

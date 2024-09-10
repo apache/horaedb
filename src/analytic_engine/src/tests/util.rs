@@ -141,7 +141,7 @@ impl<T: WalsOpener> TestContext<T> {
             config: &self.config,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
-            cluster: None,
+            meta_client: None,
             node_type: common_types::cluster::NodeType::HoraeDB,
         };
         self.opened_wals = Some(opened_wals);

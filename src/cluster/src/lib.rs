@@ -67,9 +67,6 @@ pub enum Error {
     #[snafu(display("Meta client execute failed, err:{source}."))]
     MetaClientFailure { source: meta_client::Error },
 
-    #[snafu(display("Compaction client execute failed, err:{source}."))]
-    CompactionClientFailure { source: compaction_client::Error },
-
     #[snafu(display("Failed to init etcd client config, err:{source}.\nBacktrace:\n{backtrace}"))]
     InitEtcdClientConfig {
         source: std::io::Error,
@@ -164,14 +161,6 @@ pub enum Error {
         "Cluster nodes are not found in the topology, version:{version}.\nBacktrace:\n{backtrace}",
     ))]
     ClusterNodesNotFound { version: u64, backtrace: Backtrace },
-
-    #[snafu(display(
-        "Not allowed to execute compaction offload in node_type:{node_type:?}.\nBacktrace:\n{backtrace:?}"
-    ))]
-    CompactionOffloadNotAllowed {
-        node_type: NodeType,
-        backtrace: Backtrace,
-    },
 }
 
 define_result!(Error);
@@ -201,9 +190,6 @@ pub struct ClusterNodesResp {
     pub cluster_nodes: ClusterNodesRef,
 }
 
-/// Cluster has the following functions:
-/// + Manages tables and shard infos in cluster mode.
-/// + (Optional) Executes compaction task remotely.
 #[async_trait]
 pub trait Cluster {
     type NodeType: Send + Sync;
@@ -236,10 +222,4 @@ pub trait Cluster {
     async fn route_tables(&self, req: &RouteTablesRequest) -> Result<RouteTablesResponse>;
     async fn fetch_nodes(&self) -> Result<ClusterNodesResp>;
     fn shard_lock_manager(&self) -> ShardLockManagerRef;
-
-    /// Execute compaction task in remote compaction node.
-    async fn compact(
-        &self,
-        req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
-    ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse>;
 }

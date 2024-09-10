@@ -108,6 +108,7 @@ dependencies = [
  "lru 0.7.8",
  "macros",
  "message_queue",
+ "meta_client",
  "metric_ext",
  "object_store 2.0.0",
  "parquet",
