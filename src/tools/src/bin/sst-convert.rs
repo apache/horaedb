@@ -37,7 +37,7 @@ use common_types::{
     request_id::RequestId,
 };
 use generic_error::BoxError;
-use object_store::{LocalFileSystem, Path};
+use object_store::{config::LocalOptions, local_file, Path};
 use runtime::Runtime;
 use table_engine::predicate::Predicate;
 use tools::sst_util;
@@ -91,7 +91,12 @@ fn main() {
 }
 
 async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
-    let storage = LocalFileSystem::new_with_prefix(args.store_path).expect("invalid path");
+    let local_opts = LocalOptions {
+        data_dir: args.store_path,
+        max_retries: 3,
+        timeout: Default::default(),
+    };
+    let storage = local_file::try_new(&local_opts).expect("invalid path");
     let store = Arc::new(storage) as _;
     let input_path = Path::from(args.input);
     let sst_meta = sst_util::meta_from_sst(&store, &input_path).await;

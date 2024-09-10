@@ -180,7 +180,7 @@ mod tests {
         schema::Builder as CustomSchemaBuilder,
         time::{TimeRange, Timestamp},
     };
-    use object_store::{LocalFileSystem, ObjectStoreRef};
+    use object_store::{local_file, ObjectStoreRef};
     use parquet::{arrow::ArrowWriter, file::footer};
     use parquet_ext::ParquetMetaData;
 
@@ -290,7 +290,7 @@ mod tests {
 
         let bytes = encoding::encode_sst_meta_data(custom_meta_data.clone()).unwrap();
         let meta_path = object_store::Path::from(meta_path);
-        store.put(&meta_path, bytes).await.unwrap();
+        store.put(&meta_path, bytes.into()).await.unwrap();
     }
 
     #[tokio::test]
@@ -329,7 +329,9 @@ mod tests {
             parquet_filter: None,
             column_values: None,
         };
-        let store = Arc::new(LocalFileSystem::new_with_prefix(temp_dir.path()).unwrap());
+
+        let local_path = temp_dir.as_ref().to_string_lossy().to_string();
+        let store = Arc::new(local_file::try_new_with_default(local_path).unwrap());
         write_parquet_file_with_metadata(
             store.clone(),
             parquet_file_path.as_path(),

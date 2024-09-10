@@ -27,15 +27,14 @@ use object_store::{
     aliyun,
     config::{ObjectStoreOptions, StorageOptions},
     disk_cache::DiskCacheStore,
+    local_file,
     mem_cache::{MemCache, MemCacheStore},
     metrics::StoreWithMetrics,
-    obkv,
     prefix::StoreWithPrefix,
-    s3, LocalFileSystem, ObjectStoreRef,
+    s3, ObjectStoreRef,
 };
 use snafu::{ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
-use table_kv::obkv::ObkvImpl;
 use wal::manager::{OpenedWals, WalManagerRef};
 
 use crate::{
@@ -57,9 +56,6 @@ pub enum Error {
         source: crate::instance::engine::Error,
     },
 
-    #[snafu(display("Failed to open obkv, err:{}", source))]
-    OpenObkv { source: table_kv::obkv::Error },
-
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
     RuntimeExec { source: runtime::Error },
 
@@ -67,6 +63,9 @@ pub enum Error {
     OpenObjectStore {
         source: object_store::ObjectStoreError,
     },
+
+    #[snafu(display("Failed to access object store by openDal , err:{}", source))]
+    OpenDal { source: object_store::OpenDalError },
 
     #[snafu(display("Failed to create dir for {}, err:{}", path, source))]
     CreateDir {
@@ -208,47 +207,32 @@ fn open_storage(
 ) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
         let mut store = match opts.object_store {
-            ObjectStoreOptions::Local(local_opts) => {
+            ObjectStoreOptions::Local(mut local_opts) => {
                 let data_path = Path::new(&local_opts.data_dir);
-                let sst_path = data_path.join(STORE_DIR_NAME);
+                let sst_path = data_path
+                    .join(STORE_DIR_NAME)
+                    .to_string_lossy()
+                    .into_owned();
                 tokio::fs::create_dir_all(&sst_path)
                     .await
                     .context(CreateDir {
-                        path: sst_path.to_string_lossy().into_owned(),
+                        path: sst_path.clone(),
                     })?;
-                let store = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
+                local_opts.data_dir = sst_path;
+
+                let store: ObjectStoreRef =
+                    Arc::new(local_file::try_new(&local_opts).context(OpenDal)?);
                 Arc::new(store) as _
             }
             ObjectStoreOptions::Aliyun(aliyun_opts) => {
-                let oss: ObjectStoreRef =
-                    Arc::new(aliyun::try_new(&aliyun_opts).context(OpenObjectStore)?);
-                let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
+                let store: ObjectStoreRef =
+                    Arc::new(aliyun::try_new(&aliyun_opts).context(OpenDal)?);
+                let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, store);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
-            ObjectStoreOptions::Obkv(obkv_opts) => {
-                let obkv_config = obkv_opts.client;
-                let obkv = engine_runtimes
-                    .write_runtime
-                    .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
-                    .await
-                    .context(RuntimeExec)??;
-
-                let oss: ObjectStoreRef = Arc::new(
-                    obkv::ObkvObjectStore::try_new(
-                        Arc::new(obkv),
-                        obkv_opts.shard_num,
-                        obkv_opts.part_size.0 as usize,
-                        obkv_opts.max_object_size.0 as usize,
-                        obkv_opts.upload_parallelism,
-                    )
-                    .context(OpenObjectStore)?,
-                );
-                Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
-            }
             ObjectStoreOptions::S3(s3_option) => {
-                let oss: ObjectStoreRef =
-                    Arc::new(s3::try_new(&s3_option).context(OpenObjectStore)?);
-                let store_with_prefix = StoreWithPrefix::new(s3_option.prefix, oss);
+                let store: ObjectStoreRef = Arc::new(s3::try_new(&s3_option).context(OpenDal)?);
+                let store_with_prefix = StoreWithPrefix::new(s3_option.prefix, store);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
             }
         };

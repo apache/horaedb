@@ -43,7 +43,7 @@ use crate::{
 pub struct LocalStorageImpl {
     config: LocalStorageConfig,
     _runtime: Arc<Runtime>,
-    segment_manager: RegionManager,
+    region_manager: RegionManager,
 }
 
 impl LocalStorageImpl {
@@ -52,17 +52,26 @@ impl LocalStorageImpl {
         config: LocalStorageConfig,
         runtime: Arc<Runtime>,
     ) -> Result<Self> {
-        let LocalStorageConfig { cache_size, .. } = config.clone();
+        let LocalStorageConfig {
+            cache_size,
+            max_segment_size,
+            ..
+        } = config.clone();
         let wal_path_str = wal_path.to_str().unwrap().to_string();
-        let segment_manager = RegionManager::new(wal_path_str.clone(), cache_size, runtime.clone())
-            .box_err()
-            .context(Open {
-                wal_path: wal_path_str,
-            })?;
+        let region_manager = RegionManager::new(
+            wal_path_str.clone(),
+            cache_size,
+            max_segment_size,
+            runtime.clone(),
+        )
+        .box_err()
+        .context(Open {
+            wal_path: wal_path_str,
+        })?;
         Ok(Self {
             config,
             _runtime: runtime,
-            segment_manager,
+            region_manager,
         })
     }
 }
@@ -84,7 +93,7 @@ impl Debug for LocalStorageImpl {
 #[async_trait]
 impl WalManager for LocalStorageImpl {
     async fn sequence_num(&self, location: WalLocation) -> Result<u64> {
-        self.segment_manager
+        self.region_manager
             .sequence_num(location)
             .box_err()
             .context(Read)
@@ -95,7 +104,7 @@ impl WalManager for LocalStorageImpl {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        self.segment_manager
+        self.region_manager
             .mark_delete_entries_up_to(location, sequence_num)
             .box_err()
             .context(Delete)
@@ -106,13 +115,16 @@ impl WalManager for LocalStorageImpl {
             "Close region for LocalStorage based WAL is noop operation, region_id:{}",
             region_id
         );
-
+        self.region_manager
+            .close(region_id)
+            .box_err()
+            .context(Close)?;
         Ok(())
     }
 
     async fn close_gracefully(&self) -> Result<()> {
         info!("Close local storage wal gracefully");
-        // todo: close all opened files
+        self.region_manager.close_all().box_err().context(Close)?;
         Ok(())
     }
 
@@ -121,18 +133,18 @@ impl WalManager for LocalStorageImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
-        self.segment_manager.read(ctx, req).box_err().context(Read)
+        self.region_manager.read(ctx, req).box_err().context(Read)
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        self.segment_manager
+        self.region_manager
             .write(ctx, batch)
             .box_err()
             .context(Write)
     }
 
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
-        self.segment_manager.scan(ctx, req).box_err().context(Read)
+        self.region_manager.scan(ctx, req).box_err().context(Read)
     }
 
     async fn get_statistics(&self) -> Option<String> {

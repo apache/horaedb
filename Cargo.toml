@@ -163,9 +163,10 @@ query_frontend = { path = "src/query_frontend" }
 rand = "0.8.5"
 regex = "1"
 remote_engine_client = { path = "src/remote_engine_client" }
-reqwest = { version = "0.11", default-features = false, features = [
+reqwest = { version = "0.12.4", default-features = false, features = [
     "rustls-tls",
     "json",
+    "http2",
 ] }
 router = { path = "src/router" }
 runtime = { path = "src/components/runtime" }
@@ -203,14 +204,14 @@ zstd = { version = "0.12", default-features = false }
 # This profile optimizes for good runtime performance.
 [profile.release]
 # reference: https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
-codegen-units   = 1
-debug           = true
+codegen-units = 1
+debug = true
 overflow-checks = true
 
 # This profile is used to produce a smaller (no symbols) binary with a little bit poorer performance,
 # but with a faster speed and low memory consumption required by compiling.
 [profile.release-slim]
-inherits      = "release"
+inherits = "release"
 codegen-units = 16
-debug         = false
-strip         = true
+debug = false
+strip = true

@@ -19,7 +19,6 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use table_kv::config::ObkvConfig;
 use time_ext::ReadableDuration;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -50,9 +49,7 @@ impl Default for StorageOptions {
             disk_cache_capacity: ReadableSize::gb(0),
             disk_cache_page_size: ReadableSize::mb(2),
             disk_cache_partition_bits: 4,
-            object_store: ObjectStoreOptions::Local(LocalOptions {
-                data_dir: root_path,
-            }),
+            object_store: ObjectStoreOptions::Local(LocalOptions::new_with_default(root_path)),
         }
     }
 }
@@ -63,13 +60,26 @@ impl Default for StorageOptions {
 pub enum ObjectStoreOptions {
     Local(LocalOptions),
     Aliyun(AliyunOptions),
-    Obkv(ObkvOptions),
     S3(S3Options),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct LocalOptions {
     pub data_dir: String,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
+    #[serde(default)]
+    pub timeout: TimeoutOptions,
+}
+
+impl LocalOptions {
+    pub fn new_with_default(data_dir: String) -> Self {
+        Self {
+            data_dir,
+            max_retries: default_max_retries(),
+            timeout: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -79,43 +89,12 @@ pub struct AliyunOptions {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
     #[serde(default)]
     pub http: HttpOptions,
     #[serde(default)]
-    pub retry: RetryOptions,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ObkvOptions {
-    pub prefix: String,
-    #[serde(default = "ObkvOptions::default_shard_num")]
-    pub shard_num: usize,
-    #[serde(default = "ObkvOptions::default_part_size")]
-    pub part_size: ReadableSize,
-    #[serde(default = "ObkvOptions::default_max_object_size")]
-    pub max_object_size: ReadableSize,
-    #[serde(default = "ObkvOptions::default_upload_parallelism")]
-    pub upload_parallelism: usize,
-    /// Obkv client config
-    pub client: ObkvConfig,
-}
-
-impl ObkvOptions {
-    fn default_max_object_size() -> ReadableSize {
-        ReadableSize::gb(1)
-    }
-
-    fn default_part_size() -> ReadableSize {
-        ReadableSize::mb(1)
-    }
-
-    fn default_shard_num() -> usize {
-        512
-    }
-
-    fn default_upload_parallelism() -> usize {
-        8
-    }
+    pub timeout: TimeoutOptions,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -126,10 +105,12 @@ pub struct S3Options {
     pub endpoint: String,
     pub bucket: String,
     pub prefix: String,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: usize,
     #[serde(default)]
     pub http: HttpOptions,
     #[serde(default)]
-    pub retry: RetryOptions,
+    pub timeout: TimeoutOptions,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -152,16 +133,25 @@ impl Default for HttpOptions {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct RetryOptions {
-    pub max_retries: usize,
-    pub retry_timeout: ReadableDuration,
+pub struct TimeoutOptions {
+    // Non IO Operation like stat and delete, they operate on a single file, we control them by
+    // setting timeout.
+    pub timeout: ReadableDuration,
+    // IO Operation like read and write, they operate on data directly, we control them by setting
+    // io_timeout.
+    pub io_timeout: ReadableDuration,
 }
 
-impl Default for RetryOptions {
+impl Default for TimeoutOptions {
     fn default() -> Self {
         Self {
-            max_retries: 3,
-            retry_timeout: ReadableDuration::from(Duration::from_secs(3 * 60)),
+            timeout: ReadableDuration::from(Duration::from_secs(10)),
+            io_timeout: ReadableDuration::from(Duration::from_secs(10)),
         }
     }
+}
+
+#[inline]
+fn default_max_retries() -> usize {
+    3
 }

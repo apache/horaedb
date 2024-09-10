@@ -18,9 +18,8 @@ Apache HoraeDB (incubating) is a high-performance, distributed, cloud native tim
 
 ## Documentation
 
-- [User Guide](https://horaedb.apache.org)
-- [Development Guide](https://horaedb.apache.org/dev/compile_run.html)
-- [Roadmap](https://horaedb.apache.org/dev/roadmap.html)
+- [User Guide](https://horaedb.apache.org/docs/getting-started/)
+- [Development Guide](https://horaedb.apache.org/docs/dev/)
 
 ## Quick Start
 
@@ -98,7 +97,7 @@ Thrive together in Apache HoraeDB (incubating) community with users and develope
 
 - Discuss at [dev mailing list](mailto:dev-subscribe@horaedb.apache.org) ([subscribe](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [unsubscribe](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [archives](https://lists.apache.org/list.html?dev@horaedb.apache.org))
 - Send [request](mailto:dev@horaedb.apache.org?subject=(Request%to%20join%20HoraeDB%20slack)) to `dev@horaedb.apache.org` to join HoraeDB slack channel
-- Or you can join our [dingtalk group](https://github.com/apache/incubator-horaedb-docs/blob/main/static/dingtalk.jpg)
+- Or you can join our community [here](http://horaedb.apache.org/community/)
 
 Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 

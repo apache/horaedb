@@ -27,10 +27,9 @@ use prometheus::{
 };
 use prometheus_static_metric::make_static_metric;
 use runtime::Runtime;
-use tokio::io::AsyncWrite;
 use upstream::{
-    path::Path, Error as StoreError, GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore,
-    Result,
+    path::Path, Error as StoreError, GetOptions, GetResult, ListResult, MultipartUpload,
+    ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
 };
 
 use crate::ObjectStoreRef;
@@ -39,9 +38,12 @@ make_static_metric! {
     pub struct ObjectStoreDurationHistogram: Histogram {
         "op" => {
             put,
+            put_opts,
             put_multipart,
+            put_multipart_opts,
             abort_multipart,
             get,
+            get_opts,
             get_range,
             get_ranges,
             head,
@@ -58,6 +60,7 @@ make_static_metric! {
     pub struct ObjectStoreThroughputHistogram: Histogram {
         "op" => {
             put,
+            put_opts,
             get_range,
             get_ranges,
         },
@@ -142,16 +145,16 @@ impl Display for StoreWithMetrics {
 
 #[async_trait]
 impl ObjectStore for StoreWithMetrics {
-    async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
+    async fn put(&self, location: &Path, payload: PutPayload) -> Result<PutResult> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put.start_timer();
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .put
-            .observe(bytes.len() as f64);
+            .observe(payload.content_length() as f64);
 
         let loc = location.clone();
         let store = self.store.clone();
         self.runtime
-            .spawn(async move { store.put(&loc, bytes).await })
+            .spawn(async move { store.put(&loc, payload).await })
             .await
             .map_err(|source| StoreError::Generic {
                 store: METRICS,
@@ -159,10 +162,29 @@ impl ObjectStore for StoreWithMetrics {
             })?
     }
 
-    async fn put_multipart(
+    async fn put_opts(
         &self,
         location: &Path,
-    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        payload: PutPayload,
+        opts: PutOptions,
+    ) -> Result<PutResult> {
+        let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_opts.start_timer();
+        OBJECT_STORE_THROUGHPUT_HISTOGRAM
+            .put_opts
+            .observe(payload.content_length() as f64);
+
+        let loc = location.clone();
+        let store = self.store.clone();
+        self.runtime
+            .spawn(async move { store.put_opts(&loc, payload, opts).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?
+    }
+
+    async fn put_multipart(&self, location: &Path) -> Result<Box<dyn MultipartUpload>> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put_multipart.start_timer();
 
         let instant = Instant::now();
@@ -187,11 +209,35 @@ impl ObjectStore for StoreWithMetrics {
         res
     }
 
-    async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
+    async fn put_multipart_opts(
+        &self,
+        location: &Path,
+        opts: PutMultipartOpts,
+    ) -> Result<Box<dyn MultipartUpload>> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM
-            .abort_multipart
+            .put_multipart_opts
             .start_timer();
-        self.store.abort_multipart(location, multipart_id).await
+
+        let instant = Instant::now();
+        let loc = location.clone();
+        let store = self.store.clone();
+        let res = self
+            .runtime
+            .spawn(async move { store.put_multipart_opts(&loc, opts).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?;
+
+        trace!(
+            "Object store with metrics put_multipart_opts cost:{}ms, location:{}, thread:{}-{:?}",
+            instant.elapsed().as_millis(),
+            location,
+            thread::current().name().unwrap_or("noname").to_string(),
+            thread::current().id()
+        );
+        res
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
@@ -200,6 +246,19 @@ impl ObjectStore for StoreWithMetrics {
         let loc = location.clone();
         self.runtime
             .spawn(async move { store.get(&loc).await })
+            .await
+            .map_err(|source| StoreError::Generic {
+                store: METRICS,
+                source: Box::new(source),
+            })?
+    }
+
+    async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
+        let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_opts.start_timer();
+        let store = self.store.clone();
+        let loc = location.clone();
+        self.runtime
+            .spawn(async move { store.get_opts(&loc, options).await })
             .await
             .map_err(|source| StoreError::Generic {
                 store: METRICS,
@@ -292,9 +351,9 @@ impl ObjectStore for StoreWithMetrics {
             })?
     }
 
-    async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
+    fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.list.start_timer();
-        self.store.list(prefix).await
+        self.store.list(prefix)
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {

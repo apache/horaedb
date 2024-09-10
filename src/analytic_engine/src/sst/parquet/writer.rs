@@ -28,10 +28,12 @@ use datafusion::parquet::basic::Compression;
 use futures::StreamExt;
 use generic_error::BoxError;
 use logger::{debug, error};
-use object_store::{ObjectStoreRef, Path};
-use parquet::data_type::AsBytes;
+use object_store::{
+    multi_part::{MultiUploadRef, MultiUploadWriter},
+    ObjectStore, ObjectStoreRef, Path,
+};
 use snafu::{OptionExt, ResultExt};
-use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::io::AsyncWrite;
 
 use crate::{
     sst::{
@@ -45,8 +47,8 @@ use crate::{
             },
         },
         writer::{
-            self, BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, Io,
-            MetaData, PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
+            BuildParquetFilter, EncodePbData, EncodeRecordBatch, ExpectTimestampColumn, MetaData,
+            PollRecordBatch, RecordBatchStream, Result, SstInfo, SstWriter, Storage,
         },
     },
     table::sst_util,
@@ -405,67 +407,24 @@ impl<'a> RecordBatchGroupWriter<'a> {
     }
 }
 
-struct ObjectStoreMultiUploadAborter<'a> {
-    location: &'a Path,
-    session_id: String,
-    object_store: &'a ObjectStoreRef,
-}
-
-impl<'a> ObjectStoreMultiUploadAborter<'a> {
-    async fn initialize_upload(
-        object_store: &'a ObjectStoreRef,
-        location: &'a Path,
-    ) -> Result<(
-        ObjectStoreMultiUploadAborter<'a>,
-        Box<dyn AsyncWrite + Unpin + Send>,
-    )> {
-        let (session_id, upload_writer) = object_store
-            .put_multipart(location)
-            .await
-            .context(Storage)?;
-        let aborter = Self {
-            location,
-            session_id,
-            object_store,
-        };
-        Ok((aborter, upload_writer))
-    }
-
-    async fn abort(self) -> Result<()> {
-        self.object_store
-            .abort_multipart(self.location, &self.session_id)
-            .await
-            .context(Storage)
-    }
-}
-
-async fn write_metadata<W>(
-    mut meta_sink: W,
+async fn write_metadata(
+    meta_sink: MultiUploadWriter,
     parquet_metadata: ParquetMetaData,
-    meta_path: &object_store::Path,
-) -> writer::Result<usize>
-where
-    W: AsyncWrite + Send + Unpin,
-{
+) -> Result<usize> {
     let buf = encode_sst_meta_data(parquet_metadata).context(EncodePbData)?;
-    let bytes = buf.as_bytes();
-    let bytes_size = bytes.len();
-    meta_sink.write_all(bytes).await.with_context(|| Io {
-        file: meta_path.clone(),
-    })?;
+    let buf_size = buf.len();
+    let mut uploader = meta_sink.multi_upload.lock().await;
+    uploader.put(buf);
+    uploader.finish().await.context(Storage)?;
 
-    meta_sink.shutdown().await.with_context(|| Io {
-        file: meta_path.clone(),
-    })?;
-
-    Ok(bytes_size)
+    Ok(buf_size)
 }
 
-async fn multi_upload_abort(path: &Path, aborter: ObjectStoreMultiUploadAborter<'_>) {
-    // The uploading file will be leaked if failed to abort. A repair command will
-    // be provided to clean up the leaked files.
-    if let Err(e) = aborter.abort().await {
-        error!("Failed to abort multi-upload for sst:{}, err:{}", path, e);
+async fn multi_upload_abort(aborter: MultiUploadRef) {
+    // The uploading file will be leaked if failed to abort. A repair command
+    // will be provided to clean up the leaked files.
+    if let Err(e) = aborter.lock().await.abort().await {
+        error!("Failed to abort multi-upload sst, err:{}", e);
     }
 }
 
@@ -476,7 +435,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         request_id: RequestId,
         meta: &MetaData,
         input: RecordBatchStream,
-    ) -> writer::Result<SstInfo> {
+    ) -> Result<SstInfo> {
         debug!(
             "Build parquet file, request_id:{}, meta:{:?}, num_rows_per_row_group:{}",
             request_id, meta, self.options.num_rows_per_row_group
@@ -491,8 +450,10 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
         };
         let group_writer = RecordBatchGroupWriter::new(request_id, input, meta, write_options);
 
-        let (aborter, sink) =
-            ObjectStoreMultiUploadAborter::initialize_upload(self.store, self.path).await?;
+        let sink = MultiUploadWriter::new(self.store, self.path)
+            .await
+            .context(Storage)?;
+        let aborter = sink.aborter();
 
         let meta_path = Path::from(sst_util::new_metadata_path(self.path.as_ref()));
 
@@ -500,19 +461,21 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             match group_writer.write_all(sink, &meta_path).await {
                 Ok(v) => v,
                 Err(e) => {
-                    multi_upload_abort(self.path, aborter).await;
+                    multi_upload_abort(aborter).await;
                     return Err(e);
                 }
             };
         let time_range = parquet_metadata.time_range;
 
-        let (meta_aborter, meta_sink) =
-            ObjectStoreMultiUploadAborter::initialize_upload(self.store, &meta_path).await?;
-        let meta_size = match write_metadata(meta_sink, parquet_metadata, &meta_path).await {
+        let meta_sink = MultiUploadWriter::new(self.store, &meta_path)
+            .await
+            .context(Storage)?;
+        let meta_aborter = meta_sink.aborter();
+        let meta_size = match write_metadata(meta_sink, parquet_metadata).await {
             Ok(v) => v,
             Err(e) => {
-                multi_upload_abort(self.path, aborter).await;
-                multi_upload_abort(&meta_path, meta_aborter).await;
+                multi_upload_abort(aborter).await;
+                multi_upload_abort(meta_aborter).await;
                 return Err(e);
             }
         };
@@ -629,7 +592,7 @@ mod tests {
         time::{TimeRange, Timestamp},
     };
     use futures::stream;
-    use object_store::LocalFileSystem;
+    use object_store::local_file;
     use runtime::{self, Runtime};
     use table_engine::predicate::Predicate;
     use tempfile::tempdir;
@@ -653,7 +616,7 @@ mod tests {
     fn test_parquet_build_and_read() {
         test_util::init_log_for_test();
 
-        let runtime = Arc::new(runtime::Builder::default().build().unwrap());
+        let runtime = Arc::new(runtime::Builder::default().enable_all().build().unwrap());
         parquet_write_and_then_read_back(runtime.clone(), 2, vec![2, 2, 2, 2, 2, 2, 2, 2, 2, 2]);
         parquet_write_and_then_read_back(runtime.clone(), 3, vec![3, 3, 3, 3, 3, 3, 2]);
         parquet_write_and_then_read_back(runtime.clone(), 4, vec![4, 4, 4, 4, 4]);
@@ -675,9 +638,8 @@ mod tests {
                 column_stats: Default::default(),
             };
 
-            let dir = tempdir().unwrap();
-            let root = dir.path();
-            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new_with_prefix(root).unwrap());
+            let root = tempdir().unwrap().as_ref().to_string_lossy().to_string();
+            let store: ObjectStoreRef = Arc::new(local_file::try_new_with_default(root).unwrap());
             let store_picker: ObjectStorePickerRef = Arc::new(store);
             let sst_file_path = Path::from("data.par");
 

@@ -62,6 +62,7 @@ define_result!(Error);
 /// |  (u8)   | (u32)  | (u32)  |   (u64)    |    (u64)     |     (u32)    |       |
 /// +---------+--------+--------+------------+--------------+--------------+-------+
 /// ```
+#[derive(Debug)]
 pub struct Record<'a> {
     /// The version number of the record.
     pub version: u8,
@@ -183,6 +184,13 @@ impl RecordEncoding {
 
         // Read length
         let length = buf.try_get_u32().context(Decoding)?;
+        ensure!(
+            length > 0,
+            LengthMismatch {
+                expected: 1usize,
+                actual: 0usize
+            }
+        );
 
         // Ensure the buf is long enough
         ensure!(

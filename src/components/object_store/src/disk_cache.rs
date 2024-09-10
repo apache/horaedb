@@ -40,12 +40,12 @@ use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use time_ext;
 use tokio::{
     fs::{self, File, OpenOptions},
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt},
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
     sync::oneshot::{self, error::RecvError, Receiver},
 };
 use upstream::{
-    path::Path, Error as ObjectStoreError, GetResult, ListResult, MultipartId, ObjectMeta,
-    ObjectStore, Result,
+    path::Path, Error as ObjectStoreError, GetOptions, GetResult, ListResult, MultipartUpload,
+    ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult, Result,
 };
 
 use crate::metrics::{
@@ -828,20 +828,32 @@ impl Display for DiskCacheStore {
 
 #[async_trait]
 impl ObjectStore for DiskCacheStore {
-    async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
-        self.underlying_store.put(location, bytes).await
+    async fn put(&self, location: &Path, payload: PutPayload) -> Result<PutResult> {
+        self.underlying_store.put(location, payload).await
     }
 
-    async fn put_multipart(
+    async fn put_opts(
         &self,
         location: &Path,
-    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+        payload: PutPayload,
+        opts: PutOptions,
+    ) -> Result<PutResult> {
+        self.underlying_store
+            .put_opts(location, payload, opts)
+            .await
+    }
+
+    async fn put_multipart(&self, location: &Path) -> Result<Box<dyn MultipartUpload>> {
         self.underlying_store.put_multipart(location).await
     }
 
-    async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
+    async fn put_multipart_opts(
+        &self,
+        location: &Path,
+        opts: PutMultipartOpts,
+    ) -> Result<Box<dyn MultipartUpload>> {
         self.underlying_store
-            .abort_multipart(location, multipart_id)
+            .put_multipart_opts(location, opts)
             .await
     }
 
@@ -849,6 +861,10 @@ impl ObjectStore for DiskCacheStore {
         // In sst module, we only use get_range, fetched a whole file is not used, and
         // it is not good for disk cache.
         self.underlying_store.get(location).await
+    }
+
+    async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
+        self.underlying_store.get_opts(location, options).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
@@ -987,6 +1003,8 @@ impl ObjectStore for DiskCacheStore {
             location: location.clone(),
             last_modified: file_meta.last_modified,
             size: file_meta.size,
+            e_tag: None,
+            version: None,
         })
     }
 
@@ -994,8 +1012,8 @@ impl ObjectStore for DiskCacheStore {
         self.underlying_store.delete(location).await
     }
 
-    async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
-        self.underlying_store.list(prefix).await
+    fn list(&self, prefix: Option<&Path>) -> BoxStream<'_, Result<ObjectMeta>> {
+        self.underlying_store.list(prefix)
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
@@ -1015,10 +1033,9 @@ impl ObjectStore for DiskCacheStore {
 mod test {
     use runtime::{Builder, RuntimeRef};
     use tempfile::{tempdir, TempDir};
-    use upstream::local::LocalFileSystem;
 
     use super::*;
-    use crate::test_util::MemoryStore;
+    use crate::{local_file, test_util::MemoryStore};
 
     struct StoreWithCacheDir {
         inner: DiskCacheStore,
@@ -1068,7 +1085,7 @@ mod test {
             let location = Path::from("out_of_range_test.sst");
             let store = prepare_store(page_size, 32, 0, rt.clone()).await;
             let buf = Bytes::from_static(data);
-            store.inner.put(&location, buf.clone()).await.unwrap();
+            store.inner.put(&location, buf.into()).await.unwrap();
 
             // Read one page out of range.
             let res = store.inner.get_range(&location, 48..54).await;
@@ -1095,7 +1112,7 @@ mod test {
             for _ in 0..4 {
                 buf.extend_from_slice(data);
             }
-            store.inner.put(&location, buf.freeze()).await.unwrap();
+            store.inner.put(&location, buf.freeze().into()).await.unwrap();
 
             let testcases = vec![
                 (0..6, "a b c "),
@@ -1164,7 +1181,7 @@ mod test {
             for _ in 0..4 {
                 buf.extend_from_slice(data);
             }
-            store.inner.put(&location, buf.freeze()).await.unwrap();
+            store.inner.put(&location, buf.freeze().into()).await.unwrap();
 
             let testcases = [
                 (0..6, "a b c "),
@@ -1212,7 +1229,11 @@ mod test {
             for _ in 0..4 {
                 buf.extend_from_slice(data);
             }
-            store.inner.put(&location, buf.freeze()).await.unwrap();
+            store
+                .inner
+                .put(&location, buf.freeze().into())
+                .await
+                .unwrap();
 
             let _ = store.inner.get_range(&location, 0..16).await.unwrap();
             let _ = store.inner.get_range(&location, 16..32).await.unwrap();
@@ -1247,7 +1268,11 @@ mod test {
             for _ in 0..8 {
                 buf.extend_from_slice(data);
             }
-            store.inner.put(&location, buf.freeze()).await.unwrap();
+            store
+                .inner
+                .put(&location, buf.freeze().into())
+                .await
+                .unwrap();
             // use seahash
             // 0..16: partition 1
             // 16..32 partition 1
@@ -1308,9 +1333,10 @@ mod test {
             let page_size = 8;
             let first_create_time = {
                 let _store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
+
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,
@@ -1335,9 +1361,9 @@ mod test {
             // open again
             {
                 let _store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,
@@ -1361,9 +1387,8 @@ mod test {
 
             // open again, but with different page_size
             {
-                let local_path = tempdir().unwrap();
-                let local_store =
-                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
+                let local_store = Arc::new(local_file::try_new_with_default(local_path).unwrap());
                 let store = DiskCacheStore::try_new(
                     cache_dir.as_ref().to_string_lossy().to_string(),
                     160,
@@ -1381,7 +1406,7 @@ mod test {
 
     #[test]
     fn test_disk_cache_recovery() {
-        let rt = Arc::new(Builder::default().build().unwrap());
+        let rt = Arc::new(Builder::default().enable_all().build().unwrap());
         rt.block_on(async {
             let cache_dir = tempdir().unwrap();
             let cache_root_dir = cache_dir.as_ref().to_string_lossy().to_string();
@@ -1389,9 +1414,9 @@ mod test {
             let location = Path::from("recovery.sst");
             {
                 let store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         10240,
@@ -1409,7 +1434,7 @@ mod test {
                     buf.extend_from_slice(data);
                 }
                 let buf = buf.freeze();
-                store.put(&location, buf.clone()).await.unwrap();
+                store.put(&location, buf.clone().into()).await.unwrap();
                 let read_range = 16..100;
                 let bytes = store
                     .get_range(&location, read_range.clone())
@@ -1422,9 +1447,9 @@ mod test {
             // recover
             {
                 let store = {
-                    let local_path = tempdir().unwrap();
+                    let local_path = tempdir().unwrap().as_ref().to_string_lossy().to_string();
                     let local_store =
-                        Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
+                        Arc::new(local_file::try_new_with_default(local_path).unwrap());
                     DiskCacheStore::try_new(
                         cache_root_dir.clone(),
                         160,
@@ -1477,7 +1502,7 @@ mod test {
 
         // Put data into store and get it to let the cache load the data.
         store
-            .put(&test_file_path, test_file_bytes.clone())
+            .put(&test_file_path, test_file_bytes.clone().into())
             .await
             .unwrap();
 
