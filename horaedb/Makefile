@@ -19,7 +19,7 @@ SHELL = /bin/bash
 
 clippy:
 	cargo clippy --all-targets --all-features -- -D warnings \
-	-A dead_code -A unused_variables
+	-A dead_code -A unused_variables # Remove these once we have a clean build
 
 sort:
 	cargo sort --workspace --check

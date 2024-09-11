@@ -15,9 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{ops::Range, sync::Arc};
+use std::{ops::Range, pin::Pin, sync::Arc};
 
+use arrow::{array::RecordBatch, datatypes::Schema};
+use futures::Stream;
 use object_store::ObjectStore;
+
+use crate::error::Result;
 
 pub enum Value {
     Int64(i64),
@@ -36,3 +40,12 @@ pub enum Predicate {
 pub type TimeRange = Range<i64>;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
+
+/// Trait for types that stream [arrow::record_batch::RecordBatch]
+// TODO: how to attach TSID hint to RecordBatch?
+pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
+    fn schema(&self) -> &Schema;
+}
+
+/// Trait for a [`Stream`] of [`RecordBatch`]es
+pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send>>;

@@ -21,24 +21,32 @@ use async_trait::async_trait;
 use crate::{
     manifest::Manifest,
     sst::SSTable,
-    types::{ObjectStoreRef, Predicate, TimeRange},
+    types::{ObjectStoreRef, Predicate, SendableRecordBatchStream, TimeRange},
     Result,
 };
 
 pub struct CompactContext {}
+pub struct WriteContext {}
+pub struct ScanContext {}
 
 /// Time-aware merge storage interface.
 #[async_trait]
-pub trait TMStorage {
+pub trait TimeMergeStorage {
     fn schema(&self) -> Result<&Schema>;
-    async fn write(&self, batch: RecordBatch) -> Result<()>;
+
+    async fn write(&self, ctx: &WriteContext, batch: RecordBatch) -> Result<()>;
+
+    /// Implementation shoule ensure that the returned stream is sorted by time,
+    /// from old to latest.
     async fn scan(
         &self,
+        ctx: &ScanContext,
         range: TimeRange,
-        predicate: Predicate,
-        projection: Vec<usize>,
-    ) -> Result<RecordBatch>;
-    async fn compact(&self, ctx: CompactContext) -> Result<()>;
+        predicates: Vec<Predicate>,
+        projections: Vec<usize>,
+    ) -> Result<SendableRecordBatchStream>;
+
+    async fn compact(&self, ctx: &CompactContext) -> Result<()>;
 }
 
 /// TMStorage implementation using cloud object storage.
@@ -63,25 +71,26 @@ impl CloudObjectStorage {
 }
 
 #[async_trait]
-impl TMStorage for CloudObjectStorage {
+impl TimeMergeStorage for CloudObjectStorage {
     fn schema(&self) -> Result<&Schema> {
         todo!()
     }
 
-    async fn write(&self, batch: RecordBatch) -> Result<()> {
+    async fn write(&self, ctx: &WriteContext, batch: RecordBatch) -> Result<()> {
         todo!()
     }
 
     async fn scan(
         &self,
+        ctx: &ScanContext,
         range: TimeRange,
-        predicate: Predicate,
-        projection: Vec<usize>,
-    ) -> Result<RecordBatch> {
+        predicates: Vec<Predicate>,
+        projections: Vec<usize>,
+    ) -> Result<SendableRecordBatchStream> {
         todo!()
     }
 
-    async fn compact(&self, ctx: CompactContext) -> Result<()> {
+    async fn compact(&self, ctx: &CompactContext) -> Result<()> {
         todo!()
     }
 }
