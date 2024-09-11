@@ -25,28 +25,31 @@ use crate::{
     Result,
 };
 
-pub struct CompactContext {}
-pub struct WriteContext {}
-pub struct ScanContext {}
+pub struct WriteRequest {
+    batch: RecordBatch,
+}
+
+pub struct ScanRequest {
+    range: TimeRange,
+    predicates: Vec<Predicate>,
+    /// `None` means all columns.
+    projections: Option<Vec<usize>>,
+}
+
+pub struct CompactRequest {}
 
 /// Time-aware merge storage interface.
 #[async_trait]
 pub trait TimeMergeStorage {
     fn schema(&self) -> Result<&Schema>;
 
-    async fn write(&self, ctx: &WriteContext, batch: RecordBatch) -> Result<()>;
+    async fn write(&self, req: WriteRequest) -> Result<()>;
 
     /// Implementation shoule ensure that the returned stream is sorted by time,
     /// from old to latest.
-    async fn scan(
-        &self,
-        ctx: &ScanContext,
-        range: TimeRange,
-        predicates: Vec<Predicate>,
-        projections: Vec<usize>,
-    ) -> Result<SendableRecordBatchStream>;
+    async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream>;
 
-    async fn compact(&self, ctx: &CompactContext) -> Result<()>;
+    async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
 
 /// TMStorage implementation using cloud object storage.
@@ -76,21 +79,15 @@ impl TimeMergeStorage for CloudObjectStorage {
         todo!()
     }
 
-    async fn write(&self, ctx: &WriteContext, batch: RecordBatch) -> Result<()> {
+    async fn write(&self, req: WriteRequest) -> Result<()> {
         todo!()
     }
 
-    async fn scan(
-        &self,
-        ctx: &ScanContext,
-        range: TimeRange,
-        predicates: Vec<Predicate>,
-        projections: Vec<usize>,
-    ) -> Result<SendableRecordBatchStream> {
+    async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {
         todo!()
     }
 
-    async fn compact(&self, ctx: &CompactContext) -> Result<()> {
+    async fn compact(&self, req: CompactRequest) -> Result<()> {
         todo!()
     }
 }

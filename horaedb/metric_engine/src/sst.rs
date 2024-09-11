@@ -15,9 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::types::ObjectStoreRef;
-
 pub struct SSTable {
-    pub sst_id: u64,
-    pub storage: ObjectStoreRef,
+    pub id: u64,
 }

@@ -33,8 +33,8 @@ pub enum Value {
 pub enum Predicate {
     Equal(String, Value),
     NotEqual(String, Value),
-    RegexMatch(String, Value),
-    NotRegexMatch(String, Value),
+    RegexMatch(String, Vec<u8>),
+    NotRegexMatch(String, Vec<u8>),
 }
 
 pub type TimeRange = Range<i64>;
@@ -42,7 +42,6 @@ pub type TimeRange = Range<i64>;
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 
 /// Trait for types that stream [arrow::record_batch::RecordBatch]
-// TODO: how to attach TSID hint to RecordBatch?
 pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
     fn schema(&self) -> &Schema;
 }
