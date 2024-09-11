@@ -544,14 +544,14 @@ impl SegmentManager {
             }
         }
 
-        // Delete all segments in memory
+        // Delete segments in all_segments
         for (segment_id, _) in segments_to_remove.iter() {
             all_segments.remove(segment_id);
         }
 
         drop(all_segments);
 
-        // Delete all segments on disk
+        // Delete segments on disk
         for (_, segment) in segments_to_remove.iter() {
             segment.lock().unwrap().delete()?;
         }
@@ -588,7 +588,7 @@ impl SegmentManager {
             }
         }
 
-        // Sort by id
+        // Sort by segment id
         relevant_segments.sort_by_key(|(id, _)| *id);
 
         // id is not needed, so remove it
@@ -1356,8 +1356,6 @@ mod tests {
             runtime,
         )
         .unwrap();
-
-        // let _segment = region.segment_manager.get_segment(0).unwrap();
 
         region.close().unwrap()
     }
