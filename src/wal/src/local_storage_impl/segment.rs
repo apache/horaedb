@@ -1201,7 +1201,6 @@ impl MultiSegmentLogIterator {
         }
 
         let segment = self.segments[self.current_segment_idx].clone();
-        // let segment = self.segment_manager.get_segment(segment)?;
         let iterator = SegmentLogIterator::new(
             self.log_encoding.clone(),
             self.record_encoding.clone(),
