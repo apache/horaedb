@@ -17,11 +17,12 @@
 
 use arrow::{array::RecordBatch, datatypes::Schema};
 use async_trait::async_trait;
+use datafusion::logical_expr::Expr;
 
 use crate::{
     manifest::Manifest,
     sst::SSTable,
-    types::{ObjectStoreRef, Predicate, SendableRecordBatchStream, TimeRange},
+    types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange},
     Result,
 };
 
@@ -31,7 +32,7 @@ pub struct WriteRequest {
 
 pub struct ScanRequest {
     range: TimeRange,
-    predicates: Vec<Predicate>,
+    predicate: Expr,
     /// `None` means all columns.
     projections: Option<Vec<usize>>,
 }

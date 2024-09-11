@@ -23,20 +23,6 @@ use object_store::ObjectStore;
 
 use crate::error::Result;
 
-pub enum Value {
-    Int64(i64),
-    Int32(i32),
-    Float64(f64),
-    Bytes(Vec<u8>),
-}
-
-pub enum Predicate {
-    Equal(String, Value),
-    NotEqual(String, Value),
-    RegexMatch(String, Vec<u8>),
-    NotRegexMatch(String, Vec<u8>),
-}
-
 pub type TimeRange = Range<i64>;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;

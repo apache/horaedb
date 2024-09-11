@@ -34,6 +34,7 @@ workspace = true
 anyhow = { workspace = true }
 arrow = { workspace = true }
 async-trait = { workspace = true }
+datafusion = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
