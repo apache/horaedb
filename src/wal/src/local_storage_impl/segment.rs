@@ -57,8 +57,8 @@ pub enum Error {
     #[snafu(display("Failed to map file to memory: {}", source))]
     Mmap { source: io::Error },
 
-    #[snafu(display("Segment full"))]
-    SegmentFull,
+    #[snafu(display("Segment {} is full, current size: {}, segment size: {}, try to append {}", id, current_size, segment_size, data_size))]
+    SegmentFull { id : u64, current_size: usize, segment_size: usize, data_size: usize },
 
     #[snafu(display("Failed to append data to segment file: {}", source))]
     SegmentAppend { source: io::Error },
@@ -333,7 +333,7 @@ impl Segment {
     fn append(&mut self, data: &[u8]) -> Result<()> {
         ensure!(
             self.current_size + data.len() <= self.segment_size,
-            SegmentFull
+            SegmentFull { id: self.id, current_size: self.current_size, segment_size: self.segment_size, data_size: data.len() }
         );
 
         // Ensure the segment file is open
@@ -449,7 +449,7 @@ pub struct SegmentManager {
     all_segments: Mutex<HashMap<u64, Arc<Mutex<Segment>>>>,
 
     /// Cache for opened segments
-    cache: Mutex<VecDeque<u64>>,
+    cache: Mutex<VecDeque<(u64, Arc<Mutex<Segment>>)>>,
 
     /// Maximum size of the cache
     cache_size: usize,
@@ -464,27 +464,13 @@ impl SegmentManager {
         all_segments.insert(id, segment);
         Ok(())
     }
-
-    /// Obtain the target segment
-    fn get_segment(&self, segment_id: u64) -> Result<Arc<Mutex<Segment>>> {
-        let all_segments = self.all_segments.lock().unwrap();
-
-        let segment = all_segments.get(&segment_id);
-
-        let segment = match segment {
-            Some(segment) => segment,
-            None => return SegmentNotFound { id: segment_id }.fail(),
-        };
-
-        Ok(segment.clone())
-    }
-
+    
     /// Open segment if it is not in cache, need to acquire the lock outside
-    fn open_segment(&self, segment: &mut Segment) -> Result<()> {
+    fn open_segment(&self, segment: &mut Segment, segment_arc: Arc<Mutex<Segment>>) -> Result<()> {
         let mut cache = self.cache.lock().unwrap();
 
         // Check if segment is already in cache
-        if cache.iter().any(|id| *id == segment.id) {
+        if cache.iter().any(|(id, _)| *id == segment.id) {
             return Ok(());
         }
 
@@ -494,14 +480,13 @@ impl SegmentManager {
         // Add to cache
         if cache.len() == self.cache_size {
             let evicted_segment_id = cache.pop_front();
-            if let Some(evicted_segment_id) = evicted_segment_id {
+            if let Some((_, evicted_segment)) = evicted_segment_id {
                 // The evicted segment should be closed first
-                let evicted_segment = self.get_segment(evicted_segment_id)?;
                 let mut evicted_segment = evicted_segment.lock().unwrap();
                 evicted_segment.close()?;
             }
         }
-        cache.push_back(segment.id);
+        cache.push_back((segment.id, segment_arc));
 
         Ok(())
     }
@@ -535,7 +520,7 @@ impl SegmentManager {
                 let mut cache = self.cache.lock().unwrap();
 
                 // Check if segment is already in cache
-                if let Some(index) = cache.iter().position(|id| *id == segment.id) {
+                if let Some(index) = cache.iter().position(|(id, _)| *id == segment.id) {
                     cache.remove(index);
                 }
 
@@ -556,34 +541,37 @@ impl SegmentManager {
         table_id: Option<TableId>,
         start: SequenceNumber,
         end: SequenceNumber,
-    ) -> Result<Vec<u64>> {
+    ) -> Result<Vec<Arc<Mutex<Segment>>>> {
         // Find all segments that contain the requested sequence numbers
         let mut relevant_segments = Vec::new();
 
         let all_segments = self.all_segments.lock().unwrap();
 
         for (_, segment) in all_segments.iter() {
-            let segment = segment.lock().unwrap();
+            let guard = segment.lock().unwrap();
             match table_id {
                 Some(table_id) => {
-                    if let Some(range) = segment.table_ranges.get(&table_id) {
+                    if let Some(range) = guard.table_ranges.get(&table_id) {
                         if range.0 <= end && range.1 >= start {
-                            relevant_segments.push(segment.id);
+                            relevant_segments.push((guard.id, segment.clone()));
                         }
                     }
                 }
                 None => {
-                    if segment.min_seq <= end && segment.max_seq >= start {
-                        relevant_segments.push(segment.id);
+                    if guard.min_seq <= end && guard.max_seq >= start {
+                        relevant_segments.push((guard.id, segment.clone()));
                     }
                 }
             }
         }
 
-        // Sort by segment id
-        relevant_segments.sort_unstable();
+        // 根据记录的 id 进行排序
+        relevant_segments.sort_by_key(|(id, _)| *id);
 
-        Ok(relevant_segments)
+        // 只保留排序后的 segment
+        let sorted_segments: Vec<_> = relevant_segments.into_iter().map(|(_, segment)| segment).collect();
+
+        Ok(sorted_segments)
     }
 }
 
@@ -764,7 +752,7 @@ impl Region {
         let mut guard = current_segment.lock().unwrap();
 
         // Open the segment if not opened
-        self.segment_manager.open_segment(&mut guard)?;
+        self.segment_manager.open_segment(&mut guard, current_segment.clone())?;
         for pos in record_position.iter_mut() {
             pos.start += guard.current_size;
             pos.end += guard.current_size;
@@ -1022,19 +1010,19 @@ impl SegmentLogIterator {
         end: SequenceNumber,
     ) -> Result<Self> {
         // Open the segment if it is not open
-        let mut segment = segment.lock().unwrap();
-        if !segment.is_open() {
-            segment_manager.open_segment(&mut segment)?;
+        let mut guard = segment.lock().unwrap();
+        if !guard.is_open() {
+            segment_manager.open_segment(&mut guard, segment.clone())?;
         }
 
         // Read the entire content of the segment
-        let segment_content = segment.read(0, segment.current_size)?;
+        let segment_content = guard.read(0, guard.current_size)?;
 
         // Get record positions
-        let record_positions = segment.record_position.clone();
+        let record_positions = guard.record_position.clone();
 
         // Get sequence number ranges
-        let table_ranges = segment.table_ranges.clone();
+        let table_ranges = guard.table_ranges.clone();
 
         Ok(Self {
             log_encoding,
@@ -1122,7 +1110,7 @@ pub struct MultiSegmentLogIterator {
     segment_manager: Arc<SegmentManager>,
 
     /// All segments involved in this read operation.
-    segments: Vec<u64>,
+    segments: Vec<Arc<Mutex<Segment>>>,
 
     /// Current segment index.
     current_segment_idx: usize,
@@ -1185,8 +1173,8 @@ impl MultiSegmentLogIterator {
             return Ok(false);
         }
 
-        let segment = self.segments[self.current_segment_idx];
-        let segment = self.segment_manager.get_segment(segment)?;
+        let segment = self.segments[self.current_segment_idx].clone();
+        // let segment = self.segment_manager.get_segment(segment)?;
         let iterator = SegmentLogIterator::new(
             self.log_encoding.clone(),
             self.record_encoding.clone(),
@@ -1342,7 +1330,7 @@ mod tests {
         )
         .unwrap();
 
-        let _segment = region.segment_manager.get_segment(0).unwrap();
+        // let _segment = region.segment_manager.get_segment(0).unwrap();
 
         region.close().unwrap()
     }
