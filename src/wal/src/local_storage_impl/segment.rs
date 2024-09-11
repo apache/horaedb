@@ -57,8 +57,19 @@ pub enum Error {
     #[snafu(display("Failed to map file to memory: {}", source))]
     Mmap { source: io::Error },
 
-    #[snafu(display("Segment {} is full, current size: {}, segment size: {}, try to append {}", id, current_size, segment_size, data_size))]
-    SegmentFull { id : u64, current_size: usize, segment_size: usize, data_size: usize },
+    #[snafu(display(
+        "Segment {} is full, current size: {}, segment size: {}, try to append: {}",
+        id,
+        current_size,
+        segment_size,
+        data_size
+    ))]
+    SegmentFull {
+        id: u64,
+        current_size: usize,
+        segment_size: usize,
+        data_size: usize,
+    },
 
     #[snafu(display("Failed to append data to segment file: {}", source))]
     SegmentAppend { source: io::Error },
@@ -333,7 +344,12 @@ impl Segment {
     fn append(&mut self, data: &[u8]) -> Result<()> {
         ensure!(
             self.current_size + data.len() <= self.segment_size,
-            SegmentFull { id: self.id, current_size: self.current_size, segment_size: self.segment_size, data_size: data.len() }
+            SegmentFull {
+                id: self.id,
+                current_size: self.current_size,
+                segment_size: self.segment_size,
+                data_size: data.len()
+            }
         );
 
         // Ensure the segment file is open
@@ -464,7 +480,7 @@ impl SegmentManager {
         all_segments.insert(id, segment);
         Ok(())
     }
-    
+
     /// Open segment if it is not in cache, need to acquire the lock outside
     fn open_segment(&self, segment: &mut Segment, segment_arc: Arc<Mutex<Segment>>) -> Result<()> {
         let mut cache = self.cache.lock().unwrap();
@@ -479,8 +495,8 @@ impl SegmentManager {
 
         // Add to cache
         if cache.len() == self.cache_size {
-            let evicted_segment_id = cache.pop_front();
-            if let Some((_, evicted_segment)) = evicted_segment_id {
+            let evicted_segment = cache.pop_front();
+            if let Some((_, evicted_segment)) = evicted_segment {
                 // The evicted segment should be closed first
                 let mut evicted_segment = evicted_segment.lock().unwrap();
                 evicted_segment.close()?;
@@ -507,30 +523,37 @@ impl SegmentManager {
         sequence_num: SequenceNumber,
     ) -> Result<()> {
         let current_segment_id = self.current_segment.lock().unwrap().lock().unwrap().id;
-        let mut segments_to_remove: Vec<u64> = Vec::new();
+        let mut segments_to_remove = Vec::new();
         let mut all_segments = self.all_segments.lock().unwrap();
 
         for (_, segment) in all_segments.iter() {
-            let mut segment = segment.lock().unwrap();
+            let mut guard = segment.lock().unwrap();
 
-            segment.mark_deleted(location.table_id, sequence_num);
+            guard.mark_deleted(location.table_id, sequence_num);
 
             // Delete this segment if it is empty
-            if segment.is_empty() && segment.id != current_segment_id {
+            if guard.is_empty() && guard.id != current_segment_id {
                 let mut cache = self.cache.lock().unwrap();
 
                 // Check if segment is already in cache
-                if let Some(index) = cache.iter().position(|(id, _)| *id == segment.id) {
+                if let Some(index) = cache.iter().position(|(id, _)| *id == guard.id) {
                     cache.remove(index);
                 }
 
-                segments_to_remove.push(segment.id);
-                segment.delete()?;
+                segments_to_remove.push((guard.id, segment.clone()));
             }
         }
 
-        for segment_id in segments_to_remove {
-            all_segments.remove(&segment_id);
+        // Delete all segments in memory
+        for (segment_id, _) in segments_to_remove.iter() {
+            all_segments.remove(segment_id);
+        }
+
+        drop(all_segments);
+
+        // Delete all segments on disk
+        for (_, segment) in segments_to_remove.iter() {
+            segment.lock().unwrap().delete()?;
         }
 
         Ok(())
@@ -547,7 +570,7 @@ impl SegmentManager {
 
         let all_segments = self.all_segments.lock().unwrap();
 
-        for (_, segment) in all_segments.iter() {
+        for segment in all_segments.values() {
             let guard = segment.lock().unwrap();
             match table_id {
                 Some(table_id) => {
@@ -565,13 +588,16 @@ impl SegmentManager {
             }
         }
 
-        // 根据记录的 id 进行排序
+        // Sort by id
         relevant_segments.sort_by_key(|(id, _)| *id);
 
-        // 只保留排序后的 segment
-        let sorted_segments: Vec<_> = relevant_segments.into_iter().map(|(_, segment)| segment).collect();
+        // id is not needed, so remove it
+        let relevant_segments = relevant_segments
+            .into_iter()
+            .map(|(_, segment)| segment)
+            .collect();
 
-        Ok(sorted_segments)
+        Ok(relevant_segments)
     }
 }
 
@@ -752,7 +778,8 @@ impl Region {
         let mut guard = current_segment.lock().unwrap();
 
         // Open the segment if not opened
-        self.segment_manager.open_segment(&mut guard, current_segment.clone())?;
+        self.segment_manager
+            .open_segment(&mut guard, current_segment.clone())?;
         for pos in record_position.iter_mut() {
             pos.start += guard.current_size;
             pos.end += guard.current_size;
