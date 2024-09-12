@@ -228,8 +228,11 @@ impl Segment {
             return Ok(segment);
         }
 
-        // Open the segment file to update min and max sequence number and file size
-        segment.open(true)?;
+        // Open the segment file
+        segment.open()?;
+
+        // Restore meta info
+        segment.restore_meta()?;
 
         // Close the segment file. If the segment is to be used for read or write, it
         // will be opened again
@@ -238,7 +241,62 @@ impl Segment {
         Ok(segment)
     }
 
-    pub fn open(&mut self, update_meta: bool) -> Result<()> {
+    fn restore_meta(&mut self) -> Result<()> {
+        // Ensure the segment file is open
+        let Some(mmap) = &mut self.mmap else {
+            return SegmentNotOpen { id: self.id }.fail();
+        };
+        let file_size = mmap.len();
+
+        // Read and validate all records
+        let mut pos = VERSION_SIZE + SEGMENT_HEADER.len();
+        let mut record_position = Vec::new();
+
+        self.table_ranges.clear();
+
+        // Scan all records in the segment
+        while pos < file_size {
+            let data = &mmap[pos..];
+
+            match self.record_encoding.decode(data).box_err() {
+                Ok(record) => {
+                    record_position.push(Position {
+                        start: pos,
+                        end: pos + record.len(),
+                    });
+
+                    // Update max sequence number
+                    self.min_seq = min(self.min_seq, record.sequence_num);
+                    self.max_seq = max(self.max_seq, record.sequence_num);
+
+                    // Update table_ranges
+                    self.table_ranges
+                        .entry(record.table_id)
+                        .and_modify(|seq_range| {
+                            seq_range.0 = min(seq_range.0, record.sequence_num);
+                            seq_range.1 = max(seq_range.1, record.sequence_num);
+                        })
+                        .or_insert((record.sequence_num, record.sequence_num));
+
+                    pos += record.len();
+                }
+                Err(_) => {
+                    // If decoding fails, we've reached the end of valid data
+                    // TODO: too tricky, refactor later
+                    break;
+                }
+            }
+        }
+
+        self.segment_size = file_size;
+        self.record_position = record_position;
+        self.current_size = pos;
+        self.write_count = 0;
+        self.last_flushed_position = pos;
+        Ok(())
+    }
+
+    pub fn open(&mut self) -> Result<()> {
         // Open the segment file
         let file = OpenOptions::new()
             .read(true)
@@ -265,57 +323,8 @@ impl Segment {
         let header = &mmap[VERSION_SIZE..VERSION_SIZE + header_len];
         ensure!(header == SEGMENT_HEADER, InvalidHeader);
 
-        if !update_meta {
-            self.mmap = Some(mmap);
-            return Ok(());
-        }
-
-        // Read and validate all records
-        let mut pos = VERSION_SIZE + header_len;
-        let mut record_position = Vec::new();
-
-        self.table_ranges.clear();
-
-        // Scan all records in the segment
-        while pos < file_size as usize {
-            let data = &mmap[pos..];
-
-            match self.record_encoding.decode(data).box_err() {
-                Ok(record) => {
-                    record_position.push(Position {
-                        start: pos,
-                        end: pos + record.len(),
-                    });
-
-                    // Update min and max sequence number
-                    self.min_seq = min(self.min_seq, record.sequence_num);
-                    self.max_seq = max(self.max_seq, record.sequence_num);
-
-                    // Update table_ranges
-                    self.table_ranges
-                        .entry(record.table_id)
-                        .and_modify(|seq_range| {
-                            seq_range.0 = min(seq_range.0, record.sequence_num);
-                            seq_range.1 = max(seq_range.1, record.sequence_num);
-                        })
-                        .or_insert((record.sequence_num, record.sequence_num));
-
-                    pos += record.len();
-                }
-                Err(_) => {
-                    // If decoding fails, we've reached the end of valid data
-                    // TODO: too tricky, refactor later
-                    break;
-                }
-            }
-        }
-
-        self.segment_size = file_size as usize;
         self.mmap = Some(mmap);
-        self.record_position = record_position;
-        self.current_size = pos;
-        self.write_count = 0;
-        self.last_flushed_position = pos;
+
         Ok(())
     }
 
@@ -491,7 +500,7 @@ impl SegmentManager {
         }
 
         // If not in cache, load from disk
-        segment.open(false)?;
+        segment.open()?;
 
         // Add to cache
         if cache.len() == self.cache_size {
@@ -1297,8 +1306,12 @@ mod tests {
         let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
 
         segment
-            .open(false)
+            .open()
             .expect("Expected to open segment successfully");
+
+        segment
+            .restore_meta()
+            .expect("Expected to restore meta successfully");
     }
 
     #[test]
@@ -1311,7 +1324,8 @@ mod tests {
             .unwrap()
             .to_string();
         let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
-        segment.open(false).unwrap();
+        segment.open().unwrap();
+        segment.restore_meta().unwrap();
 
         let data = b"test_data";
         let append_result = segment.append(data);
@@ -1335,7 +1349,7 @@ mod tests {
 
         let mut segment = Segment::new(path.clone(), 0, SEGMENT_SIZE).unwrap();
 
-        segment.open(false).unwrap();
+        segment.open().unwrap();
         assert!(Path::new(&path).exists());
 
         segment.delete().unwrap();
