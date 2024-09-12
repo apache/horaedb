@@ -540,8 +540,9 @@ impl SegmentManager {
 
             guard.mark_deleted(location.table_id, sequence_num);
 
-            // Delete this segment if it is empty
-            if guard.is_empty() && guard.id != current_segment_id {
+            // Delete this segment if it is empty and its id is less than the current
+            // segment
+            if guard.is_empty() && guard.id < current_segment_id {
                 let mut cache = self.cache.lock().unwrap();
 
                 // Check if segment is already in cache
@@ -1509,19 +1510,21 @@ mod tests {
                 .expect("should succeed to encode payloads");
 
             let write_ctx = WriteContext::default();
-            region.write(&write_ctx, &log_batch).unwrap();
+            let actual_sequence = region.write(&write_ctx, &log_batch).unwrap();
+            assert_eq!(actual_sequence, sequence + 100 - 1);
             sequence += 100;
         }
 
-        // Expect more than one segment
-        {
+        let latest_segment_id = {
             let all_segments = region.segment_manager.all_segments.lock().unwrap();
+            // Expect more than one segment
             assert!(
                 all_segments.len() > 1,
                 "Expected multiple segments, but got {}",
                 all_segments.len()
             );
-        }
+            all_segments.keys().max().unwrap().to_owned()
+        };
 
         // Mark delete entries up to sequence - 1, so only the last segment should
         // remain
@@ -1533,7 +1536,12 @@ mod tests {
         {
             let all_segments = region.segment_manager.all_segments.lock().unwrap();
             assert_eq!(all_segments.len(), 1);
+            assert!(all_segments.contains_key(&latest_segment_id));
         }
+
+        // The num of segment in the dir should be 1
+        let segment_count = fs::read_dir(dir.path()).unwrap().count();
+        assert_eq!(segment_count, 1);
 
         region.close().unwrap();
     }
