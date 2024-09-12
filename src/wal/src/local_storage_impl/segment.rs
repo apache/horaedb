@@ -522,8 +522,7 @@ impl SegmentManager {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
-        let current_segment = self.current_segment.lock().unwrap();
-        let current_segment_id = current_segment.lock().unwrap().id;
+        let current_segment_id = self.current_segment.lock().unwrap().lock().unwrap().id;
         let mut all_segments = self.all_segments.lock().unwrap();
         let mut segments_to_remove = Vec::new();
 
@@ -551,7 +550,6 @@ impl SegmentManager {
         }
 
         drop(all_segments);
-        drop(current_segment);
 
         // Delete segments on disk
         for (_, segment) in segments_to_remove.iter() {
