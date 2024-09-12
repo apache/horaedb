@@ -87,8 +87,10 @@ impl Default for SchedulerConfig {
             // 30 seconds schedule interval.
             schedule_interval: ReadableDuration(Duration::from_secs(30)),
             max_ongoing_tasks: 8,
-            // flush_interval default is 5h.
-            max_unflushed_duration: ReadableDuration(Duration::from_secs(60 * 60 * 5)),
+            // flush_interval default is 60s.
+            // The previous 5h duration for the local storage WAL is too long, which results in many
+            // segment files not being deleted in a timely manner.
+            max_unflushed_duration: ReadableDuration(Duration::from_secs(60)),
             memory_limit: ReadableSize::gb(4),
             max_pending_compaction_tasks: 1024,
         }

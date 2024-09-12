@@ -142,10 +142,7 @@ impl WalManager for LocalStorageImpl {
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        debug!(
-            "Write batch to LocalStorage based WAL, ctx:{:?}, batch:{:?}",
-            ctx, batch
-        );
+        debug!("Write batch to LocalStorage based WAL, ctx:{:?}", ctx);
         self.region_manager
             .write(ctx, batch)
             .box_err()
