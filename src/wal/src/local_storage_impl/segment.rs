@@ -494,7 +494,7 @@ impl SegmentManager {
         if guard.mmap.is_some() {
             return Ok(());
         }
-        
+
         let mut cache = self.cache.lock().unwrap();
 
         let already_opened = cache.iter().any(|(id, _)| *id == guard.id);
