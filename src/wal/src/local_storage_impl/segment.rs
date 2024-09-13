@@ -491,6 +491,10 @@ impl SegmentManager {
     /// Open segment if it is not in cache, need to acquire the lock outside
     /// otherwise the segment may get closed again.
     fn open_segment(&self, guard: &mut Segment, segment: Arc<Mutex<Segment>>) -> Result<()> {
+        if guard.mmap.is_some() {
+            return Ok(());
+        }
+        
         let mut cache = self.cache.lock().unwrap();
 
         let already_opened = cache.iter().any(|(id, _)| *id == guard.id);
