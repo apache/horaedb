@@ -297,6 +297,8 @@ impl Segment {
     }
 
     pub fn open(&mut self) -> Result<()> {
+        assert!(self.mmap.is_none());
+
         // Open the segment file
         let file = OpenOptions::new()
             .read(true)
@@ -343,10 +345,6 @@ impl Segment {
         }
         self.mmap.take();
         Ok(())
-    }
-
-    pub fn is_open(&self) -> bool {
-        self.mmap.is_some()
     }
 
     /// Append a slice to the segment file.
@@ -491,18 +489,18 @@ impl SegmentManager {
     }
 
     /// Open segment if it is not in cache, need to acquire the lock outside
-    fn open_segment(&self, segment: &mut Segment, segment_arc: Arc<Mutex<Segment>>) -> Result<()> {
+    /// otherwise the segment may get closed again.
+    fn open_segment(&self, guard: &mut Segment, segment: Arc<Mutex<Segment>>) -> Result<()> {
         let mut cache = self.cache.lock().unwrap();
 
-        // Check if segment is already in cache
-        if cache.iter().any(|(id, _)| *id == segment.id) {
+        let already_opened = cache.iter().any(|(id, _)| *id == guard.id);
+        if already_opened {
             return Ok(());
         }
 
-        // If not in cache, load from disk
-        segment.open()?;
+        guard.open()?;
 
-        // Add to cache
+        // Try evicting the oldest segment if the cache is full
         if cache.len() == self.cache_size {
             let evicted_segment = cache.pop_front();
             if let Some((_, evicted_segment)) = evicted_segment {
@@ -511,14 +509,15 @@ impl SegmentManager {
                 evicted_segment.close()?;
             }
         }
-        cache.push_back((segment.id, segment_arc));
-
+        cache.push_back((guard.id, segment.clone()));
         Ok(())
     }
 
     pub fn close_all(&self) -> Result<()> {
-        let mut cache = self.cache.lock().unwrap();
-        cache.clear();
+        {
+            let mut cache = self.cache.lock().unwrap();
+            cache.clear();
+        }
         let all_segments = self.all_segments.lock().unwrap();
         for segment in all_segments.values() {
             segment.lock().unwrap().close()?;
@@ -724,6 +723,19 @@ impl Region {
         })
     }
 
+    fn create_new_segment(&self, id: u64) -> Result<Arc<Mutex<Segment>>> {
+        // Create a new segment
+        let new_segment = Segment::new(
+            format!("{}/segment_{}.wal", self.region_dir, id),
+            id,
+            self.segment_size,
+        )?;
+        let new_segment = Arc::new(Mutex::new(new_segment));
+        self.segment_manager.add_segment(id, new_segment.clone())?;
+
+        Ok(new_segment)
+    }
+
     pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
         // In the WAL based on local storage, we need to ensure the sequence number in
         // segment is monotonically increasing. So we need to acquire a lock here.
@@ -760,36 +772,23 @@ impl Region {
             next_sequence_num += 1;
         }
 
-        let guard = current_segment.lock().unwrap();
-
         // Check if the current segment has enough space for the new data
         // If not, create a new segment and update current_segment
-        if guard.current_size + data.len() > guard.segment_size {
-            let new_segment_id = guard.id + 1;
-            // We need to drop guard to allow the update of current_segment
-            drop(guard);
+        {
+            let guard = current_segment.lock().unwrap();
+            if guard.current_size + data.len() > guard.segment_size {
+                let new_segment_id = guard.id + 1;
+                drop(guard);
 
-            // Create a new segment
-            let new_segment = Segment::new(
-                format!("{}/segment_{}.wal", self.region_dir, new_segment_id),
-                new_segment_id,
-                self.segment_size,
-            )?;
-            let new_segment = Arc::new(Mutex::new(new_segment));
-            self.segment_manager
-                .add_segment(new_segment_id, new_segment.clone())?;
-
-            // Update current segment
-            *current_segment = new_segment;
-        } else {
-            drop(guard);
+                *current_segment = self.create_new_segment(new_segment_id)?;
+            }
         }
 
-        let mut guard = current_segment.lock().unwrap();
-
         // Open the segment if not opened
+        let mut guard = current_segment.lock().unwrap();
         self.segment_manager
             .open_segment(&mut guard, current_segment.clone())?;
+
         for pos in record_position.iter_mut() {
             pos.start += guard.current_size;
             pos.end += guard.current_size;
@@ -1046,19 +1045,11 @@ impl SegmentLogIterator {
         start: SequenceNumber,
         end: SequenceNumber,
     ) -> Result<Self> {
-        // Open the segment if it is not open
         let mut guard = segment.lock().unwrap();
-        if !guard.is_open() {
-            segment_manager.open_segment(&mut guard, segment.clone())?;
-        }
-
-        // Read the entire content of the segment
+        // Open the segment if it is not open
+        segment_manager.open_segment(&mut guard, segment.clone())?;
         let segment_content = guard.read(0, guard.current_size)?;
-
-        // Get record positions
         let record_positions = guard.record_position.clone();
-
-        // Get sequence number ranges
         let table_ranges = guard.table_ranges.clone();
 
         Ok(Self {
