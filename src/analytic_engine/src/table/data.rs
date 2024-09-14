@@ -439,11 +439,11 @@ impl TableData {
                     mutable_segment_switch_threshold,
                 )) as _
             } else if try_compat_old_layered_memtable_opts {
-                // Maybe some old layered memtable opts controlling if we enable this feature
+                // Maybe some old layered memtable opts controlling the on/off of this feature
                 // by checking `mutable_segment_switch_threshold`(`0`:disable, `>0`:enable)
                 // were persisted.
-                // If `try_compat_old_layered_memtable_opts` is true, we will try to keep the
-                // same behavior.
+                // If `try_compat_old_layered_memtable_opts` is true, we will try to follow the
+                // old behavior.
                 memtable_factory as _
             } else {
                 return InvalidTableOpts {
