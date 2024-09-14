@@ -68,6 +68,7 @@ use crate::{
         sst_util,
         version::{MemTableForWrite, MemTableState, SamplingMemTable, TableVersion},
     },
+    table_options::UpdateMode,
     MetricsOptions, TableOptions,
 };
 
@@ -155,6 +156,7 @@ pub struct TableConfig {
     pub manifest_snapshot_every_n_updates: NonZeroUsize,
     pub metrics_opt: MetricsOptions,
     pub enable_primary_key_sampling: bool,
+    pub try_compat_old_layered_memtable_opts: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -314,11 +316,13 @@ impl TableData {
             name,
             schema,
         } = desc;
+
         let TableConfig {
             preflush_write_buffer_size_ratio,
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
+            ..
         } = config;
 
         let memtable_factory: MemTableFactoryRef = match opts.memtable_type {
@@ -406,6 +410,7 @@ impl TableData {
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
+            try_compat_old_layered_memtable_opts,
         } = config;
 
         let memtable_factory: MemTableFactoryRef = match add_meta.opts.memtable_type {
@@ -421,17 +426,31 @@ impl TableData {
                 .mutable_segment_switch_threshold
                 .0 as usize;
 
-            ensure!(
-                mutable_segment_switch_threshold > 0,
-                InvalidTableOpts {
+            if mutable_segment_switch_threshold > 0 {
+                ensure!(
+                    add_meta.opts.update_mode != UpdateMode::Overwrite,
+                    InvalidTableOpts {
+                        msg: "layered memtable is enabled but update mode is Overwrite",
+                    }
+                );
+
+                Arc::new(LayeredMemtableFactory::new(
+                    memtable_factory,
+                    mutable_segment_switch_threshold,
+                )) as _
+            } else if try_compat_old_layered_memtable_opts {
+                // Maybe some old layered memtable opts controlling the on/off of this feature
+                // by checking `mutable_segment_switch_threshold`(`0`:disable, `>0`:enable)
+                // were persisted.
+                // If `try_compat_old_layered_memtable_opts` is true, we will try to follow the
+                // old behavior.
+                memtable_factory as _
+            } else {
+                return InvalidTableOpts {
                     msg: "layered memtable is enabled but mutable_switch_threshold is 0",
                 }
-            );
-
-            Arc::new(LayeredMemtableFactory::new(
-                memtable_factory,
-                mutable_segment_switch_threshold,
-            )) as _
+                .fail();
+            }
         } else {
             memtable_factory as _
         };
@@ -1028,6 +1047,7 @@ pub mod tests {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: MetricsOptions::default(),
                     enable_primary_key_sampling: false,
+                    try_compat_old_layered_memtable_opts: false,
                 },
                 &purger,
                 mem_size_options,

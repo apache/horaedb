@@ -69,6 +69,12 @@ pub struct Config {
     /// Default options for table
     pub table_opts: TableOptions,
 
+    /// Should we try to compat the `LayeredMemtableOptions` in `TableOptions`
+    /// The old one use if `mutable_segment_switch_threshold` > 0 to control
+    /// the on/off of layered memtable(`0`:off, `>0`:on).
+    /// The new one use a explicit flag `enable` to do that.
+    pub try_compat_old_layered_memtable_opts: bool,
+
     pub compaction: SchedulerConfig,
 
     /// sst meta cache capacity
@@ -179,6 +185,7 @@ impl Default for Config {
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             table_opts: TableOptions::default(),
+            try_compat_old_layered_memtable_opts: false,
             compaction: SchedulerConfig::default(),
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
