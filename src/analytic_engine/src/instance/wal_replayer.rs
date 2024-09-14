@@ -22,6 +22,7 @@ use std::{
     fmt::Display,
     ops::Range,
     sync::Arc,
+    time::Instant,
 };
 
 use async_trait::async_trait;
@@ -36,6 +37,7 @@ use logger::{debug, error, info, trace, warn};
 use prometheus::{exponential_buckets, register_histogram, Histogram};
 use snafu::ResultExt;
 use table_engine::table::TableId;
+use time_ext::current_time_millis;
 use tokio::sync::{Mutex, MutexGuard};
 use wal::{
     log_batch::LogEntry,
@@ -120,15 +122,15 @@ impl<'a> WalReplayer<'a> {
     /// Replay tables and return the failed tables and the causes.
     pub async fn replay(&mut self) -> Result<FailedTables> {
         // Build replay action according to mode.
+        let table_num = self.table_datas.len();
         info!(
-            "Replay wal logs begin, context:{}, tables:{:?}",
+            "Replay wal logs begin, context:{}, table_num:{table_num}, tables:{:?}",
             self.context, self.table_datas
         );
+        let begin = Instant::now();
         let result = self.replay.run(&self.context, self.table_datas).await;
-        info!(
-            "Replay wal logs finish, context:{}, tables:{:?}",
-            self.context, self.table_datas,
-        );
+        let cost = Instant::now().duration_since(begin);
+        info!("Replay wal logs finish, table_num:{table_num}, cost:{cost:?}");
 
         result
     }
