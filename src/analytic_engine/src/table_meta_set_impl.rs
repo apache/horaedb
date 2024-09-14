@@ -54,6 +54,7 @@ pub(crate) struct TableMetaSetImpl {
     pub(crate) preflush_write_buffer_size_ratio: f32,
     pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,
     pub(crate) enable_primary_key_sampling: bool,
+    pub(crate) try_compat_old_layered_memtable_opts: bool,
     pub(crate) metrics_opt: MetricsOptions,
 }
 
@@ -140,6 +141,8 @@ impl TableMetaSetImpl {
                                 .manifest_snapshot_every_n_updates,
                             metrics_opt: self.metrics_opt.clone(),
                             enable_primary_key_sampling: self.enable_primary_key_sampling,
+                            try_compat_old_layered_memtable_opts: self
+                                .try_compat_old_layered_memtable_opts,
                         },
                         &self.file_purger,
                         mem_size_options,
@@ -271,6 +274,7 @@ impl TableMetaSetImpl {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: self.metrics_opt.clone(),
                     enable_primary_key_sampling: self.enable_primary_key_sampling,
+                    try_compat_old_layered_memtable_opts: self.try_compat_old_layered_memtable_opts,
                 },
                 mem_size_options,
                 allocator,

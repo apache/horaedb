@@ -776,6 +776,7 @@ mod tests {
                     manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
                     metrics_opt: MetricsOptions::default(),
                     enable_primary_key_sampling: false,
+                    try_compat_old_layered_memtable_opts: false,
                 },
                 &purger,
                 mem_size_options,
