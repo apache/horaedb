@@ -211,7 +211,7 @@ impl Default for Config {
             wal_encode: WalEncodeConfig::default(),
             wal: WalConfig::default(),
             remote_engine_client: remote_engine_client::config::Config::default(),
-            recover_mode: RecoverMode::TableBased,
+            recover_mode: RecoverMode::ShardBased,
             metrics: MetricsOptions::default(),
         }
     }
