@@ -18,17 +18,18 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct LocalStorageConfig {
-    pub path: String,
-    pub max_segment_size: usize,
+    pub data_dir: String,
+    pub segment_size: usize,
     pub cache_size: usize,
 }
 
 impl Default for LocalStorageConfig {
     fn default() -> Self {
         Self {
-            path: "/tmp/horaedb".to_string(),
-            max_segment_size: 64 * 1024 * 1024, // 64MB
+            data_dir: "/tmp/horaedb".to_string(),
+            segment_size: 64 * 1024 * 1024, // 64MB
             cache_size: 3,
         }
     }

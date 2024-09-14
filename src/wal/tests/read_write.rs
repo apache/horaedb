@@ -72,7 +72,6 @@ fn test_kafka_wal() {
 }
 
 #[test]
-#[ignore = "this test cannot pass completely, since delete is not supported yet"]
 fn test_local_storage_wal() {
     let builder = LocalStorageWalBuilder;
     test_all(builder, false);
@@ -997,7 +996,7 @@ impl WalBuilder for LocalStorageWalBuilder {
 
     async fn build(&self, data_path: &Path, runtime: Arc<Runtime>) -> Arc<Self::Wal> {
         let config = LocalStorageConfig {
-            path: data_path.to_str().unwrap().to_string(),
+            data_dir: data_path.to_str().unwrap().to_string(),
             ..LocalStorageConfig::default()
         };
         Arc::new(LocalStorageImpl::new(data_path.to_path_buf(), config, runtime).unwrap())

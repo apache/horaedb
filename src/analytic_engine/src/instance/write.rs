@@ -531,21 +531,6 @@ impl<'a> Writer<'a> {
                 e
             })?;
 
-        // When wal is disabled, there is no need to do this check.
-        if !self.instance.disable_wal {
-            // NOTE: Currently write wal will only increment seq by one,
-            // this may change in future.
-            let last_seq = table_data.last_sequence();
-            if sequence != last_seq + 1 {
-                warn!(
-                    "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
-                    table_data.name,table_data.id,
-                    table_data.last_sequence(),
-                    sequence
-                );
-            }
-        }
-
         debug!(
             "Instance write finished, update sequence, table:{}, table_id:{} last_sequence:{}",
             table_data.name, table_data.id, sequence
