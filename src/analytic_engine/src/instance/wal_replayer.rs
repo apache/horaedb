@@ -37,7 +37,6 @@ use logger::{debug, error, info, trace, warn};
 use prometheus::{exponential_buckets, register_histogram, Histogram};
 use snafu::ResultExt;
 use table_engine::table::TableId;
-use time_ext::current_time_millis;
 use tokio::sync::{Mutex, MutexGuard};
 use wal::{
     log_batch::LogEntry,
