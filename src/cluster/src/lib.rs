@@ -182,7 +182,7 @@ impl From<ShardStatus> for TableStatus {
     }
 }
 
-pub type ClusterRef = Arc<dyn Cluster<NodeType = NodeType> + Send + Sync>;
+pub type ClusterRef = Arc<dyn Cluster + Send + Sync>;
 
 #[derive(Clone, Debug)]
 pub struct ClusterNodesResp {
@@ -192,8 +192,6 @@ pub struct ClusterNodesResp {
 
 #[async_trait]
 pub trait Cluster {
-    type NodeType: Send + Sync;
-
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
 

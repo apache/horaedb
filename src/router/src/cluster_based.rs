@@ -218,8 +218,6 @@ mod tests {
 
     #[async_trait]
     impl Cluster for MockClusterImpl {
-        type NodeType = NodeType;
-
         async fn start(&self) -> cluster::Result<()> {
             unimplemented!();
         }

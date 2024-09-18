@@ -345,9 +345,6 @@ impl Inner {
 
 #[async_trait]
 impl Cluster for ClusterImpl {
-    /// Type of the server in cluster mode.
-    type NodeType = NodeType;
-
     async fn start(&self) -> Result<()> {
         info!("Cluster is starting with config:{:?}", self.config);
 
