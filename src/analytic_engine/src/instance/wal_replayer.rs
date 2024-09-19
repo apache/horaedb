@@ -485,6 +485,7 @@ impl RegionBasedReplay {
         for (table_id, ranges) in table_ranges {
             table_batches.push(TableBatch { table_id, ranges });
         }
+        table_batches.sort_by_key(|batch| batch.table_id);
     }
 }
 
