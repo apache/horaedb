@@ -18,7 +18,7 @@
 //! Wal replayer
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     fmt::Display,
     ops::Range,
     sync::Arc,
@@ -451,7 +451,7 @@ impl RegionBasedReplay {
         let mut start_log_idx = 0usize;
         let mut curr_log_idx = 0usize;
         let mut start_table_id = log_batch.get(start_log_idx).unwrap().table_id;
-        let mut table_ranges = HashMap::new();
+        let mut table_ranges = BTreeMap::new();
         loop {
             let time_to_break = curr_log_idx == log_batch.len();
             let found_end_idx = if time_to_break {
@@ -485,7 +485,6 @@ impl RegionBasedReplay {
         for (table_id, ranges) in table_ranges {
             table_batches.push(TableBatch { table_id, ranges });
         }
-        table_batches.sort_by_key(|batch| batch.table_id);
     }
 }
 
