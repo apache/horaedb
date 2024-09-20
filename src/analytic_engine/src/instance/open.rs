@@ -154,6 +154,7 @@ impl Instance {
             preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
             manifest_snapshot_every_n_updates: ctx.config.manifest.snapshot_every_n_updates,
             enable_primary_key_sampling: ctx.config.enable_primary_key_sampling,
+            try_compat_old_layered_memtable_opts: ctx.config.try_compat_old_layered_memtable_opts,
             metrics_opt: ctx.config.metrics.clone(),
         });
         let manifest = ManifestImpl::open(
