@@ -22,7 +22,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use macros::define_result;
 use meta_client::{types::FetchCompactionNodeRequest, MetaClientRef};
-use snafu::{Snafu, ResultExt};
+use snafu::{ResultExt, Snafu};
 
 #[async_trait]
 pub trait RemoteCompactionNodePicker: Send + Sync {

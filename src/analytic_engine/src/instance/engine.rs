@@ -299,15 +299,14 @@ impl From<Error> for table_engine::engine::Error {
             | Error::DoManifestSnapshot { .. }
             | Error::OpenManifest { .. }
             | Error::TableNotExist { .. }
+            | Error::MetaClientNotExist { .. }
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
             | Error::PurgeWal { .. }
-            | Error::ReplayWalWithCause { .. } => Self::Unexpected {
             | Error::ReplayWalWithCause { .. }
             | Error::InvalidTableOptions { .. } => Self::Unexpected {
                 source: Box::new(err),
-            }
-            | Error::MetaClientNotExist { .. },
+            },
         }
     }
 }
