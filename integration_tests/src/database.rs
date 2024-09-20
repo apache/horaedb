@@ -264,6 +264,7 @@ impl TryFrom<&str> for Protocol {
 #[derive(Debug, Clone, Copy)]
 enum Command {
     Flush,
+    Compact,
 }
 
 impl TryFrom<&str> for Command {
@@ -272,6 +273,7 @@ impl TryFrom<&str> for Command {
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         let cmd = match s {
             "flush" => Self::Flush,
+            "compact" => Self::Compact,
             _ => return Err(format!("Unknown command:{s}")),
         };
 
@@ -303,6 +305,12 @@ impl<T: Send + Sync> Database for HoraeDB<T> {
                     println!("Flush memtable...");
                     if let Err(e) = self.execute_flush().await {
                         panic!("Execute flush command failed, err:{e}");
+                    }
+                }
+                Command::Compact => {
+                    println!("Compact table...");
+                    if let Err(e) = self.execute_compact().await {
+                        panic!("Execute compact command failed, err:{e}");
                     }
                 }
             }
@@ -354,6 +362,19 @@ impl<T> HoraeDB<T> {
 
     async fn execute_flush(&self) -> Result<(), String> {
         let url = format!("http://{}/debug/flush_memtable", self.http_client.endpoint);
+        let resp = self.http_client.client.post(url).send().await.unwrap();
+
+        if resp.status() == StatusCode::OK {
+            return Ok(());
+        }
+
+        Err(resp.text().await.unwrap_or_else(|e| format!("{e:?}")))
+    }
+
+    async fn execute_compact(&self) -> Result<(), String> {
+        // TODO(leslie): Improve code reusability. The following code is similar to
+        // `execute_flush()`.
+        let url = format!("http://{}/debug/compact_table", self.http_client.endpoint);
         let resp = self.http_client.client.post(url).send().await.unwrap();
 
         if resp.status() == StatusCode::OK {
