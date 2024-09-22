@@ -47,6 +47,7 @@ name = "read_write"
 required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb", "wal-local-storage"]
 
 [dependencies]
+anyhow = { workspace = true }
 async-trait = { workspace = true }
 bytes_ext = { workspace = true }
 chrono = { workspace = true }

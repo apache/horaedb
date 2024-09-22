@@ -54,14 +54,14 @@ impl LocalStorageImpl {
     ) -> Result<Self> {
         let LocalStorageConfig {
             cache_size,
-            max_segment_size,
+            segment_size,
             ..
         } = config.clone();
         let wal_path_str = wal_path.to_str().unwrap().to_string();
         let region_manager = RegionManager::new(
             wal_path_str.clone(),
             cache_size,
-            max_segment_size,
+            segment_size,
             runtime.clone(),
         )
         .box_err()
@@ -104,6 +104,10 @@ impl WalManager for LocalStorageImpl {
         location: WalLocation,
         sequence_num: SequenceNumber,
     ) -> Result<()> {
+        debug!(
+            "Mark delete entries up to {} for location:{:?}",
+            sequence_num, location
+        );
         self.region_manager
             .mark_delete_entries_up_to(location, sequence_num)
             .box_err()
@@ -111,10 +115,7 @@ impl WalManager for LocalStorageImpl {
     }
 
     async fn close_region(&self, region_id: RegionId) -> Result<()> {
-        debug!(
-            "Close region for LocalStorage based WAL is noop operation, region_id:{}",
-            region_id
-        );
+        debug!("Close region {} for LocalStorage based WAL", region_id);
         self.region_manager
             .close(region_id)
             .box_err()
@@ -133,10 +134,15 @@ impl WalManager for LocalStorageImpl {
         ctx: &ReadContext,
         req: &ReadRequest,
     ) -> Result<BatchLogIteratorAdapter> {
+        debug!(
+            "Read batch from LocalStorage based WAL, ctx:{:?}, req:{:?}",
+            ctx, req
+        );
         self.region_manager.read(ctx, req).box_err().context(Read)
     }
 
     async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        debug!("Write batch to LocalStorage based WAL, ctx:{:?}", ctx);
         self.region_manager
             .write(ctx, batch)
             .box_err()
@@ -144,6 +150,10 @@ impl WalManager for LocalStorageImpl {
     }
 
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
+        debug!(
+            "Scan from LocalStorage based WAL, ctx:{:?}, req:{:?}",
+            ctx, req
+        );
         self.region_manager.scan(ctx, req).box_err().context(Read)
     }
 
@@ -181,7 +191,7 @@ impl WalsOpener for LocalStorageWalsOpener {
         };
 
         let write_runtime = runtimes.write_runtime.clone();
-        let data_path = Path::new(&local_storage_wal_config.path);
+        let data_path = Path::new(&local_storage_wal_config.data_dir);
 
         let data_wal = if config.disable_data {
             Arc::new(crate::dummy::DoNothing)
