@@ -25,12 +25,12 @@ use meta_client::{types::FetchCompactionNodeRequest, MetaClientRef};
 use snafu::{ResultExt, Snafu};
 
 #[async_trait]
-pub trait RemoteCompactionNodePicker: Send + Sync {
+pub trait CompactionNodePicker: Send + Sync {
     /// Get the addr of the remote compaction node.
     async fn get_compaction_node(&self) -> Result<String>;
 }
 
-pub type RemoteCompactionNodePickerRef = Arc<dyn RemoteCompactionNodePicker>;
+pub type RemoteCompactionNodePickerRef = Arc<dyn CompactionNodePicker>;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -41,13 +41,13 @@ pub enum Error {
 define_result!(Error);
 
 /// RemoteCompactionNodePickerImpl is an implementation of
-/// [`RemoteCompactionNodePicker`] based [`MetaClient`].
+/// [`CompactionNodePicker`] based [`MetaClient`].
 pub struct RemoteCompactionNodePickerImpl {
     pub meta_client: MetaClientRef,
 }
 
 #[async_trait]
-impl RemoteCompactionNodePicker for RemoteCompactionNodePickerImpl {
+impl CompactionNodePicker for RemoteCompactionNodePickerImpl {
     /// Get proper remote compaction node info for compaction offload with meta
     /// client.
     async fn get_compaction_node(&self) -> Result<String> {
@@ -60,5 +60,19 @@ impl RemoteCompactionNodePicker for RemoteCompactionNodePickerImpl {
 
         let compaction_node_addr = resp.endpoint;
         Ok(compaction_node_addr)
+    }
+}
+
+/// LocalCompactionNodePickerImpl is an implementation of
+/// [`CompactionNodePicker`] mainly used for testing.
+pub struct LocalCompactionNodePickerImpl {
+    endpoint: String,
+}
+
+#[async_trait]
+impl CompactionNodePicker for LocalCompactionNodePickerImpl {
+    /// Return the local addr and port of grpc service.
+    async fn get_compaction_node(&self) -> Result<String> {
+        Ok(self.endpoint.clone())
     }
 }
