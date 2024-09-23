@@ -22,7 +22,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use macros::define_result;
 use meta_client::{types::FetchCompactionNodeRequest, MetaClientRef};
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum NodePicker {
+    // Local node picker that specifies the local endpoint.
+    // The endpoint in the form `addr:port`.
+    Local(String),
+    Remote,
+}
 
 #[async_trait]
 pub trait CompactionNodePicker: Send + Sync {
@@ -66,7 +75,7 @@ impl CompactionNodePicker for RemoteCompactionNodePickerImpl {
 /// LocalCompactionNodePickerImpl is an implementation of
 /// [`CompactionNodePicker`] mainly used for testing.
 pub struct LocalCompactionNodePickerImpl {
-    endpoint: String,
+    pub endpoint: String,
 }
 
 #[async_trait]

@@ -33,9 +33,12 @@ use wal::manager::WalManagerRef;
 use crate::{
     compaction::{
         runner::{
-            local_runner::LocalCompactionRunner, node_picker::RemoteCompactionNodePickerImpl,
-            remote_runner::RemoteCompactionRunner, CompactionRunner, CompactionRunnerPtr,
-            CompactionRunnerRef,
+            local_runner::LocalCompactionRunner,
+            node_picker::{
+                LocalCompactionNodePickerImpl, NodePicker, RemoteCompactionNodePickerImpl,
+            },
+            remote_runner::RemoteCompactionRunner,
+            CompactionRunner, CompactionRunnerPtr, CompactionRunnerRef,
         },
         scheduler::SchedulerImpl,
     },
@@ -57,7 +60,7 @@ use crate::{
     },
     table::data::{TableCatalogInfo, TableDataRef},
     table_meta_set_impl::TableMetaSetImpl,
-    RecoverMode,
+    CompactionMode, RecoverMode,
 };
 
 pub(crate) struct InstanceContext {
@@ -76,17 +79,25 @@ impl InstanceContext {
         meta_client: Option<MetaClientRef>,
     ) -> Result<Self> {
         info!(
-            "Construct compaction runner with compaction_offload:{}",
-            ctx.config.compaction_offload
+            "Construct compaction runner with compaction_mode:{:?}",
+            ctx.config.compaction_mode
         );
 
-        let compaction_runner: CompactionRunnerPtr = match ctx.config.compaction_offload {
-            true => Box::new(RemoteCompactionRunner {
+        let compaction_runner: CompactionRunnerPtr = match &ctx.config.compaction_mode {
+            CompactionMode::Offload(NodePicker::Local(endpoint)) => {
+                Box::new(RemoteCompactionRunner {
+                    node_picker: Arc::new(LocalCompactionNodePickerImpl {
+                        endpoint: endpoint.clone(),
+                    }),
+                })
+            }
+            CompactionMode::Offload(NodePicker::Remote) => Box::new(RemoteCompactionRunner {
                 node_picker: Arc::new(RemoteCompactionNodePickerImpl {
                     meta_client: meta_client.context(MetaClientNotExist)?,
                 }),
             }),
-            false => Box::new(LocalCompactionRunner::new(
+
+            CompactionMode::Local => Box::new(LocalCompactionRunner::new(
                 ctx.runtimes.compact_runtime.clone(),
                 &ctx.config,
                 sst_factory.clone(),

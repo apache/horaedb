@@ -98,7 +98,7 @@ pub struct EngineBuilder<'a> {
     pub config: &'a Config,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
-    // Meta client is needed when compaction offload.
+    // Meta client is needed when compaction offload with remote node picker.
     pub meta_client: Option<MetaClientRef>,
     pub node_type: NodeType,
 }
