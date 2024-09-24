@@ -523,7 +523,6 @@ impl<T: WalsOpener> TestContext<T> {
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
             meta_client: None,
-            node_type: common_types::cluster::NodeType::HoraeDB,
         };
         self.opened_wals = Some(opened_wals);
 

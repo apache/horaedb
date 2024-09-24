@@ -26,7 +26,7 @@ use std::{
 
 use analytic_engine::compaction::runner::CompactionRunnerRef;
 use cluster::ClusterRef;
-use common_types::{cluster::NodeType, column_schema};
+use common_types::column_schema;
 use compaction_service::CompactionServiceImpl;
 use futures::FutureExt;
 use generic_error::GenericError;
@@ -332,32 +332,27 @@ impl Builder {
         self.cluster
             .map(|v| {
                 let result: Result<()> = (|| {
-                    match v.node_type() {
-                        NodeType::HoraeDB => {
-                            // Support meta rpc service.
-                            let opened_wals = self.opened_wals.context(MissingWals)?;
-                            let builder = meta_event_service::Builder {
-                                cluster: v,
-                                instance: instance.clone(),
-                                runtime: runtimes.meta_runtime.clone(),
-                                opened_wals,
-                            };
-                            meta_rpc_server = Some(MetaEventServiceServer::new(builder.build()));
-                        }
-                        NodeType::CompactionServer => {
-                            // Support remote rpc service.
-                            let compaction_runner =
-                                self.compaction_runner.context(MissingCompactionRunner)?;
-                            let builder = compaction_service::Builder {
-                                cluster: v,
-                                instance: instance.clone(),
-                                runtime: runtimes.compact_runtime.clone(),
-                                compaction_runner,
-                            };
-                            compaction_rpc_server =
-                                Some(CompactionServiceServer::new(builder.build()));
-                        }
-                    }
+                    // Support meta rpc service.
+                    let opened_wals = self.opened_wals.context(MissingWals)?;
+                    let builder = meta_event_service::Builder {
+                        cluster: v.clone(),
+                        instance: instance.clone(),
+                        runtime: runtimes.meta_runtime.clone(),
+                        opened_wals,
+                    };
+                    meta_rpc_server = Some(MetaEventServiceServer::new(builder.build()));
+
+                    // Support remote compaction rpc service.
+                    let compaction_runner =
+                        self.compaction_runner.context(MissingCompactionRunner)?;
+                    let builder = compaction_service::Builder {
+                        cluster: v,
+                        instance: instance.clone(),
+                        runtime: runtimes.compact_runtime.clone(),
+                        compaction_runner,
+                    };
+                    compaction_rpc_server = Some(CompactionServiceServer::new(builder.build()));
+
                     Ok(())
                 })();
                 result

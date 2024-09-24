@@ -22,7 +22,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use common_types::{cluster::NodeType, table::ShardId};
+use common_types::table::ShardId;
 use logger::{error, info};
 use meta_client::MetaClientRef;
 use object_store::ObjectStoreRef;
@@ -107,7 +107,6 @@ impl InstanceContext {
         };
 
         let local_compaction_runner: Option<Arc<dyn CompactionRunner>> =
-            if let NodeType::CompactionServer = ctx.node_type {
                 // The compaction runner for compaction node.
                 Some(Arc::new(LocalCompactionRunner::new(
                     ctx.runtimes.compact_runtime.clone(),
@@ -115,11 +114,7 @@ impl InstanceContext {
                     sst_factory.clone(),
                     store_picker.clone(),
                     ctx.meta_cache.clone(),
-                )))
-            } else {
-                None
-            };
-
+                )));
         let instance = Instance::open(
             ctx,
             manifest_storages,

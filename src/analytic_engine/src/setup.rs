@@ -19,7 +19,6 @@
 
 use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
-use common_types::cluster::NodeType;
 use futures::Future;
 use macros::define_result;
 use meta_client::MetaClientRef;
@@ -100,7 +99,6 @@ pub struct EngineBuilder<'a> {
     pub opened_wals: OpenedWals,
     // Meta client is needed when compaction offload with remote node picker.
     pub meta_client: Option<MetaClientRef>,
-    pub node_type: NodeType,
 }
 
 impl<'a> EngineBuilder<'a> {
@@ -122,7 +120,6 @@ impl<'a> EngineBuilder<'a> {
             manifest_storages,
             Arc::new(opened_storages),
             self.meta_client,
-            self.node_type,
         )
         .await?;
 
@@ -142,7 +139,6 @@ async fn build_instance_context(
     manifest_storages: ManifestStorages,
     store_picker: ObjectStorePickerRef,
     meta_client: Option<MetaClientRef>,
-    node_type: NodeType,
 ) -> Result<InstanceContext> {
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
@@ -152,7 +148,6 @@ async fn build_instance_context(
         config,
         runtimes: engine_runtimes,
         meta_cache,
-        node_type,
     };
 
     let instance_ctx = InstanceContext::new(

@@ -19,7 +19,6 @@
 
 use std::{fmt, sync::Arc};
 
-use common_types::cluster::NodeType;
 use table_engine::engine::EngineRuntimes;
 
 use crate::{sst::meta_data::cache::MetaCacheRef, Config};
@@ -34,9 +33,6 @@ pub struct OpenContext {
 
     /// Sst meta data cache.
     pub meta_cache: Option<MetaCacheRef>,
-
-    /// The type of the node.
-    pub node_type: NodeType,
 }
 
 impl fmt::Debug for OpenContext {

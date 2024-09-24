@@ -26,7 +26,6 @@ use analytic_engine::{
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
 use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
-use common_types::cluster::NodeType;
 use datafusion::execution::runtime_env::RuntimeConfig as DfRuntimeConfig;
 use df_operator::registry::{FunctionRegistry, FunctionRegistryImpl};
 use interpreters::table_manipulator::{catalog_based, meta_based};
@@ -352,7 +351,6 @@ async fn build_with_meta<T: WalsOpener>(
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
         meta_client: Some(meta_client.clone()),
-        node_type: cluster_config.node_type.clone(),
     };
     let TableEngineContext {
         table_engine,
@@ -384,10 +382,8 @@ async fn build_with_meta<T: WalsOpener>(
         .opened_wals(opened_wals)
         .router(router)
         .schema_config_provider(schema_config_provider);
-    if let NodeType::CompactionServer = cluster_config.node_type {
-        builder =
-            builder.compaction_runner(local_compaction_runner.expect("Empty compaction runner."));
-    }
+    builder = builder.compaction_runner(local_compaction_runner.expect("Empty compaction runner."));
+
     builder
 }
 
@@ -408,7 +404,6 @@ async fn build_without_meta<T: WalsOpener>(
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
         meta_client: None,
-        node_type: NodeType::HoraeDB,
     };
     let TableEngineContext { table_engine, .. } = engine_builder
         .build()
