@@ -83,6 +83,7 @@ dependencies = [
  "arc-swap 1.6.0",
  "arena",
  "arrow 49.0.0",
+ "async-scoped",
  "async-stream",
  "async-trait",
  "atomic_enum",
@@ -762,6 +763,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.48",
+]
+
+[[package]]
+name = "async-scoped"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4042078ea593edffc452eef14e99fdb2b120caa4ad9618bcdeabc4a023b98740"
+dependencies = [
+ "futures 0.3.28",
+ "pin-project",
+ "tokio",
 ]
 
 [[package]]
