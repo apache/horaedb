@@ -62,6 +62,7 @@ pub use crate::{
 ///
 /// [CompactionMode::Local] means local compaction, no offloading.
 #[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[serde(tag = "compaction_mode")]
 pub enum CompactionMode {
     #[default]
     Local,

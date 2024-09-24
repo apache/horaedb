@@ -28,8 +28,9 @@ grpc_port = 8833
 mysql_port = 23307
 deploy_mode = "Cluster"
 
-[analytic]
-compaction_offload = true
+[analytic.compaction_mode]
+compaction_mode = "Offload"
+node_picker = "Remote"
 
 [analytic.storage]
 mem_cache_capacity = '1G'

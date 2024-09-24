@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "node_picker", content = "endpoint")]
 pub enum NodePicker {
     // Local node picker that specifies the local endpoint.
     // The endpoint in the form `addr:port`.
