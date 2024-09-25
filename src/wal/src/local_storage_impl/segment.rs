@@ -33,7 +33,7 @@ use common_types::{table::TableId, SequenceNumber, MAX_SEQUENCE_NUMBER, MIN_SEQU
 use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use memmap2::{MmapMut, MmapOptions};
-use runtime::Runtime;
+use runtime::{JoinHandle, Runtime};
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 
 use crate::{
@@ -832,6 +832,7 @@ impl Region {
             Some(req.location.table_id),
             start,
             end,
+            self.runtime.clone(),
         )?;
 
         Ok(BatchLogIteratorAdapter::new_with_sync(
@@ -849,6 +850,7 @@ impl Region {
             None,
             MIN_SEQUENCE_NUMBER,
             MAX_SEQUENCE_NUMBER,
+            self.runtime.clone(),
         )?;
         Ok(BatchLogIteratorAdapter::new_with_sync(
             Box::new(iter),
@@ -1006,19 +1008,37 @@ impl RegionManager {
     }
 }
 
+fn decode_segment_content(
+    segment_content: &[u8],
+    record_positions: &[Position],
+    record_encoding: &RecordEncoding,
+) -> Result<Vec<Record>> {
+    let mut records = Vec::with_capacity(record_positions.len());
+
+    for pos in record_positions {
+        // Extract the record data from the segment content
+        let record_data = &segment_content[pos.start..pos.end];
+
+        // Decode the record
+        let record = record_encoding
+            .decode(record_data)
+            .box_err()
+            .context(InvalidRecord)?;
+        records.push(record);
+    }
+    Ok(records)
+}
+
 #[derive(Debug)]
 struct SegmentLogIterator {
     /// Encoding method for common log.
     log_encoding: CommonLogEncoding,
 
     /// Encoding method for records.
-    record_encoding: RecordEncoding,
+    _record_encoding: RecordEncoding,
 
-    /// Raw content of the segment.
-    segment_content: Vec<u8>,
-
-    /// Positions of records within the segment content.
-    record_positions: Vec<Position>,
+    /// Decoded log records in the segment.
+    records: Vec<Record>,
 
     /// Optional identifier for the table, which is used to filter logs.
     table_id: Option<TableId>,
@@ -1040,27 +1060,19 @@ struct SegmentLogIterator {
 }
 
 impl SegmentLogIterator {
-    pub fn new(
+    pub fn new_with_records(
         log_encoding: CommonLogEncoding,
         record_encoding: RecordEncoding,
-        segment: Arc<Mutex<Segment>>,
-        segment_manager: Arc<SegmentManager>,
+        records: Vec<Record>,
+        table_ranges: HashMap<TableId, (SequenceNumber, SequenceNumber)>,
         table_id: Option<TableId>,
         start: SequenceNumber,
         end: SequenceNumber,
     ) -> Result<Self> {
-        let mut guard = segment.lock().unwrap();
-        // Open the segment if it is not open
-        segment_manager.open_segment(&mut guard, segment.clone())?;
-        let segment_content = guard.read(0, guard.current_size)?;
-        let record_positions = guard.record_position.clone();
-        let table_ranges = guard.table_ranges.clone();
-
         Ok(Self {
             log_encoding,
-            record_encoding,
-            segment_content,
-            record_positions,
+            _record_encoding: record_encoding,
+            records,
             table_id,
             table_ranges,
             start,
@@ -1076,23 +1088,13 @@ impl SegmentLogIterator {
         }
 
         loop {
-            // Get the next record position
-            let Some(pos) = self.record_positions.get(self.current_record_idx) else {
+            // Get the next record
+            let Some(record) = self.records.get(self.current_record_idx) else {
                 self.no_more_data = true;
                 return Ok(None);
             };
 
             self.current_record_idx += 1;
-
-            // Extract the record data from the segment content
-            let record_data = &self.segment_content[pos.start..pos.end];
-
-            // Decode the record
-            let record = self
-                .record_encoding
-                .decode(record_data)
-                .box_err()
-                .context(InvalidRecord)?;
 
             // Filter by sequence number
             if record.sequence_num < self.start {
@@ -1122,7 +1124,7 @@ impl SegmentLogIterator {
             // Decode the value
             let value = self
                 .log_encoding
-                .decode_value(record.value)
+                .decode_value(&record.value)
                 .box_err()
                 .context(InvalidRecord)?;
 
@@ -1150,6 +1152,9 @@ pub struct MultiSegmentLogIterator {
     /// Current segment iterator.
     current_iterator: Option<SegmentLogIterator>,
 
+    /// Future iterator for preloading the next segment.
+    next_iterator_future: Option<JoinHandle<Result<SegmentLogIterator>>>,
+
     /// Encoding method for common log.
     log_encoding: CommonLogEncoding,
 
@@ -1167,6 +1172,9 @@ pub struct MultiSegmentLogIterator {
 
     /// The raw payload data of the current record.
     current_payload: Vec<u8>,
+
+    /// Runtime for preloading segments
+    runtime: Arc<Runtime>,
 }
 
 impl MultiSegmentLogIterator {
@@ -1177,6 +1185,7 @@ impl MultiSegmentLogIterator {
         table_id: Option<TableId>,
         start: SequenceNumber,
         end: SequenceNumber,
+        runtime: Arc<Runtime>,
     ) -> Result<Self> {
         let relevant_segments = segment_manager.get_relevant_segments(table_id, start, end)?;
 
@@ -1185,12 +1194,14 @@ impl MultiSegmentLogIterator {
             segments: relevant_segments,
             current_segment_idx: 0,
             current_iterator: None,
+            next_iterator_future: None,
             log_encoding,
             record_encoding,
             table_id,
             start,
             end,
             current_payload: Vec::new(),
+            runtime,
         };
 
         // Load the first segment iterator
@@ -1199,25 +1210,87 @@ impl MultiSegmentLogIterator {
         Ok(iter)
     }
 
+    fn preload_next_segment(&mut self) {
+        if self.current_segment_idx >= self.segments.len() {
+            return;
+        }
+
+        let next_segment_idx = self.current_segment_idx;
+        let segment = self.segments[next_segment_idx].clone();
+        let segment_manager = self.segment_manager.clone();
+        let log_encoding = self.log_encoding.clone();
+        let record_encoding = self.record_encoding.clone();
+        let table_id = self.table_id;
+        let start = self.start;
+        let end = self.end;
+
+        // Spawn an async task to preload the next SegmentLogIterator
+        let handle = self.runtime.spawn(async move {
+            let mut guard = segment.lock().unwrap();
+            // Open the segment if it is not open
+            segment_manager.open_segment(&mut guard, segment.clone())?;
+            let segment_content = guard.read(0, guard.current_size)?;
+            let table_ranges = guard.table_ranges.clone();
+            let records =
+                decode_segment_content(&segment_content, &guard.record_position, &record_encoding)?;
+            let iterator = SegmentLogIterator::new_with_records(
+                log_encoding,
+                record_encoding,
+                records,
+                table_ranges,
+                table_id,
+                start,
+                end,
+            )?;
+            Ok(iterator)
+        });
+
+        self.next_iterator_future = Some(handle);
+    }
+
     fn load_next_segment_iterator(&mut self) -> Result<bool> {
         if self.current_segment_idx >= self.segments.len() {
             self.current_iterator = None;
             return Ok(false);
         }
 
-        let segment = self.segments[self.current_segment_idx].clone();
-        let iterator = SegmentLogIterator::new(
-            self.log_encoding.clone(),
-            self.record_encoding.clone(),
-            segment,
-            self.segment_manager.clone(),
-            self.table_id,
-            self.start,
-            self.end,
-        )?;
+        if let Some(handle) = self.next_iterator_future.take() {
+            // Wait for the future to complete
+            let iterator = self
+                .runtime
+                .block_on(handle)
+                .map_err(anyhow::Error::new)
+                .context(Internal)??;
+            self.current_iterator = Some(iterator);
+            self.current_segment_idx += 1;
+        } else {
+            // Preload was not set, load synchronously
+            let segment = self.segments[self.current_segment_idx].clone();
+            let mut guard = segment.lock().unwrap();
+            self.segment_manager
+                .open_segment(&mut guard, segment.clone())?;
+            let segment_content = guard.read(0, guard.current_size)?;
+            let table_ranges = guard.table_ranges.clone();
+            let records = decode_segment_content(
+                &segment_content,
+                &guard.record_position,
+                &self.record_encoding,
+            )?;
+            let iterator = SegmentLogIterator::new_with_records(
+                self.log_encoding.clone(),
+                self.record_encoding.clone(),
+                records,
+                table_ranges,
+                self.table_id,
+                self.start,
+                self.end,
+            )?;
+            self.current_iterator = Some(iterator);
+            self.current_segment_idx += 1;
+        }
 
-        self.current_iterator = Some(iterator);
-        self.current_segment_idx += 1;
+        // Preload the next segment
+        self.preload_next_segment();
 
         Ok(true)
     }
