@@ -41,6 +41,9 @@ data_dir = "/tmp/horaedb1"
 type = "RocksDB"
 data_dir = "/tmp/horaedb1"
 
+[analytic.compaction_mode]
+compaction_mode = "Local"
+
 [cluster_deployment]
 mode = "WithMeta"
 cmd_channel_buffer_size = 10

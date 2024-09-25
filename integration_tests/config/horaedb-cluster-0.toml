@@ -40,6 +40,11 @@ data_dir = "/tmp/horaedb0"
 type = "RocksDB"
 data_dir = "/tmp/horaedb0"
 
+[analytic.compaction_mode]
+compaction_mode = "Offload"
+node_picker = "Local"
+endpoint = "127.0.0.1:8831"
+
 [cluster_deployment]
 mode = "WithMeta"
 cmd_channel_buffer_size = 10
