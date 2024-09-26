@@ -31,7 +31,6 @@ use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
 use runtime::Runtime;
 use snafu::ResultExt;
 
-
 use crate::{
     config::Config,
     log_batch::{LogEntry, LogWriteBatch, PayloadDecodeContext, PayloadDecoder},
