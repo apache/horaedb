@@ -18,6 +18,7 @@
 //! Manage meta data of the engine
 
 pub mod details;
+pub mod error;
 pub mod meta_edit;
 pub mod meta_snapshot;
 
@@ -25,10 +26,14 @@ use std::{fmt, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::table::ShardId;
+pub use error::Error;
 use generic_error::GenericResult;
+use macros::define_result;
 use table_engine::table::TableId;
 
 use crate::{manifest::meta_edit::MetaEditRequest, space::SpaceId, table::data::TableCatalogInfo};
+
+define_result!(error::Error);
 
 #[derive(Debug)]
 pub struct LoadRequest {

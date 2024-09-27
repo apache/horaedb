@@ -31,7 +31,7 @@ use common_types::{
     schema::Schema,
 };
 use logger::info;
-use object_store::{LocalFileSystem, ObjectStoreRef, Path};
+use object_store::{local_file, ObjectStoreRef, Path};
 use runtime::Runtime;
 
 use crate::{config::SstBenchConfig, util};
@@ -50,7 +50,7 @@ impl SstBench {
     pub fn new(config: SstBenchConfig) -> Self {
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
 
-        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
+        let store = Arc::new(local_file::try_new_with_default(config.store_path).unwrap()) as _;
         let sst_path = Path::from(config.sst_file_name.clone());
         let meta_cache: Option<MetaCacheRef> = config
             .sst_meta_cache_cap

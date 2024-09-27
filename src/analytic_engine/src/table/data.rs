@@ -44,7 +44,7 @@ use id_allocator::IdAllocator;
 use logger::{debug, info};
 use macros::define_result;
 use object_store::Path;
-use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::table::{SchemaId, TableId};
 use time_ext::ReadableDuration;
 
@@ -68,6 +68,7 @@ use crate::{
         sst_util,
         version::{MemTableForWrite, MemTableState, SamplingMemTable, TableVersion},
     },
+    table_options::UpdateMode,
     MetricsOptions, TableOptions,
 };
 
@@ -95,6 +96,9 @@ pub enum Error {
 
     #[snafu(display("Failed to alloc file id, err:{}", source))]
     AllocFileId { source: GenericError },
+
+    #[snafu(display("Found invalid table opts, msg:{msg}.\nBacktrace:\n{backtrace}"))]
+    InvalidTableOpts { msg: String, backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -152,6 +156,7 @@ pub struct TableConfig {
     pub manifest_snapshot_every_n_updates: NonZeroUsize,
     pub metrics_opt: MetricsOptions,
     pub enable_primary_key_sampling: bool,
+    pub try_compat_old_layered_memtable_opts: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -311,11 +316,13 @@ impl TableData {
             name,
             schema,
         } = desc;
+
         let TableConfig {
             preflush_write_buffer_size_ratio,
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
+            ..
         } = config;
 
         let memtable_factory: MemTableFactoryRef = match opts.memtable_type {
@@ -323,13 +330,20 @@ impl TableData {
             MemtableType::Column => Arc::new(ColumnarMemTableFactory),
         };
 
-        // Wrap it by `LayeredMemtable`.
-        let mutable_segment_switch_threshold = opts
-            .layered_memtable_opts
-            .mutable_segment_switch_threshold
-            .0 as usize;
-        let enable_layered_memtable = mutable_segment_switch_threshold > 0;
+        let enable_layered_memtable = opts.layered_memtable_opts.enable;
         let memtable_factory = if enable_layered_memtable {
+            let mutable_segment_switch_threshold = opts
+                .layered_memtable_opts
+                .mutable_segment_switch_threshold
+                .0 as usize;
+
+            ensure!(
+                mutable_segment_switch_threshold > 0,
+                InvalidTableOpts {
+                    msg: "layered memtable is enabled but mutable_switch_threshold is 0",
+                }
+            );
+
             Arc::new(LayeredMemtableFactory::new(
                 memtable_factory,
                 mutable_segment_switch_threshold,
@@ -396,6 +410,7 @@ impl TableData {
             manifest_snapshot_every_n_updates,
             metrics_opt,
             enable_primary_key_sampling,
+            try_compat_old_layered_memtable_opts,
         } = config;
 
         let memtable_factory: MemTableFactoryRef = match add_meta.opts.memtable_type {
@@ -403,17 +418,39 @@ impl TableData {
             MemtableType::Column => Arc::new(ColumnarMemTableFactory),
         };
         // Maybe wrap it by `LayeredMemtable`.
-        let mutable_segment_switch_threshold = add_meta
-            .opts
-            .layered_memtable_opts
-            .mutable_segment_switch_threshold
-            .0 as usize;
-        let enable_layered_memtable = mutable_segment_switch_threshold > 0;
+        let enable_layered_memtable = add_meta.opts.layered_memtable_opts.enable;
         let memtable_factory = if enable_layered_memtable {
-            Arc::new(LayeredMemtableFactory::new(
-                memtable_factory,
-                mutable_segment_switch_threshold,
-            )) as _
+            let mutable_segment_switch_threshold = add_meta
+                .opts
+                .layered_memtable_opts
+                .mutable_segment_switch_threshold
+                .0 as usize;
+
+            if mutable_segment_switch_threshold > 0 {
+                ensure!(
+                    add_meta.opts.update_mode != UpdateMode::Overwrite,
+                    InvalidTableOpts {
+                        msg: "layered memtable is enabled but update mode is Overwrite",
+                    }
+                );
+
+                Arc::new(LayeredMemtableFactory::new(
+                    memtable_factory,
+                    mutable_segment_switch_threshold,
+                )) as _
+            } else if try_compat_old_layered_memtable_opts {
+                // Maybe some old layered memtable opts controlling the on/off of this feature
+                // by checking `mutable_segment_switch_threshold`(`0`:disable, `>0`:enable)
+                // were persisted.
+                // If `try_compat_old_layered_memtable_opts` is true, we will try to follow the
+                // old behavior.
+                memtable_factory as _
+            } else {
+                return InvalidTableOpts {
+                    msg: "layered memtable is enabled but mutable_switch_threshold is 0",
+                }
+                .fail();
+            }
         } else {
             memtable_factory as _
         };
@@ -1010,6 +1047,7 @@ pub mod tests {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: MetricsOptions::default(),
                     enable_primary_key_sampling: false,
+                    try_compat_old_layered_memtable_opts: false,
                 },
                 &purger,
                 mem_size_options,

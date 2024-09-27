@@ -1,0 +1,68 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Metric Engine CI
+
+on:
+  merge_group:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - 'horaedb/**'
+  pull_request:
+    paths:
+      - 'horaedb/**'
+
+# Common environment variables
+env:
+  RUSTFLAGS: "-C debuginfo=1"
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  LOCK_FILE: Cargo.lock
+  RUST_VERSION: nightly-2024-01-28
+
+jobs:
+  style-check:
+    name: style-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${RUST_VERSION} --profile minimal
+      - name: Release Disk Quota
+        run: |
+          sudo make ensure-disk-quota
+      - name: Install check binaries
+        run: |
+          rustup component add clippy
+          rustup component add rustfmt
+          cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
+      - name: Run Style Check
+        working-directory: horaedb
+        run: |
+          make fmt sort clippy
+      - name: Check lock
+        working-directory: horaedb
+        run: |
+          git diff --exit-code

@@ -1,0 +1,58 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+[workspace.package]
+version = "2.0.0"
+authors = ["HoraeDB Authors"]
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace]
+resolver = "2"
+members = ["metric_engine", "server"]
+
+[workspace.dependencies]
+anyhow = { version = "1.0" }
+metric_engine = { path = "metric_engine" }
+thiserror = "1"
+datafusion = "41"
+parquet = { version = "53" }
+object_store = { version = "0.11" }
+arrow = { version = "53", features = ["prettyprint"] }
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+async-stream = "0.3"
+futures = "0.3"
+itertools = "0.3"
+lazy_static = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# This profile optimizes for good runtime performance.
+[profile.release]
+# reference: https://doc.rust-lang.org/rustc/codegen-options/index.html#codegen-units
+codegen-units = 1
+debug = true
+overflow-checks = true
+
+# This profile is used to produce a smaller (no symbols) binary with a little bit poorer performance,
+# but with a faster speed and low memory consumption required by compiling.
+[profile.release-slim]
+inherits = "release"
+codegen-units = 16
+debug = false
+strip = true

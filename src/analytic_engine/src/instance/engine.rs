@@ -218,9 +218,7 @@ pub enum Error {
     CreateOpenFailedTable { table: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
-    OpenManifest {
-        source: crate::manifest::details::Error,
-    },
+    OpenManifest { source: crate::manifest::Error },
 
     #[snafu(display("Failed to find table, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
     TableNotExist { msg: String, backtrace: Backtrace },
@@ -244,6 +242,12 @@ pub enum Error {
         "Try to create a random partition table in overwrite mode, table:{table}.\nBacktrace:\n{backtrace}",
     ))]
     TryCreateRandomPartitionTableInOverwriteMode { table: String, backtrace: Backtrace },
+
+    #[snafu(display("Found invalid table options, reason:{reason}.\nBacktrace:\n{backtrace}",))]
+    InvalidTableOptions {
+        reason: String,
+        backtrace: Backtrace,
+    },
 
     #[snafu(display(
         "Failed to purge wal, wal_location:{:?}, sequence:{}",
@@ -292,7 +296,8 @@ impl From<Error> for table_engine::engine::Error {
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
             | Error::PurgeWal { .. }
-            | Error::ReplayWalWithCause { .. } => Self::Unexpected {
+            | Error::ReplayWalWithCause { .. }
+            | Error::InvalidTableOptions { .. } => Self::Unexpected {
                 source: Box::new(err),
             },
         }

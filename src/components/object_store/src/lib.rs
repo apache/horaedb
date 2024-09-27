@@ -19,18 +19,19 @@
 
 use std::sync::Arc;
 
+pub use opendal::Error as OpenDalError;
 pub use upstream::{
-    local::LocalFileSystem, path::Path, Error as ObjectStoreError, GetResult, ListResult,
-    ObjectMeta, ObjectStore,
+    path::Path, Error as ObjectStoreError, GetResult, ListResult, ObjectMeta, ObjectStore,
+    PutPayloadMut,
 };
 
 pub mod aliyun;
 pub mod config;
 pub mod disk_cache;
+pub mod local_file;
 pub mod mem_cache;
 pub mod metrics;
-pub mod multipart;
-pub mod obkv;
+pub mod multi_part;
 pub mod prefix;
 pub mod s3;
 #[cfg(test)]

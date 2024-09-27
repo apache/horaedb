@@ -19,18 +19,14 @@
 
 use std::{fmt, num::NonZeroUsize, sync::Arc};
 
-use generic_error::BoxError;
+use anyhow::Context;
 use id_allocator::IdAllocator;
 use logger::debug;
-use snafu::{OptionExt, ResultExt};
 use table_engine::table::TableId;
 
 use crate::{
     manifest::{
-        details::{
-            ApplySnapshotToTableWithCause, ApplyUpdateToTableNoCause, ApplyUpdateToTableWithCause,
-            BuildSnapshotNoCause, TableMetaSet,
-        },
+        details::TableMetaSet,
         meta_edit::{
             self, AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEditRequest,
             MetaUpdate, VersionEditMeta,
@@ -58,6 +54,7 @@ pub(crate) struct TableMetaSetImpl {
     pub(crate) preflush_write_buffer_size_ratio: f32,
     pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,
     pub(crate) enable_primary_key_sampling: bool,
+    pub(crate) try_compat_old_layered_memtable_opts: bool,
     pub(crate) metrics_opt: MetricsOptions,
 }
 
@@ -78,32 +75,22 @@ impl TableMetaSetImpl {
         space_id: SpaceId,
         table_key: TableKey<'_>,
         apply_edit: F,
-    ) -> crate::manifest::details::Result<TableDataRef>
+    ) -> crate::manifest::Result<TableDataRef>
     where
-        F: FnOnce(SpaceRef, TableDataRef) -> crate::manifest::details::Result<()>,
+        F: FnOnce(SpaceRef, TableDataRef) -> crate::manifest::Result<()>,
     {
         let spaces = self.spaces.read().unwrap();
         let space = spaces
             .get_by_id(space_id)
-            .with_context(|| ApplyUpdateToTableNoCause {
-                msg: format!("space not found, space_id:{space_id}"),
-            })?;
+            .ok_or_else(|| anyhow::anyhow!("space not found, space_id:{space_id}"))?;
 
         let table_data = match table_key {
-            TableKey::Name(name) => {
-                space
-                    .find_table(name)
-                    .with_context(|| ApplyUpdateToTableNoCause {
-                        msg: format!("table not found, space_id:{space_id}, table_name:{name}"),
-                    })?
-            }
-            TableKey::Id(id) => {
-                space
-                    .find_table_by_id(id)
-                    .with_context(|| ApplyUpdateToTableNoCause {
-                        msg: format!("table not found, space_id:{space_id}, table_id:{id}"),
-                    })?
-            }
+            TableKey::Name(name) => space.find_table(name).ok_or_else(|| {
+                anyhow::anyhow!("table not found, space_id:{space_id}, table_name:{name}")
+            })?,
+            TableKey::Id(id) => space.find_table_by_id(id).ok_or_else(|| {
+                anyhow::anyhow!("table not found, space_id:{space_id}, table_id:{id}")
+            })?,
         };
 
         apply_edit(space.clone(), table_data.clone())?;
@@ -116,7 +103,7 @@ impl TableMetaSetImpl {
         meta_update: MetaUpdate,
         shard_info: TableShardInfo,
         table_catalog_info: TableCatalogInfo,
-    ) -> crate::manifest::details::Result<TableDataRef> {
+    ) -> crate::manifest::Result<TableDataRef> {
         match meta_update {
             MetaUpdate::AddTable(AddTableMeta {
                 space_id,
@@ -126,12 +113,9 @@ impl TableMetaSetImpl {
                 opts,
             }) => {
                 let spaces = self.spaces.read().unwrap();
-                let space =
-                    spaces
-                        .get_by_id(space_id)
-                        .with_context(|| ApplyUpdateToTableNoCause {
-                            msg: format!("space not found, space_id:{space_id}"),
-                        })?;
+                let space = spaces
+                    .get_by_id(space_id)
+                    .ok_or_else(|| anyhow::anyhow!("space not found, space_id:{space_id}"))?;
 
                 let mem_size_options = MemSizeOptions {
                     collector: space.mem_usage_collector.clone(),
@@ -157,17 +141,16 @@ impl TableMetaSetImpl {
                                 .manifest_snapshot_every_n_updates,
                             metrics_opt: self.metrics_opt.clone(),
                             enable_primary_key_sampling: self.enable_primary_key_sampling,
+                            try_compat_old_layered_memtable_opts: self
+                                .try_compat_old_layered_memtable_opts,
                         },
                         &self.file_purger,
                         mem_size_options,
                     )
-                    .box_err()
-                    .with_context(|| ApplyUpdateToTableWithCause {
-                        msg: format!(
-                            "failed to new table data, space_id:{}, table_id:{}",
-                            space.id, table_id
-                        ),
-                    })?,
+                    .context(format!(
+                        "failed to new table data, space_id:{}, table_id:{}",
+                        space.id, table_id
+                    ))?,
                 );
 
                 space.insert_table(table_data.clone());
@@ -253,7 +236,7 @@ impl TableMetaSetImpl {
         meta_snapshot: MetaSnapshot,
         shard_info: TableShardInfo,
         table_catalog_info: TableCatalogInfo,
-    ) -> crate::manifest::details::Result<TableDataRef> {
+    ) -> crate::manifest::Result<TableDataRef> {
         debug!("TableMetaSet apply snapshot, snapshot :{:?}", meta_snapshot);
 
         let MetaSnapshot {
@@ -265,9 +248,7 @@ impl TableMetaSetImpl {
         let spaces = self.spaces.read().unwrap();
         let space = spaces
             .get_by_id(space_id)
-            .with_context(|| ApplyUpdateToTableNoCause {
-                msg: format!("space not found, space_id:{space_id}"),
-            })?;
+            .ok_or_else(|| anyhow::anyhow!("space not found, space_id:{space_id}"))?;
 
         // Apply max file id to the allocator
         let allocator = match version_meta.clone() {
@@ -293,18 +274,16 @@ impl TableMetaSetImpl {
                     manifest_snapshot_every_n_updates: self.manifest_snapshot_every_n_updates,
                     metrics_opt: self.metrics_opt.clone(),
                     enable_primary_key_sampling: self.enable_primary_key_sampling,
+                    try_compat_old_layered_memtable_opts: self.try_compat_old_layered_memtable_opts,
                 },
                 mem_size_options,
                 allocator,
                 table_catalog_info,
             )
-            .box_err()
-            .with_context(|| ApplySnapshotToTableWithCause {
-                msg: format!(
-                    "failed to new table_data, space_id:{}, table_name:{}",
-                    space.id, table_name
-                ),
-            })?,
+            .context(format!(
+                "failed to new table_data, space_id:{}, table_name:{}",
+                space.id, table_name
+            ))?,
         );
 
         // Apply version meta to the table.
@@ -333,17 +312,19 @@ impl TableMetaSet for TableMetaSetImpl {
         &self,
         space_id: SpaceId,
         table_id: TableId,
-    ) -> crate::manifest::details::Result<Option<MetaSnapshot>> {
+    ) -> crate::manifest::Result<Option<MetaSnapshot>> {
         let table_data = {
             let spaces = self.spaces.read().unwrap();
             spaces
                 .get_by_id(space_id)
-                .context(BuildSnapshotNoCause {
-                    msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
+                .ok_or_else(|| {
+                    anyhow::anyhow!("space not exist, space_id:{space_id}, table_id:{table_id}")
                 })?
                 .find_table_by_id(table_id)
-                .context(BuildSnapshotNoCause {
-                    msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "table data not exist, space_id:{space_id}, table_id:{table_id}"
+                    )
                 })?
         };
 
@@ -383,7 +364,7 @@ impl TableMetaSet for TableMetaSetImpl {
     fn apply_edit_to_table(
         &self,
         request: crate::manifest::meta_edit::MetaEditRequest,
-    ) -> crate::manifest::details::Result<TableDataRef> {
+    ) -> crate::manifest::Result<TableDataRef> {
         let MetaEditRequest {
             shard_info,
             meta_edit,

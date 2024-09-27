@@ -5,14 +5,14 @@ To make the process easier and more valuable for everyone involved we have a few
 
 ## Submitting Issues and Feature Requests
 
-Before you file an [issue](https://github.com/apache/incubator-horaedb/issues/new), please search existing issues in case the same or similar issues have already been filed.
+Before you file an [issue](https://github.com/apache/horaedb/issues/new), please search existing issues in case the same or similar issues have already been filed.
 If you find an existing open ticket covering your issue then please avoid adding "👍" or "me too" comments; GitHub notifications can cause a lot of noise for the project maintainers who triage the back-log.
 However, if you have a new piece of information for an existing ticket, and you think it may help the investigation or resolution, then please do add it as a comment!
 You can signal to the team that you're experiencing an existing issue with one of GitHub's emoji reactions (these are a good way to add "weight" to an issue from a prioritisation perspective).
 
 ### Submitting an Issue
 
-The [New Issue](https://github.com/apache/incubator-horaedb/issues/new) page has templates for both bug reports and feature requests.
+The [New Issue](https://github.com/apache/horaedb/issues/new) page has templates for both bug reports and feature requests.
 Please fill one of them out!
 The issue templates provide details on what information we will find useful to help us fix an issue.
 In short though, the more information you can provide us about your environment and what behaviour you're seeing, the easier we can fix the issue.
@@ -31,14 +31,14 @@ All code must adhere to the `rustfmt` format, and pass all of the `clippy` check
 
 To open a PR you will need to have a GitHub account.
 Fork the `horaedb` repo and work on a branch on your fork.
-When you have completed your changes, or you want some incremental feedback make a Pull Request to HoraeDB [here](https://github.com/apache/incubator-horaedb/compare).
+When you have completed your changes, or you want some incremental feedback make a Pull Request to HoraeDB [here](https://github.com/apache/horaedb/compare).
 
 If you want to discuss some work in progress then please prefix `[WIP]` to the
 PR title.
 
 For PRs that you consider ready for review, verify the following locally before you submit it:
 
-* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://horaedb.apache.org/dev/conventional_commit.html) specification;
+* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://horaedb.apache.org/docs/dev/conventional_commit/) specification;
 * all the tests and/or benchmarks pass, including documentation tests;
 * the code is correctly formatted and all `clippy` checks pass; and
 * you haven't left any "code cruft" (commented out code blocks etc).

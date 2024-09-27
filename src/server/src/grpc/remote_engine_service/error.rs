@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Error definitions for meta event service.
+//! Error definitions for remote engine service.
 
 use generic_error::GenericError;
 use horaedbproto::common::ResponseHeader;

@@ -255,7 +255,6 @@ impl Service {
             .or(self.wal_stats())
             .or(self.query_push_down())
             .or(self.slow_threshold())
-            .with(warp::log("http_requests"))
             .with(warp::log::custom(|info| {
                 let path = info.path();
                 // Don't record /debug API

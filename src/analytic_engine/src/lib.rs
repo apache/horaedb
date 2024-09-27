@@ -69,6 +69,12 @@ pub struct Config {
     /// Default options for table
     pub table_opts: TableOptions,
 
+    /// Should we try to compat the `LayeredMemtableOptions` in `TableOptions`
+    /// The old one use if `mutable_segment_switch_threshold` > 0 to control
+    /// the on/off of layered memtable(`0`:off, `>0`:on).
+    /// The new one use a explicit flag `enable` to do that.
+    pub try_compat_old_layered_memtable_opts: bool,
+
     pub compaction: SchedulerConfig,
 
     /// sst meta cache capacity
@@ -88,10 +94,6 @@ pub struct Config {
     /// The ratio of table's write buffer size to trigger preflush, and it
     /// should be in the range (0, 1].
     pub preflush_write_buffer_size_ratio: f32,
-
-    /// The threshold to trigger switching mutable segment of memtable.
-    /// If it is zero, disable the layered memtable.
-    pub mutable_segment_switch_threshold: ReadableSize,
 
     pub enable_primary_key_sampling: bool,
 
@@ -183,6 +185,7 @@ impl Default for Config {
             replay_batch_size: 500,
             max_replay_tables_per_batch: 64,
             table_opts: TableOptions::default(),
+            try_compat_old_layered_memtable_opts: false,
             compaction: SchedulerConfig::default(),
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
@@ -208,9 +211,8 @@ impl Default for Config {
             wal_encode: WalEncodeConfig::default(),
             wal: WalConfig::default(),
             remote_engine_client: remote_engine_client::config::Config::default(),
-            recover_mode: RecoverMode::TableBased,
+            recover_mode: RecoverMode::ShardBased,
             metrics: MetricsOptions::default(),
-            mutable_segment_switch_threshold: ReadableSize::mb(3),
         }
     }
 }

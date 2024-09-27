@@ -22,6 +22,8 @@
 pub mod config;
 mod dummy;
 pub mod kv_encoder;
+#[cfg(feature = "wal-local-storage")]
+pub mod local_storage_impl;
 pub mod log_batch;
 pub mod manager;
 #[cfg(feature = "wal-message-queue")]

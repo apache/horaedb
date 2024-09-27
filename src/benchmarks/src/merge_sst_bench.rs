@@ -38,7 +38,7 @@ use analytic_engine::{
 };
 use common_types::{projected_schema::ProjectedSchema, request_id::RequestId, schema::Schema};
 use logger::info;
-use object_store::{LocalFileSystem, ObjectStoreRef};
+use object_store::{local_file, ObjectStoreRef};
 use runtime::Runtime;
 use table_engine::{predicate::Predicate, table::TableId};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -65,7 +65,8 @@ impl MergeSstBench {
     pub fn new(config: MergeSstBenchConfig) -> Self {
         assert!(!config.sst_file_ids.is_empty());
 
-        let store = Arc::new(LocalFileSystem::new_with_prefix(config.store_path).unwrap()) as _;
+        let store = Arc::new(local_file::try_new_with_default(config.store_path).unwrap()) as _;
+
         let runtime = Arc::new(util::new_runtime(config.runtime_thread_num));
         let space_id = config.space_id;
         let table_id = config.table_id;
