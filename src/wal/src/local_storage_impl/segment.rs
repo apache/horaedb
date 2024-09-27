@@ -1153,7 +1153,7 @@ pub struct MultiSegmentLogIterator {
     current_iterator: Option<SegmentLogIterator>,
 
     /// Future iterator for preloading the next segment.
-    next_iterator_future: Option<JoinHandle<Result<SegmentLogIterator>>>,
+    next_segment_iterator: Option<JoinHandle<Result<SegmentLogIterator>>>,
 
     /// Encoding method for common log.
     log_encoding: CommonLogEncoding,
@@ -1194,7 +1194,7 @@ impl MultiSegmentLogIterator {
             segments: relevant_segments,
             current_segment_idx: 0,
             current_iterator: None,
-            next_iterator_future: None,
+            next_segment_iterator: None,
             log_encoding,
             record_encoding,
             table_id,
@@ -1211,6 +1211,7 @@ impl MultiSegmentLogIterator {
     }
 
     fn preload_next_segment(&mut self) {
+        assert!(self.next_segment_iterator.is_none());
         if self.current_segment_idx >= self.segments.len() {
             return;
         }
@@ -1245,7 +1246,7 @@ impl MultiSegmentLogIterator {
             Ok(iterator)
         });
 
-        self.next_iterator_future = Some(handle);
+        self.next_segment_iterator = Some(handle);
     }
 
     fn load_next_segment_iterator(&mut self) -> Result<bool> {
@@ -1254,7 +1255,7 @@ impl MultiSegmentLogIterator {
             return Ok(false);
         }
 
-        if let Some(handle) = self.next_iterator_future.take() {
+        if let Some(handle) = self.next_segment_iterator.take() {
             // Wait for the future to complete
             let iterator = self
                 .runtime

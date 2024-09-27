@@ -73,6 +73,8 @@ lazy_static! {
     .unwrap();
 }
 
+const MAX_REPLAY_TASK_NUM: usize = 20;
+
 /// Wal replayer supporting both table based and region based
 // TODO: limit the memory usage in `RegionBased` mode.
 pub struct WalReplayer<'a> {
@@ -189,8 +191,8 @@ impl Replay for TableBasedReplay {
         };
 
         let ((), results) = async_scoped::TokioScope::scope_and_block(|scope| {
-            // Run at most 20 tasks in parallel
-            let semaphore = Arc::new(Semaphore::new(20));
+            // Limit the maximum number of concurrent tasks.
+            let semaphore = Arc::new(Semaphore::new(MAX_REPLAY_TASK_NUM));
             for table_data in table_datas {
                 let table_id = table_data.id;
                 let read_ctx = &read_ctx;
@@ -389,8 +391,8 @@ impl RegionBasedReplay {
         Self::split_log_batch_by_table(log_batch, &mut table_batches);
 
         let ((), results) = async_scoped::TokioScope::scope_and_block(|scope| {
-            // Run at most 20 tasks in parallel
-            let semaphore = Arc::new(Semaphore::new(20));
+            // Limit the maximum number of concurrent tasks.
+            let semaphore = Arc::new(Semaphore::new(MAX_REPLAY_TASK_NUM));
 
             for table_batch in table_batches {
                 // Some tables may have failed in previous replay, ignore them.
