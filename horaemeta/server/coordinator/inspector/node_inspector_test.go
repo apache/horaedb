@@ -107,7 +107,7 @@ func TestInspect(t *testing.T) {
 		{
 			Node: storage.Node{
 				Name:          "192.168.1.102",
-				NodeStats:     storage.NodeStats{Lease: 0, Zone: "", NodeVersion: ""},
+				NodeStats:     storage.NodeStats{Lease: 0, Zone: "", NodeVersion: "", NodeType: storage.NodeTypeHoraeDB},
 				LastTouchTime: uint64(time.Now().UnixMilli()),
 				State:         storage.NodeStateOnline,
 			},
@@ -117,7 +117,7 @@ func TestInspect(t *testing.T) {
 			// This node should be outdated.
 			Node: storage.Node{
 				Name:          "192.168.1.103",
-				NodeStats:     storage.NodeStats{Lease: 0, Zone: "", NodeVersion: ""},
+				NodeStats:     storage.NodeStats{Lease: 0, Zone: "", NodeVersion: "", NodeType: storage.NodeTypeHoraeDB},
 				LastTouchTime: uint64(time.Now().UnixMilli()) - uint64((time.Second * 20)),
 				State:         storage.NodeStateOnline,
 			},
