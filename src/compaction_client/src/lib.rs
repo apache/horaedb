@@ -27,17 +27,8 @@ pub mod compaction_impl;
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
-    #[snafu(display(
-        "Failed to connect the service endpoint:{}, err:{}\nBacktrace:\n{}",
-        addr,
-        source,
-        backtrace
-    ))]
-    FailConnect {
-        addr: String,
-        source: GenericError,
-        backtrace: Backtrace,
-    },
+    #[snafu(display("Failed to connect the service endpoint:{}, err:{}", addr, source,))]
+    FailConnect { addr: String, source: GenericError },
 
     #[snafu(display("Failed to execute compaction task, err:{}", source))]
     FailExecuteCompactionTask { source: GenericError },

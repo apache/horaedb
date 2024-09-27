@@ -23,17 +23,20 @@ use compaction_client::{
 use generic_error::BoxError;
 use snafu::ResultExt;
 
-use super::node_picker::RemoteCompactionNodePickerRef;
+use super::{local_runner::LocalCompactionRunner, node_picker::RemoteCompactionNodePickerRef};
 use crate::{
     compaction::runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
     instance::flush_compaction::{
         BuildCompactionClientFailed, ConvertCompactionTaskResponse, GetCompactionClientFailed,
-        PickCompactionNodeFailed, RemoteCompactFailed, Result,
+        PickCompactionNodeFailed, Result,
     },
 };
 
 pub struct RemoteCompactionRunner {
     pub node_picker: RemoteCompactionNodePickerRef,
+    /// Responsible for executing compaction task locally if fail to remote
+    /// compact, used for better fault tolerance.
+    pub local_compaction_runner: LocalCompactionRunner,
 }
 
 impl RemoteCompactionRunner {
@@ -51,20 +54,34 @@ impl RemoteCompactionRunner {
             .context(BuildCompactionClientFailed)?;
         Ok(client)
     }
+
+    async fn local_compact(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
+        self.local_compaction_runner.run(task).await
+    }
 }
 
 #[async_trait]
 impl CompactionRunner for RemoteCompactionRunner {
+    /// Run the compaction task either on a remote node or fall back to local
+    /// compaction.
     async fn run(&self, task: CompactionRunnerTask) -> Result<CompactionRunnerResult> {
         let client = self
             .get_compaction_client()
             .await
             .box_err()
-            .context(GetCompactionClientFailed)?;
-        let pb_resp = client
-            .execute_compaction_task(task.into())
-            .await
-            .context(RemoteCompactFailed)?;
+            .context(GetCompactionClientFailed);
+
+        let pb_resp = match client {
+            Ok(client) => match client.execute_compaction_task(task.clone().into()).await {
+                Ok(resp) => resp,
+                Err(_) => {
+                    return self.local_compact(task).await;
+                }
+            },
+            Err(_) => {
+                return self.local_compact(task).await;
+            }
+        };
 
         let resp = pb_resp
             .try_into()

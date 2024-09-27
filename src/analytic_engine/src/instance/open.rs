@@ -38,7 +38,7 @@ use crate::{
                 LocalCompactionNodePickerImpl, NodePicker, RemoteCompactionNodePickerImpl,
             },
             remote_runner::RemoteCompactionRunner,
-            CompactionRunner, CompactionRunnerPtr, CompactionRunnerRef,
+            CompactionRunnerPtr, CompactionRunnerRef,
         },
         scheduler::SchedulerImpl,
     },
@@ -83,18 +83,28 @@ impl InstanceContext {
             ctx.config.compaction_mode
         );
 
+        let local_compaction_runner = LocalCompactionRunner::new(
+            ctx.runtimes.compact_runtime.clone(),
+            &ctx.config,
+            sst_factory.clone(),
+            store_picker.clone(),
+            ctx.meta_cache.clone(),
+        );
+
         let compaction_runner: CompactionRunnerPtr = match &ctx.config.compaction_mode {
             CompactionMode::Offload(NodePicker::Local(endpoint)) => {
                 Box::new(RemoteCompactionRunner {
                     node_picker: Arc::new(LocalCompactionNodePickerImpl {
                         endpoint: endpoint.clone(),
                     }),
+                    local_compaction_runner: local_compaction_runner.clone(),
                 })
             }
             CompactionMode::Offload(NodePicker::Remote) => Box::new(RemoteCompactionRunner {
                 node_picker: Arc::new(RemoteCompactionNodePickerImpl {
                     meta_client: meta_client.context(MetaClientNotExist)?,
                 }),
+                local_compaction_runner: local_compaction_runner.clone(),
             }),
 
             CompactionMode::Local => Box::new(LocalCompactionRunner::new(
@@ -106,15 +116,6 @@ impl InstanceContext {
             )),
         };
 
-        let local_compaction_runner: Option<Arc<dyn CompactionRunner>> =
-                // The compaction runner for compaction node.
-                Some(Arc::new(LocalCompactionRunner::new(
-                    ctx.runtimes.compact_runtime.clone(),
-                    &ctx.config,
-                    sst_factory.clone(),
-                    store_picker.clone(),
-                    ctx.meta_cache.clone(),
-                )));
         let instance = Instance::open(
             ctx,
             manifest_storages,
@@ -127,7 +128,7 @@ impl InstanceContext {
 
         Ok(Self {
             instance,
-            local_compaction_runner,
+            local_compaction_runner: Some(Arc::new(local_compaction_runner)),
         })
     }
 }
