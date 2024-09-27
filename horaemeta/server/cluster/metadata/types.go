@@ -22,8 +22,8 @@ package metadata
 import (
 	"time"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/pkg/errors"
 )
 
@@ -154,6 +154,10 @@ type RouteTablesResult struct {
 type GetNodeShardsResult struct {
 	ClusterTopologyVersion uint64
 	NodeShards             []ShardNodeWithVersion
+}
+
+type FetchCompactionNodeResult struct {
+	Endpoint string
 }
 
 type RegisteredNode struct {

@@ -1,5 +1,5 @@
 github.com/apache/incubator-horaedb-meta,https://github.com/apache/incubator-horaedb-meta/blob/HEAD/licenserc.toml,Apache-2.0
-github.com/apache/incubator-horaedb-proto/golang/pkg,https://github.com/apache/incubator-horaedb-proto/blob/92152841fc8a/golang/LICENSE,Apache-2.0
+github.com/LeslieKid/incubator-horaedb-proto/golang/pkg,https://github.com/apache/incubator-horaedb-proto/blob/92152841fc8a/golang/LICENSE,Apache-2.0
 github.com/beorn7/perks/quantile,https://github.com/beorn7/perks/blob/v1.0.1/LICENSE,MIT
 github.com/caarlos0/env/v6,https://github.com/caarlos0/env/blob/v6.10.1/LICENSE.md,MIT
 github.com/cenkalti/backoff/v4,https://github.com/cenkalti/backoff/blob/v4.2.1/LICENSE,MIT

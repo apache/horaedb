@@ -23,10 +23,10 @@ import (
 	"context"
 	"sync"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaeventpb"
 	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
 	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 	"github.com/apache/incubator-horaedb-meta/server/service"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/metaeventpb"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 )

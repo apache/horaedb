@@ -22,6 +22,7 @@ package coordinator
 import (
 	"context"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/apache/incubator-horaedb-meta/server/cluster/metadata"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/eventdispatch"
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure"
@@ -33,7 +34,6 @@ import (
 	"github.com/apache/incubator-horaedb-meta/server/coordinator/procedure/operation/transferleader"
 	"github.com/apache/incubator-horaedb-meta/server/id"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )

@@ -26,6 +26,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/clusterpb"
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/commonpb"
+	"github.com/LeslieKid/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/apache/incubator-horaedb-meta/pkg/coderr"
 	"github.com/apache/incubator-horaedb-meta/pkg/log"
 	"github.com/apache/incubator-horaedb-meta/server/cluster"
@@ -34,9 +37,6 @@ import (
 	"github.com/apache/incubator-horaedb-meta/server/limiter"
 	"github.com/apache/incubator-horaedb-meta/server/member"
 	"github.com/apache/incubator-horaedb-meta/server/storage"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/clusterpb"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/commonpb"
-	"github.com/apache/incubator-horaedb-proto/golang/pkg/metaservicepb"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -92,6 +92,7 @@ func (s *Service) NodeHeartbeat(ctx context.Context, req *metaservicepb.NodeHear
 				Lease:       req.GetInfo().Lease,
 				Zone:        req.GetInfo().Zone,
 				NodeVersion: req.GetInfo().BinaryVersion,
+				NodeType:    storage.NodeType(req.GetInfo().NodeType),
 			},
 			LastTouchTime: uint64(time.Now().UnixMilli()),
 			State:         storage.NodeStateOnline,
@@ -366,6 +367,28 @@ func (s *Service) GetNodes(ctx context.Context, req *metaservicepb.GetNodesReque
 	return convertToGetNodesResponse(nodesResult), nil
 }
 
+// FetchCompactionNode implements gRPC HoraeMetaServer.
+func (s *Service) FetchCompactionNode(ctx context.Context, req *metaservicepb.FetchCompactionNodeRequest) (*metaservicepb.FetchCompactionNodeResponse, error) {
+	metaClient, err := s.getForwardedMetaClient(ctx)
+	if err != nil {
+		return &metaservicepb.FetchCompactionNodeResponse{Header: responseHeader(err, "grpc fetch compaction node")}, nil
+	}
+
+	// Forward request to the leader.
+	if metaClient != nil {
+		return metaClient.FetchCompactionNode(ctx, req)
+	}
+
+	log.Info("[FetchCompactionNode]", zap.String("clusterName", req.GetHeader().ClusterName))
+
+	compactionNodeResult, err := s.h.GetClusterManager().FetchCompactionNode(ctx, req.GetHeader().GetClusterName())
+	if err != nil {
+		return &metaservicepb.FetchCompactionNodeResponse{Header: responseHeader(err, "grpc fetch compaction node")}, nil
+	}
+
+	return convertToFetchCompactionNodeResponse(compactionNodeResult), nil
+}
+
 func convertToGetTablesOfShardsResponse(shardTables map[storage.ShardID]metadata.ShardTables) *metaservicepb.GetTablesOfShardsResponse {
 	tablesByShard := make(map[uint32]*metaservicepb.TablesOfShard, len(shardTables))
 	for id, shardTable := range shardTables {
@@ -426,6 +449,13 @@ func convertToGetNodesResponse(nodesResult metadata.GetNodeShardsResult) *metase
 		Header:                 okResponseHeader(),
 		ClusterTopologyVersion: nodesResult.ClusterTopologyVersion,
 		NodeShards:             nodeShards,
+	}
+}
+
+func convertToFetchCompactionNodeResponse(compactionNodeResult metadata.FetchCompactionNodeResult) *metaservicepb.FetchCompactionNodeResponse {
+	return &metaservicepb.FetchCompactionNodeResponse{
+		Header:   okResponseHeader(),
+		Endpoint: compactionNodeResult.Endpoint,
 	}
 }
 

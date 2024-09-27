@@ -281,6 +281,8 @@ impl From<NodeInfo> for meta_service_pb::NodeInfo {
             binary_version: node_info.node_meta_info.binary_version,
             shard_infos,
             lease: 0,
+            // FIXME(leslie): the `NodeType` is impl in another pr, which is not merge yet.
+            node_type: 0,
         }
     }
 }
