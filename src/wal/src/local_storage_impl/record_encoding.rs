@@ -63,7 +63,7 @@ define_result!(Error);
 /// +---------+--------+--------+------------+--------------+--------------+-------+
 /// ```
 #[derive(Debug)]
-pub struct Record<'a> {
+pub struct Record {
     /// The version number of the record.
     pub version: u8,
 
@@ -83,11 +83,11 @@ pub struct Record<'a> {
     pub value_length: u32,
 
     /// Common log value.
-    pub value: &'a [u8],
+    pub value: Vec<u8>,
 }
 
-impl<'a> Record<'a> {
-    pub fn new(table_id: u64, sequence_num: u64, value: &'a [u8]) -> Result<Self> {
+impl Record {
+    pub fn new(table_id: u64, sequence_num: u64, value: &[u8]) -> Result<Self> {
         let mut record = Record {
             version: NEWEST_RECORD_ENCODING_VERSION,
             crc: 0,
@@ -95,7 +95,7 @@ impl<'a> Record<'a> {
             table_id,
             sequence_num,
             value_length: value.len() as u32,
-            value,
+            value: value.to_vec(),
         };
 
         // Calculate CRC
@@ -128,7 +128,7 @@ impl RecordEncoding {
     }
 }
 
-impl Encoder<Record<'_>> for RecordEncoding {
+impl Encoder<Record> for RecordEncoding {
     type Error = Error;
 
     fn encode<B: BufMut>(&self, buf: &mut B, record: &Record) -> Result<()> {
@@ -147,7 +147,7 @@ impl Encoder<Record<'_>> for RecordEncoding {
         buf.try_put_u64(record.table_id).context(Encoding)?;
         buf.try_put_u64(record.sequence_num).context(Encoding)?;
         buf.try_put_u32(record.value_length).context(Encoding)?;
-        buf.try_put(record.value).context(Encoding)?;
+        buf.try_put(record.value.as_slice()).context(Encoding)?;
         Ok(())
     }
 
@@ -222,7 +222,7 @@ impl RecordEncoding {
         let value_length = buf.try_get_u32().context(Decoding)?;
 
         // Read value
-        let value = &buf[0..value_length as usize];
+        let value = buf[0..value_length as usize].to_vec();
         buf.advance(value_length as usize);
 
         Ok(Record {
