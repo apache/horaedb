@@ -17,6 +17,7 @@
 
 pub mod local_runner;
 pub mod node_picker;
+mod remote_client;
 pub mod remote_runner;
 
 use std::sync::Arc;
@@ -54,6 +55,7 @@ pub type CompactionRunnerPtr = Box<dyn CompactionRunner>;
 pub type CompactionRunnerRef = Arc<dyn CompactionRunner>;
 
 #[derive(Debug, Snafu)]
+#[snafu(visibility = "pub")]
 pub enum Error {
     #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]
     EmptyTableSchema { backtrace: Backtrace },
@@ -99,6 +101,27 @@ pub enum Error {
 
     #[snafu(display("Failed to convert sst meta, err:{}", source))]
     ConvertSstMeta { source: GenericError },
+
+    #[snafu(display("Failed to connect the service endpoint:{}, err:{}", addr, source,))]
+    FailConnect { addr: String, source: GenericError },
+
+    #[snafu(display("Failed to execute compaction task, err:{}", source))]
+    FailExecuteCompactionTask { source: GenericError },
+
+    #[snafu(display("Missing header in rpc response.\nBacktrace:\n{}", backtrace))]
+    MissingHeader { backtrace: Backtrace },
+
+    #[snafu(display(
+        "Bad response, resp code:{}, msg:{}.\nBacktrace:\n{}",
+        code,
+        msg,
+        backtrace
+    ))]
+    BadResponse {
+        code: u32,
+        msg: String,
+        backtrace: Backtrace,
+    },
 }
 
 define_result!(Error);

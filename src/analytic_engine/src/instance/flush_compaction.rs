@@ -167,13 +167,17 @@ pub enum Error {
     PickCompactionNodeFailed { source: node_picker::Error },
 
     #[snafu(display("Failed to build compaction client, err:{}", source))]
-    BuildCompactionClientFailed { source: compaction_client::Error },
+    BuildCompactionClientFailed {
+        source: crate::compaction::runner::Error,
+    },
 
     #[snafu(display("Failed to get compaction client, err:{}", source))]
     GetCompactionClientFailed { source: GenericError },
 
     #[snafu(display("Failed to execute compaction task remotely, err:{}", source))]
-    RemoteCompactFailed { source: compaction_client::Error },
+    RemoteCompactFailed {
+        source: crate::compaction::runner::Error,
+    },
 }
 
 define_result!(Error);

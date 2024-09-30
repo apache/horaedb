@@ -92,7 +92,6 @@ dependencies = [
  "cluster",
  "codec",
  "common_types",
- "compaction_client",
  "datafusion",
  "env_logger",
  "future_ext",
@@ -119,10 +118,12 @@ dependencies = [
  "prost 0.11.8",
  "rand 0.8.5",
  "remote_engine_client",
+ "reqwest 0.12.4",
  "router",
  "runtime",
  "sampling_cache",
  "serde",
+ "serde_json",
  "size_ext",
  "skiplist",
  "smallvec",
@@ -134,7 +135,9 @@ dependencies = [
  "thiserror",
  "time_ext",
  "tokio",
+ "tonic 0.8.3",
  "trace_metric",
+ "url",
  "wal",
  "xorfilter-rs",
 ]
@@ -1499,7 +1502,6 @@ dependencies = [
  "bytes_ext",
  "catalog",
  "common_types",
- "compaction_client",
  "etcd-client",
  "future_ext",
  "generic_error",
@@ -1597,28 +1599,6 @@ dependencies = [
  "snafu 0.6.10",
  "sqlparser",
  "uuid",
-]
-
-[[package]]
-name = "compaction_client"
-version = "2.0.0"
-dependencies = [
- "async-trait",
- "common_types",
- "futures 0.3.28",
- "generic_error",
- "horaedbproto 2.0.0",
- "logger",
- "macros",
- "prost 0.11.8",
- "reqwest 0.12.4",
- "serde",
- "serde_json",
- "snafu 0.6.10",
- "time_ext",
- "tokio",
- "tonic 0.8.3",
- "url",
 ]
 
 [[package]]
@@ -3177,7 +3157,6 @@ dependencies = [
  "clap",
  "cluster",
  "common_types",
- "compaction_client",
  "datafusion",
  "df_operator",
  "etcd-client",
@@ -6348,7 +6327,6 @@ dependencies = [
  "async-trait",
  "cluster",
  "common_types",
- "compaction_client",
  "generic_error",
  "horaedbproto 2.0.0",
  "logger",

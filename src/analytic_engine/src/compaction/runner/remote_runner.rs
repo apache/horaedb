@@ -16,16 +16,15 @@
 // under the License.
 
 use async_trait::async_trait;
-use compaction_client::{
-    compaction_impl::{build_compaction_client, CompactionClientConfig},
-    CompactionClientRef,
-};
 use generic_error::BoxError;
 use snafu::ResultExt;
 
 use super::{local_runner::LocalCompactionRunner, node_picker::RemoteCompactionNodePickerRef};
 use crate::{
-    compaction::runner::{CompactionRunner, CompactionRunnerResult, CompactionRunnerTask},
+    compaction::runner::{
+        remote_client::{build_compaction_client, CompactionClientConfig, CompactionClientRef},
+        CompactionRunner, CompactionRunnerResult, CompactionRunnerTask,
+    },
     instance::flush_compaction::{
         BuildCompactionClientFailed, ConvertCompactionTaskResponse, GetCompactionClientFailed,
         PickCompactionNodeFailed, Result,

@@ -27,9 +27,8 @@ use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt};
 use time_ext::ReadableDuration;
 
-use crate::{
-    BadResponse, CompactionClient, CompactionClientRef, FailConnect, FailExecuteCompactionTask,
-    MissingHeader, Result,
+use crate::compaction::runner::{
+    BadResponse, FailConnect, FailExecuteCompactionTask, MissingHeader, Result,
 };
 
 type CompactionServiceGrpcClient = CompactionServiceClient<tonic::transport::Channel>;
@@ -49,6 +48,18 @@ impl Default for CompactionClientConfig {
         }
     }
 }
+
+/// CompactionClient is the abstraction of client used for HoraeDB to
+/// communicate with CompactionServer cluster.
+#[async_trait]
+pub trait CompactionClient: Send + Sync {
+    async fn execute_compaction_task(
+        &self,
+        req: horaedbproto::compaction_service::ExecuteCompactionTaskRequest,
+    ) -> Result<horaedbproto::compaction_service::ExecuteCompactionTaskResponse>;
+}
+
+pub type CompactionClientRef = Arc<dyn CompactionClient>;
 
 /// Default compaction client impl, will interact with the remote compaction
 /// node.
