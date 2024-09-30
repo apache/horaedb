@@ -101,7 +101,7 @@ thiserror = "1"
 bytes_ext = { path = "src/components/bytes_ext" }
 catalog = { path = "src/catalog" }
 catalog_impls = { path = "src/catalog_impls" }
-horaedbproto = { git = "https://github.com/LeslieKid/incubator-horaedb-proto.git", rev = "84f72744efc6e5f2e3a3ad8bbb24b807e383c492" }
+horaedbproto = { git = "https://github.com/LeslieKid/incubator-horaedb-proto.git", rev = "c8a073af23a7e5d29ec88011dd3c5abeffd37d23" }
 codec = { path = "src/components/codec" }
 chrono = "0.4"
 clap = { version = "4.5.1", features = ["derive"] }

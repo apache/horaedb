@@ -3230,7 +3230,7 @@ dependencies = [
 [[package]]
 name = "horaedbproto"
 version = "2.0.0"
-source = "git+https://github.com/LeslieKid/incubator-horaedb-proto.git?rev=84f72744efc6e5f2e3a3ad8bbb24b807e383c492#84f72744efc6e5f2e3a3ad8bbb24b807e383c492"
+source = "git+https://github.com/LeslieKid/incubator-horaedb-proto.git?rev=c8a073af23a7e5d29ec88011dd3c5abeffd37d23#c8a073af23a7e5d29ec88011dd3c5abeffd37d23"
 dependencies = [
  "prost 0.11.8",
  "protoc-bin-vendored",

@@ -283,11 +283,6 @@ impl From<NodeInfo> for meta_service_pb::NodeInfo {
             binary_version: node_info.node_meta_info.binary_version,
             shard_infos,
             lease: 0,
-            node_type: if node_info.node_meta_info.node_type == NodeType::HoraeDB {
-                cluster_pb::NodeType::HoraeDb
-            } else {
-                cluster_pb::NodeType::CompactionServer
-            } as i32,
         }
     }
 }
@@ -602,18 +597,4 @@ pub struct FetchCompactionNodeRequest {}
 
 pub struct FetchCompactionNodeResponse {
     pub endpoint: String,
-}
-
-impl From<FetchCompactionNodeRequest> for meta_service_pb::FetchCompactionNodeRequest {
-    fn from(_: FetchCompactionNodeRequest) -> Self {
-        meta_service_pb::FetchCompactionNodeRequest::default()
-    }
-}
-
-impl From<meta_service_pb::FetchCompactionNodeResponse> for FetchCompactionNodeResponse {
-    fn from(value: meta_service_pb::FetchCompactionNodeResponse) -> Self {
-        Self {
-            endpoint: value.endpoint,
-        }
-    }
 }
