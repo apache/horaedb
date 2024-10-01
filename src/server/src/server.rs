@@ -19,6 +19,7 @@
 
 use std::sync::Arc;
 
+use analytic_engine::compaction::runner::CompactionRunnerRef;
 use catalog::manager::ManagerRef;
 use cluster::ClusterRef;
 use datafusion::execution::{runtime_env::RuntimeConfig, FunctionRegistry};
@@ -251,6 +252,7 @@ pub struct Builder {
     opened_wals: Option<OpenedWals>,
     remote_engine: Option<RemoteEngineRef>,
     datatfusion_context: Option<DatafusionContext>,
+    compaction_runner: Option<CompactionRunnerRef>,
 }
 
 impl Builder {
@@ -274,6 +276,7 @@ impl Builder {
             opened_wals: None,
             remote_engine: None,
             datatfusion_context: None,
+            compaction_runner: None,
         }
     }
 
@@ -365,6 +368,11 @@ impl Builder {
 
     pub fn datafusion_context(mut self, datafusion_context: DatafusionContext) -> Self {
         self.datatfusion_context = Some(datafusion_context);
+        self
+    }
+
+    pub fn compaction_runner(mut self, runner: CompactionRunnerRef) -> Self {
+        self.compaction_runner = Some(runner);
         self
     }
 
@@ -527,6 +535,7 @@ impl Builder {
             .proxy(proxy)
             .hotspot_recorder(hotspot_recorder)
             .query_dedup(self.server_config.query_dedup)
+            .compaction_runner(self.compaction_runner.clone())
             .build()
             .context(BuildGrpcService)?;
 

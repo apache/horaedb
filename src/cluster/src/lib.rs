@@ -28,7 +28,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use common_types::schema::SchemaName;
+use common_types::{cluster::NodeType, schema::SchemaName};
 use generic_error::GenericError;
 use macros::define_result;
 use meta_client::types::{
@@ -190,11 +190,13 @@ pub struct ClusterNodesResp {
     pub cluster_nodes: ClusterNodesRef,
 }
 
-/// Cluster manages tables and shard infos in cluster mode.
 #[async_trait]
 pub trait Cluster {
     async fn start(&self) -> Result<()>;
     async fn stop(&self) -> Result<()>;
+
+    /// Get cluster type.
+    fn node_type(&self) -> NodeType;
 
     /// Fetch related information and open shard.
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef>;

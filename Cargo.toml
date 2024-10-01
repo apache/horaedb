@@ -24,7 +24,7 @@ license = "Apache-2.0"
 [workspace]
 resolver = "2"
 # In alphabetical order
-members = [
+members = [ 
     "horaectl",
     "integration_tests",
     "integration_tests/sdk/rust",
@@ -33,7 +33,7 @@ members = [
     "src/catalog",
     "src/catalog_impls",
     "src/cluster",
-    "src/common_types",
+    "src/common_types", 
     "src/components/alloc_tracker",
     "src/components/arena",
     "src/components/arrow_ext",
@@ -101,7 +101,7 @@ thiserror = "1"
 bytes_ext = { path = "src/components/bytes_ext" }
 catalog = { path = "src/catalog" }
 catalog_impls = { path = "src/catalog_impls" }
-horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "a5874d9fedee32ab1292252c4eb6defc4f6e245a" }
+horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "fac8564e6e3d50e51daa2af6eb905e747f3191b0" }
 codec = { path = "src/components/codec" }
 chrono = "0.4"
 clap = { version = "4.5.1", features = ["derive"] }

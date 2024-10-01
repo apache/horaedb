@@ -313,6 +313,7 @@ async fn build_with_meta<T: WalsOpener>(
         zone: config.node.zone.clone(),
         idc: config.node.idc.clone(),
         binary_version: config.node.binary_version.clone(),
+        node_type: cluster_config.node_type.clone(),
     };
 
     info!("Build horaedb with node meta info:{node_meta_info:?}");
@@ -349,8 +350,12 @@ async fn build_with_meta<T: WalsOpener>(
         config: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
+        meta_client: Some(meta_client.clone()),
     };
-    let TableEngineContext { table_engine, .. } = engine_builder
+    let TableEngineContext {
+        table_engine,
+        local_compaction_runner,
+    } = engine_builder
         .build()
         .await
         .expect("Failed to setup analytic engine");
@@ -368,14 +373,18 @@ async fn build_with_meta<T: WalsOpener>(
     let table_manipulator = Arc::new(meta_based::TableManipulatorImpl::new(meta_client));
 
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));
-    builder
+
+    let mut builder = builder
         .table_engine(engine_proxy)
         .catalog_manager(catalog_manager)
         .table_manipulator(table_manipulator)
         .cluster(cluster)
         .opened_wals(opened_wals)
         .router(router)
-        .schema_config_provider(schema_config_provider)
+        .schema_config_provider(schema_config_provider);
+    builder = builder.compaction_runner(local_compaction_runner.expect("Empty compaction runner."));
+
+    builder
 }
 
 async fn build_without_meta<T: WalsOpener>(
@@ -394,6 +403,7 @@ async fn build_without_meta<T: WalsOpener>(
         config: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
+        meta_client: None,
     };
     let TableEngineContext { table_engine, .. } = engine_builder
         .build()

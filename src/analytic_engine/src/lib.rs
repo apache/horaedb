@@ -19,7 +19,7 @@
 
 #![feature(option_get_or_insert_default)]
 
-mod compaction;
+pub mod compaction;
 mod context;
 mod engine;
 pub mod error;
@@ -40,6 +40,7 @@ pub mod table_meta_set_impl;
 #[cfg(any(test, feature = "test"))]
 pub mod tests;
 
+use compaction::runner::node_picker::NodePicker;
 use error::ErrorKind;
 use manifest::details::Options as ManifestOptions;
 use object_store::config::StorageOptions;
@@ -53,6 +54,20 @@ pub use crate::{
     instance::{ScanType, SstReadOptionsBuilder},
     table_options::TableOptions,
 };
+
+/// The compaction mode decides compaction offload or not.
+///
+/// [CompactionMode::Offload] means offload the compaction task
+/// to a local or remote node.
+///
+/// [CompactionMode::Local] means local compaction, no offloading.
+#[derive(Clone, Default, Debug, Deserialize, Serialize)]
+#[serde(tag = "compaction_mode")]
+pub enum CompactionMode {
+    #[default]
+    Local,
+    Offload(NodePicker),
+}
 
 /// Config of analytic engine
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -76,6 +91,9 @@ pub struct Config {
     pub try_compat_old_layered_memtable_opts: bool,
 
     pub compaction: SchedulerConfig,
+
+    /// Offload the compaction task or not.
+    pub compaction_mode: CompactionMode,
 
     /// sst meta cache capacity
     pub sst_meta_cache_cap: Option<usize>,
@@ -187,6 +205,7 @@ impl Default for Config {
             table_opts: TableOptions::default(),
             try_compat_old_layered_memtable_opts: false,
             compaction: SchedulerConfig::default(),
+            compaction_mode: CompactionMode::Local,
             sst_meta_cache_cap: Some(1000),
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),

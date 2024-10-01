@@ -26,7 +26,8 @@ use common_types::{
     SequenceNumber,
 };
 use futures::Stream;
-use generic_error::GenericError;
+use generic_error::{BoxError, GenericError};
+use snafu::{OptionExt, ResultExt};
 
 use crate::table_options::StorageFormat;
 
@@ -96,6 +97,21 @@ pub mod error {
 
         #[snafu(display("Other kind of error, msg:{}.\nBacktrace:\n{}", msg, backtrace))]
         OtherNoCause { msg: String, backtrace: Backtrace },
+
+        #[snafu(display("Empty time range.\nBacktrace:\n{}", backtrace))]
+        EmptyTimeRange { backtrace: Backtrace },
+
+        #[snafu(display("Empty schema.\nBacktrace:\n{}", backtrace))]
+        EmptySchema { backtrace: Backtrace },
+
+        #[snafu(display("Failed to convert time range, err:{}", source))]
+        ConvertTimeRange { source: GenericError },
+
+        #[snafu(display("Failed to convert sst info, err:{}", source))]
+        ConvertSstInfo { source: GenericError },
+
+        #[snafu(display("Failed to convert schema, err:{}", source))]
+        ConvertSchema { source: GenericError },
     }
 
     define_result!(Error);
@@ -117,6 +133,44 @@ pub struct SstInfo {
     pub time_range: TimeRange,
 }
 
+impl TryFrom<horaedbproto::compaction_service::SstInfo> for SstInfo {
+    type Error = Error;
+
+    fn try_from(value: horaedbproto::compaction_service::SstInfo) -> Result<Self> {
+        let storage_format = value
+            .storage_format
+            .try_into()
+            .box_err()
+            .context(ConvertSstInfo)?;
+        let time_range = value
+            .time_range
+            .context(EmptyTimeRange)?
+            .try_into()
+            .box_err()
+            .context(ConvertTimeRange)?;
+
+        Ok(Self {
+            file_size: value.file_size as usize,
+            row_num: value.row_num as usize,
+            storage_format,
+            meta_path: value.meta_path,
+            time_range,
+        })
+    }
+}
+
+impl From<SstInfo> for horaedbproto::compaction_service::SstInfo {
+    fn from(value: SstInfo) -> Self {
+        Self {
+            file_size: value.file_size as u64,
+            row_num: value.row_num as u64,
+            storage_format: value.storage_format.into(),
+            meta_path: value.meta_path,
+            time_range: Some(value.time_range.into()),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MetaData {
     /// Min key of the sst.
@@ -129,6 +183,45 @@ pub struct MetaData {
     pub max_sequence: SequenceNumber,
     /// The schema of the sst.
     pub schema: Schema,
+}
+
+impl TryFrom<horaedbproto::compaction_service::MetaData> for MetaData {
+    type Error = Error;
+
+    fn try_from(meta: horaedbproto::compaction_service::MetaData) -> Result<Self> {
+        let time_range = meta
+            .time_range
+            .context(EmptyTimeRange)?
+            .try_into()
+            .box_err()
+            .context(ConvertTimeRange)?;
+        let schema = meta
+            .schema
+            .context(EmptySchema)?
+            .try_into()
+            .box_err()
+            .context(ConvertSchema)?;
+
+        Ok(Self {
+            min_key: Bytes::from(meta.min_key),
+            max_key: Bytes::from(meta.max_key),
+            time_range,
+            max_sequence: meta.max_sequence,
+            schema,
+        })
+    }
+}
+
+impl From<MetaData> for horaedbproto::compaction_service::MetaData {
+    fn from(meta: MetaData) -> Self {
+        Self {
+            min_key: meta.min_key.to_vec(),
+            max_key: meta.max_key.to_vec(),
+            max_sequence: meta.max_sequence,
+            time_range: Some(meta.time_range.into()),
+            schema: Some((&meta.schema).into()),
+        }
+    }
 }
 
 /// The writer for sst.

@@ -205,7 +205,7 @@ mod tests {
         shard_lock_manager::ShardLockManagerRef, shard_set::ShardRef, Cluster, ClusterNodesResp,
         TableStatus,
     };
-    use common_types::table::ShardId;
+    use common_types::{cluster::NodeType, table::ShardId};
     use horaedbproto::storage::{RequestContext, RouteRequest as RouteRequestPb};
     use meta_client::types::{
         NodeShard, RouteEntry, RouteTablesResponse, ShardInfo, ShardRole::Leader, TableInfo,
@@ -224,6 +224,10 @@ mod tests {
 
         async fn stop(&self) -> cluster::Result<()> {
             unimplemented!();
+        }
+
+        fn node_type(&self) -> NodeType {
+            unimplemented!()
         }
 
         async fn open_shard(&self, _: &ShardInfo) -> cluster::Result<ShardRef> {

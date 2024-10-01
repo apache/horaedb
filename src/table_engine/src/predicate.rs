@@ -112,7 +112,7 @@ impl Predicate {
 impl TryFrom<&Predicate> for horaedbproto::remote_engine::Predicate {
     type Error = Error;
 
-    fn try_from(predicate: &Predicate) -> std::result::Result<Self, Self::Error> {
+    fn try_from(predicate: &Predicate) -> Result<Self> {
         let time_range = predicate.time_range;
         let mut exprs = Vec::with_capacity(predicate.exprs.len());
         for expr in &predicate.exprs {
@@ -135,9 +135,7 @@ impl TryFrom<&Predicate> for horaedbproto::remote_engine::Predicate {
 impl TryFrom<horaedbproto::remote_engine::Predicate> for Predicate {
     type Error = Error;
 
-    fn try_from(
-        pb: horaedbproto::remote_engine::Predicate,
-    ) -> std::result::Result<Self, Self::Error> {
+    fn try_from(pb: horaedbproto::remote_engine::Predicate) -> Result<Self> {
         let time_range = pb.time_range.context(EmptyTimeRange)?;
         let mut exprs = Vec::with_capacity(pb.exprs.len());
         for pb_expr in pb.exprs {
