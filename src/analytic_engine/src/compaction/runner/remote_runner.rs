@@ -44,12 +44,12 @@ pub struct RemoteCompactionRunner {
 impl RemoteCompactionRunner {
     async fn get_compaction_client(&self) -> Result<CompactionClientRef> {
         let mut config = CompactionClientConfig::default();
-        let node_addr = self
+        let endpoint = self
             .node_picker
             .get_compaction_node()
             .await
             .context(PickCompactionNodeFailed)?;
-        config.compaction_server_addr = node_addr;
+        config.compaction_server_addr = make_formatted_endpoint(&endpoint);
 
         let client = build_compaction_client(config)
             .await
@@ -108,4 +108,8 @@ impl CompactionRunner for RemoteCompactionRunner {
 
         Ok(resp)
     }
+}
+
+fn make_formatted_endpoint(endpoint: &str) -> String {
+    format!("http://{endpoint}")
 }
