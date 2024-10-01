@@ -21,14 +21,12 @@ use std::sync::Arc;
 
 use analytic_engine::compaction::runner::{CompactionRunnerRef, CompactionRunnerTask};
 use async_trait::async_trait;
-use cluster::ClusterRef;
 use error::{build_err_header, build_ok_header, ErrWithCause, StatusCode};
 use generic_error::BoxError;
 use horaedbproto::compaction_service::{
     compaction_service_server::CompactionService, ExecResult, ExecuteCompactionTaskRequest,
     ExecuteCompactionTaskResponse,
 };
-use proxy::instance::InstanceRef;
 use runtime::Runtime;
 use snafu::ResultExt;
 use tonic::{Request, Response, Status};
@@ -37,8 +35,6 @@ mod error;
 
 /// Builder for [CompactionServiceImpl]
 pub struct Builder {
-    pub cluster: ClusterRef,
-    pub instance: InstanceRef,
     pub runtime: Arc<Runtime>,
     pub compaction_runner: CompactionRunnerRef,
 }
@@ -46,15 +42,11 @@ pub struct Builder {
 impl Builder {
     pub fn build(self) -> CompactionServiceImpl {
         let Self {
-            cluster,
-            instance,
             runtime,
             compaction_runner,
         } = self;
 
         CompactionServiceImpl {
-            cluster,
-            instance,
             runtime,
             compaction_runner,
         }
@@ -63,8 +55,6 @@ impl Builder {
 
 #[derive(Clone)]
 pub struct CompactionServiceImpl {
-    pub cluster: ClusterRef,
-    pub instance: InstanceRef,
     pub runtime: Arc<Runtime>,
     pub compaction_runner: CompactionRunnerRef,
 }

@@ -346,8 +346,6 @@ impl Builder {
                     let compaction_runner =
                         self.compaction_runner.context(MissingCompactionRunner)?;
                     let builder = compaction_service::Builder {
-                        cluster: v,
-                        instance: instance.clone(),
                         runtime: runtimes.compact_runtime.clone(),
                         compaction_runner,
                     };
