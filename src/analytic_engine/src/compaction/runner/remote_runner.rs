@@ -27,7 +27,8 @@ use crate::{
         CompactionRunner, CompactionRunnerResult, CompactionRunnerTask,
     },
     instance::flush_compaction::{
-        self, BuildCompactionClientFailed, ConvertCompactionTaskResponse, GetCompactionClientFailed, PickCompactionNodeFailed, Result
+        self, BuildCompactionClientFailed, ConvertCompactionTaskResponse,
+        GetCompactionClientFailed, PickCompactionNodeFailed, Result,
     },
 };
 
@@ -78,7 +79,7 @@ impl CompactionRunner for RemoteCompactionRunner {
                 Ok(resp) => resp,
                 Err(e) => {
                     if !self.fallback_local_when_failed {
-                        return Err(flush_compaction::Error::RemoteCompactFailed { source: e } ); 
+                        return Err(flush_compaction::Error::RemoteCompactFailed { source: e });
                     }
 
                     info!(
@@ -91,7 +92,7 @@ impl CompactionRunner for RemoteCompactionRunner {
             Err(e) => {
                 if !self.fallback_local_when_failed {
                     return Err(e);
-                } 
+                }
 
                 info!(
                     "The compaction task falls back to local because of error:{}",
