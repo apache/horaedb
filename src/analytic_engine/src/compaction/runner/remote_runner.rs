@@ -17,6 +17,7 @@
 
 use async_trait::async_trait;
 use generic_error::BoxError;
+use logger::info;
 use snafu::ResultExt;
 
 use super::{local_runner::LocalCompactionRunner, node_picker::RemoteCompactionNodePickerRef};
@@ -26,15 +27,17 @@ use crate::{
         CompactionRunner, CompactionRunnerResult, CompactionRunnerTask,
     },
     instance::flush_compaction::{
-        BuildCompactionClientFailed, ConvertCompactionTaskResponse, GetCompactionClientFailed,
-        PickCompactionNodeFailed, Result,
+        self, BuildCompactionClientFailed, ConvertCompactionTaskResponse, GetCompactionClientFailed, PickCompactionNodeFailed, Result
     },
 };
 
 pub struct RemoteCompactionRunner {
     pub node_picker: RemoteCompactionNodePickerRef,
+
+    pub fallback_local_when_failed: bool,
     /// Responsible for executing compaction task locally if fail to remote
-    /// compact, used for better fault tolerance.
+    /// compact when `fallback_local_when_failed` is true, used for better fault
+    /// tolerance.
     pub local_compaction_runner: LocalCompactionRunner,
 }
 
@@ -73,11 +76,27 @@ impl CompactionRunner for RemoteCompactionRunner {
         let pb_resp = match client {
             Ok(client) => match client.execute_compaction_task(task.clone().into()).await {
                 Ok(resp) => resp,
-                Err(_) => {
+                Err(e) => {
+                    if !self.fallback_local_when_failed {
+                        return Err(flush_compaction::Error::RemoteCompactFailed { source: e } ); 
+                    }
+
+                    info!(
+                        "The compaction task falls back to local because of error:{}",
+                        e
+                    );
                     return self.local_compact(task).await;
                 }
             },
-            Err(_) => {
+            Err(e) => {
+                if !self.fallback_local_when_failed {
+                    return Err(e);
+                } 
+
+                info!(
+                    "The compaction task falls back to local because of error:{}",
+                    e
+                );
                 return self.local_compact(task).await;
             }
         };

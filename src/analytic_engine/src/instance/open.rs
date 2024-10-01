@@ -97,6 +97,8 @@ impl InstanceContext {
                     node_picker: Arc::new(LocalCompactionNodePickerImpl {
                         endpoint: endpoint.clone(),
                     }),
+                    // This field is set to false here for testing.
+                    fallback_local_when_failed: false,
                     local_compaction_runner: local_compaction_runner.clone(),
                 })
             }
@@ -104,6 +106,7 @@ impl InstanceContext {
                 node_picker: Arc::new(RemoteCompactionNodePickerImpl {
                     meta_client: meta_client.context(MetaClientNotExist)?,
                 }),
+                fallback_local_when_failed: true,
                 local_compaction_runner: local_compaction_runner.clone(),
             }),
 
