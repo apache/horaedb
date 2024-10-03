@@ -43,6 +43,9 @@ const CLUSTER_HORAEDB_STDOUT_FILE_0_ENV: &str = "CLUSTER_HORAEDB_STDOUT_FILE_0";
 const CLUSTER_HORAEDB_STDOUT_FILE_1_ENV: &str = "CLUSTER_HORAEDB_STDOUT_FILE_1";
 const CLUSTER_HORAEDB_HEALTH_CHECK_INTERVAL_SECONDS: usize = 5;
 
+const HORAEDB_STDOUT_FILE_2_ENV: &str = "HORAEDB_STDOUT_FILE_2";
+const HORAEDB_CONFIG_FILE_2_ENV: &str = "HORAEDB_CONFIG_FILE_2";
+
 const HORAEDB_SERVER_ADDR: &str = "HORAEDB_SERVER_ADDR";
 
 // Used to access HoraeDB by http service.
@@ -80,6 +83,10 @@ pub struct HoraeDBCluster {
     /// Used in meta health check
     db_client: Arc<dyn DbClient>,
     meta_stable_check_sql: String,
+}
+
+pub struct HoraeDBCompactionOffload {
+    server: HoraeDBServer,
 }
 
 impl HoraeDBServer {
@@ -228,6 +235,29 @@ impl Backend for HoraeDBCluster {
         self.horaemeta_process
             .kill()
             .expect("Failed to kill horaemeta");
+    }
+}
+
+#[async_trait]
+impl Backend for HoraeDBCompactionOffload {
+    fn start() -> Self {
+        let config = env::var(HORAEDB_CONFIG_FILE_2_ENV).expect("Cannot parse horaedb2 config env");
+        let bin = env::var(HORAEDB_BINARY_PATH_ENV).expect("Cannot parse binary path env");
+        let stdout = env::var(HORAEDB_STDOUT_FILE_2_ENV).expect("Cannot parse stdout2 env");
+        Self {
+            server: HoraeDBServer::spawn(bin, config, stdout),
+        }
+    }
+
+    async fn wait_for_ready(&self) {
+        tokio::time::sleep(Duration::from_secs(10)).await
+    }
+
+    fn stop(&mut self) {
+        self.server
+            .server_process
+            .kill()
+            .expect("Failed to kill server");
     }
 }
 

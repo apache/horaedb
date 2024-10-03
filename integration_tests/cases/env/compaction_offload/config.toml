@@ -15,45 +15,30 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[logger]
-level = "debug"
-
 [server]
-bind_addr = "0.0.0.0"
+bind_addr = "127.0.0.1"
 http_port = 5440
 grpc_port = 8831
-mysql_port = 3307
-deploy_mode = "Cluster"
 
-[tracing]
-dir = "/tmp/horaedb0"
+[query_engine]
+read_parallelism = 8
+
+[analytic.wal]
+type = "RocksDB"
+data_dir = "/tmp/horaedb"
 
 [analytic.storage]
 mem_cache_capacity = '1G'
 mem_cache_partition_bits = 0
+disk_cache_dir = "/tmp/horaedb"
+disk_cache_capacity = '2G'
+disk_cache_page_size = '1M'
 
 [analytic.storage.object_store]
 type = "Local"
-data_dir = "/tmp/horaedb0"
+data_dir = "/tmp/horaedb"
 
-[analytic.wal]
-type = "RocksDB"
-data_dir = "/tmp/horaedb0"
-
-[cluster_deployment]
-mode = "WithMeta"
-cmd_channel_buffer_size = 10
-
-[cluster_deployment.meta_client]
-# Only support "defaultCluster" currently.
-cluster_name = "defaultCluster"
-meta_addr = "http://127.0.0.1:2379"
-lease = "10s"
-timeout = "5s"
-
-[cluster_deployment.etcd_client]
-server_addrs = ['127.0.0.1:2379']
-
-[limiter]
-write_block_list = ['block_test_table']
-read_block_list = ['block_test_table']
+[analytic.compaction_mode]
+compaction_mode = "Offload"
+node_picker = "Local"
+endpoint = "127.0.0.1:8831"

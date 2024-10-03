@@ -21,7 +21,7 @@ use std::{env, fmt::Display, path::Path};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use database::{Backend, HoraeDB};
+use database::{Backend, HoraeDB, HoraeDBCompactionOffload};
 use sqlness::{Database, EnvController, QueryContext, Runner};
 
 use crate::database::{HoraeDBCluster, HoraeDBServer};
@@ -65,6 +65,9 @@ impl EnvController for HoraeDBController {
         let db = match env {
             "local" => Box::new(HoraeDB::<HoraeDBServer>::create().await) as DbRef,
             "cluster" => Box::new(HoraeDB::<HoraeDBCluster>::create().await) as DbRef,
+            "compaction_offload" => {
+                Box::new(HoraeDB::<HoraeDBCompactionOffload>::create().await) as DbRef
+            }
             _ => panic!("invalid env {env}"),
         };
 
@@ -102,6 +105,10 @@ async fn main() -> Result<()> {
         // Just build the local testing env.
         "build_local" => {
             let _ = controller.start("local", None).await;
+        }
+        // Just build the compaction offload testing env.
+        "build_compaction_offload" => {
+            let _ = controller.start("compaction_offload", None).await;
         }
         other => {
             panic!("Unknown run mode:{other}")

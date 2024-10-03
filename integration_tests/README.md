@@ -12,6 +12,9 @@ make run-local
 
 # Only cluster env
 make run-cluster
+
+# Only compaction offload env
+make run-compaction-offload
 ```
 
 `horaedb-test` will recursively find all the files end with `.sql` and run it. Each file will be treated as a case. A file can contain multiple SQLs. When finished it will tell how many cases it run, and display the diff set if there is any. An example with one case:
