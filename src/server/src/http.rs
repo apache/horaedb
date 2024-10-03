@@ -247,6 +247,7 @@ impl Service {
             .or(self.admin_block())
             // debug APIs
             .or(self.flush_memtable())
+            .or(self.compact_table())
             .or(self.update_log_level())
             .or(self.profile_cpu())
             .or(self.profile_heap())
@@ -509,6 +510,54 @@ impl Service {
                             let table_name = table.name().to_string();
                             if let Err(e) = table.flush(FlushRequest::default()).await {
                                 error!("flush {} failed, err:{}", &table_name, e);
+                                failed_tables.push(table_name);
+                            } else {
+                                success_tables.push(table_name);
+                            }
+                        }
+                        let mut result = HashMap::new();
+                        result.insert("success", success_tables);
+                        result.insert("failed", failed_tables);
+                        Ok(reply::json(&result))
+                    }
+                    Err(e) => Err(reject::custom(e)),
+                }
+            })
+    }
+
+    // POST /debug/compact_table
+    fn compact_table(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "compact_table")
+            .and(warp::post())
+            .and(self.with_instance())
+            .and_then(|instance: InstanceRef| async move {
+                let get_all_tables = || {
+                    let mut tables = Vec::new();
+                    for catalog in instance
+                        .catalog_manager
+                        .all_catalogs()
+                        .box_err()
+                        .context(Internal)?
+                    {
+                        for schema in catalog.all_schemas().box_err().context(Internal)? {
+                            for table in schema.all_tables().box_err().context(Internal)? {
+                                tables.push(table);
+                            }
+                        }
+                    }
+                    Result::Ok(tables)
+                };
+                match get_all_tables() {
+                    Ok(tables) => {
+                        let mut failed_tables = Vec::new();
+                        let mut success_tables = Vec::new();
+
+                        for table in tables {
+                            let table_name = table.name().to_string();
+                            if let Err(e) = table.compact().await {
+                                error!("compact {} failed, err:{}", &table_name, e);
                                 failed_tables.push(table_name);
                             } else {
                                 success_tables.push(table_name);
