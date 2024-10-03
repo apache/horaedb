@@ -43,6 +43,42 @@ INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
 
 affected_rows: 3
 
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (4, 400, "d4"), (5, 500, "d5"), (6, 600, "d6");
+
+affected_rows: 3
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (4, 400, "update_d4"), (5, 500, "update_d5"), (6, 600, "update_d6");
+
+affected_rows: 3
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (7, 700, "d7"), (8, 800, "d8"), (9, 900, "d9");
+
+affected_rows: 3
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (7, 700, "update_d7"), (8, 800, "update_d8"), (9, 900, "update_d9");
+
+affected_rows: 3
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (10, 1000, "d10"), (11, 1100, "d11"), (12, 1200, "d12");
+
+affected_rows: 3
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (10, 1000, "update_d10"), (11, 1100, "update_d11"), (12, 1200, "update_d12");
+
+affected_rows: 3
+
 -- trigger manual compaction after flush memtable
 -- SQLNESS ARG pre_cmd=flush
 -- SQLNESS ARG pre_cmd=compact
@@ -57,6 +93,15 @@ tsid,timestamp,value,dic,
 UInt64(0),Timestamp(1),Double(100.0),String("update_d1"),
 UInt64(0),Timestamp(2),Double(200.0),String("update_d2"),
 UInt64(0),Timestamp(3),Double(300.0),String("update_d3"),
+UInt64(0),Timestamp(4),Double(400.0),String("update_d4"),
+UInt64(0),Timestamp(5),Double(500.0),String("update_d5"),
+UInt64(0),Timestamp(6),Double(600.0),String("update_d6"),
+UInt64(0),Timestamp(7),Double(700.0),String("update_d7"),
+UInt64(0),Timestamp(8),Double(800.0),String("update_d8"),
+UInt64(0),Timestamp(9),Double(900.0),String("update_d9"),
+UInt64(0),Timestamp(10),Double(1000.0),String("update_d10"),
+UInt64(0),Timestamp(11),Double(1100.0),String("update_d11"),
+UInt64(0),Timestamp(12),Double(1200.0),String("update_d12"),
 
 
 DROP TABLE `compact_table1`;

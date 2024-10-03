@@ -37,6 +37,30 @@ INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
 INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
     VALUES (1, 100, "update_d1"), (2, 200, "update_d2"), (3, 300, "update_d3");
 
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (4, 400, "d4"), (5, 500, "d5"), (6, 600, "d6");
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (4, 400, "update_d4"), (5, 500, "update_d5"), (6, 600, "update_d6");
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (7, 700, "d7"), (8, 800, "d8"), (9, 900, "d9");
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (7, 700, "update_d7"), (8, 800, "update_d8"), (9, 900, "update_d9");
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (10, 1000, "d10"), (11, 1100, "d11"), (12, 1200, "d12");
+
+-- SQLNESS ARG pre_cmd=flush
+INSERT INTO `compact_table1` (`timestamp`, `value`, `dic`)
+    VALUES (10, 1000, "update_d10"), (11, 1100, "update_d11"), (12, 1200, "update_d12");
+
 
 -- trigger manual compaction after flush memtable
 -- SQLNESS ARG pre_cmd=flush
