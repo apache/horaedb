@@ -39,6 +39,10 @@ on:
       - 'Cargo.lock'
       - '.github/workflows/ci.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Common environment variables
 env:
   RUSTFLAGS: "-C debuginfo=1"
@@ -50,7 +54,7 @@ env:
 jobs:
   style-check:
     name: style-check
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
