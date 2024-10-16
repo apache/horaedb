@@ -37,7 +37,7 @@ type = "Local"
 data_dir = "/tmp/horaedb0"
 
 [analytic.wal]
-type = "RocksDB"
+type = "Local"
 data_dir = "/tmp/horaedb0"
 
 [cluster_deployment]
