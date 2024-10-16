@@ -17,6 +17,7 @@
 
 use bytes_ext::{Buf, BufMut, SafeBuf, SafeBufMut};
 use codec::Encoder;
+use crc32fast::Hasher;
 use generic_error::GenericError;
 use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
@@ -26,7 +27,11 @@ pub const NEWEST_RECORD_ENCODING_VERSION: u8 = RECORD_ENCODING_V0;
 
 pub const VERSION_SIZE: usize = 1;
 pub const CRC_SIZE: usize = 4;
-pub const RECORD_LENGTH_SIZE: usize = 4;
+pub const TABLE_ID_SIZE: usize = 8;
+pub const SEQUENCE_NUM_SIZE: usize = 8;
+pub const VALUE_LENGTH_SIZE: usize = 4;
+pub const RECORD_HEADER_SIZE: usize =
+    VERSION_SIZE + CRC_SIZE + TABLE_ID_SIZE + SEQUENCE_NUM_SIZE + VALUE_LENGTH_SIZE;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -57,10 +62,10 @@ define_result!(Error);
 /// Record format:
 ///
 /// ```text
-/// +---------+--------+--------+------------+--------------+--------------+-------+
-/// | version |  crc   | length |  table id  | sequence num | value length | value |
-/// |  (u8)   | (u32)  | (u32)  |   (u64)    |    (u64)     |     (u32)    |       |
-/// +---------+--------+--------+------------+--------------+--------------+-------+
+/// +---------+--------+------------+--------------+--------------+-------+
+/// | version |  crc   |  table id  | sequence num | value length | value |
+/// |  (u8)   | (u32)  |   (u64)    |    (u64)     |     (u32)    |(bytes)|
+/// +---------+--------+------------+--------------+--------------+-------+
 /// ```
 #[derive(Debug)]
 pub struct Record {
@@ -69,9 +74,6 @@ pub struct Record {
 
     /// The CRC checksum of the record.
     pub crc: u32,
-
-    /// The length of the record (excluding version, crc and length).
-    pub length: u32,
 
     /// Identifier for tables.
     pub table_id: u64,
@@ -91,7 +93,6 @@ impl Record {
         let mut record = Record {
             version: NEWEST_RECORD_ENCODING_VERSION,
             crc: 0,
-            length: (8 + 8 + 4 + value.len()) as u32,
             table_id,
             sequence_num,
             value_length: value.len() as u32,
@@ -99,31 +100,31 @@ impl Record {
         };
 
         // Calculate CRC
-        let mut buf = Vec::new();
-        buf.try_put_u64(table_id).context(Encoding)?;
-        buf.try_put_u64(sequence_num).context(Encoding)?;
-        buf.try_put_u32(record.value_length).context(Encoding)?;
-        buf.extend_from_slice(value);
-        record.crc = crc32fast::hash(&buf);
+        let mut h = Hasher::new();
+        h.update(&table_id.to_le_bytes());
+        h.update(&sequence_num.to_le_bytes());
+        h.update(&record.value_length.to_le_bytes());
+        h.update(value);
+        record.crc = h.finalize();
 
         Ok(record)
     }
 
     // Return the length of the record
     pub fn len(&self) -> usize {
-        VERSION_SIZE + CRC_SIZE + RECORD_LENGTH_SIZE + self.length as usize
+        RECORD_HEADER_SIZE + self.value_length as usize
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct RecordEncoding {
-    version: u8,
+    expected_version: u8,
 }
 
 impl RecordEncoding {
     pub fn newest() -> Self {
         Self {
-            version: NEWEST_RECORD_ENCODING_VERSION,
+            expected_version: NEWEST_RECORD_ENCODING_VERSION,
         }
     }
 }
@@ -134,16 +135,15 @@ impl Encoder<Record> for RecordEncoding {
     fn encode<B: BufMut>(&self, buf: &mut B, record: &Record) -> Result<()> {
         // Verify version
         ensure!(
-            record.version == self.version,
+            record.version == self.expected_version,
             Version {
-                expected: self.version,
+                expected: self.expected_version,
                 given: record.version
             }
         );
 
         buf.try_put_u8(record.version).context(Encoding)?;
         buf.try_put_u32(record.crc).context(Encoding)?;
-        buf.try_put_u32(record.length).context(Encoding)?;
         buf.try_put_u64(record.table_id).context(Encoding)?;
         buf.try_put_u64(record.sequence_num).context(Encoding)?;
         buf.try_put_u32(record.value_length).context(Encoding)?;
@@ -160,9 +160,9 @@ impl RecordEncoding {
     pub fn decode<'a>(&'a self, mut buf: &'a [u8]) -> Result<Record> {
         // Ensure that buf is not shorter than the shortest record.
         ensure!(
-            buf.remaining() >= VERSION_SIZE + CRC_SIZE + RECORD_LENGTH_SIZE,
+            buf.remaining() >= VERSION_SIZE + CRC_SIZE + VALUE_LENGTH_SIZE,
             LengthMismatch {
-                expected: VERSION_SIZE + CRC_SIZE + RECORD_LENGTH_SIZE,
+                expected: VERSION_SIZE + CRC_SIZE + VALUE_LENGTH_SIZE,
                 actual: buf.remaining()
             }
         );
@@ -172,38 +172,26 @@ impl RecordEncoding {
 
         // Verify version
         ensure!(
-            version == self.version,
+            version == self.expected_version,
             Version {
-                expected: self.version,
+                expected: self.expected_version,
                 given: version
             }
         );
 
-        // Read CRC
         let crc = buf.try_get_u32().context(Decoding)?;
-
-        // Read length
-        let length = buf.try_get_u32().context(Decoding)?;
-        ensure!(
-            length > 0,
-            LengthMismatch {
-                expected: 1usize,
-                actual: 0usize
-            }
-        );
-
-        // Ensure the buf is long enough
-        ensure!(
-            buf.remaining() >= length as usize,
-            LengthMismatch {
-                expected: length as usize,
-                actual: buf.remaining()
-            }
-        );
+        let table_id = buf.try_get_u64().context(Decoding)?;
+        let sequence_num = buf.try_get_u64().context(Decoding)?;
+        let value_length = buf.try_get_u32().context(Decoding)?;
+        let value = buf[0..value_length as usize].to_vec();
 
         // Verify CRC
-        let data = &buf[0..length as usize];
-        let computed_crc = crc32fast::hash(data);
+        let mut h = Hasher::new();
+        h.update(&table_id.to_le_bytes());
+        h.update(&sequence_num.to_le_bytes());
+        h.update(&value_length.to_le_bytes());
+        h.update(&value);
+        let computed_crc = h.finalize();
         ensure!(
             computed_crc == crc,
             ChecksumMismatch {
@@ -212,23 +200,11 @@ impl RecordEncoding {
             }
         );
 
-        // Read table id
-        let table_id = buf.try_get_u64().context(Decoding)?;
-
-        // Read sequence number
-        let sequence_num = buf.try_get_u64().context(Decoding)?;
-
-        // Read value length
-        let value_length = buf.try_get_u32().context(Decoding)?;
-
-        // Read value
-        let value = buf[0..value_length as usize].to_vec();
         buf.advance(value_length as usize);
 
         Ok(Record {
             version,
             crc,
-            length,
             table_id,
             sequence_num,
             value_length,
@@ -245,7 +221,7 @@ mod tests {
     use crate::local_storage_impl::record_encoding::{Record, RecordEncoding};
 
     #[test]
-    fn test_record_encoding() {
+    fn test_local_wal_record_encoding() {
         let table_id = 1;
         let sequence_num = 2;
         let value = b"test_value";
@@ -260,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn test_record_decoding() {
+    fn test_local_wal_record_decoding() {
         let table_id = 1;
         let sequence_num = 2;
         let value = b"test_value";
@@ -274,7 +250,6 @@ mod tests {
 
         assert_eq!(decoded_record.version, record.version);
         assert_eq!(decoded_record.crc, record.crc);
-        assert_eq!(decoded_record.length, record.length);
         assert_eq!(decoded_record.table_id, record.table_id);
         assert_eq!(decoded_record.sequence_num, record.sequence_num);
         assert_eq!(decoded_record.value_length, record.value_length);
