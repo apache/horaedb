@@ -84,9 +84,7 @@ members = [
     "src/wal"
 ]
 
-default-members = [
-    "src/horaedb"
-]
+default-members = ["src/horaedb"]
 
 [workspace.dependencies]
 alloc_tracker = { path = "src/components/alloc_tracker" }

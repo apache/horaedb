@@ -89,25 +89,15 @@ pub struct Record {
 }
 
 impl Record {
-    pub fn new(table_id: u64, sequence_num: u64, value: &[u8]) -> Result<Self> {
-        let mut record = Record {
+    pub fn new(table_id: u64, sequence_num: u64, value: &[u8]) -> Self {
+        Record {
             version: NEWEST_RECORD_ENCODING_VERSION,
-            crc: 0,
+            crc: compute_crc32(table_id, sequence_num, value),
             table_id,
             sequence_num,
             value_length: value.len() as u32,
             value: value.to_vec(),
-        };
-
-        // Calculate CRC
-        let mut h = Hasher::new();
-        h.update(&table_id.to_le_bytes());
-        h.update(&sequence_num.to_le_bytes());
-        h.update(&record.value_length.to_le_bytes());
-        h.update(value);
-        record.crc = h.finalize();
-
-        Ok(record)
+        }
     }
 
     // Return the length of the record
@@ -160,9 +150,9 @@ impl RecordEncoding {
     pub fn decode<'a>(&'a self, mut buf: &'a [u8]) -> Result<Record> {
         // Ensure that buf is not shorter than the shortest record.
         ensure!(
-            buf.remaining() >= VERSION_SIZE + CRC_SIZE + VALUE_LENGTH_SIZE,
+            buf.remaining() >= RECORD_HEADER_SIZE,
             LengthMismatch {
-                expected: VERSION_SIZE + CRC_SIZE + VALUE_LENGTH_SIZE,
+                expected: RECORD_HEADER_SIZE,
                 actual: buf.remaining()
             }
         );
@@ -183,15 +173,11 @@ impl RecordEncoding {
         let table_id = buf.try_get_u64().context(Decoding)?;
         let sequence_num = buf.try_get_u64().context(Decoding)?;
         let value_length = buf.try_get_u32().context(Decoding)?;
-        let value = buf[0..value_length as usize].to_vec();
+        let mut value = vec![0; value_length as usize];
+        buf.try_copy_to_slice(&mut value).context(Decoding)?;
 
         // Verify CRC
-        let mut h = Hasher::new();
-        h.update(&table_id.to_le_bytes());
-        h.update(&sequence_num.to_le_bytes());
-        h.update(&value_length.to_le_bytes());
-        h.update(&value);
-        let computed_crc = h.finalize();
+        let computed_crc = compute_crc32(table_id, sequence_num, &value);
         ensure!(
             computed_crc == crc,
             ChecksumMismatch {
@@ -199,8 +185,6 @@ impl RecordEncoding {
                 actual: computed_crc
             }
         );
-
-        buf.advance(value_length as usize);
 
         Ok(Record {
             version,
@@ -211,6 +195,18 @@ impl RecordEncoding {
             value,
         })
     }
+}
+
+/// The crc32 checksum is calculated over the table_id, sequence_num,
+/// value_length and value.
+// This function does the same with `crc32fast::hash`.
+fn compute_crc32(table_id: u64, seq_num: u64, value: &[u8]) -> u32 {
+    let mut h = Hasher::new();
+    h.update(&table_id.to_le_bytes());
+    h.update(&seq_num.to_le_bytes());
+    h.update(&value.len().to_le_bytes());
+    h.update(value);
+    h.finalize()
 }
 
 #[cfg(test)]
@@ -225,7 +221,7 @@ mod tests {
         let table_id = 1;
         let sequence_num = 2;
         let value = b"test_value";
-        let record = Record::new(table_id, sequence_num, value).unwrap();
+        let record = Record::new(table_id, sequence_num, value);
 
         let encoder = RecordEncoding::newest();
         let mut buf = BytesMut::new();
@@ -240,7 +236,7 @@ mod tests {
         let table_id = 1;
         let sequence_num = 2;
         let value = b"test_value";
-        let record = Record::new(table_id, sequence_num, value).unwrap();
+        let record = Record::new(table_id, sequence_num, value);
 
         let encoder = RecordEncoding::newest();
         let mut buf = BytesMut::new();
