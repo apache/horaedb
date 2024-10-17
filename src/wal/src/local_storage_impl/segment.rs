@@ -134,6 +134,7 @@ pub enum Error {
 
 define_result!(Error);
 
+const SEGMENT_NAME_PREFIX: &str = "seg_";
 const SEGMENT_HEADER: &[u8] = b"HoraeDBWAL";
 const WAL_SEGMENT_V0: u8 = 0;
 const NEWEST_WAL_SEGMENT_VERSION: u8 = WAL_SEGMENT_V0;
@@ -656,38 +657,21 @@ impl Region {
         let mut max_segment_id: i32 = -1;
         let mut next_sequence_num: u64 = MIN_SEQUENCE_NUMBER + 1;
 
-        // Segment file naming convention: segment_<id>.wal
+        // Segment file naming convention: {SEGMENT_NAME_PREFIX}{id}
         for entry in fs::read_dir(&region_dir).context(FileOpen)? {
             let entry = entry.context(FileOpen)?;
-
-            let path = entry.path();
-
-            if !path.is_file() {
-                continue;
-            }
-
-            match path.extension() {
-                Some(ext) if ext == "wal" => ext,
-                _ => continue,
-            };
-
-            let file_name = match path.file_name().and_then(|name| name.to_str()) {
-                Some(name) => name,
-                None => continue,
-            };
-
-            let segment_id = match file_name
-                .trim_start_matches("segment_")
-                .trim_end_matches(".wal")
-                .parse::<u64>()
-                .ok()
-            {
+            let filename = entry.file_name();
+            let filename = filename.to_string_lossy();
+            let segment_id = match filename.strip_prefix(SEGMENT_NAME_PREFIX) {
                 Some(id) => id,
                 None => continue,
             };
+            let segment_id = segment_id
+                .parse::<u64>()
+                .map_err(anyhow::Error::new)
+                .context(Internal)?;
 
-            let segment =
-                Segment::new(path.to_string_lossy().to_string(), segment_id, segment_size)?;
+            let segment = Segment::new(filename.to_string(), segment_id, segment_size)?;
             next_sequence_num = next_sequence_num.max(segment.max_seq + 1);
             let segment = Arc::new(Mutex::new(segment));
 
@@ -700,7 +684,7 @@ impl Region {
         // If no existing segments, create a new one
         if max_segment_id == -1 {
             max_segment_id = 0;
-            let path = format!("{}/segment_{}.wal", region_dir, max_segment_id);
+            let path = format!("{region_dir}/{SEGMENT_NAME_PREFIX}{max_segment_id}");
             let new_segment = Segment::new(path, max_segment_id as u64, segment_size)?;
             let new_segment = Arc::new(Mutex::new(new_segment));
             all_segments.insert(0, new_segment);

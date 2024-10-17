@@ -57,11 +57,11 @@ impl LocalStorageImpl {
             segment_size,
             ..
         } = config.clone();
-        let wal_path_str = wal_path.to_str().unwrap().to_string();
+        let wal_path_str = wal_path.to_string_lossy().to_string();
         let region_manager = RegionManager::new(
             wal_path_str.clone(),
             cache_size,
-            segment_size,
+            segment_size.as_byte() as usize,
             runtime.clone(),
         )
         .box_err()
