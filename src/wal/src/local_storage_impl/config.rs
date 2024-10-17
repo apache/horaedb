@@ -30,7 +30,7 @@ impl Default for LocalStorageConfig {
     fn default() -> Self {
         Self {
             data_dir: "/tmp/horaedb".to_string(),
-            segment_size: ReadableSize::mb(128),
+            segment_size: ReadableSize::mb(64),
             cache_size: 3,
         }
     }
