@@ -50,7 +50,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t > 1695348001000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t]:\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t > TimestampMillisecond(1695348001000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001001), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_164, fetched_columns:[tsid,t]:\n=0]\n"),
 
 
 -- This query should have higher priority
@@ -60,7 +60,7 @@ explain analyze select t from `03_dml_select_real_time_range`
 where t >= 1695348001000 and t < 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t]:\n=0]\n"),
+String("Plan with Metrics"),String("ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_164, fetched_columns:[tsid,t]:\n=0]\n"),
 
 
 -- This query should have higher priority
@@ -70,7 +70,7 @@ explain analyze select name from `03_dml_select_real_time_range`
 where t >= 1695348001000 and t < 1695348002000;
 
 plan_type,plan,
-String("Plan with Metrics"),String("ProjectionExec: expr=[name@0 as name], metrics=xx\n  ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_1, fetched_columns:[tsid,t,name]:\n=0]\n"),
+String("Plan with Metrics"),String("ProjectionExec: expr=[name@0 as name], metrics=xx\n  ScanTable: table=03_dml_select_real_time_range, parallelism=8, priority=High, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), t < TimestampMillisecond(1695348002000, None)], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(1695348002000) } }\nscan_table:\n    do_merge_sort=true\n    iter_num=1\n    merge_iter_0:\n        init_duration=xxs\n        num_memtables=1\n        num_ssts=0\n        scan_count=2\n        scan_duration=xxs\n        times_fetch_row_from_multiple=0\n        times_fetch_rows_from_one=1\n        total_rows_fetch_from_one=1\n        scan_memtable_164, fetched_columns:[tsid,t,name]:\n=0]\n"),
 
 
 -- This query should not include memtable
@@ -135,7 +135,7 @@ explain analyze select t from `03_append_mode_table`
 where t >= 1695348001000 and name = 'ceresdb';
 
 plan_type,plan,
-String("Plan with Metrics"),String("ProjectionExec: expr=[t@0 as t], metrics=xx\n  ScanTable: table=03_append_mode_table, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), name = Utf8(\"ceresdb\")], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n    chain_iter_0:\n        num_memtables=1\n        num_ssts=0\n        scan_duration=xxs\n        since_create=xxs\n        since_init=xxs\n        total_batch_fetched=1\n        total_rows_fetched=2\n        scan_memtable_1, fetched_columns:[t,name]:\n=0]\n"),
+String("Plan with Metrics"),String("ProjectionExec: expr=[t@0 as t], metrics=xx\n  ScanTable: table=03_append_mode_table, parallelism=8, priority=Low, partition_count=UnknownPartitioning(8), metrics=[\nPredicate { exprs:[t >= TimestampMillisecond(1695348001000, None), name = Utf8(\"ceresdb\")], time_range:TimeRange { inclusive_start: Timestamp(1695348001000), exclusive_end: Timestamp(9223372036854775807) } }\nscan_table:\n    do_merge_sort=false\n    chain_iter_0:\n        num_memtables=1\n        num_ssts=0\n        scan_duration=xxs\n        since_create=xxs\n        since_init=xxs\n        total_batch_fetched=1\n        total_rows_fetched=2\n        scan_memtable_166, fetched_columns:[t,name]:\n=0]\n"),
 
 
 -- Should just fetch projected columns from SST

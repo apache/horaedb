@@ -39,6 +39,10 @@ on:
       - 'Cargo.lock'
       - '.github/workflows/ci.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Common environment variables
 env:
   RUSTFLAGS: "-C debuginfo=1"

@@ -3888,7 +3888,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 [[package]]
 name = "librocksdb_sys"
 version = "0.1.0"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f#f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=85e79e52c6ad80b8c547fcb90b3cade64f141fac#85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 dependencies = [
  "bindgen 0.65.1",
  "bzip2-sys",
@@ -3905,7 +3905,7 @@ dependencies = [
 [[package]]
 name = "libtitan_sys"
 version = "0.0.1"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f#f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=85e79e52c6ad80b8c547fcb90b3cade64f141fac#85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 dependencies = [
  "bzip2-sys",
  "cc",
@@ -6307,7 +6307,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.3.0"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f#f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=85e79e52c6ad80b8c547fcb90b3cade64f141fac#85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 dependencies = [
  "libc",
  "librocksdb_sys",
@@ -7042,7 +7042,7 @@ checksum = "5e9f0ab6ef7eb7353d9119c170a436d1bf248eea575ac42d19d12f4e34130831"
 [[package]]
 name = "snappy-sys"
 version = "0.1.0"
-source = "git+https://github.com/busyjay/rust-snappy.git?branch=static-link#8c12738bad811397600455d6982aff754ea2ac44"
+source = "git+https://github.com/tikv/rust-snappy.git?branch=static-link#8c12738bad811397600455d6982aff754ea2ac44"
 dependencies = [
  "cmake",
  "libc",

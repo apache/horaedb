@@ -760,9 +760,7 @@ impl Region {
 
         for entry in &batch.entries {
             // Encode the record
-            let record = Record::new(table_id, next_sequence_num, &entry.payload)
-                .box_err()
-                .context(Encoding)?;
+            let record = Record::new(table_id, next_sequence_num, &entry.payload);
             self.record_encoding
                 .encode(&mut data, &record)
                 .box_err()

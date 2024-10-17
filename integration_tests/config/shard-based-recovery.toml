@@ -34,5 +34,5 @@ type = "Local"
 data_dir = "/tmp/horaedb"
 
 [analytic.wal]
-type = "RocksDB"
+type = "Local"
 data_dir = "/tmp/horaedb"
