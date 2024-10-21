@@ -34,5 +34,12 @@ excludes = [
     "src/components/future_ext/src/cancel.rs",
     "src/components/tracing_util/src/lib.rs",
     "src/components/tracing_util/src/logging.rs",
-    "src/components/tracing_util/Cargo.toml"
+    "src/components/tracing_util/Cargo.toml",
+    "DISCLAIMER",
+    "NOTICE",
+    "horaemeta/DEPENDENCIES.csv",
+    "DEPENDENCIES.tsv",
+    # Test files
+    "*snap",
+    "*result"
 ]
