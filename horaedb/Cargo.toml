@@ -32,6 +32,7 @@ thiserror = "1"
 datafusion = "41"
 parquet = { version = "53" }
 object_store = { version = "0.11" }
+macros = { path = "../src/components/macros" }
 arrow = { version = "53", features = ["prettyprint"] }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"

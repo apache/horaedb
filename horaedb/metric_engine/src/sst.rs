@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+pub type FileId = u64;
+
 pub struct SSTable {
-    pub id: u64,
+    pub id: FileId,
 }

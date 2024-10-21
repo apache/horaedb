@@ -15,11 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::{sst::FileId, Result};
 pub struct Manifest {}
 
 impl Manifest {
     pub fn new(id: u64) -> Self {
         // Recover the manifest using the id from storage.
         Self {}
+    }
+
+    pub fn allocate_id(&self) -> Result<FileId> {
+        todo!()
     }
 }

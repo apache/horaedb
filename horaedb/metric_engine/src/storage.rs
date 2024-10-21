@@ -15,13 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use arrow::{array::RecordBatch, datatypes::Schema};
+use arrow::{array::RecordBatch, datatypes::SchemaRef};
 use async_trait::async_trait;
 use datafusion::logical_expr::Expr;
+use macros::ensure;
 
 use crate::{
     manifest::Manifest,
-    sst::SSTable,
+    sst::{FileId, SSTable},
     types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange},
     Result,
 };
@@ -42,7 +43,7 @@ pub struct CompactRequest {}
 /// Time-aware merge storage interface.
 #[async_trait]
 pub trait TimeMergeStorage {
-    fn schema(&self) -> Result<&Schema>;
+    fn schema(&self) -> &SchemaRef;
 
     async fn write(&self, req: WriteRequest) -> Result<()>;
 
@@ -53,9 +54,9 @@ pub trait TimeMergeStorage {
     async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
 
-/// TMStorage implementation using cloud object storage.
+/// `TimeMergeStorage` implementation using cloud object storage.
 pub struct CloudObjectStorage {
-    name: String,
+    path: String,
     id: u64,
     store: ObjectStoreRef,
     sstables: Vec<SSTable>,
@@ -63,24 +64,33 @@ pub struct CloudObjectStorage {
 }
 
 impl CloudObjectStorage {
-    pub fn new(name: String, id: u64, store: ObjectStoreRef) -> Self {
+    pub fn new(path: String, id: u64, store: ObjectStoreRef) -> Self {
         Self {
-            name,
+            path,
             id,
             store,
             sstables: Vec::new(),
             manifest: Manifest::new(id),
         }
     }
+
+    fn build_file_path(&self, id: FileId) -> String {
+        let root = &self.path;
+        let prefix = self.id;
+        format!("{root}/{prefix}/{id}")
+    }
 }
 
 #[async_trait]
 impl TimeMergeStorage for CloudObjectStorage {
-    fn schema(&self) -> Result<&Schema> {
+    fn schema(&self) -> &SchemaRef {
         todo!()
     }
 
     async fn write(&self, req: WriteRequest) -> Result<()> {
+        ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
+
+        let id = self.manifest.allocate_id()?;
         todo!()
     }
 

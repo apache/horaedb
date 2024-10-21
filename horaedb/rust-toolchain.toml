@@ -15,30 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[package]
-name = "metric_engine"
-
-[package.license]
-workspace = true
-
-[package.version]
-workspace = true
-
-[package.authors]
-workspace = true
-
-[package.edition]
-workspace = true
-
-[dependencies]
-anyhow = { workspace = true }
-arrow = { workspace = true }
-async-trait = { workspace = true }
-datafusion = { workspace = true }
-futures = { workspace = true }
-itertools = { workspace = true }
-macros = { workspace = true }
-lazy_static = { workspace = true }
-object_store = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
+[toolchain]
+channel = "nightly-2024-10-15"
+components = [ "rustfmt", "clippy" ]
