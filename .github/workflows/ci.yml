@@ -75,11 +75,13 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
           cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/korandoru/hawkeye/releases/download/v5.8.1/hawkeye-installer.sh | sh
       - name: Run Style Check
         run: |
-          make clippy
           make fmt
           make check-cargo-toml
+          make check-asf-header
+          make clippy
 
   unit-test:
     name: unit-test

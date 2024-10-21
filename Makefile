@@ -85,6 +85,9 @@ fmt:
 check-cargo-toml:
 	cd $(DIR); cargo sort --workspace --check
 
+check-asf-header:
+	cd $(DIR); hawkeye check
+
 udeps:
 	cd $(DIR); cargo udeps --all-targets --all-features --workspace
 
