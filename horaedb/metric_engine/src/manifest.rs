@@ -32,8 +32,6 @@ pub struct Manifest {
     store: ObjectStoreRef,
 }
 
-struct Inner {}
-
 impl Manifest {
     pub async fn try_new(path: String, store: ObjectStoreRef) -> Result<Self> {
         let snapshot_path = Path::from(format!("{path}/{SNAPSHOT_FILENAME}"));
