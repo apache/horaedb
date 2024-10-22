@@ -15,20 +15,27 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use anyhow::Context;
 use arrow::{array::RecordBatch, datatypes::SchemaRef};
 use async_trait::async_trait;
 use datafusion::logical_expr::Expr;
 use macros::ensure;
+use object_store::path::Path;
+use parquet::{
+    arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
+    file::properties::WriterProperties,
+};
 
 use crate::{
     manifest::Manifest,
-    sst::{FileId, SSTable},
+    sst::{allocate_id, FileId, FileMeta, SSTable},
     types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange},
     Result,
 };
 
 pub struct WriteRequest {
     batch: RecordBatch,
+    props: Option<WriterProperties>,
 }
 
 pub struct ScanRequest {
@@ -57,41 +64,76 @@ pub trait TimeMergeStorage {
 /// `TimeMergeStorage` implementation using cloud object storage.
 pub struct CloudObjectStorage {
     path: String,
-    id: u64,
     store: ObjectStoreRef,
+    arrow_schema: SchemaRef,
+    timestamp_index: usize,
     sstables: Vec<SSTable>,
     manifest: Manifest,
 }
 
 impl CloudObjectStorage {
-    pub fn new(path: String, id: u64, store: ObjectStoreRef) -> Self {
-        Self {
-            path,
-            id,
+    pub async fn try_new(
+        root_path: String,
+        store: ObjectStoreRef,
+        arrow_schema: SchemaRef,
+        timestamp_index: usize,
+    ) -> Result<Self> {
+        let manifest_prefix = crate::manifest::PREFIX_PATH;
+        let manifest =
+            Manifest::try_new(format!("{root_path}/{manifest_prefix}"), store.clone()).await?;
+        Ok(Self {
+            path: root_path,
+            timestamp_index,
             store,
-            sstables: Vec::new(),
-            manifest: Manifest::new(id),
-        }
+            arrow_schema,
+            sstables: Vec::new(), // TODO: recover sst from manifest
+            manifest,
+        })
     }
 
     fn build_file_path(&self, id: FileId) -> String {
         let root = &self.path;
-        let prefix = self.id;
+        let prefix = crate::sst::PREFIX_PATH;
         format!("{root}/{prefix}/{id}")
+    }
+
+    async fn write_batch(&self, req: WriteRequest) -> Result<FileId> {
+        let file_id = allocate_id();
+        let file_path = self.build_file_path(file_id);
+        let object_store_writer =
+            ParquetObjectWriter::new(self.store.clone(), Path::from(file_path));
+        let mut writer =
+            AsyncArrowWriter::try_new(object_store_writer, self.schema().clone(), req.props)
+                .context("create arrow writer")?;
+        writer
+            .write(&req.batch)
+            .await
+            .context("write arrow batch")?;
+        writer.close().await.context("close arrow writer")?;
+
+        Ok(file_id)
     }
 }
 
 #[async_trait]
 impl TimeMergeStorage for CloudObjectStorage {
     fn schema(&self) -> &SchemaRef {
-        todo!()
+        &self.arrow_schema
     }
 
     async fn write(&self, req: WriteRequest) -> Result<()> {
         ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
+        let num_rows = req.batch.num_rows();
+        // TODO: extract time range from batch
+        let time_range = TimeRange { start: 0, end: 1 };
+        let file_id = self.write_batch(req).await?;
+        let file_meta = FileMeta {
+            num_row: num_rows as u32,
+            range: time_range,
+        };
+        self.manifest.add_file(file_id, file_meta).await?;
 
-        let id = self.manifest.allocate_id()?;
-        todo!()
+        Ok(())
     }
 
     async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {

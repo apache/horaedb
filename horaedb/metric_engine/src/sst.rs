@@ -15,8 +15,42 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        LazyLock,
+    },
+    time::SystemTime,
+};
+
+use crate::types::TimeRange;
+
+pub const PREFIX_PATH: &str = "data";
+
 pub type FileId = u64;
 
 pub struct SSTable {
     pub id: FileId,
+}
+
+pub struct FileMeta {
+    pub num_row: u32,
+    pub range: TimeRange,
+}
+
+// Used as base for id allocation
+// This number mustn't go backwards on restarts, otherwise file id
+// collisions are possible. So don't change time on the server
+// between server restarts.
+static NEXT_ID: LazyLock<AtomicU64> = LazyLock::new(|| {
+    AtomicU64::new(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64,
+    )
+});
+
+pub fn allocate_id() -> u64 {
+    NEXT_ID.fetch_add(1, Ordering::SeqCst)
 }

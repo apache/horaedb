@@ -15,16 +15,38 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::{sst::FileId, Result};
-pub struct Manifest {}
+use anyhow::Context;
+use object_store::path::Path;
+
+use crate::{
+    sst::{FileId, FileMeta},
+    types::ObjectStoreRef,
+    Result,
+};
+
+pub const PREFIX_PATH: &str = "manifest";
+pub const SNAPSHOT_FILENAME: &str = "snapshot";
+
+pub struct Manifest {
+    path: String,
+    store: ObjectStoreRef,
+}
+
+struct Inner {}
 
 impl Manifest {
-    pub fn new(id: u64) -> Self {
-        // Recover the manifest using the id from storage.
-        Self {}
+    pub async fn try_new(path: String, store: ObjectStoreRef) -> Result<Self> {
+        let snapshot_path = Path::from(format!("{path}/{SNAPSHOT_FILENAME}"));
+        let bytes = store
+            .get(&snapshot_path)
+            .await
+            .with_context(|| format!("failed to get manifest snapshot, path: {path}"))?;
+        // TODO: decode bytes into manifest details
+        Ok(Self { path, store })
     }
 
-    pub fn allocate_id(&self) -> Result<FileId> {
-        todo!()
+    pub async fn add_file(&self, id: FileId, meta: FileMeta) -> Result<()> {
+        // TODO: implement this later
+        Ok(())
     }
 }
