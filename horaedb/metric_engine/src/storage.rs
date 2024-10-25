@@ -116,6 +116,8 @@ impl CloudObjectStorage {
         let mut writer =
             AsyncArrowWriter::try_new(object_store_writer, self.schema().clone(), req.props)
                 .context("create arrow writer")?;
+
+        // TODO: sort record batch according to primary key columns.
         writer
             .write(&req.batch)
             .await
@@ -134,6 +136,7 @@ impl TimeMergeStorage for CloudObjectStorage {
 
     async fn write(&self, req: WriteRequest) -> Result<()> {
         ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
+
         let num_rows = req.batch.num_rows();
         let time_column = req
             .batch
