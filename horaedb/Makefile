@@ -26,3 +26,7 @@ sort:
 
 fmt:
 	cargo fmt -- --check
+
+fix:
+	cargo fmt
+	cargo sort --workspace

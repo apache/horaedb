@@ -31,7 +31,7 @@ workspace = true
 workspace = true
 
 [dependencies]
-prost = "0.13"
+prost = { workspace = true }
 
 [build-dependencies]
 prost-build = { version = "0.13" }

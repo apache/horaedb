@@ -29,10 +29,13 @@ members = ["metric_engine", "pb_types", "server"]
 anyhow = { version = "1.0" }
 metric_engine = { path = "metric_engine" }
 thiserror = "1"
+bytes = "1"
 datafusion = "41"
 parquet = { version = "53" }
 object_store = { version = "0.11" }
 macros = { path = "../src/components/macros" }
+pb_types = { path = "pb_types" }
+prost = { version = "0.13" }
 arrow = { version = "53", features = ["prettyprint"] }
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"

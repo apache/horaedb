@@ -28,7 +28,7 @@ use parquet::{
 
 use crate::{
     manifest::Manifest,
-    sst::{allocate_id, FileId, FileMeta, SSTable},
+    sst::{allocate_id, FileId, FileMeta, SstFile},
     types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange},
     Result,
 };
@@ -67,10 +67,20 @@ pub struct CloudObjectStorage {
     store: ObjectStoreRef,
     arrow_schema: SchemaRef,
     timestamp_index: usize,
-    sstables: Vec<SSTable>,
+    sstables: Vec<SstFile>,
     manifest: Manifest,
 }
 
+/// It will organize the data in the following way:
+/// ```plaintext
+/// {root_path}/manifest/snapshot
+/// {root_path}/manifest/timestamp1
+/// {root_path}/manifest/timestamp2
+/// {root_path}/manifest/...
+/// {root_path}/data/timestamp_a.sst
+/// {root_path}/data/timestamp_b.sst
+/// {root_path}/data/...
+/// ```
 impl CloudObjectStorage {
     pub async fn try_new(
         root_path: String,
@@ -125,11 +135,15 @@ impl TimeMergeStorage for CloudObjectStorage {
         ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
         let num_rows = req.batch.num_rows();
         // TODO: extract time range from batch
-        let time_range = TimeRange { start: 0, end: 1 };
+        let time_range = TimeRange {
+            start: todo!(),
+            end: todo!(),
+        };
         let file_id = self.write_batch(req).await?;
         let file_meta = FileMeta {
-            num_row: num_rows as u32,
-            range: time_range,
+            max_sequence: todo!(),
+            num_rows: num_rows as u32,
+            time_range,
         };
         self.manifest.add_file(file_id, file_meta).await?;
 

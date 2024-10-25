@@ -23,22 +23,58 @@ use std::{
     time::SystemTime,
 };
 
-use crate::types::TimeRange;
+use macros::ensure;
+
+use crate::{types::TimeRange, Error};
 
 pub const PREFIX_PATH: &str = "data";
 
 pub type FileId = u64;
 
-pub struct SSTable {
+#[derive(Clone, Debug)]
+pub struct SstFile {
     pub id: FileId,
+    pub meta: FileMeta,
 }
 
+impl TryFrom<pb_types::SstFile> for SstFile {
+    type Error = Error;
+
+    fn try_from(value: pb_types::SstFile) -> Result<Self, Self::Error> {
+        ensure!(value.meta.is_some(), "file meta is missing");
+        let meta = value.meta.unwrap();
+        let meta = meta.try_into()?;
+
+        Ok(Self { id: value.id, meta })
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct FileMeta {
-    pub num_row: u32,
-    pub range: TimeRange,
+    pub max_sequence: u64,
+    pub num_rows: u32,
+    pub time_range: TimeRange,
 }
 
-// Used as base for id allocation
+impl TryFrom<pb_types::SstMeta> for FileMeta {
+    type Error = Error;
+
+    fn try_from(value: pb_types::SstMeta) -> Result<Self, Self::Error> {
+        ensure!(value.time_range.is_some(), "time range is missing");
+        let time_range = value.time_range.unwrap();
+
+        Ok(Self {
+            max_sequence: value.max_sequence,
+            num_rows: value.num_rows,
+            time_range: TimeRange {
+                start: time_range.start,
+                end: time_range.end,
+            },
+        })
+    }
+}
+
+// Used for sst file id allocation.
 // This number mustn't go backwards on restarts, otherwise file id
 // collisions are possible. So don't change time on the server
 // between server restarts.
