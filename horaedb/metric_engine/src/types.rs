@@ -23,7 +23,8 @@ use object_store::ObjectStore;
 
 use crate::error::Result;
 
-pub type TimeRange = Range<i64>;
+pub type Timestamp = i64;
+pub type TimeRange = Range<Timestamp>;
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 

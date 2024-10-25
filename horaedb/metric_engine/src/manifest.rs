@@ -67,8 +67,7 @@ impl Manifest {
                     .context("failed to read manifest snapshot")?;
                 let pb_payload = pb_types::Manifest::decode(bytes)
                     .context("failed to decode manifest snapshot")?;
-                let payload = Payload::try_from(pb_payload)?;
-                payload
+                Payload::try_from(pb_payload)?
             }
             Err(err) => {
                 if err.to_string().contains("not found") {

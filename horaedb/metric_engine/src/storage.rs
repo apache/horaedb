@@ -16,7 +16,10 @@
 // under the License.
 
 use anyhow::Context;
-use arrow::{array::RecordBatch, datatypes::SchemaRef};
+use arrow::{
+    array::{Int64Array, RecordBatch},
+    datatypes::SchemaRef,
+};
 use async_trait::async_trait;
 use datafusion::logical_expr::Expr;
 use macros::ensure;
@@ -28,8 +31,8 @@ use parquet::{
 
 use crate::{
     manifest::Manifest,
-    sst::{allocate_id, FileId, FileMeta, SstFile},
-    types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange},
+    sst::{allocate_id, FileId, FileMeta},
+    types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange, Timestamp},
     Result,
 };
 
@@ -67,7 +70,6 @@ pub struct CloudObjectStorage {
     store: ObjectStoreRef,
     arrow_schema: SchemaRef,
     timestamp_index: usize,
-    sstables: Vec<SstFile>,
     manifest: Manifest,
 }
 
@@ -96,7 +98,6 @@ impl CloudObjectStorage {
             timestamp_index,
             store,
             arrow_schema,
-            sstables: Vec::new(), // TODO: recover sst from manifest
             manifest,
         })
     }
@@ -134,14 +135,26 @@ impl TimeMergeStorage for CloudObjectStorage {
     async fn write(&self, req: WriteRequest) -> Result<()> {
         ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
         let num_rows = req.batch.num_rows();
-        // TODO: extract time range from batch
+        let time_column = req
+            .batch
+            .column(self.timestamp_index)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .context("timestamp column should be int64")?;
+
+        let mut start = Timestamp::MAX;
+        let mut end = Timestamp::MIN;
+        for v in time_column.values() {
+            start = start.min(*v);
+            end = end.max(*v);
+        }
         let time_range = TimeRange {
-            start: todo!(),
-            end: todo!(),
+            start,
+            end: end + 1,
         };
         let file_id = self.write_batch(req).await?;
         let file_meta = FileMeta {
-            max_sequence: todo!(),
+            max_sequence: file_id, // Since file_id in increasing order, we can use it as sequence.
             num_rows: num_rows as u32,
             time_range,
         };
