@@ -2,8 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
 [![CI](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml)
-[![OpenIssue](https://img.shields.io/github/issues/apache/incubator-horaedb)](https://github.com/apache/incubator-horaedb/issu
-es)
+[![OpenIssue](https://img.shields.io/github/issues/apache/incubator-horaedb)](https://github.com/apache/incubator-horaedb/issues)
 [![HoraeDB Docker](https://img.shields.io/docker/v/apache/horaedb-server?logo=docker&label=horaedb-server)](https://hub.docker.com/r/apache/horaedb-server)
 [![HoraeMeta Docker](https://img.shields.io/docker/v/apache/horaemeta-server?logo=docker&label=horaemeta-server)](https://hub.docker.com/r/apache/horaemeta-server)
 
@@ -96,11 +95,11 @@ Drop TABLE `demo`
 
 Thrive together in Apache HoraeDB (incubating) community with users and developers from all around the world.
 
-- Ask questions on [GitHub Discussion](https://github.com/apache/horaedb/discussions)
-- Chat with developers/users from all over the world on [Discord](https://discord.gg/h5r4kVMRYN) or [DingTalk](https://horaedb.apache.org/images/dingtalk.jpg)
-- Mailing lists are a form of communication used by the Apache community. See guide [here](http://horaedb.apache.org/community/) to subscribe our list.
+- Ask questions on [GitHub Discussion](https://github.com/apache/horaedb/discussions).
+- Chat with developers/users on [Discord](https://discord.gg/h5r4kVMRYN) or [DingTalk](https://horaedb.apache.org/images/dingtalk.jpg).
+- Mailing lists are a form of communication used by the Apache community. See guide [here](http://horaedb.apache.org/community/) to subscribe to our list.
 
-Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
+> Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 
 ## Acknowledgment
 
