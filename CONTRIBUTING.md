@@ -38,7 +38,7 @@ PR title.
 
 For PRs that you consider ready for review, verify the following locally before you submit it:
 
-* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://horaedb.apache.org/docs/dev/conventional_commit/) specification;
+* you have a coherent set of logical commits, with messages conforming to the [Conventional Commits](https://horaedb.apache.org/docs/dev/style_guide/) specification;
 * all the tests and/or benchmarks pass, including documentation tests;
 * the code is correctly formatted and all `clippy` checks pass; and
 * you haven't left any "code cruft" (commented out code blocks etc).

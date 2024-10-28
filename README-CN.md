@@ -79,7 +79,7 @@ Drop TABLE `demo`
 
 与来自世界各地的用户和开发人员一起在 Apache HoraeDB (incubating) 社区中茁壮成长。
 
-- http://horaedb.apache.org/community/
+- https://horaedb.apache.org/community/
 
 ## 致谢
 
