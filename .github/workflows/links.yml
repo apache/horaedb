@@ -20,6 +20,8 @@ name: Check markdown links
 on:
   merge_group:
   workflow_dispatch:
+  schedule:
+    - cron: '2 0 * * *'
   push:
     branches:
       - main
