@@ -30,14 +30,13 @@ use common_types::{
     schema::{IndexInWriterSchema, Schema},
     table::ShardId,
 };
-use futures::StreamExt;
 use generic_error::BoxError;
 use lazy_static::lazy_static;
 use logger::{debug, error, info, trace, warn};
 use prometheus::{exponential_buckets, register_histogram, Histogram};
 use snafu::ResultExt;
 use table_engine::table::TableId;
-use tokio::sync::{Mutex, MutexGuard};
+use tokio::sync::{Mutex, MutexGuard, Semaphore};
 use wal::{
     log_batch::LogEntry,
     manager::{
@@ -73,6 +72,8 @@ lazy_static! {
     )
     .unwrap();
 }
+
+const MAX_REPLAY_TASK_NUM: usize = 20;
 
 /// Wal replayer supporting both table based and region based
 // TODO: limit the memory usage in `RegionBased` mode.
@@ -189,22 +190,23 @@ impl Replay for TableBasedReplay {
             ..Default::default()
         };
 
-        let mut tasks = futures::stream::iter(
-            table_datas
-                .iter()
-                .map(|table_data| {
-                    let table_id = table_data.id;
-                    let read_ctx = &read_ctx;
-                    async move {
-                        let ret = Self::recover_table_logs(context, table_data, read_ctx).await;
-                        (table_id, ret)
-                    }
-                })
-                .collect::<Vec<_>>(),
-        )
-        .buffer_unordered(20);
-        while let Some((table_id, ret)) = tasks.next().await {
-            if let Err(e) = ret {
+        let ((), results) = async_scoped::TokioScope::scope_and_block(|scope| {
+            // Limit the maximum number of concurrent tasks.
+            let semaphore = Arc::new(Semaphore::new(MAX_REPLAY_TASK_NUM));
+            for table_data in table_datas {
+                let table_id = table_data.id;
+                let read_ctx = &read_ctx;
+                let semaphore = semaphore.clone();
+                scope.spawn(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
+                    let ret = Self::recover_table_logs(context, table_data, read_ctx).await;
+                    (table_id, ret)
+                });
+            }
+        });
+
+        for result in results.into_iter().flatten() {
+            if let (table_id, Err(e)) = result {
                 // If occur error, mark this table as failed and store the cause.
                 failed_tables.insert(table_id, e);
             }
@@ -345,7 +347,7 @@ impl RegionBasedReplay {
                 table_data: table_data.clone(),
                 serial_exec,
             };
-            serial_exec_ctxs.insert(table_data.id, serial_exec_ctx);
+            serial_exec_ctxs.insert(table_data.id, Mutex::new(serial_exec_ctx));
             table_datas_by_id.insert(table_data.id.as_u64(), table_data.clone());
         }
 
@@ -353,7 +355,7 @@ impl RegionBasedReplay {
         let schema_provider = TableSchemaProviderAdapter {
             table_datas: table_datas_by_id.clone(),
         };
-        let serial_exec_ctxs = Arc::new(Mutex::new(serial_exec_ctxs));
+        let serial_exec_ctxs = serial_exec_ctxs;
         // Split and replay logs.
         loop {
             let _timer = PULL_LOGS_DURATION_HISTOGRAM.start_timer();
@@ -381,49 +383,53 @@ impl RegionBasedReplay {
     async fn replay_single_batch(
         context: &ReplayContext,
         log_batch: &VecDeque<LogEntry<ReadPayload>>,
-        serial_exec_ctxs: &Arc<Mutex<HashMap<TableId, SerialExecContext<'_>>>>,
+        serial_exec_ctxs: &HashMap<TableId, Mutex<SerialExecContext<'_>>>,
         failed_tables: &mut FailedTables,
     ) -> Result<()> {
         let mut table_batches = Vec::new();
         // TODO: No `group_by` method in `VecDeque`, so implement it manually here...
         Self::split_log_batch_by_table(log_batch, &mut table_batches);
 
-        // TODO: Replay logs of different tables in parallel.
-        let mut replay_tasks = Vec::with_capacity(table_batches.len());
-        for table_batch in table_batches {
-            // Some tables may have failed in previous replay, ignore them.
-            if failed_tables.contains_key(&table_batch.table_id) {
-                continue;
-            }
-            let log_entries: Vec<_> = table_batch
-                .ranges
-                .iter()
-                .flat_map(|range| log_batch.range(range.clone()))
-                .collect();
+        let ((), results) = async_scoped::TokioScope::scope_and_block(|scope| {
+            // Limit the maximum number of concurrent tasks.
+            let semaphore = Arc::new(Semaphore::new(MAX_REPLAY_TASK_NUM));
 
-            let serial_exec_ctxs = serial_exec_ctxs.clone();
-            replay_tasks.push(async move {
-                // Some tables may have been moved to other shards or dropped, ignore such logs.
-                if let Some(ctx) = serial_exec_ctxs.lock().await.get_mut(&table_batch.table_id) {
-                    let result = replay_table_log_entries(
-                        &context.flusher,
-                        context.max_retry_flush_limit,
-                        &mut ctx.serial_exec,
-                        &ctx.table_data,
-                        log_entries.into_iter(),
-                    )
-                    .await;
-                    (table_batch.table_id, Some(result))
-                } else {
-                    (table_batch.table_id, None)
+            for table_batch in table_batches {
+                // Some tables may have failed in previous replay, ignore them.
+                if failed_tables.contains_key(&table_batch.table_id) {
+                    continue;
                 }
-            });
-        }
+                let log_entries: Vec<_> = table_batch
+                    .ranges
+                    .iter()
+                    .flat_map(|range| log_batch.range(range.clone()))
+                    .collect();
+                let semaphore = semaphore.clone();
 
-        // Run at most 20 tasks in parallel
-        let mut replay_tasks = futures::stream::iter(replay_tasks).buffer_unordered(20);
-        while let Some((table_id, ret)) = replay_tasks.next().await {
-            if let Some(Err(e)) = ret {
+                scope.spawn(async move {
+                    let _permit = semaphore.acquire().await.unwrap();
+                    // Some tables may have been moved to other shards or dropped, ignore such logs.
+                    if let Some(ctx) = serial_exec_ctxs.get(&table_batch.table_id) {
+                        let mut ctx = ctx.lock().await;
+                        let table_data = ctx.table_data.clone();
+                        let result = replay_table_log_entries(
+                            &context.flusher,
+                            context.max_retry_flush_limit,
+                            &mut ctx.serial_exec,
+                            &table_data,
+                            log_entries.into_iter(),
+                        )
+                        .await;
+                        (table_batch.table_id, Some(result))
+                    } else {
+                        (table_batch.table_id, None)
+                    }
+                });
+            }
+        });
+
+        for result in results.into_iter().flatten() {
+            if let (table_id, Some(Err(e))) = result {
                 // If occur error, mark this table as failed and store the cause.
                 failed_tables.insert(table_id, e);
             }

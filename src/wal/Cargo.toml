@@ -29,7 +29,7 @@ workspace = true
 
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
-rev = "f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+rev = "85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 features = ["portable"]
 optional = true
 
@@ -48,6 +48,7 @@ required-features = ["wal-message-queue", "wal-table-kv", "wal-rocksdb", "wal-lo
 
 [dependencies]
 anyhow = { workspace = true }
+async-scoped = { version = "0.9.0", features = ["use-tokio"] }
 async-trait = { workspace = true }
 bytes_ext = { workspace = true }
 chrono = { workspace = true }
@@ -64,6 +65,7 @@ memmap2 = { version = "0.9.4", optional = true }
 message_queue = { workspace = true, optional = true }
 prometheus = { workspace = true }
 prost = { workspace = true }
+rayon = "1.10.0"
 runtime = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

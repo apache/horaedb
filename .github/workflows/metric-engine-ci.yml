@@ -53,6 +53,10 @@ jobs:
       - name: Release Disk Quota
         run: |
           sudo make ensure-disk-quota
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
       - name: Install check binaries
         run: |
           rustup component add clippy

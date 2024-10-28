@@ -15,45 +15,23 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[node]
-addr = "127.0.0.1"
+[package]
+name = "pb_types"
 
-[logger]
-level = "info"
+[package.license]
+workspace = true
 
-[server]
-bind_addr = "0.0.0.0"
-http_port = 5440
-grpc_port = 8831
-mysql_port = 3307
-deploy_mode = "Cluster"
+[package.version]
+workspace = true
 
-[analytic.storage]
-mem_cache_capacity = '1G'
-mem_cache_partition_bits = 0
+[package.authors]
+workspace = true
 
-[analytic.storage.object_store]
-type = "Local"
-data_dir = "/tmp/horaedb0"
+[package.edition]
+workspace = true
 
-[analytic.wal]
-type = "Local"
-data_dir = "/tmp/horaedb0"
+[dependencies]
+prost = { workspace = true }
 
-[cluster_deployment]
-mode = "WithMeta"
-cmd_channel_buffer_size = 10
-
-[cluster_deployment.meta_client]
-# Only support "defaultCluster" currently.
-cluster_name = "defaultCluster"
-meta_addr = "http://127.0.0.1:2379"
-lease = "10s"
-timeout = "5s"
-
-[cluster_deployment.etcd_client]
-server_addrs = ['127.0.0.1:2379']
-
-[limiter]
-write_block_list = ['mytable1']
-read_block_list = ['mytable1']
+[build-dependencies]
+prost-build = { version = "0.13" }

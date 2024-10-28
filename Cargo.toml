@@ -16,7 +16,7 @@
 # under the License.
 
 [workspace.package]
-version = "2.0.0"
+version = "2.1.0"
 authors = ["HoraeDB Authors"]
 edition = "2021"
 license = "Apache-2.0"
@@ -83,6 +83,8 @@ members = [
     "src/tools",
     "src/wal"
 ]
+
+default-members = ["src/horaedb"]
 
 [workspace.dependencies]
 alloc_tracker = { path = "src/components/alloc_tracker" }
