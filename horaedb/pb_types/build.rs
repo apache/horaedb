@@ -15,14 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub use anyhow::Error as AnyhowError;
-use thiserror::Error;
+use std::io::Result;
 
-#[derive(Error, Debug)]
-#[non_exhaustive]
-pub enum Error {
-    #[error(transparent)]
-    Internal(#[from] anyhow::Error),
+fn main() -> Result<()> {
+    prost_build::compile_protos(&["protos/sst.proto"], &["protos/"])?;
+    Ok(())
 }
-
-pub type Result<T> = std::result::Result<T, Error>;

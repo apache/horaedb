@@ -15,18 +15,23 @@
 # specific language governing permissions and limitations
 # under the License.
 
-SHELL = /bin/bash
+[package]
+name = "pb_types"
 
-clippy:
-	cargo clippy --all-targets --all-features -- -D warnings \
-	-A dead_code -A unused_variables -A clippy::unreachable # Remove these once we have a clean build
+[package.license]
+workspace = true
 
-sort:
-	cargo sort --workspace --check
+[package.version]
+workspace = true
 
-fmt:
-	cargo fmt -- --check
+[package.authors]
+workspace = true
 
-fix:
-	cargo fmt
-	cargo sort --workspace
+[package.edition]
+workspace = true
+
+[dependencies]
+prost = { workspace = true }
+
+[build-dependencies]
+prost-build = { version = "0.13" }

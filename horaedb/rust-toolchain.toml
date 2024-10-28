@@ -15,18 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-SHELL = /bin/bash
-
-clippy:
-	cargo clippy --all-targets --all-features -- -D warnings \
-	-A dead_code -A unused_variables -A clippy::unreachable # Remove these once we have a clean build
-
-sort:
-	cargo sort --workspace --check
-
-fmt:
-	cargo fmt -- --check
-
-fix:
-	cargo fmt
-	cargo sort --workspace
+[toolchain]
+channel = "nightly-2024-10-15"
+components = [ "rustfmt", "clippy" ]
