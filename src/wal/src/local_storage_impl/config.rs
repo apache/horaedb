@@ -16,12 +16,13 @@
 // under the License.
 
 use serde::{Deserialize, Serialize};
+use size_ext::ReadableSize;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LocalStorageConfig {
     pub data_dir: String,
-    pub segment_size: usize,
+    pub segment_size: ReadableSize,
     pub cache_size: usize,
 }
 
@@ -29,7 +30,7 @@ impl Default for LocalStorageConfig {
     fn default() -> Self {
         Self {
             data_dir: "/tmp/horaedb".to_string(),
-            segment_size: 64 * 1024 * 1024, // 64MB
+            segment_size: ReadableSize::mb(64),
             cache_size: 3,
         }
     }

@@ -134,6 +134,7 @@ pub enum Error {
 
 define_result!(Error);
 
+const SEGMENT_NAME_PREFIX: &str = "seg_";
 const SEGMENT_HEADER: &[u8] = b"HoraeDBWAL";
 const WAL_SEGMENT_V0: u8 = 0;
 const NEWEST_WAL_SEGMENT_VERSION: u8 = WAL_SEGMENT_V0;
@@ -653,61 +654,43 @@ impl Region {
         let mut all_segments = HashMap::new();
 
         // Scan the directory for existing WAL files
-        let mut max_segment_id: i32 = -1;
+        let mut max_segment_id: u64 = 0;
         let mut next_sequence_num: u64 = MIN_SEQUENCE_NUMBER + 1;
 
-        // Segment file naming convention: segment_<id>.wal
+        // Segment file naming convention: {SEGMENT_NAME_PREFIX}{id}
         for entry in fs::read_dir(&region_dir).context(FileOpen)? {
             let entry = entry.context(FileOpen)?;
-
-            let path = entry.path();
-
-            if !path.is_file() {
-                continue;
-            }
-
-            match path.extension() {
-                Some(ext) if ext == "wal" => ext,
-                _ => continue,
-            };
-
-            let file_name = match path.file_name().and_then(|name| name.to_str()) {
-                Some(name) => name,
-                None => continue,
-            };
-
-            let segment_id = match file_name
-                .trim_start_matches("segment_")
-                .trim_end_matches(".wal")
-                .parse::<u64>()
-                .ok()
-            {
+            let filename = entry.file_name();
+            let filename = filename.to_string_lossy();
+            let segment_id = match filename.strip_prefix(SEGMENT_NAME_PREFIX) {
                 Some(id) => id,
                 None => continue,
             };
+            let segment_id = segment_id
+                .parse::<u64>()
+                .map_err(anyhow::Error::new)
+                .context(Internal)?;
 
-            let segment =
-                Segment::new(path.to_string_lossy().to_string(), segment_id, segment_size)?;
+            let segment = Segment::new(
+                entry.path().to_string_lossy().to_string(),
+                segment_id,
+                segment_size,
+            )?;
             next_sequence_num = next_sequence_num.max(segment.max_seq + 1);
+            max_segment_id = max_segment_id.max(segment_id);
             let segment = Arc::new(Mutex::new(segment));
-
-            if segment_id as i32 > max_segment_id {
-                max_segment_id = segment_id as i32;
-            }
             all_segments.insert(segment_id, segment);
         }
 
         // If no existing segments, create a new one
-        if max_segment_id == -1 {
-            max_segment_id = 0;
-            let path = format!("{}/segment_{}.wal", region_dir, max_segment_id);
-            let new_segment = Segment::new(path, max_segment_id as u64, segment_size)?;
-            let new_segment = Arc::new(Mutex::new(new_segment));
-            all_segments.insert(0, new_segment);
+        if all_segments.is_empty() {
+            all_segments.insert(
+                max_segment_id,
+                Self::create_new_segment(&region_dir, max_segment_id, segment_size)?,
+            );
         }
 
-        let latest_segment = all_segments.get(&(max_segment_id as u64)).unwrap().clone();
-
+        let latest_segment = all_segments.get(&max_segment_id).unwrap().clone();
         let segment_manager = SegmentManager {
             all_segments: Mutex::new(all_segments),
             cache: Mutex::new(VecDeque::new()),
@@ -727,17 +710,9 @@ impl Region {
         })
     }
 
-    fn create_new_segment(&self, id: u64) -> Result<Arc<Mutex<Segment>>> {
-        // Create a new segment
-        let new_segment = Segment::new(
-            format!("{}/segment_{}.wal", self.region_dir, id),
-            id,
-            self.segment_size,
-        )?;
-        let new_segment = Arc::new(Mutex::new(new_segment));
-        self.segment_manager.add_segment(id, new_segment.clone())?;
-
-        Ok(new_segment)
+    fn create_new_segment(dir: &str, id: u64, size: usize) -> Result<Arc<Mutex<Segment>>> {
+        let new_segment = Segment::new(format!("{dir}/{SEGMENT_NAME_PREFIX}{id}"), id, size)?;
+        Ok(Arc::new(Mutex::new(new_segment)))
     }
 
     pub fn write(&self, _ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
@@ -760,9 +735,7 @@ impl Region {
 
         for entry in &batch.entries {
             // Encode the record
-            let record = Record::new(table_id, next_sequence_num, &entry.payload)
-                .box_err()
-                .context(Encoding)?;
+            let record = Record::new(table_id, next_sequence_num, &entry.payload);
             self.record_encoding
                 .encode(&mut data, &record)
                 .box_err()
@@ -784,7 +757,10 @@ impl Region {
                 let new_segment_id = guard.id + 1;
                 drop(guard);
 
-                *current_segment = self.create_new_segment(new_segment_id)?;
+                *current_segment =
+                    Self::create_new_segment(&self.region_dir, new_segment_id, self.segment_size)?;
+                self.segment_manager
+                    .add_segment(new_segment_id, current_segment.clone())?;
             }
         }
 

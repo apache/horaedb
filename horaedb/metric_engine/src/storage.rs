@@ -15,19 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use arrow::{array::RecordBatch, datatypes::Schema};
+use anyhow::Context;
+use arrow::{
+    array::{Int64Array, RecordBatch},
+    datatypes::SchemaRef,
+};
 use async_trait::async_trait;
 use datafusion::logical_expr::Expr;
+use macros::ensure;
+use object_store::path::Path;
+use parquet::{
+    arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
+    file::properties::WriterProperties,
+};
 
 use crate::{
     manifest::Manifest,
-    sst::SSTable,
-    types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange},
+    sst::{allocate_id, FileId, FileMeta},
+    types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange, Timestamp},
     Result,
 };
 
 pub struct WriteRequest {
     batch: RecordBatch,
+    props: Option<WriterProperties>,
 }
 
 pub struct ScanRequest {
@@ -42,7 +53,7 @@ pub struct CompactRequest {}
 /// Time-aware merge storage interface.
 #[async_trait]
 pub trait TimeMergeStorage {
-    fn schema(&self) -> Result<&Schema>;
+    fn schema(&self) -> &SchemaRef;
 
     async fn write(&self, req: WriteRequest) -> Result<()>;
 
@@ -53,35 +64,106 @@ pub trait TimeMergeStorage {
     async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
 
-/// TMStorage implementation using cloud object storage.
+/// `TimeMergeStorage` implementation using cloud object storage.
 pub struct CloudObjectStorage {
-    name: String,
-    id: u64,
+    path: String,
     store: ObjectStoreRef,
-    sstables: Vec<SSTable>,
+    arrow_schema: SchemaRef,
+    timestamp_index: usize,
     manifest: Manifest,
 }
 
+/// It will organize the data in the following way:
+/// ```plaintext
+/// {root_path}/manifest/snapshot
+/// {root_path}/manifest/timestamp1
+/// {root_path}/manifest/timestamp2
+/// {root_path}/manifest/...
+/// {root_path}/data/timestamp_a.sst
+/// {root_path}/data/timestamp_b.sst
+/// {root_path}/data/...
+/// ```
 impl CloudObjectStorage {
-    pub fn new(name: String, id: u64, store: ObjectStoreRef) -> Self {
-        Self {
-            name,
-            id,
+    pub async fn try_new(
+        root_path: String,
+        store: ObjectStoreRef,
+        arrow_schema: SchemaRef,
+        timestamp_index: usize,
+    ) -> Result<Self> {
+        let manifest_prefix = crate::manifest::PREFIX_PATH;
+        let manifest =
+            Manifest::try_new(format!("{root_path}/{manifest_prefix}"), store.clone()).await?;
+        Ok(Self {
+            path: root_path,
+            timestamp_index,
             store,
-            sstables: Vec::new(),
-            manifest: Manifest::new(id),
-        }
+            arrow_schema,
+            manifest,
+        })
+    }
+
+    fn build_file_path(&self, id: FileId) -> String {
+        let root = &self.path;
+        let prefix = crate::sst::PREFIX_PATH;
+        format!("{root}/{prefix}/{id}")
+    }
+
+    async fn write_batch(&self, req: WriteRequest) -> Result<FileId> {
+        let file_id = allocate_id();
+        let file_path = self.build_file_path(file_id);
+        let object_store_writer =
+            ParquetObjectWriter::new(self.store.clone(), Path::from(file_path));
+        let mut writer =
+            AsyncArrowWriter::try_new(object_store_writer, self.schema().clone(), req.props)
+                .context("create arrow writer")?;
+
+        // TODO: sort record batch according to primary key columns.
+        writer
+            .write(&req.batch)
+            .await
+            .context("write arrow batch")?;
+        writer.close().await.context("close arrow writer")?;
+
+        Ok(file_id)
     }
 }
 
 #[async_trait]
 impl TimeMergeStorage for CloudObjectStorage {
-    fn schema(&self) -> Result<&Schema> {
-        todo!()
+    fn schema(&self) -> &SchemaRef {
+        &self.arrow_schema
     }
 
     async fn write(&self, req: WriteRequest) -> Result<()> {
-        todo!()
+        ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
+
+        let num_rows = req.batch.num_rows();
+        let time_column = req
+            .batch
+            .column(self.timestamp_index)
+            .as_any()
+            .downcast_ref::<Int64Array>()
+            .context("timestamp column should be int64")?;
+
+        let mut start = Timestamp::MAX;
+        let mut end = Timestamp::MIN;
+        for v in time_column.values() {
+            start = start.min(*v);
+            end = end.max(*v);
+        }
+        let time_range = TimeRange {
+            start,
+            end: end + 1,
+        };
+        let file_id = self.write_batch(req).await?;
+        let file_meta = FileMeta {
+            max_sequence: file_id, // Since file_id in increasing order, we can use it as sequence.
+            num_rows: num_rows as u32,
+            time_range,
+        };
+        self.manifest.add_file(file_id, file_meta).await?;
+
+        Ok(())
     }
 
     async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {

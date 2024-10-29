@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "alloc_tracker"
-version = "2.0.0"
+version = "2.1.0"
 
 [[package]]
 name = "allocator-api2"
@@ -77,7 +77,7 @@ checksum = "0942ffc6dcaadf03badf6e6a2d0228460359d5e34b57ccdc720b7382dfbd5ec5"
 
 [[package]]
 name = "analytic_engine"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "arc-swap 1.6.0",
@@ -110,7 +110,7 @@ dependencies = [
  "message_queue",
  "meta_client",
  "metric_ext",
- "object_store 2.0.0",
+ "object_store 2.1.0",
  "parquet",
  "parquet_ext",
  "pin-project-lite",
@@ -243,7 +243,7 @@ checksum = "bddcadddf5e9015d310179a59bb28c4d4b9920ad0f11e8e14dbadf654890c9a6"
 
 [[package]]
 name = "arena"
-version = "2.0.0"
+version = "2.1.0"
 
 [[package]]
 name = "array-init"
@@ -688,7 +688,7 @@ dependencies = [
 
 [[package]]
 name = "arrow_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "serde",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "benchmarks"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "analytic_engine",
  "arena",
@@ -972,7 +972,7 @@ dependencies = [
  "generic_error",
  "logger",
  "macros",
- "object_store 2.0.0",
+ "object_store 2.1.0",
  "parquet",
  "parquet_ext",
  "pprof",
@@ -1110,12 +1110,12 @@ dependencies = [
 
 [[package]]
 name = "borsh"
-version = "0.10.3"
+version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4114279215a005bc675e386011e594e1d9b800918cea18fcadadcce864a2046b"
+checksum = "115e54d64eb62cdebad391c19efc9dce4981c690c85a33a12199d99bb9546fee"
 dependencies = [
  "borsh-derive",
- "hashbrown 0.13.2",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -1244,7 +1244,7 @@ checksum = "8318a53db07bb3f8dca91a600466bdb3f2eaadeedfdbcf02e1accbad9271ba50"
 
 [[package]]
 name = "bytes_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "bytes",
  "snafu 0.6.10",
@@ -1310,7 +1310,7 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "catalog"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "async-trait",
  "common_types",
@@ -1325,7 +1325,7 @@ dependencies = [
 
 [[package]]
 name = "catalog_impls"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "analytic_engine",
  "async-trait",
@@ -1496,7 +1496,7 @@ checksum = "b8191fa7302e03607ff0e237d4246cc043ff5b3cb9409d995172ba3bea16b807"
 
 [[package]]
 name = "cluster"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "async-trait",
  "bytes_ext",
@@ -1531,7 +1531,7 @@ dependencies = [
 
 [[package]]
 name = "codec"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "bytes_ext",
  "common_types",
@@ -1580,7 +1580,7 @@ dependencies = [
 
 [[package]]
 name = "common_types"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "arrow_ext",
@@ -2364,7 +2364,7 @@ dependencies = [
 
 [[package]]
 name = "df_engine_extensions"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "async-recursion",
@@ -2389,7 +2389,7 @@ dependencies = [
 
 [[package]]
 name = "df_operator"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "base64 0.13.1",
@@ -2749,7 +2749,7 @@ checksum = "e6d5a32815ae3f33302d95fdcb2ce17862f8c65363dcfd29360480ba1001fc9c"
 
 [[package]]
 name = "future_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "futures 0.3.28",
  "lazy_static",
@@ -2921,7 +2921,7 @@ dependencies = [
 
 [[package]]
 name = "generic_error"
-version = "2.0.0"
+version = "2.1.0"
 
 [[package]]
 name = "getrandom"
@@ -3004,7 +3004,7 @@ dependencies = [
 
 [[package]]
 name = "hash_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "ahash 0.8.3",
  "byteorder",
@@ -3134,7 +3134,7 @@ dependencies = [
 
 [[package]]
 name = "horaectl"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "horaedb"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "analytic_engine",
  "catalog",
@@ -3201,7 +3201,7 @@ dependencies = [
 
 [[package]]
 name = "horaedb-test"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3466,7 +3466,7 @@ dependencies = [
 
 [[package]]
 name = "id_allocator"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "generic_error",
  "tokio",
@@ -3581,7 +3581,7 @@ checksum = "8bb03732005da905c88227371639bf1ad885cc712789c011c31c5fb3ab3ccf02"
 
 [[package]]
 name = "interpreters"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "analytic_engine",
  "arrow 49.0.0",
@@ -3895,7 +3895,7 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 [[package]]
 name = "librocksdb_sys"
 version = "0.1.0"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f#f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=85e79e52c6ad80b8c547fcb90b3cade64f141fac#85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 dependencies = [
  "bindgen 0.65.1",
  "bzip2-sys",
@@ -3912,7 +3912,7 @@ dependencies = [
 [[package]]
 name = "libtitan_sys"
 version = "0.0.1"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f#f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=85e79e52c6ad80b8c547fcb90b3cade64f141fac#85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 dependencies = [
  "bzip2-sys",
  "cc",
@@ -3990,7 +3990,7 @@ dependencies = [
 
 [[package]]
 name = "logger"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "chrono",
  "log",
@@ -4071,7 +4071,7 @@ dependencies = [
 
 [[package]]
 name = "macros"
-version = "2.0.0"
+version = "2.1.0"
 
 [[package]]
 name = "matchers"
@@ -4148,7 +4148,7 @@ dependencies = [
 
 [[package]]
 name = "message_queue"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -4165,7 +4165,7 @@ dependencies = [
 
 [[package]]
 name = "meta_client"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "async-trait",
  "common_types",
@@ -4188,7 +4188,7 @@ dependencies = [
 
 [[package]]
 name = "metric_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "crossbeam-utils",
  "serde",
@@ -4517,7 +4517,7 @@ dependencies = [
 
 [[package]]
 name = "notifier"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "tokio",
 ]
@@ -4700,7 +4700,7 @@ dependencies = [
 
 [[package]]
 name = "object_store"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "async-trait",
  "bytes",
@@ -4885,7 +4885,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "panic_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "backtrace",
  "gag",
@@ -4986,7 +4986,7 @@ dependencies = [
 
 [[package]]
 name = "parquet_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "arrow_ext",
@@ -4996,7 +4996,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "logger",
- "object_store 2.0.0",
+ "object_store 2.1.0",
  "parquet",
  "tokio",
 ]
@@ -5012,7 +5012,7 @@ dependencies = [
 
 [[package]]
 name = "partition_table_engine"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "analytic_engine",
  "arrow 49.0.0",
@@ -5033,7 +5033,7 @@ dependencies = [
 
 [[package]]
 name = "partitioned_lock"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "hash_ext",
  "tokio",
@@ -5452,7 +5452,7 @@ dependencies = [
 
 [[package]]
 name = "profile"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "jemalloc-ctl",
  "jemalloc-sys",
@@ -5675,7 +5675,7 @@ checksum = "9653c3ed92974e34c5a6e0a510864dab979760481714c172e0a34e437cb98804"
 
 [[package]]
 name = "proxy"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "arrow_ext",
@@ -5776,7 +5776,7 @@ dependencies = [
 
 [[package]]
 name = "query_engine"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "async-trait",
@@ -5806,7 +5806,7 @@ dependencies = [
 
 [[package]]
 name = "query_frontend"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "async-trait",
@@ -6105,7 +6105,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 
 [[package]]
 name = "remote_engine_client"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow_ext",
  "async-trait",
@@ -6314,7 +6314,7 @@ dependencies = [
 [[package]]
 name = "rocksdb"
 version = "0.3.0"
-source = "git+https://github.com/tikv/rust-rocksdb.git?rev=f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f#f04f4dd8eacc30e67c24bc2529a6d9c6edb85f8f"
+source = "git+https://github.com/tikv/rust-rocksdb.git?rev=85e79e52c6ad80b8c547fcb90b3cade64f141fac#85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 dependencies = [
  "libc",
  "librocksdb_sys",
@@ -6322,7 +6322,7 @@ dependencies = [
 
 [[package]]
 name = "router"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "async-trait",
  "cluster",
@@ -6365,7 +6365,7 @@ dependencies = [
 
 [[package]]
 name = "runtime"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "lazy_static",
  "macros",
@@ -6402,7 +6402,7 @@ dependencies = [
 
 [[package]]
 name = "rust-sdk-test"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "horaedb-client",
  "tokio",
@@ -6599,7 +6599,7 @@ dependencies = [
 
 [[package]]
 name = "sampling_cache"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "chrono",
 ]
@@ -6744,7 +6744,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "analytic_engine",
  "arc-swap 1.6.0",
@@ -6907,7 +6907,7 @@ dependencies = [
 
 [[package]]
 name = "size_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "serde",
  "toml 0.7.3",
@@ -6930,7 +6930,7 @@ dependencies = [
 
 [[package]]
 name = "skiplist"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arena",
  "bytes",
@@ -7049,7 +7049,7 @@ checksum = "5e9f0ab6ef7eb7353d9119c170a436d1bf248eea575ac42d19d12f4e34130831"
 [[package]]
 name = "snappy-sys"
 version = "0.1.0"
-source = "git+https://github.com/busyjay/rust-snappy.git?branch=static-link#8c12738bad811397600455d6982aff754ea2ac44"
+source = "git+https://github.com/tikv/rust-snappy.git?branch=static-link#8c12738bad811397600455d6982aff754ea2ac44"
 dependencies = [
  "cmake",
  "libc",
@@ -7325,7 +7325,7 @@ dependencies = [
 
 [[package]]
 name = "system_catalog"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "async-trait",
@@ -7347,7 +7347,7 @@ dependencies = [
 
 [[package]]
 name = "system_stats"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "sysinfo",
  "tokio",
@@ -7355,7 +7355,7 @@ dependencies = [
 
 [[package]]
 name = "table_engine"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "arrow_ext",
@@ -7387,7 +7387,7 @@ dependencies = [
 
 [[package]]
 name = "table_kv"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "lazy_static",
  "logger",
@@ -7466,7 +7466,7 @@ dependencies = [
 
 [[package]]
 name = "test_util"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "arrow 49.0.0",
  "chrono",
@@ -7556,7 +7556,7 @@ dependencies = [
 
 [[package]]
 name = "time_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "chrono",
  "common_types",
@@ -7570,7 +7570,7 @@ dependencies = [
 
 [[package]]
 name = "timed_task"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "logger",
  "runtime",
@@ -7780,7 +7780,7 @@ dependencies = [
 
 [[package]]
 name = "toml_ext"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "macros",
  "serde",
@@ -7866,7 +7866,7 @@ dependencies = [
 
 [[package]]
 name = "tools"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "analytic_engine",
  "anyhow",
@@ -7875,7 +7875,7 @@ dependencies = [
  "futures 0.3.28",
  "generic_error",
  "num_cpus",
- "object_store 2.0.0",
+ "object_store 2.1.0",
  "parquet",
  "parquet_ext",
  "runtime",
@@ -7918,14 +7918,14 @@ checksum = "b6bc1c9ce2b5135ac7f93c72918fc37feb872bdc6a5533a8b85eb4b86bfdae52"
 
 [[package]]
 name = "trace_metric"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "trace_metric_derive",
 ]
 
 [[package]]
 name = "trace_metric_derive"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7934,7 +7934,7 @@ dependencies = [
 
 [[package]]
 name = "trace_metric_derive_tests"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "trace_metric",
 ]
@@ -8025,7 +8025,7 @@ dependencies = [
 
 [[package]]
 name = "tracing_util"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "console-subscriber",
  "lazy_static",
@@ -8087,7 +8087,7 @@ version = "1.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
- "cfg-if 1.0.0",
+ "cfg-if 0.1.10",
  "rand 0.8.5",
  "static_assertions",
 ]
@@ -8236,7 +8236,7 @@ checksum = "9d5b2c62b4012a3e1eca5a7e077d13b3bf498c4073e33ccd58626607748ceeca"
 
 [[package]]
 name = "wal"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "async-scoped",

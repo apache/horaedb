@@ -23,4 +23,4 @@ mod sst;
 pub mod storage;
 pub mod types;
 
-pub use error::{Error, Result};
+pub use error::{AnyhowError, Error, Result};
