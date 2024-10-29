@@ -32,7 +32,7 @@ type = "Local"
 data_dir = "/tmp/compaction-offload"
 
 [analytic.wal]
-type = "RocksDB"
+type = "Local"
 data_dir = "/tmp/compaction-offload"
 
 [analytic.compaction_mode]

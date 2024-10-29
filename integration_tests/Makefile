@@ -21,7 +21,7 @@ HORAEDB_DATA_DIR = /tmp/horaedb
 HORAEDB_DATA_DIR_0 = /tmp/horaedb0
 HORAEDB_DATA_DIR_1 = /tmp/horaedb1
 HORAEMETA_DATA_DIR = /tmp/horaemeta
-HORAEDB_DATA_DIR_2 = /tmp/horaedb2
+HORAEDB_DATA_DIR_2 = /tmp/compaction-offload
 
 export HORAEDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
 export HORAEDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/horaedb-test
