@@ -36,7 +36,7 @@ max_replay_tables_per_batch = 1024
 write_group_command_channel_cap = 1024
 
 [analytic.wal]
-type = "RocksDB"
+type = "Local"
 data_dir = "/tmp/horaedb1"
 
 [analytic.storage]
@@ -91,4 +91,3 @@ shards = [ 1 ]
 [limiter]
 write_block_list = ['mytable1']
 read_block_list = ['mytable1']
-

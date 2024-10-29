@@ -30,7 +30,7 @@ jobs:
         with:
           script: |
             const title = context.payload.pull_request.title;
-            const regex = /^(feat|fix|docs|refactor|chore)(\(.+\))?!?: .+$/; 
+            const regex = /^(feat|fix|docs|refactor|chore|test|style|build)(\(.+\))?!?: .+$/; 
             if (!regex.test(title)) {
               core.setFailed('PR title does not follow the convention, the pattern: ^(feat|fix|docs|refactor|chore)(\(.+\))?!?: .+$');
             }

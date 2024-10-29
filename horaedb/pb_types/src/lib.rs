@@ -15,14 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub use anyhow::Error as AnyhowError;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-#[non_exhaustive]
-pub enum Error {
-    #[error(transparent)]
-    Internal(#[from] anyhow::Error),
+mod pb_types {
+    include!(concat!(env!("OUT_DIR"), "/pb_types.sst.rs"));
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub use pb_types::*;

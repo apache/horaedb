@@ -27,6 +27,7 @@ use common_types::{
 };
 pub use error::*;
 use generic_error::BoxError;
+use rayon::{iter::ParallelIterator, prelude::IntoParallelIterator};
 use runtime::Runtime;
 use snafu::ResultExt;
 
@@ -428,13 +429,29 @@ impl BatchLogIteratorAdapter {
         let batch_size = self.batch_size;
         let (log_entries, iter_opt) = runtime
             .spawn_blocking(move || {
-                while buffer.len() < batch_size {
+                let mut raw_entries = Vec::new();
+
+                while raw_entries.len() < batch_size {
                     if let Some(raw_log_entry) = iter.next_log_entry()? {
                         if !filter(raw_log_entry.table_id) {
                             continue;
                         }
 
-                        let mut raw_payload = raw_log_entry.payload;
+                        raw_entries.push(LogEntry {
+                            table_id: raw_log_entry.table_id,
+                            sequence: raw_log_entry.sequence,
+                            payload: raw_log_entry.payload.to_vec(),
+                        });
+                    } else {
+                        break;
+                    }
+                }
+
+                // Decoding is time-consuming, so we do it in parallel.
+                let result: Result<VecDeque<_>> = raw_entries
+                    .into_par_iter()
+                    .map(|raw_log_entry| {
+                        let mut raw_payload = raw_log_entry.payload.as_slice();
                         let ctx = PayloadDecodeContext {
                             table_id: raw_log_entry.table_id,
                         };
@@ -442,18 +459,20 @@ impl BatchLogIteratorAdapter {
                             .decode(&ctx, &mut raw_payload)
                             .box_err()
                             .context(error::Decoding)?;
-                        let log_entry = LogEntry {
+                        Ok(LogEntry {
                             table_id: raw_log_entry.table_id,
                             sequence: raw_log_entry.sequence,
                             payload,
-                        };
-                        buffer.push_back(log_entry);
-                    } else {
-                        return Ok((buffer, None));
-                    }
-                }
+                        })
+                    })
+                    .collect();
 
-                Ok((buffer, Some(iter)))
+                let log_entries = result?;
+                if log_entries.len() < batch_size {
+                    Ok((log_entries, None))
+                } else {
+                    Ok((log_entries, Some(iter)))
+                }
             })
             .await
             .context(RuntimeExec)??;

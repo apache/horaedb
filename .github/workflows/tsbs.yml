@@ -46,7 +46,7 @@ jobs:
       - name: Setup Build Environment
         run: |
           sudo apt update
-          sudo apt install --yes protobuf-compiler
+          sudo apt install --yes protobuf-compiler liblzma-dev
       - name: Build server
         run: |
           make build
