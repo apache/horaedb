@@ -24,7 +24,7 @@ license = "Apache-2.0"
 [workspace]
 resolver = "2"
 # In alphabetical order
-members = [ 
+members = [
     "horaectl",
     "integration_tests",
     "integration_tests/sdk/rust",
@@ -33,7 +33,7 @@ members = [
     "src/catalog",
     "src/catalog_impls",
     "src/cluster",
-    "src/common_types", 
+    "src/common_types",
     "src/components/alloc_tracker",
     "src/components/arena",
     "src/components/arrow_ext",
