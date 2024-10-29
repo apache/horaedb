@@ -85,8 +85,10 @@ run-horaedb-cluster: build-horaedb
 	nohup ${HORAEDB_BINARY_PATH} --config ${HORAEDB_CONFIG_FILE_1} > ${CLUSTER_HORAEDB_STDOUT_FILE_1} 2>&1 &
 	sleep 30
 
-run: prepare build-meta
-	$(HORAEDB_TEST_BINARY)
+run:
+	make run-local
+	make run-cluster
+	make run-compaction-offload
 
 run-local: prepare
 	HORAEDB_ENV_FILTER=local $(HORAEDB_TEST_BINARY)
