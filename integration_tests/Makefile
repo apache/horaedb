@@ -21,6 +21,7 @@ HORAEDB_DATA_DIR = /tmp/horaedb
 HORAEDB_DATA_DIR_0 = /tmp/horaedb0
 HORAEDB_DATA_DIR_1 = /tmp/horaedb1
 HORAEMETA_DATA_DIR = /tmp/horaemeta
+HORAEDB_DATA_DIR_2 = /tmp/compaction-offload
 
 export HORAEDB_TEST_CASE_PATH ?= $(ROOT)/cases/env
 export HORAEDB_TEST_BINARY ?= $(ROOT)/../target/$(MODE)/horaedb-test
@@ -42,13 +43,17 @@ export CLUSTER_HORAEDB_STDOUT_FILE_0 ?= /tmp/horaedb-stdout-0.log
 export CLUSTER_HORAEDB_STDOUT_FILE_1 ?= /tmp/horaedb-stdout-1.log
 export RUST_BACKTRACE=1
 
+# Environment variables for compaction offload
+export HORAEDB_STDOUT_FILE_2 ?= /tmp/horaedb-stdout-2.log
+export HORAEDB_CONFIG_FILE_2 ?= $(ROOT)/config/compaction-offload.toml
+
 # Whether update related repos
 # We don't want to rebuild the binaries and data on sometimes(e.g. debugging in local),
 # and we can set it to false.
 export UPDATE_REPOS_TO_LATEST ?= true
 
 clean:
-	rm -rf $(HORAEDB_DATA_DIR) $(HORAEDB_DATA_DIR_0) $(HORAEDB_DATA_DIR_1) $(HORAEMETA_DATA_DIR)
+	rm -rf $(HORAEDB_DATA_DIR) $(HORAEDB_DATA_DIR_0) $(HORAEDB_DATA_DIR_1) $(HORAEMETA_DATA_DIR) $(HORAEDB_DATA_DIR_2) 
 
 build-meta:
 	./build_meta.sh
@@ -80,14 +85,19 @@ run-horaedb-cluster: build-horaedb
 	nohup ${HORAEDB_BINARY_PATH} --config ${HORAEDB_CONFIG_FILE_1} > ${CLUSTER_HORAEDB_STDOUT_FILE_1} 2>&1 &
 	sleep 30
 
-run: prepare build-meta
-	$(HORAEDB_TEST_BINARY)
+run:
+	make run-local
+	make run-cluster
+	make run-compaction-offload
 
 run-local: prepare
 	HORAEDB_ENV_FILTER=local $(HORAEDB_TEST_BINARY)
 
 run-cluster: prepare build-meta
 	HORAEDB_ENV_FILTER=cluster $(HORAEDB_TEST_BINARY)
+
+run-compaction-offload: prepare
+	HORAEDB_ENV_FILTER=compaction_offload $(HORAEDB_TEST_BINARY)
 
 run-java:
 	java -version
