@@ -79,11 +79,7 @@ Drop TABLE `demo`
 
 与来自世界各地的用户和开发人员一起在 Apache HoraeDB (incubating) 社区中茁壮成长。
 
-- [订阅邮箱参与讨论](mailto:dev-subscribe@horaedb.apache.org) ([订阅](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [取消订阅](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [查看邮件历史记录](https://lists.apache.org/list.html?dev@horaedb.apache.org))
-- 发送 [请求](mailto:dev@horaedb.apache.org?subject=(Request%to%20join%20HoraeDB%20slack)) 至 `dev@horaedb.apache.org` 加入HoraeDB Slack
-- 通过[这里的链接](http://horaedb.apache.org/community/)，加入我们的社区。
-
-[如何参与贡献](CONTRIBUTING.md)
+- https://horaedb.apache.org/community/
 
 ## 致谢
 

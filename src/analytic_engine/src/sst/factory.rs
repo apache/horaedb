@@ -21,10 +21,11 @@ use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use async_trait::async_trait;
 use common_types::projected_schema::RowProjectorBuilder;
+use generic_error::{BoxError, GenericError};
 use macros::define_result;
 use object_store::{ObjectStoreRef, Path};
 use runtime::Runtime;
-use snafu::{ResultExt, Snafu};
+use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
 use trace_metric::MetricsCollector;
 
@@ -50,6 +51,15 @@ use crate::{
 pub enum Error {
     #[snafu(display("Failed to parse sst header, err:{}", source,))]
     ParseHeader { source: header::Error },
+
+    #[snafu(display("Empty storage format hint.\nBacktrace:\n{}", backtrace))]
+    EmptyStorageFormatHint { backtrace: Backtrace },
+
+    #[snafu(display("Failed to convert storage format hint, err:{}", source))]
+    ConvertStorageFormatHint { source: GenericError },
+
+    #[snafu(display("Failed to convert compression, err:{}", source))]
+    ConvertCompression { source: GenericError },
 }
 
 define_result!(Error);
@@ -162,6 +172,59 @@ pub struct SstWriteOptions {
     pub compression: Compression,
     pub max_buffer_size: usize,
     pub column_stats: HashMap<String, ColumnStats>,
+}
+
+impl TryFrom<horaedbproto::compaction_service::SstWriteOptions> for SstWriteOptions {
+    type Error = Error;
+
+    fn try_from(value: horaedbproto::compaction_service::SstWriteOptions) -> Result<Self> {
+        let storage_format_hint: StorageFormatHint = value
+            .storage_format_hint
+            .context(EmptyStorageFormatHint)?
+            .try_into()
+            .box_err()
+            .context(ConvertStorageFormatHint)?;
+
+        let num_rows_per_row_group = value.num_rows_per_row_group as usize;
+        let compression: Compression = value
+            .compression
+            .try_into()
+            .box_err()
+            .context(ConvertCompression)?;
+        let max_buffer_size = value.max_buffer_size as usize;
+
+        let column_stats: HashMap<String, ColumnStats> = value
+            .column_stats
+            .into_iter()
+            .map(|(k, v)| (k, ColumnStats { low_cardinality: v }))
+            .collect();
+
+        Ok(SstWriteOptions {
+            storage_format_hint,
+            num_rows_per_row_group,
+            compression,
+            max_buffer_size,
+            column_stats,
+        })
+    }
+}
+
+impl From<SstWriteOptions> for horaedbproto::compaction_service::SstWriteOptions {
+    fn from(value: SstWriteOptions) -> Self {
+        let column_stats = value
+            .column_stats
+            .into_iter()
+            .map(|(k, v)| (k, v.low_cardinality))
+            .collect();
+
+        Self {
+            storage_format_hint: Some(value.storage_format_hint.into()),
+            num_rows_per_row_group: value.num_rows_per_row_group as u64,
+            compression: value.compression.into(),
+            max_buffer_size: value.max_buffer_size as u64,
+            column_stats,
+        }
+    }
 }
 
 impl From<&ColumnStats> for ColumnEncoding {

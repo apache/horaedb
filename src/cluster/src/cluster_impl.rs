@@ -46,8 +46,8 @@ use crate::{
     shard_set::{Shard, ShardRef, ShardSet},
     topology::ClusterTopology,
     Cluster, ClusterNodesNotFound, ClusterNodesResp, EtcdClientFailureWithCause,
-    InitEtcdClientConfig, InvalidArguments, MetaClientFailure, OpenShard, OpenShardWithCause,
-    Result, ShardNotFound, TableStatus,
+    InitEtcdClientConfig, InvalidArguments, MetaClientFailure, NodeType, OpenShard,
+    OpenShardWithCause, Result, ShardNotFound, TableStatus,
 };
 
 /// ClusterImpl is an implementation of [`Cluster`] based [`MetaClient`].
@@ -374,6 +374,10 @@ impl Cluster for ClusterImpl {
 
         info!("Cluster has stopped");
         Ok(())
+    }
+
+    fn node_type(&self) -> NodeType {
+        self.config.node_type.clone()
     }
 
     async fn open_shard(&self, shard_info: &ShardInfo) -> Result<ShardRef> {

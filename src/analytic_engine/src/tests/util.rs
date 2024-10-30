@@ -141,6 +141,7 @@ impl<T: WalsOpener> TestContext<T> {
             config: &self.config,
             engine_runtimes: self.runtimes.clone(),
             opened_wals: opened_wals.clone(),
+            meta_client: None,
         };
         self.opened_wals = Some(opened_wals);
 

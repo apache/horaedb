@@ -1,8 +1,8 @@
 ![HoraeDB](docs/logo/horaedb-banner-white-small.jpg)
 
 ![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)
-[![CI](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/incubator-horaedb/actions/workflows/ci.yml)
-[![OpenIssue](https://img.shields.io/github/issues/apache/incubator-horaedb)](https://github.com/apache/incubator-horaedb/issues)
+[![CI](https://github.com/apache/horaedb/actions/workflows/ci.yml/badge.svg)](https://github.com/apache/horaedb/actions/workflows/ci.yml)
+[![OpenIssue](https://img.shields.io/github/issues/apache/horaedb)](https://github.com/apache/horaedb/issues)
 [![HoraeDB Docker](https://img.shields.io/docker/v/apache/horaedb-server?logo=docker&label=horaedb-server)](https://hub.docker.com/r/apache/horaedb-server)
 [![HoraeMeta Docker](https://img.shields.io/docker/v/apache/horaemeta-server?logo=docker&label=horaemeta-server)](https://hub.docker.com/r/apache/horaemeta-server)
 
@@ -43,7 +43,7 @@ docker compose -f docker/docker-compose.yaml up
 
 ### Run from source code
 
-See details [here](https://horaedb.apache.org/dev/compile_run.html).
+Please read the [development guide](https://horaedb.apache.org/docs/dev/compile_run/) guide for instructions on how to build.
 
 ### Create Table and Write/Read data
 Create Table.
@@ -95,11 +95,11 @@ Drop TABLE `demo`
 
 Thrive together in Apache HoraeDB (incubating) community with users and developers from all around the world.
 
-- Discuss at [dev mailing list](mailto:dev-subscribe@horaedb.apache.org) ([subscribe](mailto:dev-subscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20subscribe)) / [unsubscribe](mailto:dev-unsubscribe@horaedb.apache.org?subject=(send%20this%20email%20to%20unsubscribe)) / [archives](https://lists.apache.org/list.html?dev@horaedb.apache.org))
-- Send [request](mailto:dev@horaedb.apache.org?subject=(Request%to%20join%20HoraeDB%20slack)) to `dev@horaedb.apache.org` to join HoraeDB slack channel
-- Or you can join our community [here](http://horaedb.apache.org/community/)
+- Ask questions on [GitHub Discussion](https://github.com/apache/horaedb/discussions).
+- Chat with developers/users on [Discord](https://discord.gg/h5r4kVMRYN) or [DingTalk](https://horaedb.apache.org/images/dingtalk.jpg).
+- Mailing lists are a form of communication used by the Apache community. See guide [here](http://horaedb.apache.org/community/) to subscribe to our list.
 
-Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
+> Read our [Contributing Guide](CONTRIBUTING.md) and make your first contribution!
 
 ## Acknowledgment
 

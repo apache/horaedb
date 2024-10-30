@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+pub use anyhow::Error as AnyhowError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

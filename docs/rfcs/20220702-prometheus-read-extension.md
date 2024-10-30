@@ -1,18 +1,18 @@
-Prometheus read extension for HoraeDB 
+Prometheus read extension for HoraeDB
 ---------------------------
 
 - Feature Name: prometheus-read-extension
-- Tracking Issue: https://github.com/apache/incubator-horaedb/issues/90
+- Tracking Issue: https://github.com/apache/horaedb/issues/90
 
 # Summary
 Drop-in and full-featured Prometheus read extension for HoraeDB
 
 # Motivation
-Prometheus and PromQL are wide used in monitoring scenarios. It would be great if HoraeDB can be queried using PromQL. 
+Prometheus and PromQL are wide used in monitoring scenarios. It would be great if HoraeDB can be queried using PromQL.
 
 HoraeDB has the ability to store and compute a large amount of data. But PromQL contains some specific operators. Though HoraeDB supports a subset, it is hard and infeasible to implement all of them.
 
-There are some brilliant distributed solutions like `Thanos` and `Cortex`. But the computation ability is limited in aspects of distributed execution or extensible (`Thanos` supports split query on time range (https://thanos.io/tip/components/query-frontend.md/#splitting). Combining `Prometheus` with `HoraeDB` can gain both high performance computation and the ability to query in other forms like SQL.  
+There are some brilliant distributed solutions like `Thanos` and `Cortex`. But the computation ability is limited in aspects of distributed execution or extensible (`Thanos` supports split query on time range (https://thanos.io/tip/components/query-frontend.md/#splitting). Combining `Prometheus` with `HoraeDB` can gain both high performance computation and the ability to query in other forms like SQL.
 
 This proposal aims to provide a way that:
 
@@ -110,7 +110,7 @@ Query Frontend has to feed PromQL and SQL to servers separately because this int
 
 1. `Query Frontend` accepts a PromQL.
 2. `Query Frontend` splits the original PromQL into two sub queries and assigns a `TaskID`.
-3. `Query Frontend` sends sub PromQL to `Prometheus` and sub SQL to HoraeDB. 
+3. `Query Frontend` sends sub PromQL to `Prometheus` and sub SQL to HoraeDB.
 4. `Prometheus` processes the sub PromQL. It will query the data source (HoraeDB) for data.
 5. `HoraeDB` receives a request from `Prometheus`, and a sub-SQL with the same `TaskID` from `Query Frontend`.
 6. `HoraeDB` processes and returns result to `Prometheus`.
@@ -137,48 +137,48 @@ Query_Frontend -> Client : response PromQL request
 -->
 
 ```plaintext
-                                                                                               ,.-^^-._                       
-        ,-.                                                                                   |-.____.-|                      
-        `-'                                                                                   |        |                      
-        /|\                                                                                   |        |                      
-         |                ,--------------.                  ,----------.                      |        |                      
-        / \               |Query_Frontend|                  |Prometheus|                      '-.____.-'                      
-      Client              `------+-------'                  `----+-----'                       HoraeDB                        
-        |     PromQL request     |                               |                                |                           
-        | ----------------------->                               |                                |                           
-        |                        |                               |                                |                           
-        |                        | sub PromQL request with TaskID|                                |                           
-        |                        | ------------------------------>                                |                           
-        |                        |                               |                                |                           
-        |                        |                   sub SQL request with TaskID                  |                           
-        |                        | --------------------------------------------------------------->                           
-        |                        |                               |                                |                           
-        |                        |                               | remote storage read with TaskID|                           
-        |                        |                               | ------------------------------->                           
-        |                        |                               |                                |                           
-        |                        |                               |                                |----.                      
+                                                                                               ,.-^^-._
+        ,-.                                                                                   |-.____.-|
+        `-'                                                                                   |        |
+        /|\                                                                                   |        |
+         |                ,--------------.                  ,----------.                      |        |
+        / \               |Query_Frontend|                  |Prometheus|                      '-.____.-'
+      Client              `------+-------'                  `----+-----'                       HoraeDB
+        |     PromQL request     |                               |                                |
+        | ----------------------->                               |                                |
+        |                        |                               |                                |
+        |                        | sub PromQL request with TaskID|                                |
+        |                        | ------------------------------>                                |
+        |                        |                               |                                |
+        |                        |                   sub SQL request with TaskID                  |
+        |                        | --------------------------------------------------------------->
+        |                        |                               |                                |
+        |                        |                               | remote storage read with TaskID|
+        |                        |                               | ------------------------------->
+        |                        |                               |                                |
+        |                        |                               |                                |----.
         |                        |                               |                                |    | pull data and compute
-        |                        |                               |                                |<---'                      
-        |                        |                               |                                |                           
-        |                        |                               |  response remote read request  |                           
-        |                        |                               | <-------------------------------                           
-        |                        |                               |                                |                           
-        |                        |                               |----.                           |                           
-        |                        |                               |    | compute                   |                           
-        |                        |                               |<---'                           |                           
-        |                        |                               |                                |                           
-        |                        |    response PromQL request    |                                |                           
-        |                        | <------------------------------                                |                           
-        |                        |                               |                                |                           
-        | response PromQL request|                               |                                |                           
-        | <-----------------------                               |                                |                           
-      Client              ,------+-------.                  ,----+-----.                       HoraeDB                        
-        ,-.               |Query_Frontend|                  |Prometheus|                       ,.-^^-._                       
-        `-'               `--------------'                  `----------'                      |-.____.-|                      
-        /|\                                                                                   |        |                      
-         |                                                                                    |        |                      
-        / \                                                                                   |        |                      
-                                                                                              '-.____.-'                      
+        |                        |                               |                                |<---'
+        |                        |                               |                                |
+        |                        |                               |  response remote read request  |
+        |                        |                               | <-------------------------------
+        |                        |                               |                                |
+        |                        |                               |----.                           |
+        |                        |                               |    | compute                   |
+        |                        |                               |<---'                           |
+        |                        |                               |                                |
+        |                        |    response PromQL request    |                                |
+        |                        | <------------------------------                                |
+        |                        |                               |                                |
+        | response PromQL request|                               |                                |
+        | <-----------------------                               |                                |
+      Client              ,------+-------.                  ,----+-----.                       HoraeDB
+        ,-.               |Query_Frontend|                  |Prometheus|                       ,.-^^-._
+        `-'               `--------------'                  `----------'                      |-.____.-|
+        /|\                                                                                   |        |
+         |                                                                                    |        |
+        / \                                                                                   |        |
+                                                                                              '-.____.-'
 ```
 
 ### Separated HoraeDB cluster
@@ -216,50 +216,50 @@ Query_Frontend -> Client : response PromQL request
 -->
 
 ```plaintext
-                                                                                 ,.-^^-._ 
+                                                                                 ,.-^^-._
         ,-.                                                                     |-.____.-|
         `-'                                                                     |        |
         /|\                                                                     |        |
          |                ,--------------.                ,----------.          |        |
         / \               |Query_Frontend|                |Prometheus|          '-.____.-'
-      Client              `------+-------'                `----+-----'           HoraeDB  
-        |     PromQL request     |                             |                    |     
-        | ----------------------->                             |                    |     
-        |                        |                             |                    |     
-        |                        |      sub PromQL request     |                    |     
-        |                        | ---------------------------->                    |     
-        |                        |                             |                    |     
-        |                        |----.                        |                    |     
-        |                        |    | store the sub SQL      |                    |     
-        |                        |<---'                        |                    |     
-        |                        |                             |                    |     
-        |                        |     remote storage read     |                    |     
-        |                        | <----------------------------                    |     
-        |                        |                             |                    |     
-        |                        |        query sub SQL using HoraeDB Client        |     
-        |                        | ------------------------------------------------>|     
-        |                        |                             |                    |     
-        |                        |               sub SQL query result               |     
-        |                        | <------------------------------------------------|     
-        |                        |                             |                    |     
-        |                        |----.                        |                    |     
-        |                        |    | transform data format  |                    |     
-        |                        |<---'                        |                    |     
-        |                        |                             |                    |     
-        |                        | response remote read request|                    |     
-        |                        | ---------------------------->                    |     
-        |                        |                             |                    |     
-        |                        |                             |----.               |     
-        |                        |                             |    | compute       |     
-        |                        |                             |<---'               |     
-        |                        |                             |                    |     
-        |                        | response sub PromQL request |                    |     
-        |                        | <----------------------------                    |     
-        |                        |                             |                    |     
-        | response PromQL request|                             |                    |     
-        | <-----------------------                             |                    |     
-      Client              ,------+-------.                ,----+-----.           HoraeDB  
-        ,-.               |Query_Frontend|                |Prometheus|           ,.-^^-._ 
+      Client              `------+-------'                `----+-----'           HoraeDB
+        |     PromQL request     |                             |                    |
+        | ----------------------->                             |                    |
+        |                        |                             |                    |
+        |                        |      sub PromQL request     |                    |
+        |                        | ---------------------------->                    |
+        |                        |                             |                    |
+        |                        |----.                        |                    |
+        |                        |    | store the sub SQL      |                    |
+        |                        |<---'                        |                    |
+        |                        |                             |                    |
+        |                        |     remote storage read     |                    |
+        |                        | <----------------------------                    |
+        |                        |                             |                    |
+        |                        |        query sub SQL using HoraeDB Client        |
+        |                        | ------------------------------------------------>|
+        |                        |                             |                    |
+        |                        |               sub SQL query result               |
+        |                        | <------------------------------------------------|
+        |                        |                             |                    |
+        |                        |----.                        |                    |
+        |                        |    | transform data format  |                    |
+        |                        |<---'                        |                    |
+        |                        |                             |                    |
+        |                        | response remote read request|                    |
+        |                        | ---------------------------->                    |
+        |                        |                             |                    |
+        |                        |                             |----.               |
+        |                        |                             |    | compute       |
+        |                        |                             |<---'               |
+        |                        |                             |                    |
+        |                        | response sub PromQL request |                    |
+        |                        | <----------------------------                    |
+        |                        |                             |                    |
+        | response PromQL request|                             |                    |
+        | <-----------------------                             |                    |
+      Client              ,------+-------.                ,----+-----.           HoraeDB
+        ,-.               |Query_Frontend|                |Prometheus|           ,.-^^-._
         `-'               `--------------'                `----------'          |-.____.-|
         /|\                                                                     |        |
          |                                                                      |        |
@@ -268,13 +268,13 @@ Query_Frontend -> Client : response PromQL request
 ```
 
 ## Comparison
-Both ways can achieve our initial requirements and are able to implement distributed execution in the future. 
+Both ways can achieve our initial requirements and are able to implement distributed execution in the future.
 
 - Embedded `HoraeDB`
     - Pros.
         - `HoraeDB` feeds data to `Prometheus` directly, reducing some computation and transmission.
     - Cons.
-        - Need to customize a `Prometheus` specific interface in `HoraeDB`. 
+        - Need to customize a `Prometheus` specific interface in `HoraeDB`.
         - The deployment may requires all three components bound together for simplicity.
 - Separated `HoraeDB` cluster
     - Pros.
@@ -282,7 +282,7 @@ Both ways can achieve our initial requirements and are able to implement distrib
         - The deployment only requires one `Query Frontend` along with `Prometheus` which is more lightweight and less invasive.
         - States of `HoraeDB` and `Query Frontend` are simple and clear.
     - Cons.
-        - One more data transforming and forwarding in `Query Frontend` (pass results from `HoraeDB` to `Prometheus`). 
+        - One more data transforming and forwarding in `Query Frontend` (pass results from `HoraeDB` to `Prometheus`).
 
 # Drawbacks
 Detailed in the "Comparison" section above.

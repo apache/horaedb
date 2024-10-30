@@ -21,6 +21,7 @@ use std::{num::NonZeroUsize, path::Path, pin::Pin, sync::Arc};
 
 use futures::Future;
 use macros::define_result;
+use meta_client::MetaClientRef;
 use object_store::{
     aliyun,
     config::{ObjectStoreOptions, StorageOptions},
@@ -96,6 +97,8 @@ pub struct EngineBuilder<'a> {
     pub config: &'a Config,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
+    // Meta client is needed when compaction offload with remote node picker.
+    pub meta_client: Option<MetaClientRef>,
 }
 
 impl<'a> EngineBuilder<'a> {
@@ -116,6 +119,7 @@ impl<'a> EngineBuilder<'a> {
             self.opened_wals.data_wal,
             manifest_storages,
             Arc::new(opened_storages),
+            self.meta_client,
         )
         .await?;
 
@@ -134,6 +138,7 @@ async fn build_instance_context(
     wal_manager: WalManagerRef,
     manifest_storages: ManifestStorages,
     store_picker: ObjectStorePickerRef,
+    meta_client: Option<MetaClientRef>,
 ) -> Result<InstanceContext> {
     let meta_cache: Option<MetaCacheRef> = config
         .sst_meta_cache_cap
@@ -151,6 +156,7 @@ async fn build_instance_context(
         wal_manager,
         store_picker,
         Arc::new(FactoryImpl),
+        meta_client.clone(),
     )
     .await
     .context(OpenInstance)?;

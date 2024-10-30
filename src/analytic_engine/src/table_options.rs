@@ -130,6 +130,13 @@ pub enum Error {
     ))]
     UnknownStorageFormatHint { value: String, backtrace: Backtrace },
 
+    #[snafu(display(
+        "Unknown compression type. value:{:?}.\nBacktrace:\n{}",
+        value,
+        backtrace
+    ))]
+    UnknownCompressionType { value: i32, backtrace: Backtrace },
+
     #[snafu(display("Storage format hint is missing.\nBacktrace:\n{}", backtrace))]
     MissingStorageFormatHint { backtrace: Backtrace },
 
@@ -230,6 +237,33 @@ impl From<manifest_pb::Compression> for Compression {
             manifest_pb::Compression::Lz4 => Compression::Lz4,
             manifest_pb::Compression::Snappy => Compression::Snappy,
             manifest_pb::Compression::Zstd => Compression::Zstd,
+        }
+    }
+}
+
+impl TryFrom<i32> for Compression {
+    type Error = Error;
+
+    fn try_from(compression: i32) -> Result<Self> {
+        let compression = match compression {
+            0 => Compression::Uncompressed,
+            1 => Compression::Lz4,
+            2 => Compression::Snappy,
+            3 => Compression::Zstd,
+            _ => return UnknownCompressionType { value: compression }.fail(),
+        };
+
+        Ok(compression)
+    }
+}
+
+impl From<Compression> for i32 {
+    fn from(value: Compression) -> Self {
+        match value {
+            Compression::Uncompressed => 0,
+            Compression::Lz4 => 1,
+            Compression::Snappy => 2,
+            Compression::Zstd => 3,
         }
     }
 }
@@ -340,6 +374,14 @@ impl From<StorageFormat> for manifest_pb::StorageFormat {
     }
 }
 
+impl From<StorageFormat> for i32 {
+    fn from(value: StorageFormat) -> Self {
+        match value {
+            StorageFormat::Columnar => 0,
+        }
+    }
+}
+
 impl TryFrom<manifest_pb::StorageFormat> for StorageFormat {
     type Error = Error;
 
@@ -358,6 +400,18 @@ impl TryFrom<&str> for StorageFormat {
         let format = match value.to_uppercase().as_str() {
             STORAGE_FORMAT_COLUMNAR => Self::Columnar,
             _ => return UnknownStorageFormat { value }.fail(),
+        };
+        Ok(format)
+    }
+}
+
+impl TryFrom<i32> for StorageFormat {
+    type Error = Error;
+
+    fn try_from(value: i32) -> Result<Self> {
+        let format = match value {
+            0 => Self::Columnar,
+            _ => return UnknownStorageFormatType { value }.fail(),
         };
         Ok(format)
     }
