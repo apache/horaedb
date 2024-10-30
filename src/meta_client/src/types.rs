@@ -19,6 +19,7 @@ use std::{collections::HashMap, fmt, sync::Arc};
 
 pub use common_types::table::{ShardId, ShardVersion};
 use common_types::{
+    cluster::NodeType,
     schema::{SchemaId, SchemaName},
     table::{TableId, TableName},
 };
@@ -163,6 +164,7 @@ pub struct NodeMetaInfo {
     pub zone: String,
     pub idc: String,
     pub binary_version: String,
+    pub node_type: NodeType,
 }
 
 impl NodeMetaInfo {
@@ -588,4 +590,11 @@ impl TryFrom<meta_service_pb::GetNodesResponse> for GetNodesResponse {
             node_shards,
         })
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FetchCompactionNodeRequest {}
+
+pub struct FetchCompactionNodeResponse {
+    pub endpoint: String,
 }

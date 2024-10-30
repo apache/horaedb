@@ -89,6 +89,7 @@ dependencies = [
  "atomic_enum",
  "base64 0.13.1",
  "bytes_ext",
+ "cluster",
  "codec",
  "common_types",
  "datafusion",
@@ -107,6 +108,7 @@ dependencies = [
  "lru 0.7.8",
  "macros",
  "message_queue",
+ "meta_client",
  "metric_ext",
  "object_store 2.1.0",
  "parquet",
@@ -116,10 +118,12 @@ dependencies = [
  "prost 0.11.8",
  "rand 0.8.5",
  "remote_engine_client",
+ "reqwest 0.12.4",
  "router",
  "runtime",
  "sampling_cache",
  "serde",
+ "serde_json",
  "size_ext",
  "skiplist",
  "smallvec",
@@ -131,7 +135,9 @@ dependencies = [
  "thiserror",
  "time_ext",
  "tokio",
+ "tonic 0.8.3",
  "trace_metric",
+ "url",
  "wal",
  "xorfilter-rs",
 ]
@@ -3150,6 +3156,7 @@ dependencies = [
  "catalog_impls",
  "clap",
  "cluster",
+ "common_types",
  "datafusion",
  "df_operator",
  "etcd-client",
@@ -3223,7 +3230,7 @@ dependencies = [
 [[package]]
 name = "horaedbproto"
 version = "2.0.0"
-source = "git+https://github.com/apache/incubator-horaedb-proto.git?rev=a5874d9fedee32ab1292252c4eb6defc4f6e245a#a5874d9fedee32ab1292252c4eb6defc4f6e245a"
+source = "git+https://github.com/apache/incubator-horaedb-proto.git?rev=fac8564e6e3d50e51daa2af6eb905e747f3191b0#fac8564e6e3d50e51daa2af6eb905e747f3191b0"
 dependencies = [
  "prost 0.11.8",
  "protoc-bin-vendored",
