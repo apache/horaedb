@@ -14,30 +14,3 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-
-use std::{ops::Range, pin::Pin, sync::Arc};
-
-use arrow::{array::RecordBatch, datatypes::Schema};
-use futures::Stream;
-use object_store::ObjectStore;
-
-use crate::error::Result;
-
-pub type Timestamp = i64;
-pub type TimeRange = Range<Timestamp>;
-
-impl TimeRange {
-    pub fn overlaps(&self, other: &TimeRange) -> bool {
-        self.start < other.end && other.start < self.end
-    }
-}
-
-pub type ObjectStoreRef = Arc<dyn ObjectStore>;
-
-/// Trait for types that stream [arrow::record_batch::RecordBatch]
-pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
-    fn schema(&self) -> &Schema;
-}
-
-/// Trait for a [`Stream`] of [`RecordBatch`]es
-pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send>>;

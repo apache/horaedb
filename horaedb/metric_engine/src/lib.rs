@@ -19,6 +19,7 @@
 
 pub mod error;
 mod manifest;
+mod read;
 mod sst;
 pub mod storage;
 pub mod types;
