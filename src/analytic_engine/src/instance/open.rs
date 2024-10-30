@@ -24,20 +24,28 @@ use std::{
 
 use common_types::table::ShardId;
 use logger::{error, info};
+use meta_client::MetaClientRef;
 use object_store::ObjectStoreRef;
-use snafu::ResultExt;
+use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
 
 use crate::{
     compaction::{
-        runner::{local_runner::LocalCompactionRunner, CompactionRunnerPtr, CompactionRunnerRef},
+        runner::{
+            local_runner::LocalCompactionRunner,
+            node_picker::{
+                LocalCompactionNodePickerImpl, NodePicker, RemoteCompactionNodePickerImpl,
+            },
+            remote_runner::RemoteCompactionRunner,
+            CompactionRunnerPtr, CompactionRunnerRef,
+        },
         scheduler::SchedulerImpl,
     },
     context::OpenContext,
     engine,
     instance::{
-        engine::{OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
+        engine::{MetaClientNotExist, OpenManifest, OpenTablesOfShard, ReadMetaUpdate, Result},
         flush_compaction::Flusher,
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
@@ -52,7 +60,7 @@ use crate::{
     },
     table::data::{TableCatalogInfo, TableDataRef},
     table_meta_set_impl::TableMetaSetImpl,
-    RecoverMode,
+    CompactionMode, RecoverMode,
 };
 
 pub(crate) struct InstanceContext {
@@ -68,14 +76,48 @@ impl InstanceContext {
         wal_manager: WalManagerRef,
         store_picker: ObjectStorePickerRef,
         sst_factory: SstFactoryRef,
+        meta_client: Option<MetaClientRef>,
     ) -> Result<Self> {
-        let compaction_runner = Box::new(LocalCompactionRunner::new(
+        info!(
+            "Construct compaction runner with compaction_mode:{:?}",
+            ctx.config.compaction_mode
+        );
+
+        let local_compaction_runner = LocalCompactionRunner::new(
             ctx.runtimes.compact_runtime.clone(),
             &ctx.config,
             sst_factory.clone(),
             store_picker.clone(),
             ctx.meta_cache.clone(),
-        ));
+        );
+
+        let compaction_runner: CompactionRunnerPtr = match &ctx.config.compaction_mode {
+            CompactionMode::Offload(NodePicker::Local(endpoint)) => {
+                Box::new(RemoteCompactionRunner {
+                    node_picker: Arc::new(LocalCompactionNodePickerImpl {
+                        endpoint: endpoint.clone(),
+                    }),
+                    // This field is set to false here for testing.
+                    fallback_local_when_failed: false,
+                    local_compaction_runner: local_compaction_runner.clone(),
+                })
+            }
+            CompactionMode::Offload(NodePicker::Remote) => Box::new(RemoteCompactionRunner {
+                node_picker: Arc::new(RemoteCompactionNodePickerImpl {
+                    meta_client: meta_client.context(MetaClientNotExist)?,
+                }),
+                fallback_local_when_failed: true,
+                local_compaction_runner: local_compaction_runner.clone(),
+            }),
+
+            CompactionMode::Local => Box::new(LocalCompactionRunner::new(
+                ctx.runtimes.compact_runtime.clone(),
+                &ctx.config,
+                sst_factory.clone(),
+                store_picker.clone(),
+                ctx.meta_cache.clone(),
+            )),
+        };
 
         let instance = Instance::open(
             ctx,
@@ -89,7 +131,7 @@ impl InstanceContext {
 
         Ok(Self {
             instance,
-            local_compaction_runner: None,
+            local_compaction_runner: Some(Arc::new(local_compaction_runner)),
         })
     }
 }

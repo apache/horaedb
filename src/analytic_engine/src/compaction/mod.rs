@@ -20,15 +20,17 @@
 use std::{collections::HashMap, fmt, str::FromStr, sync::Arc};
 
 use common_types::COMPACTION_STRATEGY;
+use generic_error::{BoxError, GenericError};
+use macros::define_result;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use snafu::{ensure, Backtrace, GenerateBacktrace, ResultExt, Snafu};
+use snafu::{ensure, Backtrace, GenerateBacktrace, OptionExt, ResultExt, Snafu};
 use time_ext::TimeUnit;
 use tokio::sync::oneshot;
 
 use crate::{
     compaction::picker::{CommonCompactionPicker, CompactionPickerRef},
-    sst::file::{FileHandle, Level},
+    sst::file::{FileHandle, FileMeta, FilePurgeQueue, Level},
     table::data::TableDataRef,
 };
 
@@ -72,7 +74,21 @@ pub enum Error {
     },
     #[snafu(display("Invalid compaction option value, err: {}", error))]
     InvalidOption { error: String, backtrace: Backtrace },
+
+    #[snafu(display("Empty file meta.\nBacktrace:\n{}", backtrace))]
+    EmptyFileMeta { backtrace: Backtrace },
+
+    #[snafu(display("Failed to convert file meta, err:{}", source))]
+    ConvertFileMeta { source: GenericError },
+
+    #[snafu(display("Empty purge queue.\nBacktrace:\n{}", backtrace))]
+    EmptyPurgeQueue { backtrace: Backtrace },
+
+    #[snafu(display("Failed to convert level, err:{}", source))]
+    ConvertLevel { source: GenericError },
 }
+
+define_result!(Error);
 
 #[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Serialize)]
 pub enum CompactionStrategy {
@@ -145,7 +161,7 @@ impl CompactionStrategy {
     pub(crate) fn parse_from(
         value: &str,
         options: &HashMap<String, String>,
-    ) -> Result<CompactionStrategy, Error> {
+    ) -> Result<CompactionStrategy> {
         match value.trim().to_lowercase().as_str() {
             DEFAULT_STRATEGY => Ok(CompactionStrategy::Default),
             STC_STRATEGY => Ok(CompactionStrategy::SizeTiered(
@@ -182,7 +198,7 @@ impl CompactionStrategy {
 }
 
 impl SizeTieredCompactionOptions {
-    pub(crate) fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<()> {
         ensure!(
             self.bucket_high > self.bucket_low,
             InvalidOption {
@@ -215,7 +231,7 @@ impl SizeTieredCompactionOptions {
 
     pub(crate) fn parse_from(
         options: &HashMap<String, String>,
-    ) -> Result<SizeTieredCompactionOptions, Error> {
+    ) -> Result<SizeTieredCompactionOptions> {
         let mut opts = SizeTieredCompactionOptions::default();
         if let Some(v) = options.get(BUCKET_LOW_KEY) {
             opts.bucket_low = v.parse().context(ParseFloat {
@@ -278,7 +294,7 @@ impl TimeWindowCompactionOptions {
         );
     }
 
-    pub(crate) fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<()> {
         if !Self::valid_timestamp_unit(self.timestamp_resolution) {
             return InvalidOption {
                 error: format!(
@@ -294,7 +310,7 @@ impl TimeWindowCompactionOptions {
 
     pub(crate) fn parse_from(
         options: &HashMap<String, String>,
-    ) -> Result<TimeWindowCompactionOptions, Error> {
+    ) -> Result<TimeWindowCompactionOptions> {
         let mut opts = TimeWindowCompactionOptions {
             size_tiered: SizeTieredCompactionOptions::parse_from(options)?,
             ..Default::default()
@@ -324,6 +340,67 @@ pub struct CompactionInputFiles {
     pub files: Vec<FileHandle>,
     /// The output level of the merged file.
     pub output_level: Level,
+}
+
+impl TryFrom<horaedbproto::compaction_service::CompactionInputFiles> for CompactionInputFiles {
+    type Error = Error;
+
+    fn try_from(value: horaedbproto::compaction_service::CompactionInputFiles) -> Result<Self> {
+        let level: Level = value.level.try_into().box_err().context(ConvertLevel)?;
+        let output_level: Level = value
+            .output_level
+            .try_into()
+            .box_err()
+            .context(ConvertLevel)?;
+
+        let mut files: Vec<FileHandle> = Vec::with_capacity(value.files.len());
+        for file in value.files {
+            let meta: FileMeta = file
+                .meta
+                .context(EmptyFileMeta)?
+                .try_into()
+                .box_err()
+                .context(ConvertFileMeta)?;
+
+            let purge_queue: FilePurgeQueue = file.purge_queue.context(EmptyPurgeQueue)?.into();
+
+            files.push({
+                let handle = FileHandle::new(meta, purge_queue);
+                handle.set_being_compacted(file.being_compacted);
+                handle
+            });
+        }
+
+        Ok(CompactionInputFiles {
+            level,
+            files,
+            output_level,
+        })
+    }
+}
+
+impl From<CompactionInputFiles> for horaedbproto::compaction_service::CompactionInputFiles {
+    fn from(value: CompactionInputFiles) -> Self {
+        let mut files = Vec::with_capacity(value.files.len());
+        for file in value.files {
+            let handle = horaedbproto::compaction_service::FileHandle {
+                meta: Some(file.meta().into()),
+                purge_queue: Some(horaedbproto::compaction_service::FilePurgeQueue {
+                    space_id: file.space_id(),
+                    table_id: file.table_id().into(),
+                }),
+                being_compacted: file.being_compacted(),
+                metrics: Some(horaedbproto::compaction_service::SstMetrics {}),
+            };
+            files.push(handle);
+        }
+
+        Self {
+            level: value.level.as_u32(),
+            files,
+            output_level: value.output_level.as_u32(),
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]

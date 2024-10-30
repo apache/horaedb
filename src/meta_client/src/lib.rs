@@ -23,9 +23,9 @@ use macros::define_result;
 use snafu::{Backtrace, Snafu};
 use types::{
     AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-    DropTableRequest, DropTableResponse, GetNodesRequest, GetNodesResponse,
-    GetTablesOfShardsRequest, GetTablesOfShardsResponse, RouteTablesRequest, RouteTablesResponse,
-    ShardInfo,
+    DropTableRequest, DropTableResponse, FetchCompactionNodeRequest, FetchCompactionNodeResponse,
+    GetNodesRequest, GetNodesResponse, GetTablesOfShardsRequest, GetTablesOfShardsResponse,
+    RouteTablesRequest, RouteTablesResponse, ShardInfo,
 };
 
 pub mod meta_impl;
@@ -76,6 +76,9 @@ pub enum Error {
     #[snafu(display("Failed to get tables, err:{}", source))]
     FailGetTables { source: GenericError },
 
+    #[snafu(display("Failed to fetch compaction node, err:{}", source))]
+    FailFetchCompactionNode { source: GenericError },
+
     #[snafu(display("Failed to route tables, err:{}", source))]
     FailRouteTables { source: GenericError },
 
@@ -112,6 +115,11 @@ pub trait MetaClient: Send + Sync {
     async fn route_tables(&self, req: RouteTablesRequest) -> Result<RouteTablesResponse>;
 
     async fn get_nodes(&self, req: GetNodesRequest) -> Result<GetNodesResponse>;
+
+    async fn fetch_compaction_node(
+        &self,
+        req: FetchCompactionNodeRequest,
+    ) -> Result<FetchCompactionNodeResponse>;
 
     async fn send_heartbeat(&self, req: Vec<ShardInfo>) -> Result<()>;
 }

@@ -31,9 +31,10 @@ use time_ext::ReadableDuration;
 use crate::{
     types::{
         AllocSchemaIdRequest, AllocSchemaIdResponse, CreateTableRequest, CreateTableResponse,
-        DropTableRequest, DropTableResponse, GetNodesRequest, GetNodesResponse,
-        GetTablesOfShardsRequest, GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader,
-        RouteTablesRequest, RouteTablesResponse, ShardInfo,
+        DropTableRequest, DropTableResponse, FetchCompactionNodeRequest,
+        FetchCompactionNodeResponse, GetNodesRequest, GetNodesResponse, GetTablesOfShardsRequest,
+        GetTablesOfShardsResponse, NodeInfo, NodeMetaInfo, RequestHeader, RouteTablesRequest,
+        RouteTablesResponse, ShardInfo,
     },
     BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
     FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
@@ -234,6 +235,13 @@ impl MetaClient for MetaClientImpl {
 
         check_response_header(&pb_resp.header)?;
         GetNodesResponse::try_from(pb_resp)
+    }
+
+    async fn fetch_compaction_node(
+        &self,
+        _req: FetchCompactionNodeRequest,
+    ) -> Result<FetchCompactionNodeResponse> {
+        todo!()
     }
 
     async fn send_heartbeat(&self, shard_infos: Vec<ShardInfo>) -> Result<()> {

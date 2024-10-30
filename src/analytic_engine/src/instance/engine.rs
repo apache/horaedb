@@ -259,6 +259,12 @@ pub enum Error {
         sequence: SequenceNumber,
         source: wal::manager::Error,
     },
+
+    #[snafu(display(
+        "Failed to find meta client to construct remote compaction runner.\nBacktrace:\n{}",
+        backtrace
+    ))]
+    MetaClientNotExist { backtrace: Backtrace },
 }
 
 define_result!(Error);
@@ -293,6 +299,7 @@ impl From<Error> for table_engine::engine::Error {
             | Error::DoManifestSnapshot { .. }
             | Error::OpenManifest { .. }
             | Error::TableNotExist { .. }
+            | Error::MetaClientNotExist { .. }
             | Error::OpenTablesOfShard { .. }
             | Error::ReplayWalNoCause { .. }
             | Error::PurgeWal { .. }

@@ -307,6 +307,12 @@ impl From<u64> for TableId {
     }
 }
 
+impl From<TableId> for u64 {
+    fn from(id: TableId) -> Self {
+        id.0
+    }
+}
+
 impl fmt::Display for TableId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
