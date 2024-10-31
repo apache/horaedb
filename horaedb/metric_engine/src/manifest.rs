@@ -130,12 +130,14 @@ impl Manifest {
         Ok(())
     }
 
-    fn find_ssts(&self, time_range: TimeRange) -> impl Iterator<Item = &SstFile> {
-        let payload = self.payload.read().unwrap();
+    async fn find_ssts(&self, time_range: TimeRange) -> Vec<SstFile> {
+        let payload = self.payload.read().await;
 
         payload
             .files
             .iter()
             .filter(move |f| f.meta.time_range.overlaps(&time_range))
+            .cloned()
+            .collect()
     }
 }

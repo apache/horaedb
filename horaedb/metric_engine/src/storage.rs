@@ -148,13 +148,10 @@ impl TimeMergeStorage for CloudObjectStorage {
         let mut start = Timestamp::MAX;
         let mut end = Timestamp::MIN;
         for v in time_column.values() {
-            start = start.min(*v);
-            end = end.max(*v);
+            start = start.min(Timestamp(*v));
+            end = end.max(Timestamp(*v));
         }
-        let time_range = TimeRange {
-            start,
-            end: end + 1,
-        };
+        let time_range = TimeRange::new(start, end + 1);
         let file_id = self.write_batch(req).await?;
         let file_meta = FileMeta {
             max_sequence: file_id, // Since file_id in increasing order, we can use it as sequence.

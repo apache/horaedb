@@ -75,10 +75,7 @@ impl TryFrom<pb_types::SstMeta> for FileMeta {
         Ok(Self {
             max_sequence: value.max_sequence,
             num_rows: value.num_rows,
-            time_range: TimeRange {
-                start: time_range.start,
-                end: time_range.end,
-            },
+            time_range: TimeRange::new(time_range.start.into(), time_range.end.into()),
         })
     }
 }
@@ -89,8 +86,8 @@ impl From<FileMeta> for pb_types::SstMeta {
             max_sequence: value.max_sequence,
             num_rows: value.num_rows,
             time_range: Some(pb_types::TimeRange {
-                start: value.time_range.start,
-                end: value.time_range.end,
+                start: *value.time_range.start,
+                end: *value.time_range.end,
             }),
         }
     }
