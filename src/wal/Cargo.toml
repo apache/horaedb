@@ -27,14 +27,14 @@ workspace = true
 [package.authors]
 workspace = true
 
+[package.edition]
+workspace = true
+
 [dependencies.rocksdb]
 git = "https://github.com/tikv/rust-rocksdb.git"
 rev = "85e79e52c6ad80b8c547fcb90b3cade64f141fac"
 features = ["portable"]
 optional = true
-
-[package.edition]
-workspace = true
 
 [features]
 wal-message-queue = ["dep:message_queue"]
