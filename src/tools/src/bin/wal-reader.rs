@@ -30,10 +30,6 @@ use wal::local_storage_impl::segment::{Region, RegionManager, SegmentTableMeta};
 #[derive(Parser, Debug)]
 #[clap(author, version, about = "A command line tool to read and display WAL (Write-Ahead Log) segment metadata", long_about = None)]
 struct Args {
-    /// Type of WAL storage
-    #[clap(short, long, default_value = "local")]
-    r#type: String,
-
     /// Data directory path
     #[clap(short, long, default_value = "/tmp/horaedb/wal")]
     data_dir: String,
@@ -49,10 +45,6 @@ struct Args {
     /// Table id
     #[clap(long, default_value = None)]
     table_id: Option<u64>,
-
-    /// Segment size in bytes
-    #[clap(short = 'z', long, default_value = "67108864")] // 64 * 1024 * 1024
-    segment_size: usize,
 }
 
 #[derive(Tabled)]
@@ -87,6 +79,8 @@ impl SegmentInfo {
     }
 }
 
+const SEGMENT_SIZE: usize = 64 * 1024 * 1024;
+
 impl TableInfo {
     fn load(stm: &SegmentTableMeta, table_id: &Option<u64>) -> Vec<TableInfo> {
         let mut datas = Vec::new();
@@ -104,9 +98,12 @@ impl TableInfo {
     }
 }
 
-fn region_meta_dump(region: Arc<Region>, table_id: &Option<u64>) {
+fn region_meta_dump(region: Arc<Region>, segment_id: &Option<u64>, table_id: &Option<u64>) {
     let segments = region.meta();
     for stm in segments.iter() {
+        if segment_id.is_some() && segment_id.unwrap() != stm.id {
+            continue;
+        }
         println!("{}", "-".repeat(94));
         let pretty_segment = Table::new([SegmentInfo::load(stm)]);
         println!("{}", pretty_segment);
@@ -122,12 +119,7 @@ fn pretty_error_then_exit(err_msg: &str) {
 
 fn main() {
     let args = Args::parse();
-    println!("WAL type: {}", args.r#type);
     println!("Data directory: {}", args.data_dir);
-
-    if args.r#type.to_lowercase() != "local" {
-        pretty_error_then_exit("Error: Only local WAL type is supported");
-    }
 
     if !std::path::Path::new(&args.data_dir).is_dir() {
         pretty_error_then_exit(
@@ -136,12 +128,18 @@ fn main() {
     }
 
     let runtime = Arc::new(Builder::default().build().unwrap());
-    let region_manager =
-        RegionManager::new(args.data_dir.clone(), 32, args.segment_size, runtime).unwrap();
+    let region_manager = RegionManager::new(args.data_dir.clone(), 32, SEGMENT_SIZE, runtime);
+    let region_manager = match region_manager {
+        Ok(v) => v,
+        Err(e) => {
+            pretty_error_then_exit(format!("Error: {}", e).as_str());
+            unreachable!();
+        }
+    };
 
     if let Some(region_id) = args.region_id {
         let region = region_manager.get_region(region_id);
-        region_meta_dump(region.unwrap(), &args.table_id);
+        region_meta_dump(region.unwrap(), &args.segment_id, &args.table_id);
     } else {
         for entry in fs::read_dir(&args.data_dir).unwrap() {
             let entry = entry.unwrap();
@@ -155,7 +153,7 @@ fn main() {
                 // Parse region id from directory name
                 if let Ok(region_id) = dir_name.parse::<u64>() {
                     let region = region_manager.get_region(region_id);
-                    region_meta_dump(region.unwrap(), &args.table_id);
+                    region_meta_dump(region.unwrap(), &args.segment_id, &args.table_id);
                 }
             }
         }
