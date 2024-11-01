@@ -25,7 +25,7 @@ use std::{
 use clap::Parser;
 use runtime::Builder;
 use tabled::{Table, Tabled};
-use wal::local_storage_impl::segment::{Region, RegionManager, SegmentTableMeta};
+use wal::local_storage_impl::segment::{Region, RegionManager, SegmentView};
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about = "A command line tool to read and display WAL (Write-Ahead Log) segment metadata", long_about = None)]
@@ -66,7 +66,7 @@ struct TableInfo {
 }
 
 impl SegmentInfo {
-    fn load(stm: &SegmentTableMeta) -> Self {
+    fn load(stm: &SegmentView) -> Self {
         Self {
             segment_id: stm.id,
             min_seq: stm.min_seq,
@@ -82,7 +82,7 @@ impl SegmentInfo {
 const SEGMENT_SIZE: usize = 64 * 1024 * 1024;
 
 impl TableInfo {
-    fn load(stm: &SegmentTableMeta, table_id: &Option<u64>) -> Vec<TableInfo> {
+    fn load(stm: &SegmentView, table_id: &Option<u64>) -> Vec<TableInfo> {
         let mut datas = Vec::new();
         for (t_id, (min_seq, max_seq)) in stm.tables.iter() {
             if table_id.is_some() && table_id.unwrap() != *t_id {

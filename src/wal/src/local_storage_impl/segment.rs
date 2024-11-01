@@ -615,7 +615,7 @@ impl SegmentManager {
     }
 }
 
-pub struct SegmentTableMeta {
+pub struct SegmentView {
     pub id: u64,
     pub min_seq: SequenceNumber,
     pub max_seq: SequenceNumber,
@@ -626,7 +626,7 @@ pub struct SegmentTableMeta {
     pub tables: HashMap<TableId, (SequenceNumber, SequenceNumber)>,
 }
 
-impl SegmentTableMeta {
+impl SegmentView {
     fn new(seg: &Segment) -> Self {
         Self {
             id: seg.id,
@@ -811,12 +811,12 @@ impl Region {
         Ok(next_sequence_num - 1)
     }
 
-    pub fn meta(&self) -> Vec<SegmentTableMeta> {
-        let mut segments: Vec<SegmentTableMeta> = Vec::with_capacity(10);
+    pub fn meta(&self) -> Vec<SegmentView> {
+        let mut segments: Vec<SegmentView> = Vec::with_capacity(10);
         let all_segments = self.segment_manager.all_segments.lock().unwrap();
         for lock_seg in all_segments.values() {
             let seg = lock_seg.lock().unwrap();
-            let stm = SegmentTableMeta::new(&seg);
+            let stm = SegmentView::new(&seg);
             segments.push(stm);
         }
         segments
