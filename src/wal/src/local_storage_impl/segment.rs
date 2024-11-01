@@ -615,6 +615,32 @@ impl SegmentManager {
     }
 }
 
+pub struct SegmentView {
+    pub id: u64,
+    pub min_seq: SequenceNumber,
+    pub max_seq: SequenceNumber,
+    pub version: u8,
+    pub current_size: usize,
+    pub segment_size: usize,
+    pub number_of_records: usize,
+    pub tables: HashMap<TableId, (SequenceNumber, SequenceNumber)>,
+}
+
+impl SegmentView {
+    fn new(seg: &Segment) -> Self {
+        Self {
+            id: seg.id,
+            min_seq: seg.min_seq,
+            max_seq: seg.max_seq,
+            version: seg.version,
+            current_size: seg.current_size,
+            segment_size: seg.segment_size,
+            number_of_records: seg.record_position.len(),
+            tables: seg.table_ranges.clone(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Region {
     /// Identifier for regions.
@@ -785,6 +811,17 @@ impl Region {
         Ok(next_sequence_num - 1)
     }
 
+    pub fn meta(&self) -> Vec<SegmentView> {
+        let mut segments: Vec<SegmentView> = Vec::with_capacity(10);
+        let all_segments = self.segment_manager.all_segments.lock().unwrap();
+        for lock_seg in all_segments.values() {
+            let seg = lock_seg.lock().unwrap();
+            let stm = SegmentView::new(&seg);
+            segments.push(stm);
+        }
+        segments
+    }
+
     pub fn read(&self, ctx: &ReadContext, req: &ReadRequest) -> Result<BatchLogIteratorAdapter> {
         // Check read range's validity.
         let start = if let Some(start) = req.start.as_start_sequence_number() {
@@ -922,7 +959,7 @@ impl RegionManager {
 
     /// Retrieve a region by its `region_id`. If the region does not exist,
     /// create a new one.
-    fn get_region(&self, region_id: RegionId) -> Result<Arc<Region>> {
+    pub fn get_region(&self, region_id: RegionId) -> Result<Arc<Region>> {
         let mut regions = self.regions.lock().unwrap();
         if let Some(region) = regions.get(&region_id) {
             return Ok(region.clone());

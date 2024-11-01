@@ -43,5 +43,7 @@ parquet = { workspace = true }
 parquet_ext = { workspace = true }
 runtime = { workspace = true }
 table_engine = { workspace = true }
+tabled = { workspace = true }
 time_ext = { workspace = true }
 tokio = { workspace = true }
+wal = { workspace = true, features = ["wal-local-storage"] }
