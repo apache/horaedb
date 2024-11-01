@@ -35,3 +35,12 @@ changelog:
     - title: Chore
       labels:
         - chore
+    - title: Test
+      labels:
+        - test
+    - title: Style
+      labels:
+        - style
+    - title: Build
+      labels:
+        - build
