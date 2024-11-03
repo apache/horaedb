@@ -153,7 +153,7 @@ impl CloudObjectStorage {
                 .context("create physical sort exprs")?;
 
         let batch_plan =
-            MemoryExec::try_new(&vec![vec![batch]], schema, None).context("build batch plan")?;
+            MemoryExec::try_new(&[vec![batch]], schema, None).context("build batch plan")?;
         let physical_plan = SortExec::new(physical_sort_exprs, Arc::new(batch_plan));
         let mut stream = physical_plan
             .execute(0, ctx.task_ctx())
