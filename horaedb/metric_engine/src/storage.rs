@@ -25,9 +25,11 @@ use arrow::{
 use async_trait::async_trait;
 use datafusion::{
     common::DFSchema,
-    execution::context::ExecutionProps,
+    execution::{
+        context::ExecutionProps, SendableRecordBatchStream as DFSendableRecordBatchStream,
+    },
     logical_expr::Expr,
-    physical_plan::{memory::MemoryExec, sorts::sort::SortExec, ExecutionPlan},
+    physical_plan::{execute_stream, memory::MemoryExec, sorts::sort::SortExec},
     physical_planner::create_physical_sort_exprs,
     prelude::{ident, SessionContext},
 };
@@ -131,8 +133,9 @@ impl CloudObjectStorage {
                 .context("create arrow writer")?;
 
         // sort record batch
-        let batches = self.sort_batch(req.batch).await?;
-        for batch in batches {
+        let mut batches = self.sort_batch(req.batch).await?;
+        while let Some(batch) = batches.next().await {
+            let batch = batch.context("get sorted batch")?;
             writer.write(&batch).await.context("write arrow batch")?;
         }
         writer.close().await.context("close arrow writer")?;
@@ -140,7 +143,7 @@ impl CloudObjectStorage {
         Ok(file_id)
     }
 
-    async fn sort_batch(&self, batch: RecordBatch) -> Result<Vec<RecordBatch>> {
+    async fn sort_batch(&self, batch: RecordBatch) -> Result<DFSendableRecordBatchStream> {
         let ctx = SessionContext::default();
         let schema = batch.schema();
         let df_schema = DFSchema::try_from(schema.clone()).context("build DFSchema")?;
@@ -156,17 +159,11 @@ impl CloudObjectStorage {
 
         let batch_plan =
             MemoryExec::try_new(&[vec![batch]], schema, None).context("build batch plan")?;
-        let physical_plan = SortExec::new(physical_sort_exprs, Arc::new(batch_plan));
-        let mut stream = physical_plan
-            .execute(0, ctx.task_ctx())
-            .context("execute sort physical plan")?;
+        let physical_plan = Arc::new(SortExec::new(physical_sort_exprs, Arc::new(batch_plan)));
 
-        let mut batches = Vec::new();
-        while let Some(batch) = stream.next().await {
-            let batch = batch.context("get next batch")?;
-            batches.push(batch);
-        }
-        Ok(batches)
+        let res =
+            execute_stream(physical_plan, ctx.task_ctx()).context("execute sort physical plan")?;
+        Ok(res)
     }
 }
 
@@ -253,7 +250,7 @@ mod tests {
         )
         .unwrap();
 
-        let sorted_batches = storage.sort_batch(batch).await.unwrap();
+        let mut sorted_batches = storage.sort_batch(batch).await.unwrap();
         let expected_bacth = RecordBatch::try_new(
             schema,
             vec![
@@ -266,7 +263,8 @@ mod tests {
         .unwrap();
 
         let mut offset = 0;
-        for sorted_batch in sorted_batches {
+        while let Some(sorted_batch) = sorted_batches.next().await {
+            let sorted_batch = sorted_batch.unwrap();
             let length = sorted_batch.num_rows();
             let batch = expected_bacth.slice(offset, length);
             assert!(sorted_batch.eq(&batch));
