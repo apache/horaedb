@@ -183,6 +183,7 @@ sqlparser = { version = "0.39.0", features = ["serde"] }
 system_catalog = { path = "src/system_catalog" }
 table_engine = { path = "src/table_engine" }
 table_kv = { path = "src/components/table_kv" }
+tabled = "0.16.0"
 tempfile = "3.1.0"
 test_util = { path = "src/components/test_util" }
 time_ext = { path = "src/components/time_ext" }

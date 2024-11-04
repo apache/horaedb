@@ -15,21 +15,26 @@
 # specific language governing permissions and limitations
 # under the License.
 
-SHELL = /bin/bash
+name: Publish Github Release
 
-clippy:
-	cargo clippy --all-targets --all-features -- -D warnings \
-	-A dead_code -A unused_variables -A clippy::unreachable # Remove these once we have a clean build
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release
+        required: true
 
-sort:
-	cargo sort --workspace --check
-
-fmt:
-	cargo fmt -- --check
-
-fix:
-	cargo fmt
-	cargo sort --workspace
-
-test:
-	cargo test --workspace
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          tag_name: ${{ inputs.version }}

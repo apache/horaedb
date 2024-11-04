@@ -70,3 +70,30 @@ jobs:
         working-directory: horaedb
         run: |
           git diff --exit-code
+
+  unit-test:
+    name: unit-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - run: |
+          rustup set auto-self-update disable
+          rustup toolchain install ${RUST_VERSION} --profile minimal
+      - name: Release Disk Quota
+        run: |
+          sudo make ensure-disk-quota
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install --yes protobuf-compiler
+      - name: Run Unit Tests
+        working-directory: horaedb
+        run: |
+          make test
+      - name: Check lock
+        working-directory: horaedb
+        run: |
+          git diff --exit-code

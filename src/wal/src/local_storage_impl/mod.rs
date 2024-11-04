@@ -17,5 +17,5 @@
 
 pub mod config;
 mod record_encoding;
-mod segment;
+pub mod segment;
 pub mod wal_manager;
