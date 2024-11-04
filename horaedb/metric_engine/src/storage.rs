@@ -25,10 +25,13 @@ use arrow::{
 use async_trait::async_trait;
 use datafusion::{
     common::DFSchema,
-    execution::{
-        context::ExecutionProps, SendableRecordBatchStream as DFSendableRecordBatchStream,
+    datasource::{
+        listing::PartitionedFile,
+        physical_plan::{FileScanConfig, ParquetExec},
     },
-    logical_expr::Expr,
+    execution::{context::ExecutionProps, object_store::ObjectStoreUrl, SendableRecordBatchStream},
+    logical_expr::{utils::conjunction, Expr},
+    physical_expr::{create_physical_expr, LexOrdering},
     physical_plan::{execute_stream, memory::MemoryExec, sorts::sort::SortExec},
     physical_planner::create_physical_sort_exprs,
     prelude::{ident, SessionContext},
@@ -43,8 +46,9 @@ use parquet::{
 
 use crate::{
     manifest::Manifest,
+    read::DefaultParquetFileReaderFactory,
     sst::{allocate_id, FileId, FileMeta},
-    types::{ObjectStoreRef, SendableRecordBatchStream, TimeRange, Timestamp},
+    types::{ObjectStoreRef, TimeRange, Timestamp},
     Result,
 };
 
@@ -55,7 +59,7 @@ pub struct WriteRequest {
 
 pub struct ScanRequest {
     range: TimeRange,
-    predicate: Expr,
+    predicate: Vec<Expr>,
     /// `None` means all columns.
     projections: Option<Vec<usize>>,
 }
@@ -84,6 +88,8 @@ pub struct CloudObjectStorage {
     num_primary_key: usize,
     timestamp_index: usize,
     manifest: Manifest,
+
+    df_schema: DFSchema,
 }
 
 /// It will organize the data in the following way:
@@ -107,6 +113,7 @@ impl CloudObjectStorage {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
         let manifest =
             Manifest::try_new(format!("{root_path}/{manifest_prefix}"), store.clone()).await?;
+        let df_schema = DFSchema::try_from(arrow_schema.clone()).context("build DFSchema")?;
         Ok(Self {
             path: root_path,
             num_primary_key,
@@ -114,6 +121,7 @@ impl CloudObjectStorage {
             store,
             arrow_schema,
             manifest,
+            df_schema,
         })
     }
 
@@ -143,23 +151,26 @@ impl CloudObjectStorage {
         Ok(file_id)
     }
 
-    async fn sort_batch(&self, batch: RecordBatch) -> Result<DFSendableRecordBatchStream> {
-        let ctx = SessionContext::default();
-        let schema = batch.schema();
-        let df_schema = DFSchema::try_from(schema.clone()).context("build DFSchema")?;
-
+    fn build_sort_exprs(&self) -> Result<LexOrdering> {
         let sort_exprs = (0..self.num_primary_key)
             .collect::<Vec<_>>()
             .iter()
-            .map(|i| ident(schema.clone().field(*i).name()).sort(true, true))
+            .map(|i| ident(self.schema().field(*i).name()).sort(true, true))
             .collect::<Vec<_>>();
-        let physical_sort_exprs =
-            create_physical_sort_exprs(&sort_exprs, &df_schema, &ExecutionProps::default())
+        let sort_exprs =
+            create_physical_sort_exprs(&sort_exprs, &self.df_schema, &ExecutionProps::default())
                 .context("create physical sort exprs")?;
 
+        Ok(sort_exprs)
+    }
+
+    async fn sort_batch(&self, batch: RecordBatch) -> Result<SendableRecordBatchStream> {
+        let ctx = SessionContext::default();
+        let schema = batch.schema();
+        let sort_exprs = self.build_sort_exprs()?;
         let batch_plan =
             MemoryExec::try_new(&[vec![batch]], schema, None).context("build batch plan")?;
-        let physical_plan = Arc::new(SortExec::new(physical_sort_exprs, Arc::new(batch_plan)));
+        let physical_plan = Arc::new(SortExec::new(sort_exprs, Arc::new(batch_plan)));
 
         let res =
             execute_stream(physical_plan, ctx.task_ctx()).context("execute sort physical plan")?;
@@ -203,7 +214,39 @@ impl TimeMergeStorage for CloudObjectStorage {
     }
 
     async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {
-        todo!()
+        let ssts = self.manifest.find_ssts(&req.range).await;
+        // we won't use url for selecting object_store.
+        let dummy_url = ObjectStoreUrl::parse("empty://").unwrap();
+        // TODO: we could group ssts based on time range.
+        // TODO: fetch using multiple threads since read from parquet will incur CPU
+        // when convert between arrow and parquet.
+        let file_groups = ssts
+            .iter()
+            .map(|f| PartitionedFile::new(self.build_file_path(f.id), 0 /* TODO: file_size */))
+            .collect::<Vec<_>>();
+        let scan_config = FileScanConfig::new(dummy_url, self.schema().clone())
+            .with_file_group(file_groups)
+            .with_projection(req.projections);
+
+        let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
+            Arc::new(DefaultParquetFileReaderFactory::new(self.store.clone())),
+        );
+        if let Some(expr) = conjunction(req.predicate) {
+            let filters = create_physical_expr(&expr, &self.df_schema, &ExecutionProps::new())
+                .context("create pyhsical expr")?;
+            builder = builder.with_predicate(filters);
+        }
+
+        let parquet_exec = builder.build();
+        let sort_exprs = self.build_sort_exprs()?;
+        let physical_plan = Arc::new(SortExec::new(sort_exprs, Arc::new(parquet_exec)));
+
+        let ctx = SessionContext::default();
+        // TODO: dedup record batch based on primary keys and sequence number.
+        let res =
+            execute_stream(physical_plan, ctx.task_ctx()).context("execute sort physical plan")?;
+
+        Ok(res)
     }
 
     async fn compact(&self, req: CompactRequest) -> Result<()> {

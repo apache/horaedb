@@ -17,15 +17,10 @@
 
 use std::{
     ops::{Add, Deref, Range},
-    pin::Pin,
     sync::Arc,
 };
 
-use arrow::{array::RecordBatch, datatypes::Schema};
-use futures::Stream;
 use object_store::ObjectStore;
-
-use crate::error::Result;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
@@ -93,11 +88,3 @@ impl TimeRange {
 }
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
-
-/// Trait for types that stream [arrow::record_batch::RecordBatch]
-pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
-    fn schema(&self) -> &Schema;
-}
-
-/// Trait for a [`Stream`] of [`RecordBatch`]es
-pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send>>;
