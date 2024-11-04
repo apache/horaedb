@@ -30,3 +30,6 @@ fmt:
 fix:
 	cargo fmt
 	cargo sort --workspace
+
+test:
+	cargo test --workspace
