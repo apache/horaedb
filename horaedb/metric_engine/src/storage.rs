@@ -79,7 +79,7 @@ pub struct CloudObjectStorage {
     path: String,
     store: ObjectStoreRef,
     arrow_schema: SchemaRef,
-    primary_key_indexs: Vec<usize>,
+    num_primary_key: usize,
     timestamp_index: usize,
     manifest: Manifest,
 }
@@ -99,7 +99,7 @@ impl CloudObjectStorage {
         root_path: String,
         store: ObjectStoreRef,
         arrow_schema: SchemaRef,
-        primary_key_indexs: Vec<usize>,
+        num_primary_key: usize,
         timestamp_index: usize,
     ) -> Result<Self> {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
@@ -107,7 +107,7 @@ impl CloudObjectStorage {
             Manifest::try_new(format!("{root_path}/{manifest_prefix}"), store.clone()).await?;
         Ok(Self {
             path: root_path,
-            primary_key_indexs,
+            num_primary_key,
             timestamp_index,
             store,
             arrow_schema,
@@ -131,20 +131,22 @@ impl CloudObjectStorage {
                 .context("create arrow writer")?;
 
         // sort record batch
-        let batch = self.sort_batch(req.batch).await?;
-        writer.write(&batch).await.context("write arrow batch")?;
+        let batches = self.sort_batch(req.batch).await?;
+        for batch in batches {
+            writer.write(&batch).await.context("write arrow batch")?;
+        }
         writer.close().await.context("close arrow writer")?;
 
         Ok(file_id)
     }
 
-    async fn sort_batch(&self, batch: RecordBatch) -> Result<RecordBatch> {
+    async fn sort_batch(&self, batch: RecordBatch) -> Result<Vec<RecordBatch>> {
         let ctx = SessionContext::default();
         let schema = batch.schema();
         let df_schema = DFSchema::try_from(schema.clone()).context("build DFSchema")?;
 
-        let sort_exprs = self
-            .primary_key_indexs
+        let sort_exprs = (0..self.num_primary_key)
+            .collect::<Vec<_>>()
             .iter()
             .map(|i| ident(schema.clone().field(*i).name()).sort(true, true))
             .collect::<Vec<_>>();
@@ -164,9 +166,7 @@ impl CloudObjectStorage {
             let batch = batch.context("get next batch")?;
             batches.push(batch);
         }
-        ensure!(batches.len() == 1, "expect one batch");
-        let res = batches.pop().unwrap();
-        Ok(res)
+        Ok(batches)
     }
 }
 
@@ -237,15 +237,10 @@ mod tests {
         ]));
 
         let store = Arc::new(LocalFileSystem::new());
-        let storage = CloudObjectStorage::try_new(
-            "/tmp/storage".to_string(),
-            store,
-            schema.clone(),
-            vec![0],
-            1,
-        )
-        .await
-        .unwrap();
+        let storage =
+            CloudObjectStorage::try_new("/tmp/storage".to_string(), store, schema.clone(), 1, 1)
+                .await
+                .unwrap();
 
         let batch = RecordBatch::try_new(
             schema.clone(),
@@ -258,8 +253,8 @@ mod tests {
         )
         .unwrap();
 
-        let sorted_batch = storage.sort_batch(batch).await.unwrap();
-        let expected_batch = RecordBatch::try_new(
+        let sorted_batches = storage.sort_batch(batch).await.unwrap();
+        let expected_bacth = RecordBatch::try_new(
             schema,
             vec![
                 Arc::new(UInt8Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8])),
@@ -270,6 +265,12 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(expected_batch, sorted_batch);
+        let mut offset = 0;
+        for sorted_batch in sorted_batches {
+            let length = sorted_batch.num_rows();
+            let batch = expected_bacth.slice(offset, length);
+            assert!(sorted_batch.eq(&batch));
+            offset += length;
+        }
     }
 }
