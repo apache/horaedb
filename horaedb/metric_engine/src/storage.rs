@@ -42,19 +42,19 @@ use object_store::path::Path;
 use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::WriterProperties,
+    schema::types::ColumnPath,
 };
 
 use crate::{
     manifest::Manifest,
     read::DefaultParquetFileReaderFactory,
     sst::{allocate_id, FileId, FileMeta},
-    types::{ObjectStoreRef, TimeRange, Timestamp, WriteResult},
+    types::{ObjectStoreRef, TimeRange, Timestamp, WriteOptions, WriteResult},
     Result,
 };
 
 pub struct WriteRequest {
     batch: RecordBatch,
-    props: Option<WriterProperties>,
 }
 
 pub struct ScanRequest {
@@ -90,6 +90,7 @@ pub struct CloudObjectStorage {
     manifest: Manifest,
 
     df_schema: DFSchema,
+    write_options: WriteOptions,
 }
 
 /// It will organize the data in the following way:
@@ -109,6 +110,7 @@ impl CloudObjectStorage {
         arrow_schema: SchemaRef,
         num_primary_key: usize,
         timestamp_index: usize,
+        write_options: WriteOptions,
     ) -> Result<Self> {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
         let manifest =
@@ -122,6 +124,7 @@ impl CloudObjectStorage {
             arrow_schema,
             manifest,
             df_schema,
+            write_options,
         })
     }
 
@@ -136,9 +139,13 @@ impl CloudObjectStorage {
         let file_path = self.build_file_path(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer = ParquetObjectWriter::new(self.store.clone(), file_path.clone());
-        let mut writer =
-            AsyncArrowWriter::try_new(object_store_writer, self.schema().clone(), req.props)
-                .context("create arrow writer")?;
+        let write_properties = self.build_write_properties();
+        let mut writer = AsyncArrowWriter::try_new(
+            object_store_writer,
+            self.schema().clone(),
+            Some(write_properties),
+        )
+        .context("create arrow writer")?;
 
         // sort record batch
         let mut batches = self.sort_batch(req.batch).await?;
@@ -183,6 +190,19 @@ impl CloudObjectStorage {
         let res =
             execute_stream(physical_plan, ctx.task_ctx()).context("execute sort physical plan")?;
         Ok(res)
+    }
+
+    fn build_write_properties(&self) -> WriterProperties {
+        let mut builder = WriterProperties::builder()
+            .set_max_row_group_size(self.write_options.num_rows_per_row_group)
+            .set_compression(self.write_options.compression);
+
+        for (col_name, col_opt) in &self.write_options.column_options {
+            let col_path = ColumnPath::new(vec![col_name.to_string()]);
+            builder = builder.set_column_dictionary_enabled(col_path, col_opt.enable_dict);
+        }
+
+        builder.build()
     }
 }
 
@@ -268,11 +288,14 @@ impl TimeMergeStorage for CloudObjectStorage {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use arrow::{
         array::UInt8Array,
         datatypes::{DataType, Field, Schema},
     };
     use object_store::local::LocalFileSystem;
+    use parquet::basic::Compression;
 
     use super::*;
 
@@ -286,10 +309,21 @@ mod tests {
         ]));
 
         let store = Arc::new(LocalFileSystem::new());
-        let storage =
-            CloudObjectStorage::try_new("/tmp/storage".to_string(), store, schema.clone(), 1, 1)
-                .await
-                .unwrap();
+        let write_options = WriteOptions {
+            num_rows_per_row_group: 1024,
+            compression: Compression::UNCOMPRESSED,
+            column_options: HashMap::new(),
+        };
+        let storage = CloudObjectStorage::try_new(
+            "/tmp/storage".to_string(),
+            store,
+            schema.clone(),
+            1,
+            1,
+            write_options,
+        )
+        .await
+        .unwrap();
 
         let batch = RecordBatch::try_new(
             schema.clone(),

@@ -16,11 +16,13 @@
 // under the License.
 
 use std::{
+    collections::HashMap,
     ops::{Add, Deref, Range},
     sync::Arc,
 };
 
 use object_store::ObjectStore;
+use parquet::basic::Compression;
 
 use crate::sst::FileId;
 
@@ -94,4 +96,14 @@ pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 pub struct WriteResult {
     pub id: FileId,
     pub size: usize,
+}
+
+pub struct ColumnOptions {
+    pub enable_dict: bool,
+}
+
+pub struct WriteOptions {
+    pub num_rows_per_row_group: usize,
+    pub compression: Compression,
+    pub column_options: HashMap<String, ColumnOptions>,
 }
