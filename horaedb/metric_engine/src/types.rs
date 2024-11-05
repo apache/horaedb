@@ -15,23 +15,83 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{ops::Range, pin::Pin, sync::Arc};
+use std::{
+    ops::{Add, Deref, Range},
+    sync::Arc,
+};
 
-use arrow::{array::RecordBatch, datatypes::Schema};
-use futures::Stream;
 use object_store::ObjectStore;
 
-use crate::error::Result;
+use crate::sst::FileId;
 
-pub type Timestamp = i64;
-pub type TimeRange = Range<Timestamp>;
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Timestamp(pub i64);
+
+impl Add for Timestamp {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl Add<i64> for Timestamp {
+    type Output = Self;
+
+    fn add(self, rhs: i64) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl From<i64> for Timestamp {
+    fn from(value: i64) -> Self {
+        Self(value)
+    }
+}
+
+impl Deref for Timestamp {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Timestamp {
+    pub const MAX: Timestamp = Timestamp(i64::MAX);
+    pub const MIN: Timestamp = Timestamp(i64::MIN);
+}
+
+#[derive(Clone, Debug)]
+pub struct TimeRange(Range<Timestamp>);
+
+impl From<Range<Timestamp>> for TimeRange {
+    fn from(value: Range<Timestamp>) -> Self {
+        Self(value)
+    }
+}
+
+impl Deref for TimeRange {
+    type Target = Range<Timestamp>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TimeRange {
+    pub fn new(start: Timestamp, end: Timestamp) -> Self {
+        Self(start..end)
+    }
+
+    pub fn overlaps(&self, other: &TimeRange) -> bool {
+        self.0.start < other.0.end && other.0.start < self.0.end
+    }
+}
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 
-/// Trait for types that stream [arrow::record_batch::RecordBatch]
-pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
-    fn schema(&self) -> &Schema;
+pub struct WriteResult {
+    pub id: FileId,
+    pub size: usize,
 }
-
-/// Trait for a [`Stream`] of [`RecordBatch`]es
-pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send>>;

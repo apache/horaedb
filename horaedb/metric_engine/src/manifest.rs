@@ -23,7 +23,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     sst::{FileId, FileMeta, SstFile},
-    types::ObjectStoreRef,
+    types::{ObjectStoreRef, TimeRange},
     AnyhowError, Error, Result,
 };
 
@@ -53,6 +53,18 @@ impl TryFrom<pb_types::Manifest> for Payload {
             .collect::<Result<Vec<_>>>()?;
 
         Ok(Self { files })
+    }
+}
+
+impl From<Payload> for pb_types::Manifest {
+    fn from(value: Payload) -> Self {
+        pb_types::Manifest {
+            files: value
+                .files
+                .into_iter()
+                .map(pb_types::SstFile::from)
+                .collect(),
+        }
     }
 }
 
@@ -97,20 +109,7 @@ impl Manifest {
         let new_sst = SstFile { id, meta };
         tmp_ssts.push(new_sst.clone());
         let pb_manifest = pb_types::Manifest {
-            files: tmp_ssts
-                .into_iter()
-                .map(|f| pb_types::SstFile {
-                    id: f.id,
-                    meta: Some(pb_types::SstMeta {
-                        max_sequence: f.meta.max_sequence,
-                        num_rows: f.meta.num_rows,
-                        time_range: Some(pb_types::TimeRange {
-                            start: f.meta.time_range.start,
-                            end: f.meta.time_range.end,
-                        }),
-                    }),
-                })
-                .collect::<Vec<_>>(),
+            files: tmp_ssts.into_iter().map(|f| f.into()).collect::<Vec<_>>(),
         };
 
         let mut buf = Vec::with_capacity(pb_manifest.encoded_len());
@@ -129,5 +128,16 @@ impl Manifest {
         payload.files.push(new_sst);
 
         Ok(())
+    }
+
+    pub async fn find_ssts(&self, time_range: &TimeRange) -> Vec<SstFile> {
+        let payload = self.payload.read().await;
+
+        payload
+            .files
+            .iter()
+            .filter(move |f| f.meta.time_range.overlaps(time_range))
+            .cloned()
+            .collect()
     }
 }
