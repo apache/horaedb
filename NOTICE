@@ -12,34 +12,10 @@ conditions of the following licenses.
 
 ================================================================
 
-================================================================
-Apache-2.0 licenses
-================================================================
-The following components are provided under the Apache-2.0 License.See project link for details.
-The text of each license is the standard Apache 2.0 license.
+Common libraries shared by Prometheus Go components.
+Copyright 2015 The Prometheus Authors
 
-* prometheus-common(https://github.com/prometheus/common)
-* greptimedb(https://github.com/GreptimeTeam/greptimedb)
-* agatedb(https://github.com/tikv/agatedb)
-* tikv(https://github.com/tikv/tikv)
-* influxdb(https://github.com/influxdata/influxdb)
-* databend(https://github.com/datafuselabs/databend)
-
-File horaemeta/server/service/http/route.go is modified from Prometheus-common.
-Files src/server/src/federated.rs, src/server/src/session.rs are modified from greptimedb.
-Files src/components/skiplist/benches/bench.rs, src/components/skiplist/src/lib.rs, src/components/skiplist/src/key.rs,
-src/components/skiplist/src/list.rs, src/components/skiplist/tests/tests.rs, src/components/skiplist/Cargo.toml are modified from agatedb.
-File src/components/size_ext/src/lib.rs is modified from tikv.
-File src/components/future_ext/src/cancel.rs is modified from influxdb.
-Files src/components/tracing_util/src/lib.rs, src/components/tracing_util/src/logging.rs, src/components/tracing_util/Cargo.toml are modified from databend.
+This product includes software developed at
+SoundCloud Ltd. (http://soundcloud.com/).
 
 ================================================================
-MIT licenses
-================================================================
-The following components are provided under the MIT License. See project link for details.
-The text of each license is also included in licenses/LICENSE-[project].txt
-
-* consistent(https://github.com/buraksezer/consistent)
-
-Files horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform.go,
-horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform_test.go are modified from consistent.
