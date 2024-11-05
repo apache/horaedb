@@ -22,6 +22,8 @@ use std::{
 
 use object_store::ObjectStore;
 
+use crate::sst::FileId;
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
 
@@ -88,3 +90,8 @@ impl TimeRange {
 }
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
+
+pub struct WriteResult {
+    pub id: FileId,
+    pub size: usize,
+}

@@ -48,7 +48,7 @@ use crate::{
     manifest::Manifest,
     read::DefaultParquetFileReaderFactory,
     sst::{allocate_id, FileId, FileMeta},
-    types::{ObjectStoreRef, TimeRange, Timestamp},
+    types::{ObjectStoreRef, TimeRange, Timestamp, WriteResult},
     Result,
 };
 
@@ -131,11 +131,11 @@ impl CloudObjectStorage {
         format!("{root}/{prefix}/{id}")
     }
 
-    async fn write_batch(&self, req: WriteRequest) -> Result<FileId> {
+    async fn write_batch(&self, req: WriteRequest) -> Result<WriteResult> {
         let file_id = allocate_id();
         let file_path = self.build_file_path(file_id);
-        let object_store_writer =
-            ParquetObjectWriter::new(self.store.clone(), Path::from(file_path));
+        let file_path = Path::from(file_path);
+        let object_store_writer = ParquetObjectWriter::new(self.store.clone(), file_path.clone());
         let mut writer =
             AsyncArrowWriter::try_new(object_store_writer, self.schema().clone(), req.props)
                 .context("create arrow writer")?;
@@ -147,8 +147,16 @@ impl CloudObjectStorage {
             writer.write(&batch).await.context("write arrow batch")?;
         }
         writer.close().await.context("close arrow writer")?;
+        let object_meta = self
+            .store
+            .head(&file_path)
+            .await
+            .context("get object meta")?;
 
-        Ok(file_id)
+        Ok(WriteResult {
+            id: file_id,
+            size: object_meta.size,
+        })
     }
 
     fn build_sort_exprs(&self) -> Result<LexOrdering> {
@@ -202,10 +210,14 @@ impl TimeMergeStorage for CloudObjectStorage {
             end = end.max(Timestamp(*v));
         }
         let time_range = TimeRange::new(start, end + 1);
-        let file_id = self.write_batch(req).await?;
+        let WriteResult {
+            id: file_id,
+            size: file_size,
+        } = self.write_batch(req).await?;
         let file_meta = FileMeta {
             max_sequence: file_id, // Since file_id in increasing order, we can use it as sequence.
             num_rows: num_rows as u32,
+            size: file_size as u32,
             time_range,
         };
         self.manifest.add_file(file_id, file_meta).await?;
@@ -222,7 +234,7 @@ impl TimeMergeStorage for CloudObjectStorage {
         // when convert between arrow and parquet.
         let file_groups = ssts
             .iter()
-            .map(|f| PartitionedFile::new(self.build_file_path(f.id), 0 /* TODO: file_size */))
+            .map(|f| PartitionedFile::new(self.build_file_path(f.id), f.meta.size as u64))
             .collect::<Vec<_>>();
         let scan_config = FileScanConfig::new(dummy_url, self.schema().clone())
             .with_file_group(file_groups)

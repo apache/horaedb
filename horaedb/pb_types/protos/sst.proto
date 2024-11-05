@@ -32,7 +32,8 @@ message TimeRange {
 message SstMeta {
   uint64 max_sequence = 1;
   uint32 num_rows = 2;
-  TimeRange time_range = 3;
+  uint32 size = 3;
+  TimeRange time_range = 4;
 }
 
 message SstFile {

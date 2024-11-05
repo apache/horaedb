@@ -62,6 +62,7 @@ impl From<SstFile> for pb_types::SstFile {
 pub struct FileMeta {
     pub max_sequence: u64,
     pub num_rows: u32,
+    pub size: u32,
     pub time_range: TimeRange,
 }
 
@@ -75,6 +76,7 @@ impl TryFrom<pb_types::SstMeta> for FileMeta {
         Ok(Self {
             max_sequence: value.max_sequence,
             num_rows: value.num_rows,
+            size: value.size,
             time_range: TimeRange::new(time_range.start.into(), time_range.end.into()),
         })
     }
@@ -85,6 +87,7 @@ impl From<FileMeta> for pb_types::SstMeta {
         pb_types::SstMeta {
             max_sequence: value.max_sequence,
             num_rows: value.num_rows,
+            size: value.size,
             time_range: Some(pb_types::TimeRange {
                 start: *value.time_range.start,
                 end: *value.time_range.end,
