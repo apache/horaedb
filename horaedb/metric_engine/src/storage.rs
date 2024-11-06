@@ -212,29 +212,26 @@ impl CloudObjectStorage {
             .set_encoding(write_options.encoding)
             .set_compression(write_options.compression);
 
-        let builder = match write_options.column_options {
-            Some(column_options) => {
-                for (col_name, col_opt) in column_options {
-                    let col_path = ColumnPath::new(vec![col_name.to_string()]);
-                    if let Some(enable_dict) = col_opt.enable_dict {
-                        builder =
-                            builder.set_column_dictionary_enabled(col_path.clone(), enable_dict);
-                    }
-                    if let Some(enable_bloom_filter) = col_opt.enable_bloom_filter {
-                        builder = builder
-                            .set_column_bloom_filter_enabled(col_path.clone(), enable_bloom_filter);
-                    }
-                    if let Some(encoding) = col_opt.encoding {
-                        builder = builder.set_column_encoding(col_path.clone(), encoding);
-                    }
-                    if let Some(compression) = col_opt.compression {
-                        builder = builder.set_column_compression(col_path, compression);
-                    }
-                }
-                builder
+        if write_options.column_options.is_none() {
+            return builder.build();
+        }
+
+        for (col_name, col_opt) in write_options.column_options.unwrap() {
+            let col_path = ColumnPath::new(vec![col_name.to_string()]);
+            if let Some(enable_dict) = col_opt.enable_dict {
+                builder = builder.set_column_dictionary_enabled(col_path.clone(), enable_dict);
             }
-            None => builder,
-        };
+            if let Some(enable_bloom_filter) = col_opt.enable_bloom_filter {
+                builder =
+                    builder.set_column_bloom_filter_enabled(col_path.clone(), enable_bloom_filter);
+            }
+            if let Some(encoding) = col_opt.encoding {
+                builder = builder.set_column_encoding(col_path.clone(), encoding);
+            }
+            if let Some(compression) = col_opt.compression {
+                builder = builder.set_column_compression(col_path, compression);
+            }
+        }
 
         builder.build()
     }
