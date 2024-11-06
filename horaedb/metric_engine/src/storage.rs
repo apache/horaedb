@@ -216,14 +216,20 @@ impl CloudObjectStorage {
             Some(column_options) => {
                 for (col_name, col_opt) in column_options {
                     let col_path = ColumnPath::new(vec![col_name.to_string()]);
-                    builder = builder
-                        .set_column_dictionary_enabled(col_path.clone(), col_opt.enable_dict)
-                        .set_column_bloom_filter_enabled(
-                            col_path.clone(),
-                            col_opt.enable_bloom_filter,
-                        )
-                        .set_column_encoding(col_path.clone(), col_opt.encoding)
-                        .set_column_compression(col_path, col_opt.compression);
+                    if let Some(enable_dict) = col_opt.enable_dict {
+                        builder =
+                            builder.set_column_dictionary_enabled(col_path.clone(), enable_dict);
+                    }
+                    if let Some(enable_bloom_filter) = col_opt.enable_bloom_filter {
+                        builder = builder
+                            .set_column_bloom_filter_enabled(col_path.clone(), enable_bloom_filter);
+                    }
+                    if let Some(encoding) = col_opt.encoding {
+                        builder = builder.set_column_encoding(col_path.clone(), encoding);
+                    }
+                    if let Some(compression) = col_opt.compression {
+                        builder = builder.set_column_compression(col_path, compression);
+                    }
                 }
                 builder
             }

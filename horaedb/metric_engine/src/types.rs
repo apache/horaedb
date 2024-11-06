@@ -99,10 +99,10 @@ pub struct WriteResult {
 }
 
 pub struct ColumnOptions {
-    pub enable_dict: bool,
-    pub enable_bloom_filter: bool,
-    pub encoding: Encoding,
-    pub compression: Compression,
+    pub enable_dict: Option<bool>,
+    pub enable_bloom_filter: Option<bool>,
+    pub encoding: Option<Encoding>,
+    pub compression: Option<Compression>,
 }
 
 pub struct WriteOptions {
