@@ -42,6 +42,7 @@ use object_store::path::Path;
 use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::WriterProperties,
+    format::SortingColumn,
     schema::types::ColumnPath,
 };
 
@@ -90,7 +91,7 @@ pub struct CloudObjectStorage {
     manifest: Manifest,
 
     df_schema: DFSchema,
-    write_options: WriteOptions,
+    write_props: WriterProperties,
 }
 
 /// It will organize the data in the following way:
@@ -116,6 +117,7 @@ impl CloudObjectStorage {
         let manifest =
             Manifest::try_new(format!("{root_path}/{manifest_prefix}"), store.clone()).await?;
         let df_schema = DFSchema::try_from(arrow_schema.clone()).context("build DFSchema")?;
+        let write_props = Self::build_write_props(write_options, num_primary_key);
         Ok(Self {
             path: root_path,
             num_primary_key,
@@ -124,7 +126,7 @@ impl CloudObjectStorage {
             arrow_schema,
             manifest,
             df_schema,
-            write_options,
+            write_props,
         })
     }
 
@@ -139,11 +141,10 @@ impl CloudObjectStorage {
         let file_path = self.build_file_path(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer = ParquetObjectWriter::new(self.store.clone(), file_path.clone());
-        let write_properties = self.build_write_properties();
         let mut writer = AsyncArrowWriter::try_new(
             object_store_writer,
             self.schema().clone(),
-            Some(write_properties),
+            Some(self.write_props.clone()),
         )
         .context("create arrow writer")?;
 
@@ -168,9 +169,7 @@ impl CloudObjectStorage {
 
     fn build_sort_exprs(&self) -> Result<LexOrdering> {
         let sort_exprs = (0..self.num_primary_key)
-            .collect::<Vec<_>>()
-            .iter()
-            .map(|i| ident(self.schema().field(*i).name()).sort(true, true))
+            .map(|i| ident(self.schema().field(i).name()).sort(true, true))
             .collect::<Vec<_>>();
         let sort_exprs =
             create_physical_sort_exprs(&sort_exprs, &self.df_schema, &ExecutionProps::default())
@@ -192,14 +191,29 @@ impl CloudObjectStorage {
         Ok(res)
     }
 
-    fn build_write_properties(&self) -> WriterProperties {
-        let mut builder = WriterProperties::builder()
-            .set_max_row_group_size(self.write_options.num_rows_per_row_group)
-            .set_compression(self.write_options.compression);
+    fn build_write_props(write_options: WriteOptions, num_primary_key: usize) -> WriterProperties {
+        let sorting_columns = write_options.enable_sorting_columns.then(|| {
+            (0..num_primary_key)
+                .map(|i| SortingColumn::new(i as i32, false, false))
+                .collect::<Vec<_>>()
+        });
 
-        for (col_name, col_opt) in &self.write_options.column_options {
+        let mut builder = WriterProperties::builder()
+            .set_max_row_group_size(write_options.max_row_group_size)
+            .set_write_batch_size(write_options.write_bacth_size)
+            .set_sorting_columns(sorting_columns)
+            .set_dictionary_enabled(write_options.enable_dict)
+            .set_bloom_filter_enabled(write_options.enable_bloom_filter)
+            .set_encoding(write_options.encoding)
+            .set_compression(write_options.compression);
+
+        for (col_name, col_opt) in write_options.column_options {
             let col_path = ColumnPath::new(vec![col_name.to_string()]);
-            builder = builder.set_column_dictionary_enabled(col_path, col_opt.enable_dict);
+            builder = builder
+                .set_column_dictionary_enabled(col_path.clone(), col_opt.enable_dict)
+                .set_column_bloom_filter_enabled(col_path.clone(), col_opt.enable_bloom_filter)
+                .set_column_encoding(col_path.clone(), col_opt.encoding)
+                .set_column_compression(col_path, col_opt.compression);
         }
 
         builder.build()
@@ -288,14 +302,11 @@ impl TimeMergeStorage for CloudObjectStorage {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use arrow::{
         array::UInt8Array,
         datatypes::{DataType, Field, Schema},
     };
     use object_store::local::LocalFileSystem;
-    use parquet::basic::Compression;
 
     use super::*;
 
@@ -309,18 +320,13 @@ mod tests {
         ]));
 
         let store = Arc::new(LocalFileSystem::new());
-        let write_options = WriteOptions {
-            num_rows_per_row_group: 1024,
-            compression: Compression::UNCOMPRESSED,
-            column_options: HashMap::new(),
-        };
         let storage = CloudObjectStorage::try_new(
             "/tmp/storage".to_string(),
             store,
             schema.clone(),
             1,
             1,
-            write_options,
+            WriteOptions::default(),
         )
         .await
         .unwrap();

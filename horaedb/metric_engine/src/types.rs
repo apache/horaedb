@@ -22,9 +22,17 @@ use std::{
 };
 
 use object_store::ObjectStore;
-use parquet::basic::Compression;
+use parquet::basic::{Compression, Encoding};
 
 use crate::sst::FileId;
+
+const DEFAULT_MAX_ROW_GROUP_SIZE: usize = 1024 * 1024;
+const DEFAULT_WRITE_BATCH_SIZE: usize = 1024;
+const DEFAULT_ENABLE_SORTING_COLUMNS: bool = true;
+const DEFAULT_ENABLE_DICT: bool = false;
+const DEFAULT_ENABLE_BLOOM_FILTER: bool = false;
+const DEFAULT_ENCODING: Encoding = Encoding::PLAIN;
+const DEFAULT_COMPRESSION: Compression = Compression::UNCOMPRESSED;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
@@ -100,10 +108,35 @@ pub struct WriteResult {
 
 pub struct ColumnOptions {
     pub enable_dict: bool,
+    pub enable_bloom_filter: bool,
+    pub encoding: Encoding,
+    pub compression: Compression,
 }
 
 pub struct WriteOptions {
-    pub num_rows_per_row_group: usize,
+    pub max_row_group_size: usize,
+    pub write_bacth_size: usize,
+    pub enable_sorting_columns: bool,
+    // use to set column props with default value
+    pub enable_dict: bool,
+    pub enable_bloom_filter: bool,
+    pub encoding: Encoding,
     pub compression: Compression,
+    // use to set column props with column name
     pub column_options: HashMap<String, ColumnOptions>,
+}
+
+impl Default for WriteOptions {
+    fn default() -> Self {
+        Self {
+            max_row_group_size: DEFAULT_MAX_ROW_GROUP_SIZE,
+            write_bacth_size: DEFAULT_WRITE_BATCH_SIZE,
+            enable_sorting_columns: DEFAULT_ENABLE_SORTING_COLUMNS,
+            enable_dict: DEFAULT_ENABLE_DICT,
+            enable_bloom_filter: DEFAULT_ENABLE_BLOOM_FILTER,
+            encoding: DEFAULT_ENCODING,
+            compression: DEFAULT_COMPRESSION,
+            column_options: HashMap::default(),
+        }
+    }
 }
