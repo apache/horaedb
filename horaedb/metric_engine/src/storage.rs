@@ -169,7 +169,10 @@ impl CloudObjectStorage {
 
     fn build_sort_exprs(&self) -> Result<LexOrdering> {
         let sort_exprs = (0..self.num_primary_key)
-            .map(|i| ident(self.schema().field(i).name()).sort(true, true))
+            .map(|i| {
+                ident(self.schema().field(i).name())
+                    .sort(true /* asc */, true /* nulls_first */)
+            })
             .collect::<Vec<_>>();
         let sort_exprs =
             create_physical_sort_exprs(&sort_exprs, &self.df_schema, &ExecutionProps::default())
@@ -194,7 +197,9 @@ impl CloudObjectStorage {
     fn build_write_props(write_options: WriteOptions, num_primary_key: usize) -> WriterProperties {
         let sorting_columns = write_options.enable_sorting_columns.then(|| {
             (0..num_primary_key)
-                .map(|i| SortingColumn::new(i as i32, false, false))
+                .map(|i| {
+                    SortingColumn::new(i as i32, false /* desc */, true /* nulls_first */)
+                })
                 .collect::<Vec<_>>()
         });
 
@@ -207,14 +212,23 @@ impl CloudObjectStorage {
             .set_encoding(write_options.encoding)
             .set_compression(write_options.compression);
 
-        for (col_name, col_opt) in write_options.column_options {
-            let col_path = ColumnPath::new(vec![col_name.to_string()]);
-            builder = builder
-                .set_column_dictionary_enabled(col_path.clone(), col_opt.enable_dict)
-                .set_column_bloom_filter_enabled(col_path.clone(), col_opt.enable_bloom_filter)
-                .set_column_encoding(col_path.clone(), col_opt.encoding)
-                .set_column_compression(col_path, col_opt.compression);
-        }
+        let builder = match write_options.column_options {
+            Some(column_options) => {
+                for (col_name, col_opt) in column_options {
+                    let col_path = ColumnPath::new(vec![col_name.to_string()]);
+                    builder = builder
+                        .set_column_dictionary_enabled(col_path.clone(), col_opt.enable_dict)
+                        .set_column_bloom_filter_enabled(
+                            col_path.clone(),
+                            col_opt.enable_bloom_filter,
+                        )
+                        .set_column_encoding(col_path.clone(), col_opt.encoding)
+                        .set_column_compression(col_path, col_opt.compression);
+                }
+                builder
+            }
+            None => builder,
+        };
 
         builder.build()
     }

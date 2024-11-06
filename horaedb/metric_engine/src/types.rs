@@ -22,17 +22,9 @@ use std::{
 };
 
 use object_store::ObjectStore;
-use parquet::basic::{Compression, Encoding};
+use parquet::basic::{Compression, Encoding, ZstdLevel};
 
 use crate::sst::FileId;
-
-const DEFAULT_MAX_ROW_GROUP_SIZE: usize = 1024 * 1024;
-const DEFAULT_WRITE_BATCH_SIZE: usize = 1024;
-const DEFAULT_ENABLE_SORTING_COLUMNS: bool = true;
-const DEFAULT_ENABLE_DICT: bool = false;
-const DEFAULT_ENABLE_BLOOM_FILTER: bool = false;
-const DEFAULT_ENCODING: Encoding = Encoding::PLAIN;
-const DEFAULT_COMPRESSION: Compression = Compression::UNCOMPRESSED;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
@@ -123,20 +115,20 @@ pub struct WriteOptions {
     pub encoding: Encoding,
     pub compression: Compression,
     // use to set column props with column name
-    pub column_options: HashMap<String, ColumnOptions>,
+    pub column_options: Option<HashMap<String, ColumnOptions>>,
 }
 
 impl Default for WriteOptions {
     fn default() -> Self {
         Self {
-            max_row_group_size: DEFAULT_MAX_ROW_GROUP_SIZE,
-            write_bacth_size: DEFAULT_WRITE_BATCH_SIZE,
-            enable_sorting_columns: DEFAULT_ENABLE_SORTING_COLUMNS,
-            enable_dict: DEFAULT_ENABLE_DICT,
-            enable_bloom_filter: DEFAULT_ENABLE_BLOOM_FILTER,
-            encoding: DEFAULT_ENCODING,
-            compression: DEFAULT_COMPRESSION,
-            column_options: HashMap::default(),
+            max_row_group_size: 8192,
+            write_bacth_size: 1024,
+            enable_sorting_columns: true,
+            enable_dict: false,
+            enable_bloom_filter: false,
+            encoding: Encoding::PLAIN,
+            compression: Compression::ZSTD(ZstdLevel::default()),
+            column_options: None,
         }
     }
 }
