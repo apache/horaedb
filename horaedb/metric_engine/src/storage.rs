@@ -42,19 +42,20 @@ use object_store::path::Path;
 use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::WriterProperties,
+    format::SortingColumn,
+    schema::types::ColumnPath,
 };
 
 use crate::{
     manifest::Manifest,
     read::DefaultParquetFileReaderFactory,
     sst::{allocate_id, FileId, FileMeta},
-    types::{ObjectStoreRef, TimeRange, Timestamp, WriteResult},
+    types::{ObjectStoreRef, TimeRange, Timestamp, WriteOptions, WriteResult},
     Result,
 };
 
 pub struct WriteRequest {
     batch: RecordBatch,
-    props: Option<WriterProperties>,
 }
 
 pub struct ScanRequest {
@@ -90,6 +91,7 @@ pub struct CloudObjectStorage {
     manifest: Manifest,
 
     df_schema: DFSchema,
+    write_props: WriterProperties,
 }
 
 /// It will organize the data in the following way:
@@ -109,11 +111,13 @@ impl CloudObjectStorage {
         arrow_schema: SchemaRef,
         num_primary_key: usize,
         timestamp_index: usize,
+        write_options: WriteOptions,
     ) -> Result<Self> {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
         let manifest =
             Manifest::try_new(format!("{root_path}/{manifest_prefix}"), store.clone()).await?;
         let df_schema = DFSchema::try_from(arrow_schema.clone()).context("build DFSchema")?;
+        let write_props = Self::build_write_props(write_options, num_primary_key);
         Ok(Self {
             path: root_path,
             num_primary_key,
@@ -122,6 +126,7 @@ impl CloudObjectStorage {
             arrow_schema,
             manifest,
             df_schema,
+            write_props,
         })
     }
 
@@ -136,9 +141,12 @@ impl CloudObjectStorage {
         let file_path = self.build_file_path(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer = ParquetObjectWriter::new(self.store.clone(), file_path.clone());
-        let mut writer =
-            AsyncArrowWriter::try_new(object_store_writer, self.schema().clone(), req.props)
-                .context("create arrow writer")?;
+        let mut writer = AsyncArrowWriter::try_new(
+            object_store_writer,
+            self.schema().clone(),
+            Some(self.write_props.clone()),
+        )
+        .context("create arrow writer")?;
 
         // sort record batch
         let mut batches = self.sort_batch(req.batch).await?;
@@ -161,9 +169,10 @@ impl CloudObjectStorage {
 
     fn build_sort_exprs(&self) -> Result<LexOrdering> {
         let sort_exprs = (0..self.num_primary_key)
-            .collect::<Vec<_>>()
-            .iter()
-            .map(|i| ident(self.schema().field(*i).name()).sort(true, true))
+            .map(|i| {
+                ident(self.schema().field(i).name())
+                    .sort(true /* asc */, true /* nulls_first */)
+            })
             .collect::<Vec<_>>();
         let sort_exprs =
             create_physical_sort_exprs(&sort_exprs, &self.df_schema, &ExecutionProps::default())
@@ -183,6 +192,48 @@ impl CloudObjectStorage {
         let res =
             execute_stream(physical_plan, ctx.task_ctx()).context("execute sort physical plan")?;
         Ok(res)
+    }
+
+    fn build_write_props(write_options: WriteOptions, num_primary_key: usize) -> WriterProperties {
+        let sorting_columns = write_options.enable_sorting_columns.then(|| {
+            (0..num_primary_key)
+                .map(|i| {
+                    SortingColumn::new(i as i32, false /* desc */, true /* nulls_first */)
+                })
+                .collect::<Vec<_>>()
+        });
+
+        let mut builder = WriterProperties::builder()
+            .set_max_row_group_size(write_options.max_row_group_size)
+            .set_write_batch_size(write_options.write_bacth_size)
+            .set_sorting_columns(sorting_columns)
+            .set_dictionary_enabled(write_options.enable_dict)
+            .set_bloom_filter_enabled(write_options.enable_bloom_filter)
+            .set_encoding(write_options.encoding)
+            .set_compression(write_options.compression);
+
+        if write_options.column_options.is_none() {
+            return builder.build();
+        }
+
+        for (col_name, col_opt) in write_options.column_options.unwrap() {
+            let col_path = ColumnPath::new(vec![col_name.to_string()]);
+            if let Some(enable_dict) = col_opt.enable_dict {
+                builder = builder.set_column_dictionary_enabled(col_path.clone(), enable_dict);
+            }
+            if let Some(enable_bloom_filter) = col_opt.enable_bloom_filter {
+                builder =
+                    builder.set_column_bloom_filter_enabled(col_path.clone(), enable_bloom_filter);
+            }
+            if let Some(encoding) = col_opt.encoding {
+                builder = builder.set_column_encoding(col_path.clone(), encoding);
+            }
+            if let Some(compression) = col_opt.compression {
+                builder = builder.set_column_compression(col_path, compression);
+            }
+        }
+
+        builder.build()
     }
 }
 
@@ -286,10 +337,16 @@ mod tests {
         ]));
 
         let store = Arc::new(LocalFileSystem::new());
-        let storage =
-            CloudObjectStorage::try_new("/tmp/storage".to_string(), store, schema.clone(), 1, 1)
-                .await
-                .unwrap();
+        let storage = CloudObjectStorage::try_new(
+            "/tmp/storage".to_string(),
+            store,
+            schema.clone(),
+            1,
+            1,
+            WriteOptions::default(),
+        )
+        .await
+        .unwrap();
 
         let batch = RecordBatch::try_new(
             schema.clone(),

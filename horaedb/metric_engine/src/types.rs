@@ -16,11 +16,13 @@
 // under the License.
 
 use std::{
+    collections::HashMap,
     ops::{Add, Deref, Range},
     sync::Arc,
 };
 
 use object_store::ObjectStore;
+use parquet::basic::{Compression, Encoding, ZstdLevel};
 
 use crate::sst::FileId;
 
@@ -94,4 +96,39 @@ pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 pub struct WriteResult {
     pub id: FileId,
     pub size: usize,
+}
+
+pub struct ColumnOptions {
+    pub enable_dict: Option<bool>,
+    pub enable_bloom_filter: Option<bool>,
+    pub encoding: Option<Encoding>,
+    pub compression: Option<Compression>,
+}
+
+pub struct WriteOptions {
+    pub max_row_group_size: usize,
+    pub write_bacth_size: usize,
+    pub enable_sorting_columns: bool,
+    // use to set column props with default value
+    pub enable_dict: bool,
+    pub enable_bloom_filter: bool,
+    pub encoding: Encoding,
+    pub compression: Compression,
+    // use to set column props with column name
+    pub column_options: Option<HashMap<String, ColumnOptions>>,
+}
+
+impl Default for WriteOptions {
+    fn default() -> Self {
+        Self {
+            max_row_group_size: 8192,
+            write_bacth_size: 1024,
+            enable_sorting_columns: true,
+            enable_dict: false,
+            enable_bloom_filter: false,
+            encoding: Encoding::PLAIN,
+            compression: Compression::ZSTD(ZstdLevel::default()),
+            column_options: None,
+        }
+    }
 }
