@@ -135,10 +135,17 @@ impl Resolver {
             let sub_tables = unresolved.sub_tables.clone();
             let remote_plans = sub_tables
                 .into_iter()
-                .map(|table| {
+                .enumerate()
+                .map(|(idx, table)| {
                     let plan = Arc::new(UnresolvedSubTableScan {
                         table: table.clone(),
-                        table_scan_ctx: unresolved.table_scan_ctx.clone(),
+                        table_scan_ctx: if let Some(ref predicates) = unresolved.predicates {
+                            let mut ctx = unresolved.table_scan_ctx.clone();
+                            ctx.predicate = Arc::new(predicates[idx].clone());
+                            ctx
+                        } else {
+                            unresolved.table_scan_ctx.clone()
+                        },
                     });
                     let sub_metrics_collect = metrics_collector.span(table.table.clone());
 

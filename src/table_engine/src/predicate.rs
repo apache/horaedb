@@ -104,6 +104,10 @@ impl Predicate {
         &self.exprs
     }
 
+    pub fn mut_exprs(&mut self) -> &mut [Expr] {
+        &mut self.exprs
+    }
+
     pub fn time_range(&self) -> TimeRange {
         self.time_range
     }

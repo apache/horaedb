@@ -33,8 +33,8 @@ use table_engine::{
     partition::{
         format_sub_partition_table_name,
         rule::{
-            df_adapter::DfPartitionRuleAdapter, PartitionedRow, PartitionedRows,
-            PartitionedRowsIter,
+            df_adapter::{DfPartitionRuleAdapter, PartitionedFilterKeyIndex},
+            PartitionedRow, PartitionedRows, PartitionedRowsIter,
         },
         PartitionInfo,
     },
@@ -289,14 +289,14 @@ impl Table for PartitionTableImpl {
                     .context(CreatePartitionRule)?
             }
         };
-
+        let mut partitioned_key_indices = PartitionedFilterKeyIndex::new();
         // Evaluate expr and locate partition.
         let partitions = {
             let _locate_timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
                 .with_label_values(&["locate"])
                 .start_timer();
             df_partition_rule
-                .locate_partitions_for_read(request.predicate.exprs())
+                .locate_partitions_for_read(request.predicate.exprs(), &mut partitioned_key_indices)
                 .box_err()
                 .context(LocatePartitions)?
         };

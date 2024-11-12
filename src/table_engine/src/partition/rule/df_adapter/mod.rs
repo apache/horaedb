@@ -16,6 +16,7 @@
 // under the License.
 
 //! Partition rule datafusion adapter
+use std::collections::{BTreeSet, HashMap};
 
 use common_types::{row::RowGroup, schema::Schema};
 use datafusion::logical_expr::Expr;
@@ -23,13 +24,17 @@ use datafusion::logical_expr::Expr;
 use self::extractor::{KeyExtractor, NoopExtractor};
 use crate::partition::{
     rule::{
-        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory, PartitionRulePtr,
-        PartitionedRows,
+        df_adapter::extractor::FilterExtractorRef, factory::PartitionRuleFactory,
+        filter::PartitionFilter, PartitionRulePtr, PartitionedRows,
     },
     BuildPartitionRule, PartitionInfo, Result,
 };
 
 mod extractor;
+
+pub type PartitionedFilterKeyIndex = HashMap<usize, HashMap<usize, BTreeSet<usize>>>;
+pub type IndexedPartitionFilter = Vec<(usize, PartitionFilter)>;
+pub type IndexedPartitionFilterRef<'a> = &'a [(usize, PartitionFilter)];
 
 /// Partition rule's adapter for datafusion
 pub struct DfPartitionRuleAdapter {
@@ -56,12 +61,17 @@ impl DfPartitionRuleAdapter {
         self.rule.location_partitions_for_write(row_group)
     }
 
-    pub fn locate_partitions_for_read(&self, filters: &[Expr]) -> Result<Vec<usize>> {
+    pub fn locate_partitions_for_read(
+        &self,
+        filters: &[Expr],
+        partitioned_key_indices: &mut PartitionedFilterKeyIndex,
+    ) -> Result<Vec<usize>> {
         // Extract partition filters from datafusion filters.
         let partition_filters = self.extractor.extract(filters, self.columns());
 
         // Locate partitions from filters.
-        self.rule.locate_partitions_for_read(&partition_filters)
+        self.rule
+            .locate_partitions_for_read(&partition_filters, partitioned_key_indices)
     }
 
     fn create_extractor(partition_info: &PartitionInfo) -> Result<FilterExtractorRef> {
@@ -116,8 +126,9 @@ mod tests {
         // Basic flow
         let key_rule_adapter =
             DfPartitionRuleAdapter::new(PartitionInfo::Key(ket_partition), &schema).unwrap();
+        let mut partitioned_key_indices = PartitionedFilterKeyIndex::new();
         let partitions = key_rule_adapter
-            .locate_partitions_for_read(&valid_filters_1)
+            .locate_partitions_for_read(&valid_filters_1, &mut partitioned_key_indices)
             .unwrap();
 
         let partition_keys = [
@@ -132,7 +143,7 @@ mod tests {
 
         // Conflict filter and empty partitions
         let partitions = key_rule_adapter
-            .locate_partitions_for_read(&valid_filters_2)
+            .locate_partitions_for_read(&valid_filters_2, &mut partitioned_key_indices)
             .unwrap();
 
         assert!(partitions.is_empty());
@@ -161,12 +172,13 @@ mod tests {
         let key_rule_adapter =
             DfPartitionRuleAdapter::new(PartitionInfo::Key(ket_partition), &schema).unwrap();
 
+        let mut partitioned_key_indices = PartitionedFilterKeyIndex::new();
         // Partitions located from invalid filters.
         let partitions_1 = key_rule_adapter
-            .locate_partitions_for_read(&invalid_filters_1)
+            .locate_partitions_for_read(&invalid_filters_1, &mut partitioned_key_indices)
             .unwrap();
         let partitions_2 = key_rule_adapter
-            .locate_partitions_for_read(&invalid_filters_2)
+            .locate_partitions_for_read(&invalid_filters_2, &mut partitioned_key_indices)
             .unwrap();
 
         // Expected

@@ -21,7 +21,10 @@ use common_types::row::RowGroup;
 use itertools::Itertools;
 
 use crate::partition::{
-    rule::{filter::PartitionFilter, PartitionRule, PartitionedRows},
+    rule::{
+        df_adapter::{IndexedPartitionFilterRef, PartitionedFilterKeyIndex},
+        PartitionRule, PartitionedRows,
+    },
     Result,
 };
 
@@ -47,7 +50,11 @@ impl PartitionRule for RandomRule {
         })
     }
 
-    fn locate_partitions_for_read(&self, _filters: &[PartitionFilter]) -> Result<Vec<usize>> {
+    fn locate_partitions_for_read(
+        &self,
+        _indexed_filters: IndexedPartitionFilterRef,
+        _partitioned_key_indices: &mut PartitionedFilterKeyIndex,
+    ) -> Result<Vec<usize>> {
         Ok((0..self.partition_num).collect_vec())
     }
 }

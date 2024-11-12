@@ -16,13 +16,14 @@
 // under the License.
 
 //! Partition filter extractor
-
 use std::collections::HashSet;
 
 use common_types::datum::Datum;
 use datafusion::logical_expr::{expr::InList, Expr, Operator};
 use df_operator::visitor::find_columns_by_expr;
+use itertools::enumerate;
 
+use super::IndexedPartitionFilter;
 use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
 
 /// The datafusion filter exprs extractor
@@ -36,13 +37,13 @@ use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
 /// For example: [KeyRule] and [KeyExtractor].
 /// If they are not related, [PartitionRule] may not take effect.
 pub trait FilterExtractor: Send + Sync + 'static {
-    fn extract(&self, filters: &[Expr], columns: &[String]) -> Vec<PartitionFilter>;
+    fn extract(&self, filters: &[Expr], columns: &[String]) -> IndexedPartitionFilter;
 }
 
 pub struct NoopExtractor;
 
 impl FilterExtractor for NoopExtractor {
-    fn extract(&self, _filters: &[Expr], _columns: &[String]) -> Vec<PartitionFilter> {
+    fn extract(&self, _filters: &[Expr], _columns: &[String]) -> IndexedPartitionFilter {
         vec![]
     }
 }
@@ -50,13 +51,14 @@ impl FilterExtractor for NoopExtractor {
 pub struct KeyExtractor;
 
 impl FilterExtractor for KeyExtractor {
-    fn extract(&self, filters: &[Expr], columns: &[String]) -> Vec<PartitionFilter> {
+    fn extract(&self, filters: &[Expr], columns: &[String]) -> IndexedPartitionFilter {
+        // PartitionFilter indices may not the same as filters indices
         if filters.is_empty() {
             return Vec::default();
         }
 
         let mut target = Vec::with_capacity(filters.len());
-        for filter in filters {
+        for (index, filter) in enumerate(filters) {
             // If no target columns included in `filter`, ignore this `filter`.
             let columns_in_filter = find_columns_by_expr(filter)
                 .into_iter()
@@ -126,7 +128,7 @@ impl FilterExtractor for KeyExtractor {
             };
 
             if let Some(pf) = partition_filter {
-                target.push(pf);
+                target.push((index, pf));
             }
         }
 
@@ -157,7 +159,7 @@ mod tests {
             column: "col1".to_string(),
             condition: PartitionCondition::Eq(Datum::Int32(42)),
         };
-        assert_eq!(partition_filter.first().unwrap(), &expected);
+        assert_eq!(partition_filter.first().unwrap().1, expected);
 
         // Other expr will be rejected now.
         let rejected_expr = col("col1").gt(Expr::Literal(ScalarValue::Int32(Some(42))));
@@ -182,7 +184,7 @@ mod tests {
             column: "col1".to_string(),
             condition: PartitionCondition::In(vec![Datum::Int32(42), Datum::Int32(38)]),
         };
-        assert_eq!(partition_filter.first().unwrap(), &expected);
+        assert_eq!(partition_filter.first().unwrap().1, expected);
     }
 
     #[test]
