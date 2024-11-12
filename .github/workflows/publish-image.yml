@@ -44,7 +44,9 @@ jobs:
         with:
           context: horaemeta
           push: true
-          tags: apache/horaemeta-server:${{ inputs.version }}
+          tags: |
+            apache/horaemeta-server:${{ inputs.version }}
+            ${{ contains(inputs.version.toLowerCase(), 'rc') == false && 'apache/horaemeta-server:latest' || '' }}
 
   horaedb:
     runs-on: ubuntu-latest
@@ -65,4 +67,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: apache/horaedb-server:${{ inputs.version }}
+          tags: |
+            apache/horaedb-server:${{ inputs.version }}
+            ${{ contains(inputs.version.toLowerCase(), 'rc') == false && 'apache/horaedb-server:latest' || '' }}
