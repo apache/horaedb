@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+        with:
+          ref: refs/tags/${{ inputs.version }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Login to DockerHub
@@ -42,13 +44,15 @@ jobs:
         with:
           context: horaemeta
           push: true
-          tags: apache/horaemeta-server:latest,apache/horaemeta-server:${{ inputs.version }}
+          tags: apache/horaemeta-server:${{ inputs.version }}
 
   horaedb:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+        with:
+          ref: refs/tags/${{ inputs.version }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
       - name: Login to DockerHub
@@ -61,4 +65,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: apache/horaedb-server:latest,apache/horaedb-server:${{ inputs.version }}
+          tags: apache/horaedb-server:${{ inputs.version }}
