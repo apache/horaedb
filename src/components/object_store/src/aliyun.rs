@@ -25,15 +25,11 @@ use opendal::{
 
 use crate::config::AliyunOptions;
 
-fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
-    if endpoint.starts_with("https") {
-        format!(
-            "https://{}.{}",
-            bucket,
-            endpoint.replacen("https://", "", 1)
-        )
+fn normalize_endpoint(endpoint: &str) -> String {
+    if endpoint.starts_with("http") {
+        endpoint.to_string()
     } else {
-        format!("http://{}.{}", bucket, endpoint.replacen("http://", "", 1))
+        format!("http://{}", endpoint)
     }
 }
 
@@ -45,16 +41,13 @@ pub fn try_new(aliyun_opts: &AliyunOptions) -> Result<OpendalStore> {
         .http2_keep_alive_interval(aliyun_opts.http.keep_alive_interval.0)
         .timeout(aliyun_opts.http.timeout.0);
     let http_client = HttpClient::build(http_builder)?;
-
-    let endpoint = &aliyun_opts.endpoint;
-    let bucket = &aliyun_opts.bucket;
-    let endpoint = normalize_endpoint(endpoint, bucket);
+    let endpoint = normalize_endpoint(&aliyun_opts.endpoint);
 
     let builder = Oss::default()
         .access_key_id(&aliyun_opts.key_id)
         .access_key_secret(&aliyun_opts.key_secret)
         .endpoint(&endpoint)
-        .bucket(bucket)
+        .bucket(&aliyun_opts.bucket)
         .http_client(http_client);
     let op = Operator::new(builder)?
         .layer(
@@ -75,21 +68,13 @@ mod tests {
     #[test]
     fn test_normalize_endpoint() {
         let testcase = [
-            (
-                "https://oss.aliyun.com",
-                "test",
-                "https://test.oss.aliyun.com",
-            ),
-            (
-                "http://oss.aliyun.com",
-                "test",
-                "http://test.oss.aliyun.com",
-            ),
-            ("no-scheme.com", "test", "http://test.no-scheme.com"),
+            ("https://oss.aliyun.com", "https://oss.aliyun.com"),
+            ("http://oss.aliyun.com", "http://oss.aliyun.com"),
+            ("no-scheme.com", "http://no-scheme.com"),
         ];
 
-        for (endpoint, bucket, expected) in testcase {
-            let actual = normalize_endpoint(endpoint, bucket);
+        for (endpoint, expected) in testcase {
+            let actual = normalize_endpoint(endpoint);
             assert_eq!(expected, actual);
         }
     }
