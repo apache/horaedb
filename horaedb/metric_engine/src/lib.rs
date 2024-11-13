@@ -17,6 +17,7 @@
 
 //! Storage Engine for metrics.
 
+#![feature(duration_constructors)]
 pub mod error;
 mod manifest;
 mod read;

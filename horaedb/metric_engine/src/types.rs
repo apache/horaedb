@@ -73,6 +73,15 @@ impl From<Range<Timestamp>> for TimeRange {
     }
 }
 
+impl From<Range<i64>> for TimeRange {
+    fn from(value: Range<i64>) -> Self {
+        Self(Range {
+            start: value.start.into(),
+            end: value.end.into(),
+        })
+    }
+}
+
 impl Deref for TimeRange {
     type Target = Range<Timestamp>;
 

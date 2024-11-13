@@ -15,13 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{sync::Arc, vec};
+use std::{sync::Arc, time::Duration, vec};
 
 use anyhow::Context;
-use arrow::{
-    array::{Int64Array, RecordBatch},
-    datatypes::SchemaRef,
-};
+use arrow::{array::RecordBatch, datatypes::SchemaRef};
 use async_trait::async_trait;
 use datafusion::{
     common::DFSchema,
@@ -37,6 +34,7 @@ use datafusion::{
     prelude::{ident, SessionContext},
 };
 use futures::StreamExt;
+use itertools::Itertools;
 use macros::ensure;
 use object_store::path::Path;
 use parquet::{
@@ -49,13 +47,16 @@ use parquet::{
 use crate::{
     manifest::Manifest,
     read::DefaultParquetFileReaderFactory,
-    sst::{allocate_id, FileId, FileMeta},
-    types::{ObjectStoreRef, TimeRange, Timestamp, WriteOptions, WriteResult},
+    sst::{allocate_id, FileId, FileMeta, SstFile},
+    types::{ObjectStoreRef, TimeRange, WriteOptions, WriteResult},
     Result,
 };
 
 pub struct WriteRequest {
-    batch: RecordBatch,
+    pub batch: RecordBatch,
+    pub time_range: TimeRange,
+    // Check data is valid if it's true.
+    pub enable_check: bool,
 }
 
 pub struct ScanRequest {
@@ -81,13 +82,17 @@ pub trait TimeMergeStorage {
     async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
 
-/// `TimeMergeStorage` implementation using cloud object storage.
+/// `TimeMergeStorage` implementation using cloud object storage, it will split
+/// data into different segments(aka `segment_duration`) based time range.
+///
+/// Compaction will be done by merging segments within a segment, and segment
+/// will make it easy to support expiration.
 pub struct CloudObjectStorage {
+    segment_duration: Duration,
     path: String,
     store: ObjectStoreRef,
     arrow_schema: SchemaRef,
-    num_primary_key: usize,
-    timestamp_index: usize,
+    num_primary_keys: usize,
     manifest: Manifest,
 
     df_schema: DFSchema,
@@ -104,24 +109,25 @@ pub struct CloudObjectStorage {
 /// {root_path}/data/timestamp_b.sst
 /// {root_path}/data/...
 /// ```
+/// `root_path` is composed of `path` and `segment_duration`.
 impl CloudObjectStorage {
     pub async fn try_new(
-        root_path: String,
+        path: String,
+        segment_duration: Duration,
         store: ObjectStoreRef,
         arrow_schema: SchemaRef,
-        num_primary_key: usize,
-        timestamp_index: usize,
+        num_primary_keys: usize,
         write_options: WriteOptions,
     ) -> Result<Self> {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
         let manifest =
-            Manifest::try_new(format!("{root_path}/{manifest_prefix}"), store.clone()).await?;
+            Manifest::try_new(format!("{path}/{manifest_prefix}"), store.clone()).await?;
         let df_schema = DFSchema::try_from(arrow_schema.clone()).context("build DFSchema")?;
-        let write_props = Self::build_write_props(write_options, num_primary_key);
+        let write_props = Self::build_write_props(write_options, num_primary_keys);
         Ok(Self {
-            path: root_path,
-            num_primary_key,
-            timestamp_index,
+            path,
+            num_primary_keys,
+            segment_duration,
             store,
             arrow_schema,
             manifest,
@@ -136,7 +142,7 @@ impl CloudObjectStorage {
         format!("{root}/{prefix}/{id}")
     }
 
-    async fn write_batch(&self, req: WriteRequest) -> Result<WriteResult> {
+    async fn write_batch(&self, batch: RecordBatch) -> Result<WriteResult> {
         let file_id = allocate_id();
         let file_path = self.build_file_path(file_id);
         let file_path = Path::from(file_path);
@@ -149,7 +155,7 @@ impl CloudObjectStorage {
         .context("create arrow writer")?;
 
         // sort record batch
-        let mut batches = self.sort_batch(req.batch).await?;
+        let mut batches = self.sort_batch(batch).await?;
         while let Some(batch) = batches.next().await {
             let batch = batch.context("get sorted batch")?;
             writer.write(&batch).await.context("write arrow batch")?;
@@ -168,7 +174,7 @@ impl CloudObjectStorage {
     }
 
     fn build_sort_exprs(&self) -> Result<LexOrdering> {
-        let sort_exprs = (0..self.num_primary_key)
+        let sort_exprs = (0..self.num_primary_keys)
             .map(|i| {
                 ident(self.schema().field(i).name())
                     .sort(true /* asc */, true /* nulls_first */)
@@ -235,66 +241,29 @@ impl CloudObjectStorage {
 
         builder.build()
     }
-}
 
-#[async_trait]
-impl TimeMergeStorage for CloudObjectStorage {
-    fn schema(&self) -> &SchemaRef {
-        &self.arrow_schema
-    }
-
-    async fn write(&self, req: WriteRequest) -> Result<()> {
-        ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
-
-        let num_rows = req.batch.num_rows();
-        let time_column = req
-            .batch
-            .column(self.timestamp_index)
-            .as_any()
-            .downcast_ref::<Int64Array>()
-            .context("timestamp column should be int64")?;
-
-        let mut start = Timestamp::MAX;
-        let mut end = Timestamp::MIN;
-        for v in time_column.values() {
-            start = start.min(Timestamp(*v));
-            end = end.max(Timestamp(*v));
-        }
-        let time_range = TimeRange::new(start, end + 1);
-        let WriteResult {
-            id: file_id,
-            size: file_size,
-        } = self.write_batch(req).await?;
-        let file_meta = FileMeta {
-            max_sequence: file_id, // Since file_id in increasing order, we can use it as sequence.
-            num_rows: num_rows as u32,
-            size: file_size as u32,
-            time_range,
-        };
-        self.manifest.add_file(file_id, file_meta).await?;
-
-        Ok(())
-    }
-
-    async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {
-        let ssts = self.manifest.find_ssts(&req.range).await;
+    async fn scan_one_segment(
+        &self,
+        ssts: impl Iterator<Item = SstFile>,
+        projections: Option<Vec<usize>>,
+        predicates: Vec<Expr>,
+    ) -> Result<SendableRecordBatchStream> {
         // we won't use url for selecting object_store.
         let dummy_url = ObjectStoreUrl::parse("empty://").unwrap();
         // TODO: we could group ssts based on time range.
         // TODO: fetch using multiple threads since read from parquet will incur CPU
         // when convert between arrow and parquet.
         let file_groups = ssts
-            .iter()
             .map(|f| PartitionedFile::new(self.build_file_path(f.id), f.meta.size as u64))
             .collect::<Vec<_>>();
         let scan_config = FileScanConfig::new(dummy_url, self.schema().clone())
             .with_file_group(file_groups)
-            .with_projection(req.projections);
+            .with_projection(projections);
 
         let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
             Arc::new(DefaultParquetFileReaderFactory::new(self.store.clone())),
         );
-        if let Some(expr) = conjunction(req.predicate) {
+        if let Some(expr) = conjunction(predicates) {
             let filters = create_physical_expr(&expr, &self.df_schema, &ExecutionProps::new())
                 .context("create pyhsical expr")?;
             builder = builder.with_predicate(filters);
@@ -311,6 +280,60 @@ impl TimeMergeStorage for CloudObjectStorage {
 
         Ok(res)
     }
+}
+
+#[async_trait]
+impl TimeMergeStorage for CloudObjectStorage {
+    fn schema(&self) -> &SchemaRef {
+        &self.arrow_schema
+    }
+
+    async fn write(&self, req: WriteRequest) -> Result<()> {
+        if req.enable_check {
+            ensure!(req.batch.schema_ref().eq(self.schema()), "schema not match");
+            let segment_duration = self.segment_duration.as_millis() as i64;
+            ensure!(
+                req.time_range.start.0 / segment_duration
+                    == (req.time_range.end.0 - 1) / segment_duration,
+                "time range can't cross segment, value:{:?}",
+                &req.time_range
+            );
+        }
+
+        let num_rows = req.batch.num_rows();
+        let WriteResult {
+            id: file_id,
+            size: file_size,
+        } = self.write_batch(req.batch).await?;
+        let file_meta = FileMeta {
+            max_sequence: file_id, // Since file_id in increasing order, we can use it as sequence.
+            num_rows: num_rows as u32,
+            size: file_size as u32,
+            time_range: req.time_range,
+        };
+        self.manifest.add_file(file_id, file_meta).await?;
+
+        Ok(())
+    }
+
+    async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {
+        let total_ssts = self.manifest.find_ssts(&req.range).await;
+        let ssts_by_segment = total_ssts.into_iter().group_by(|file| {
+            file.meta.time_range.start.0 / self.segment_duration.as_millis() as i64
+        });
+
+        for (_, ssts) in ssts_by_segment {
+            return self
+                .scan_one_segment(
+                    ssts.into_iter(),
+                    req.projections.clone(),
+                    req.predicate.clone(),
+                )
+                .await;
+        }
+
+        todo!("Merge stream from different segment")
+    }
 
     async fn compact(&self, req: CompactRequest) -> Result<()> {
         todo!()
@@ -320,15 +343,96 @@ impl TimeMergeStorage for CloudObjectStorage {
 #[cfg(test)]
 mod tests {
     use arrow::{
-        array::UInt8Array,
+        array::{Int64Array, UInt8Array},
         datatypes::{DataType, Field, Schema},
     };
     use object_store::local::LocalFileSystem;
 
     use super::*;
+    use crate::types::Timestamp;
 
     #[tokio::test]
-    async fn test_sort_batch() {
+    async fn test_storage_write_and_scan() {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("pk1", DataType::UInt8, false),
+            Field::new("pk2", DataType::UInt8, false),
+            Field::new("value", DataType::Int64, false),
+        ]));
+
+        let root_dir = temp_dir::TempDir::new().unwrap();
+        let store = Arc::new(LocalFileSystem::new());
+        let storage = CloudObjectStorage::try_new(
+            root_dir.path().to_string_lossy().to_string(),
+            Duration::from_hours(2),
+            store,
+            schema.clone(),
+            2, // num_primary_keys
+            WriteOptions::default(),
+        )
+        .await
+        .unwrap();
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(UInt8Array::from(vec![11, 11, 9, 10, 5])),
+                Arc::new(UInt8Array::from(vec![100, 99, 1, 2, 3])),
+                Arc::new(Int64Array::from(vec![2, 7, 4, 6, 1])),
+            ],
+        )
+        .unwrap();
+        storage
+            .write(WriteRequest {
+                batch,
+                time_range: (1..10).into(),
+                enable_check: true,
+            })
+            .await
+            .unwrap();
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(UInt8Array::from(vec![1, 8, 9])),
+                Arc::new(UInt8Array::from(vec![100, 99, 98])),
+                Arc::new(Int64Array::from(vec![2, 7, 4])),
+            ],
+        )
+        .unwrap();
+        storage
+            .write(WriteRequest {
+                batch,
+                time_range: (10..20).into(),
+                enable_check: true,
+            })
+            .await
+            .unwrap();
+
+        let mut result_stream = storage
+            .scan(ScanRequest {
+                range: TimeRange::new(Timestamp(0), Timestamp::MAX),
+                predicate: vec![],
+                projections: None,
+            })
+            .await
+            .unwrap();
+        let expected_batch = RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(UInt8Array::from(vec![1, 5, 8, 9, 9, 10, 11, 11])),
+                Arc::new(UInt8Array::from(vec![100, 3, 99, 1, 98, 2, 99, 100])),
+                Arc::new(Int64Array::from(vec![2, 1, 7, 4, 4, 6, 7, 2])),
+            ],
+        )
+        .unwrap();
+        while let Some(batch) = result_stream.next().await {
+            let batch = batch.unwrap();
+            assert_eq!(expected_batch, batch);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_storage_sort_batch() {
         let schema = Arc::new(Schema::new(vec![
             Field::new("a", DataType::UInt8, false),
             Field::new("b", DataType::UInt8, false),
@@ -336,12 +440,13 @@ mod tests {
             Field::new("d", DataType::UInt8, false),
         ]));
 
+        let root_dir = temp_dir::TempDir::new().unwrap();
         let store = Arc::new(LocalFileSystem::new());
         let storage = CloudObjectStorage::try_new(
-            "/tmp/storage".to_string(),
+            root_dir.path().to_string_lossy().to_string(),
+            Duration::from_hours(2),
             store,
             schema.clone(),
-            1,
             1,
             WriteOptions::default(),
         )
