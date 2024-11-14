@@ -29,7 +29,11 @@ use datafusion::{
     execution::{context::ExecutionProps, object_store::ObjectStoreUrl, SendableRecordBatchStream},
     logical_expr::{utils::conjunction, Expr},
     physical_expr::{create_physical_expr, LexOrdering},
-    physical_plan::{execute_stream, memory::MemoryExec, sorts::sort::SortExec},
+    physical_plan::{
+        execute_stream,
+        memory::MemoryExec,
+        sorts::{sort::SortExec, sort_preserving_merge::SortPreservingMergeExec},
+    },
     physical_planner::create_physical_sort_exprs,
     prelude::{ident, SessionContext},
 };
@@ -244,7 +248,7 @@ impl CloudObjectStorage {
 
     async fn scan_one_segment(
         &self,
-        ssts: impl Iterator<Item = SstFile>,
+        ssts: Vec<SstFile>,
         projections: Option<Vec<usize>>,
         predicates: Vec<Expr>,
     ) -> Result<SendableRecordBatchStream> {
@@ -253,10 +257,14 @@ impl CloudObjectStorage {
         // TODO: we could group ssts based on time range.
         // TODO: fetch using multiple threads since read from parquet will incur CPU
         // when convert between arrow and parquet.
+        let sort_exprs = self.build_sort_exprs()?;
+
         let file_groups = ssts
+            .into_iter()
             .map(|f| PartitionedFile::new(self.build_file_path(f.id), f.meta.size as u64))
             .collect::<Vec<_>>();
         let scan_config = FileScanConfig::new(dummy_url, self.schema().clone())
+            .with_output_ordering(vec![sort_exprs.clone(); file_groups.len()])
             .with_file_group(file_groups)
             .with_projection(projections);
 
@@ -270,13 +278,19 @@ impl CloudObjectStorage {
         }
 
         let parquet_exec = builder.build();
-        let sort_exprs = self.build_sort_exprs()?;
-        let physical_plan = Arc::new(SortExec::new(sort_exprs, Arc::new(parquet_exec)));
-
+        let sort_exec = SortPreservingMergeExec::new(sort_exprs, Arc::new(parquet_exec))
+            .with_fetch(Some(1024))
+            .with_round_robin_repartition(true);
+        {
+            let plan = sort_exec.clone();
+            let v = datafusion::physical_plan::display::DisplayableExecutionPlan::new(&plan)
+                .indent(true);
+            println!("sort_exec: \n{}\n", v);
+        }
         let ctx = SessionContext::default();
         // TODO: dedup record batch based on primary keys and sequence number.
-        let res =
-            execute_stream(physical_plan, ctx.task_ctx()).context("execute sort physical plan")?;
+        let res = execute_stream(Arc::new(sort_exec), ctx.task_ctx())
+            .context("execute sort physical plan")?;
 
         Ok(res)
     }
@@ -324,14 +338,12 @@ impl TimeMergeStorage for CloudObjectStorage {
 
         for (_, ssts) in ssts_by_segment {
             return self
-                .scan_one_segment(
-                    ssts.into_iter(),
-                    req.projections.clone(),
-                    req.predicate.clone(),
-                )
+                .scan_one_segment(ssts, req.projections.clone(), req.predicate.clone())
                 .await;
         }
 
+        // TODO: currently only return records within one segment, we should merge
+        // them.
         todo!("Merge stream from different segment")
     }
 
@@ -427,8 +439,10 @@ mod tests {
         .unwrap();
         while let Some(batch) = result_stream.next().await {
             let batch = batch.unwrap();
-            assert_eq!(expected_batch, batch);
+            println!("------------\n{batch:?}\n------");
         }
+        // assert_eq!(expected_batch, batch);
+        assert!(false);
     }
 
     #[tokio::test]
