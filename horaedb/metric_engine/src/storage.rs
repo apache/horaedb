@@ -33,6 +33,7 @@ use datafusion::{
         execute_stream,
         memory::MemoryExec,
         sorts::{sort::SortExec, sort_preserving_merge::SortPreservingMergeExec},
+        ExecutionPlan,
     },
     physical_planner::create_physical_sort_exprs,
     prelude::{ident, SessionContext},
@@ -246,26 +247,28 @@ impl CloudObjectStorage {
         builder.build()
     }
 
-    async fn scan_one_segment(
+    async fn build_scan_plan(
         &self,
         ssts: Vec<SstFile>,
         projections: Option<Vec<usize>>,
         predicates: Vec<Expr>,
-    ) -> Result<SendableRecordBatchStream> {
+    ) -> Result<Arc<dyn ExecutionPlan>> {
         // we won't use url for selecting object_store.
         let dummy_url = ObjectStoreUrl::parse("empty://").unwrap();
-        // TODO: we could group ssts based on time range.
-        // TODO: fetch using multiple threads since read from parquet will incur CPU
-        // when convert between arrow and parquet.
         let sort_exprs = self.build_sort_exprs()?;
 
         let file_groups = ssts
             .into_iter()
-            .map(|f| PartitionedFile::new(self.build_file_path(f.id), f.meta.size as u64))
+            .map(|f| {
+                vec![PartitionedFile::new(
+                    self.build_file_path(f.id),
+                    f.meta.size as u64,
+                )]
+            })
             .collect::<Vec<_>>();
         let scan_config = FileScanConfig::new(dummy_url, self.schema().clone())
             .with_output_ordering(vec![sort_exprs.clone(); file_groups.len()])
-            .with_file_group(file_groups)
+            .with_file_groups(file_groups)
             .with_projection(projections);
 
         let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
@@ -277,20 +280,28 @@ impl CloudObjectStorage {
             builder = builder.with_predicate(filters);
         }
 
+        // TODO: fetch using multiple threads since read from parquet will incur CPU
+        // when convert between arrow and parquet.
         let parquet_exec = builder.build();
         let sort_exec = SortPreservingMergeExec::new(sort_exprs, Arc::new(parquet_exec))
+            // TODO: make fetch size configurable.
             .with_fetch(Some(1024))
             .with_round_robin_repartition(true);
-        {
-            let plan = sort_exec.clone();
-            let v = datafusion::physical_plan::display::DisplayableExecutionPlan::new(&plan)
-                .indent(true);
-            println!("sort_exec: \n{}\n", v);
-        }
+
+        // TODO: Add a new plan dedup record batch based on primary keys and sequence
+        // number.
+        Ok(Arc::new(sort_exec))
+    }
+
+    async fn scan_one_segment(
+        &self,
+        ssts: Vec<SstFile>,
+        projections: Option<Vec<usize>>,
+        predicates: Vec<Expr>,
+    ) -> Result<SendableRecordBatchStream> {
+        let plan = self.build_scan_plan(ssts, projections, predicates).await?;
         let ctx = SessionContext::default();
-        // TODO: dedup record batch based on primary keys and sequence number.
-        let res = execute_stream(Arc::new(sort_exec), ctx.task_ctx())
-            .context("execute sort physical plan")?;
+        let res = execute_stream(plan, ctx.task_ctx()).context("execute sort physical plan")?;
 
         Ok(res)
     }
@@ -362,6 +373,49 @@ mod tests {
 
     use super::*;
     use crate::types::Timestamp;
+
+    #[tokio::test]
+    async fn test_build_scan_plan() {
+        let schema = Arc::new(Schema::new(vec![Field::new("pk1", DataType::UInt8, false)]));
+        let store = Arc::new(LocalFileSystem::new());
+        let storage = CloudObjectStorage::try_new(
+            "mock".to_string(),
+            Duration::from_hours(2),
+            store,
+            schema.clone(),
+            1, // num_primary_keys
+            WriteOptions::default(),
+        )
+        .await
+        .unwrap();
+        let plan = storage
+            .build_scan_plan(
+                (100..103)
+                    .map(|id| SstFile {
+                        id,
+                        meta: FileMeta {
+                            max_sequence: id,
+                            num_rows: 1,
+                            size: 1,
+                            time_range: (1..10).into(),
+                        },
+                    })
+                    .collect(),
+                None,
+                vec![],
+            )
+            .await
+            .unwrap();
+        let display_plan =
+            datafusion::physical_plan::display::DisplayableExecutionPlan::new(plan.as_ref())
+                .indent(true);
+        assert_eq!(
+            r#"SortPreservingMergeExec: [pk1@0 ASC], fetch=1024
+  ParquetExec: file_groups={3 groups: [[mock/data/100], [mock/data/101], [mock/data/102]]}, projection=[pk1], output_orderings=[[pk1@0 ASC], [pk1@0 ASC], [pk1@0 ASC]]
+"#,
+            format!("{display_plan}")
+        );
+    }
 
     #[tokio::test]
     async fn test_storage_write_and_scan() {
@@ -439,10 +493,8 @@ mod tests {
         .unwrap();
         while let Some(batch) = result_stream.next().await {
             let batch = batch.unwrap();
-            println!("------------\n{batch:?}\n------");
+            assert_eq!(expected_batch, batch);
         }
-        // assert_eq!(expected_batch, batch);
-        assert!(false);
     }
 
     #[tokio::test]
