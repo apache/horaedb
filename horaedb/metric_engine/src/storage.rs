@@ -56,7 +56,7 @@ use parquet::{
 };
 
 use crate::{
-    manifest::Manifest,
+    manifest::{Manifest, SstsMergeOptions},
     read::{DefaultParquetFileReaderFactory, MergeExec},
     sst::{allocate_id, FileId, FileMeta, SstFile},
     types::{ObjectStoreRef, TimeRange, WriteOptions, WriteResult, SEQ_COLUMN_NAME},
@@ -129,10 +129,15 @@ impl CloudObjectStorage {
         arrow_schema: SchemaRef,
         num_primary_keys: usize,
         write_options: WriteOptions,
+        merge_options: SstsMergeOptions,
     ) -> Result<Self> {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
-        let manifest =
-            Manifest::try_new(format!("{path}/{manifest_prefix}"), store.clone()).await?;
+        let manifest = Manifest::try_new(
+            format!("{path}/{manifest_prefix}"),
+            store.clone(),
+            merge_options,
+        )
+        .await?;
         let mut new_fields = arrow_schema.fields.clone().to_vec();
         new_fields.push(Arc::new(Field::new(
             SEQ_COLUMN_NAME,
@@ -409,7 +414,7 @@ mod tests {
     use object_store::local::LocalFileSystem;
 
     use super::*;
-    use crate::{arrow_schema, types::Timestamp};
+    use crate::{arrow_schema, manifest::SstsMergeOptions, types::Timestamp};
 
     #[tokio::test]
     async fn test_build_scan_plan() {
@@ -422,6 +427,7 @@ mod tests {
             schema.clone(),
             1, // num_primary_keys
             WriteOptions::default(),
+            SstsMergeOptions::default(),
         )
         .await
         .unwrap();
@@ -467,6 +473,7 @@ mod tests {
             schema.clone(),
             2, // num_primary_keys
             WriteOptions::default(),
+            SstsMergeOptions::default(),
         )
         .await
         .unwrap();
@@ -543,6 +550,7 @@ mod tests {
             schema.clone(),
             1,
             WriteOptions::default(),
+            SstsMergeOptions::default(),
         )
         .await
         .unwrap();
