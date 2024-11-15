@@ -1554,6 +1554,7 @@ version = "2.0.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "arrow-schema",
  "async-trait",
  "bytes",
  "datafusion",

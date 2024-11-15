@@ -365,18 +365,16 @@ impl TimeMergeStorage for CloudObjectStorage {
 
 #[cfg(test)]
 mod tests {
-    use arrow::{
-        array::{Int64Array, UInt8Array},
-        datatypes::{DataType, Field, Schema},
-    };
+    use arrow::array::{self as arrow_array};
+    use datafusion::common::record_batch;
     use object_store::local::LocalFileSystem;
 
     use super::*;
-    use crate::types::Timestamp;
+    use crate::{arrow_schema, types::Timestamp};
 
     #[tokio::test]
     async fn test_build_scan_plan() {
-        let schema = Arc::new(Schema::new(vec![Field::new("pk1", DataType::UInt8, false)]));
+        let schema = arrow_schema!(("pk1", UInt8));
         let store = Arc::new(LocalFileSystem::new());
         let storage = CloudObjectStorage::try_new(
             "mock".to_string(),
@@ -419,12 +417,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_storage_write_and_scan() {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("pk1", DataType::UInt8, false),
-            Field::new("pk2", DataType::UInt8, false),
-            Field::new("value", DataType::Int64, false),
-        ]));
-
+        let schema = arrow_schema!(("pk1", UInt8), ("pk2", UInt8), ("value", Int64));
         let root_dir = temp_dir::TempDir::new().unwrap();
         let store = Arc::new(LocalFileSystem::new());
         let storage = CloudObjectStorage::try_new(
@@ -438,13 +431,10 @@ mod tests {
         .await
         .unwrap();
 
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(UInt8Array::from(vec![11, 11, 9, 10, 5])),
-                Arc::new(UInt8Array::from(vec![100, 99, 1, 2, 3])),
-                Arc::new(Int64Array::from(vec![2, 7, 4, 6, 1])),
-            ],
+        let batch = record_batch!(
+            ("pk1", UInt8, vec![11, 11, 9, 10, 5]),
+            ("pk2", UInt8, vec![100, 99, 1, 2, 3]),
+            ("value", Int64, vec![2, 7, 4, 6, 1])
         )
         .unwrap();
         storage
@@ -456,13 +446,10 @@ mod tests {
             .await
             .unwrap();
 
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(UInt8Array::from(vec![1, 8, 9])),
-                Arc::new(UInt8Array::from(vec![100, 99, 98])),
-                Arc::new(Int64Array::from(vec![2, 7, 4])),
-            ],
+        let batch = record_batch!(
+            ("pk1", UInt8, vec![1, 8, 9]),
+            ("pk2", UInt8, vec![100, 99, 98]),
+            ("value", Int64, vec![2, 7, 4])
         )
         .unwrap();
         storage
@@ -482,13 +469,10 @@ mod tests {
             })
             .await
             .unwrap();
-        let expected_batch = RecordBatch::try_new(
-            schema,
-            vec![
-                Arc::new(UInt8Array::from(vec![1, 5, 8, 9, 9, 10, 11, 11])),
-                Arc::new(UInt8Array::from(vec![100, 3, 99, 1, 98, 2, 99, 100])),
-                Arc::new(Int64Array::from(vec![2, 1, 7, 4, 4, 6, 7, 2])),
-            ],
+        let expected_batch = record_batch!(
+            ("pk1", UInt8, vec![1, 5, 8, 9, 9, 10, 11, 11]),
+            ("pk2", UInt8, vec![100, 3, 99, 1, 98, 2, 99, 100]),
+            ("value", Int64, vec![2, 1, 7, 4, 4, 6, 7, 2])
         )
         .unwrap();
         while let Some(batch) = result_stream.next().await {
@@ -499,13 +483,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_storage_sort_batch() {
-        let schema = Arc::new(Schema::new(vec![
-            Field::new("a", DataType::UInt8, false),
-            Field::new("b", DataType::UInt8, false),
-            Field::new("c", DataType::UInt8, false),
-            Field::new("d", DataType::UInt8, false),
-        ]));
-
+        let schema = arrow_schema!(("a", UInt8), ("b", UInt8), ("c", UInt8), ("c", UInt8));
         let root_dir = temp_dir::TempDir::new().unwrap();
         let store = Arc::new(LocalFileSystem::new());
         let storage = CloudObjectStorage::try_new(
@@ -519,35 +497,28 @@ mod tests {
         .await
         .unwrap();
 
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                Arc::new(UInt8Array::from(vec![2, 1, 3, 4, 8, 6, 5, 7])),
-                Arc::new(UInt8Array::from(vec![1, 3, 4, 8, 2, 6, 5, 7])),
-                Arc::new(UInt8Array::from(vec![8, 6, 2, 4, 3, 1, 5, 7])),
-                Arc::new(UInt8Array::from(vec![2, 7, 4, 6, 1, 3, 5, 8])),
-            ],
+        let batch = record_batch!(
+            ("a", UInt8, vec![2, 1, 3, 4, 8, 6, 5, 7]),
+            ("b", UInt8, vec![1, 3, 4, 8, 2, 6, 5, 7]),
+            ("c", UInt8, vec![8, 6, 2, 4, 3, 1, 5, 7]),
+            ("d", UInt8, vec![2, 7, 4, 6, 1, 3, 5, 8])
         )
         .unwrap();
 
         let mut sorted_batches = storage.sort_batch(batch).await.unwrap();
-        let expected_bacth = RecordBatch::try_new(
-            schema,
-            vec![
-                Arc::new(UInt8Array::from(vec![1, 2, 3, 4, 5, 6, 7, 8])),
-                Arc::new(UInt8Array::from(vec![3, 1, 4, 8, 5, 6, 7, 2])),
-                Arc::new(UInt8Array::from(vec![6, 8, 2, 4, 5, 1, 7, 3])),
-                Arc::new(UInt8Array::from(vec![7, 2, 4, 6, 5, 3, 8, 1])),
-            ],
+        let expected_bacth = record_batch!(
+            ("a", UInt8, vec![1, 2, 3, 4, 5, 6, 7, 8]),
+            ("b", UInt8, vec![3, 1, 4, 8, 5, 6, 7, 2]),
+            ("c", UInt8, vec![6, 8, 2, 4, 5, 1, 7, 3]),
+            ("d", UInt8, vec![7, 2, 4, 6, 5, 3, 8, 1])
         )
         .unwrap();
-
         let mut offset = 0;
         while let Some(sorted_batch) = sorted_batches.next().await {
             let sorted_batch = sorted_batch.unwrap();
             let length = sorted_batch.num_rows();
             let batch = expected_bacth.slice(offset, length);
-            assert!(sorted_batch.eq(&batch));
+            assert_eq!(sorted_batch, batch);
             offset += length;
         }
     }

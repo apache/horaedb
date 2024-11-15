@@ -37,6 +37,7 @@ macros = { path = "../src/components/macros" }
 pb_types = { path = "pb_types" }
 prost = { version = "0.13" }
 arrow = { version = "53", features = ["prettyprint"] }
+arrow-schema = "53"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 async-stream = "0.3"
