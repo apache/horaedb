@@ -51,7 +51,7 @@ use parquet::{
 
 use crate::{
     manifest::Manifest,
-    read::DefaultParquetFileReaderFactory,
+    read::{DefaultParquetFileReaderFactory, HoraedbSchemaAdapterFactory},
     sst::{allocate_id, FileId, FileMeta, SstFile},
     types::{ObjectStoreRef, TimeRange, WriteOptions, WriteResult},
     Result,
@@ -271,9 +271,11 @@ impl CloudObjectStorage {
             .with_file_groups(file_groups)
             .with_projection(projections);
 
-        let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
-            Arc::new(DefaultParquetFileReaderFactory::new(self.store.clone())),
-        );
+        let mut builder = ParquetExec::builder(scan_config)
+            .with_schema_adapter_factory(Arc::new(HoraedbSchemaAdapterFactory { seq: todo!() }))
+            .with_parquet_file_reader_factory(Arc::new(DefaultParquetFileReaderFactory::new(
+                self.store.clone(),
+            )));
         if let Some(expr) = conjunction(predicates) {
             let filters = create_physical_expr(&expr, &self.df_schema, &ExecutionProps::new())
                 .context("create pyhsical expr")?;

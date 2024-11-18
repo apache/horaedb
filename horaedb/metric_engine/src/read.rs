@@ -15,8 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::sync::Arc;
+
+use arrow::array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use datafusion::{
-    datasource::physical_plan::{FileMeta, ParquetFileReaderFactory},
+    datasource::{
+        physical_plan::{FileMeta, ParquetFileReaderFactory},
+        schema_adapter::{SchemaAdapter, SchemaAdapterFactory, SchemaMapper},
+    },
     error::Result as DfResult,
     parquet::arrow::async_reader::AsyncFileReader,
     physical_plan::metrics::ExecutionPlanMetricsSet,
@@ -51,5 +58,54 @@ impl ParquetFileReaderFactory for DefaultParquetFileReaderFactory {
             reader = reader.with_footer_size_hint(size);
         }
         Ok(Box::new(reader))
+    }
+}
+
+pub struct HoraedbSchemaAdapterFactory {
+    pub seq: u64,
+}
+
+impl SchemaAdapterFactory for HoraedbSchemaAdapterFactory {
+    fn create(
+        &self,
+        projected_table_schema: SchemaRef,
+        table_schema: SchemaRef,
+    ) -> Box<dyn SchemaAdapter> {
+        Box::new(HoraedbSchemaAdapter {
+            seq: self.seq,
+            projected_table_schema,
+            table_schema,
+        })
+    }
+}
+
+pub struct HoraedbSchemaAdapter {
+    seq: u64,
+    projected_table_schema: SchemaRef,
+    table_schema: SchemaRef,
+}
+
+impl SchemaAdapter for HoraedbSchemaAdapter {
+    fn map_column_index(&self, index: usize, file_schema: &Schema) -> Option<usize> {
+        let field = self.projected_table_schema.field(index);
+        Some(file_schema.fields.find(field.name())?.0)
+    }
+
+    fn map_schema(&self, file_schema: &Schema) -> DfResult<(Arc<dyn SchemaMapper>, Vec<usize>)> {
+        Ok((Arc::new(HoraedbSchemaMapper { seq: self.seq }), vec![]))
+    }
+}
+
+struct HoraedbSchemaMapper {
+    seq: u64,
+}
+
+impl SchemaMapper for HoraedbSchemaMapper {
+    fn map_batch(&self, batch: RecordBatch) -> DfResult<RecordBatch> {
+        todo!()
+    }
+
+    fn map_partial_batch(&self, batch: RecordBatch) -> DfResult<RecordBatch> {
+        todo!()
     }
 }
