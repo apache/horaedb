@@ -104,6 +104,7 @@ pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 
 pub struct WriteResult {
     pub id: FileId,
+    pub seq: u64,
     pub size: usize,
 }
 

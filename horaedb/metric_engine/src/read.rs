@@ -15,18 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
-use arrow::array::RecordBatch;
-use arrow_schema::{Schema, SchemaRef};
 use datafusion::{
-    datasource::{
-        physical_plan::{FileMeta, ParquetFileReaderFactory},
-        schema_adapter::{SchemaAdapter, SchemaAdapterFactory, SchemaMapper},
-    },
+    datasource::physical_plan::{FileMeta, ParquetFileReaderFactory},
     error::Result as DfResult,
+    execution::{SendableRecordBatchStream, TaskContext},
+    logical_expr::AggregateUDFImpl,
     parquet::arrow::async_reader::AsyncFileReader,
-    physical_plan::metrics::ExecutionPlanMetricsSet,
+    physical_plan::{metrics::ExecutionPlanMetricsSet, DisplayAs, ExecutionPlan, PlanProperties},
 };
 use parquet::arrow::async_reader::ParquetObjectReader;
 
@@ -61,51 +58,63 @@ impl ParquetFileReaderFactory for DefaultParquetFileReaderFactory {
     }
 }
 
-pub struct HoraedbSchemaAdapterFactory {
-    pub seq: u64,
+/// Execution plan for merge RecordBatch values, like Merge Operator in RocksDB.
+///
+/// Input record batches are sorted by the primary key columns and seq
+/// column.
+#[derive(Debug)]
+struct MergeExec {
+    num_primary_keys: usize,
+    seq_idx: usize,
+    // (idx, merge_op)
+    values: Vec<(usize, Arc<dyn AggregateUDFImpl>)>,
+    /// Input plan
+    input: Arc<dyn ExecutionPlan>,
 }
 
-impl SchemaAdapterFactory for HoraedbSchemaAdapterFactory {
-    fn create(
+impl DisplayAs for MergeExec {
+    fn fmt_as(
         &self,
-        projected_table_schema: SchemaRef,
-        table_schema: SchemaRef,
-    ) -> Box<dyn SchemaAdapter> {
-        Box::new(HoraedbSchemaAdapter {
-            seq: self.seq,
-            projected_table_schema,
-            table_schema,
-        })
+        t: datafusion::physical_plan::DisplayFormatType,
+        f: &mut std::fmt::Formatter,
+    ) -> std::fmt::Result {
+        todo!()
     }
 }
 
-pub struct HoraedbSchemaAdapter {
-    seq: u64,
-    projected_table_schema: SchemaRef,
-    table_schema: SchemaRef,
-}
-
-impl SchemaAdapter for HoraedbSchemaAdapter {
-    fn map_column_index(&self, index: usize, file_schema: &Schema) -> Option<usize> {
-        let field = self.projected_table_schema.field(index);
-        Some(file_schema.fields.find(field.name())?.0)
+impl ExecutionPlan for MergeExec {
+    fn name(&self) -> &str {
+        "MergeExec"
     }
 
-    fn map_schema(&self, file_schema: &Schema) -> DfResult<(Arc<dyn SchemaMapper>, Vec<usize>)> {
-        Ok((Arc::new(HoraedbSchemaMapper { seq: self.seq }), vec![]))
+    fn as_any(&self) -> &dyn Any {
+        self
     }
-}
 
-struct HoraedbSchemaMapper {
-    seq: u64,
-}
-
-impl SchemaMapper for HoraedbSchemaMapper {
-    fn map_batch(&self, batch: RecordBatch) -> DfResult<RecordBatch> {
+    fn properties(&self) -> &PlanProperties {
         todo!()
     }
 
-    fn map_partial_batch(&self, batch: RecordBatch) -> DfResult<RecordBatch> {
+    fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>> {
+        vec![&self.input]
+    }
+
+    fn maintains_input_order(&self) -> Vec<bool> {
+        vec![true]
+    }
+
+    fn with_new_children(
+        self: Arc<Self>,
+        children: Vec<Arc<dyn ExecutionPlan>>,
+    ) -> DfResult<Arc<dyn ExecutionPlan>> {
+        todo!()
+    }
+
+    fn execute(
+        &self,
+        partition: usize,
+        context: Arc<TaskContext>,
+    ) -> DfResult<SendableRecordBatchStream> {
         todo!()
     }
 }
