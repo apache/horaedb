@@ -454,7 +454,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "Depend on MergeExec"]
+    // #[ignore = "Depend on MergeExec"]
     async fn test_storage_write_and_scan() {
         let schema = arrow_schema!(("pk1", UInt8), ("pk2", UInt8), ("value", Int64));
         let root_dir = temp_dir::TempDir::new().unwrap();
