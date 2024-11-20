@@ -26,6 +26,10 @@ use parquet::basic::{Compression, Encoding, ZstdLevel};
 
 use crate::sst::FileId;
 
+// Seq column is a builtin column, and it will be appended to the end of
+// user-defined schema.
+pub const SEQ_COLUMN_NAME: &str = "__seq__";
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
 

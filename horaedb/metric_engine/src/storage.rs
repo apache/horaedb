@@ -31,13 +31,15 @@ use datafusion::{
         physical_plan::{FileScanConfig, ParquetExec},
     },
     execution::{context::ExecutionProps, object_store::ObjectStoreUrl, SendableRecordBatchStream},
+    functions_aggregate::first_last::LastValue,
     logical_expr::{utils::conjunction, Expr},
     physical_expr::{create_physical_expr, LexOrdering},
     physical_plan::{
         execute_stream,
         memory::MemoryExec,
         sorts::{sort::SortExec, sort_preserving_merge::SortPreservingMergeExec},
-        ExecutionPlan,
+        union::UnionExec,
+        EmptyRecordBatchStream, ExecutionPlan,
     },
     physical_planner::create_physical_sort_exprs,
     prelude::{ident, SessionContext},
@@ -55,9 +57,9 @@ use parquet::{
 
 use crate::{
     manifest::Manifest,
-    read::DefaultParquetFileReaderFactory,
+    read::{DefaultParquetFileReaderFactory, MergeExec},
     sst::{allocate_id, FileId, FileMeta, SstFile},
-    types::{ObjectStoreRef, TimeRange, WriteOptions, WriteResult},
+    types::{ObjectStoreRef, TimeRange, WriteOptions, WriteResult, SEQ_COLUMN_NAME},
     Result,
 };
 
@@ -120,9 +122,6 @@ pub struct CloudObjectStorage {
 /// ```
 /// `root_path` is composed of `path` and `segment_duration`.
 impl CloudObjectStorage {
-    // seq column is appended to the end of schema.
-    const SEQ_COLUMN_NAME: &'static str = "__seq__";
-
     pub async fn try_new(
         path: String,
         segment_duration: Duration,
@@ -136,7 +135,7 @@ impl CloudObjectStorage {
             Manifest::try_new(format!("{path}/{manifest_prefix}"), store.clone()).await?;
         let mut new_fields = arrow_schema.fields.clone().to_vec();
         new_fields.push(Arc::new(Field::new(
-            Self::SEQ_COLUMN_NAME,
+            SEQ_COLUMN_NAME,
             DataType::UInt64,
             true,
         )));
@@ -215,7 +214,7 @@ impl CloudObjectStorage {
             })
             .collect::<Vec<_>>();
         if sort_seq {
-            sort_exprs.push(ident(Self::SEQ_COLUMN_NAME).sort(true, true));
+            sort_exprs.push(ident(SEQ_COLUMN_NAME).sort(true, true));
         }
         let sort_exprs =
             create_physical_sort_exprs(&sort_exprs, &self.df_schema, &ExecutionProps::default())
@@ -320,22 +319,14 @@ impl CloudObjectStorage {
             .with_fetch(Some(1024))
             .with_round_robin_repartition(true);
 
-        // TODO: Add a new plan dedup record batch based on primary keys and sequence
-        // number.
-        Ok(Arc::new(sort_exec))
-    }
-
-    async fn scan_one_segment(
-        &self,
-        ssts: Vec<SstFile>,
-        projections: Option<Vec<usize>>,
-        predicates: Vec<Expr>,
-    ) -> Result<SendableRecordBatchStream> {
-        let plan = self.build_scan_plan(ssts, projections, predicates).await?;
-        let ctx = SessionContext::default();
-        let res = execute_stream(plan, ctx.task_ctx()).context("execute sort physical plan")?;
-
-        Ok(res)
+        let merge_exec = MergeExec::new(
+            Arc::new(sort_exec),
+            self.num_primary_keys,
+            self.schema().fields.len() - 1,
+            0, // TODO: value_idx
+            Arc::new(LastValue::new()),
+        );
+        Ok(Arc::new(merge_exec))
     }
 }
 
@@ -347,10 +338,6 @@ impl TimeMergeStorage for CloudObjectStorage {
 
     async fn write(&self, req: WriteRequest) -> Result<()> {
         if req.enable_check {
-            ensure!(
-                self.arrow_schema.contains(req.batch.schema_ref()),
-                "schema not match"
-            );
             let segment_duration = self.segment_duration.as_millis() as i64;
             ensure!(
                 req.time_range.start.0 / segment_duration
@@ -377,22 +364,37 @@ impl TimeMergeStorage for CloudObjectStorage {
         Ok(())
     }
 
-    #[allow(clippy::never_loop)]
     async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {
         let total_ssts = self.manifest.find_ssts(&req.range).await;
+        if total_ssts.is_empty() {
+            return Ok(Box::pin(EmptyRecordBatchStream::new(
+                self.arrow_schema.clone(),
+            )));
+        }
+
         let ssts_by_segment = total_ssts.into_iter().group_by(|file| {
             file.meta.time_range.start.0 / self.segment_duration.as_millis() as i64
         });
 
-        for (_, ssts) in ssts_by_segment {
-            return self
-                .scan_one_segment(ssts, req.projections.clone(), req.predicate.clone())
-                .await;
+        let mut plan_for_all_segments = Vec::new();
+        for (_, ssts) in ssts_by_segment.sorted_by(|a, b| a.0.cmp(&b.0)) {
+            let plan = self
+                .build_scan_plan(ssts, req.projections.clone(), req.predicate.clone())
+                .await?;
+
+            plan_for_all_segments.push(plan);
         }
 
-        // TODO: currently only return records within one segment, we should merge
-        // them.
-        todo!("Merge stream from different segment")
+        let ctx = SessionContext::default();
+        if plan_for_all_segments.len() == 1 {
+            let res = execute_stream(plan_for_all_segments.remove(0), ctx.task_ctx())
+                .context("execute stream")?;
+            return Ok(res);
+        }
+
+        let union_exec = Arc::new(UnionExec::new(plan_for_all_segments));
+        let res = execute_stream(union_exec, ctx.task_ctx()).context("execute stream")?;
+        return Ok(res);
     }
 
     async fn compact(&self, req: CompactRequest) -> Result<()> {
@@ -410,7 +412,6 @@ mod tests {
     use crate::{arrow_schema, types::Timestamp};
 
     #[tokio::test]
-    #[ignore = "Depend on MergeExec"]
     async fn test_build_scan_plan() {
         let schema = arrow_schema!(("pk1", UInt8));
         let store = Arc::new(LocalFileSystem::new());
@@ -446,15 +447,15 @@ mod tests {
             datafusion::physical_plan::display::DisplayableExecutionPlan::new(plan.as_ref())
                 .indent(true);
         assert_eq!(
-            r#"SortPreservingMergeExec: [pk1@0 ASC], fetch=1024
-  ParquetExec: file_groups={3 groups: [[mock/data/100], [mock/data/101], [mock/data/102]]}, projection=[pk1], output_orderings=[[pk1@0 ASC], [pk1@0 ASC], [pk1@0 ASC]]
+            r#"MergeExec: [primary_keys: 1, seq_idx: 1]
+  SortPreservingMergeExec: [pk1@0 ASC, __seq__@1 ASC], fetch=1024
+    ParquetExec: file_groups={3 groups: [[mock/data/100], [mock/data/101], [mock/data/102]]}, projection=[pk1, __seq__], output_orderings=[[pk1@0 ASC, __seq__@1 ASC], [pk1@0 ASC, __seq__@1 ASC], [pk1@0 ASC, __seq__@1 ASC]]
 "#,
             format!("{display_plan}")
         );
     }
 
     #[tokio::test]
-    // #[ignore = "Depend on MergeExec"]
     async fn test_storage_write_and_scan() {
         let schema = arrow_schema!(("pk1", UInt8), ("pk2", UInt8), ("value", Int64));
         let root_dir = temp_dir::TempDir::new().unwrap();
@@ -472,7 +473,7 @@ mod tests {
 
         let batch = record_batch!(
             ("pk1", UInt8, vec![11, 11, 9, 10, 5]),
-            ("pk2", UInt8, vec![100, 99, 1, 2, 3]),
+            ("pk2", UInt8, vec![100, 100, 1, 2, 3]),
             ("value", Int64, vec![2, 7, 4, 6, 1])
         )
         .unwrap();
@@ -486,9 +487,9 @@ mod tests {
             .unwrap();
 
         let batch = record_batch!(
-            ("pk1", UInt8, vec![1, 8, 9]),
-            ("pk2", UInt8, vec![100, 99, 98]),
-            ("value", Int64, vec![2, 7, 4])
+            ("pk1", UInt8, vec![11, 11, 9, 10]),
+            ("pk2", UInt8, vec![100, 99, 1, 2]),
+            ("value", Int64, vec![22, 77, 44, 66])
         )
         .unwrap();
         storage
@@ -508,15 +509,25 @@ mod tests {
             })
             .await
             .unwrap();
-        let expected_batch = record_batch!(
-            ("pk1", UInt8, vec![1, 5, 8, 9, 9, 10, 11, 11]),
-            ("pk2", UInt8, vec![100, 3, 99, 1, 98, 2, 99, 100]),
-            ("value", Int64, vec![2, 1, 7, 4, 4, 6, 7, 2])
-        )
-        .unwrap();
+        let expected_batch = [
+            record_batch!(
+                ("pk1", UInt8, vec![5, 9, 10, 11]),
+                ("pk2", UInt8, vec![3, 1, 2, 99]),
+                ("value", Int64, vec![1, 44, 66, 77])
+            )
+            .unwrap(),
+            record_batch!(
+                ("pk1", UInt8, vec![11]),
+                ("pk2", UInt8, vec![100]),
+                ("value", Int64, vec![22])
+            )
+            .unwrap(),
+        ];
+        let mut idx = 0;
         while let Some(batch) = result_stream.next().await {
             let batch = batch.unwrap();
-            assert_eq!(expected_batch, batch);
+            assert_eq!(expected_batch[idx], batch);
+            idx += 1;
         }
     }
 

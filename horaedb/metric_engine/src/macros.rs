@@ -15,16 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
-
-#![feature(duration_constructors)]
-pub mod error;
-mod macros;
-mod manifest;
-mod read;
-mod sst;
-pub mod storage;
-mod test_util;
-pub mod types;
-
-pub use error::{AnyhowError, Error, Result};
+#[macro_export]
+macro_rules! compare_primitive_columns {
+    ($lhs_col:expr, $rhs_col:expr, $lhs_idx:expr, $rhs_idx:expr, $($type:ty),+) => {
+        $(
+            if let Some(lhs_col) = $lhs_col.as_primitive_opt::<$type>() {
+                let rhs_col = $rhs_col.as_primitive::<$type>();
+                if !lhs_col.value($lhs_idx).eq(&rhs_col.value($rhs_idx)) {
+                    return false;
+                }
+            }
+        )+
+    };
+}
