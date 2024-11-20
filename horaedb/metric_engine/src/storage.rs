@@ -323,7 +323,7 @@ impl CloudObjectStorage {
             Arc::new(sort_exec),
             self.num_primary_keys,
             self.schema().fields.len() - 1,
-            0, // TODO: value_idx
+            0, // TODO: value_idx, not used now.
             Arc::new(LastValue::new()),
         );
         Ok(Arc::new(merge_exec))

@@ -306,7 +306,7 @@ impl Stream for MergeStream {
     type Item = DfResult<RecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
-        match dbg!(self.stream.poll_next_unpin(ctx)) {
+        match self.stream.poll_next_unpin(ctx) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(None) => {
                 let value = if let Some(mut pending) = self.pending_batch.take() {
