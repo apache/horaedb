@@ -26,6 +26,10 @@ use parquet::basic::{Compression, Encoding, ZstdLevel};
 
 use crate::sst::FileId;
 
+// Seq column is a builtin column, and it will be appended to the end of
+// user-defined schema.
+pub const SEQ_COLUMN_NAME: &str = "__seq__";
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
 
@@ -73,6 +77,15 @@ impl From<Range<Timestamp>> for TimeRange {
     }
 }
 
+impl From<Range<i64>> for TimeRange {
+    fn from(value: Range<i64>) -> Self {
+        Self(Range {
+            start: value.start.into(),
+            end: value.end.into(),
+        })
+    }
+}
+
 impl Deref for TimeRange {
     type Target = Range<Timestamp>;
 
@@ -95,6 +108,7 @@ pub type ObjectStoreRef = Arc<dyn ObjectStore>;
 
 pub struct WriteResult {
     pub id: FileId,
+    pub seq: u64,
     pub size: usize,
 }
 

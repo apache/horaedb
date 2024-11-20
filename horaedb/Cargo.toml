@@ -30,17 +30,19 @@ anyhow = { version = "1.0" }
 metric_engine = { path = "metric_engine" }
 thiserror = "1"
 bytes = "1"
-datafusion = "42"
+datafusion = "43"
 parquet = { version = "53" }
 object_store = { version = "0.11" }
 macros = { path = "../src/components/macros" }
 pb_types = { path = "pb_types" }
 prost = { version = "0.13" }
 arrow = { version = "53", features = ["prettyprint"] }
+arrow-schema = "53"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 async-stream = "0.3"
 futures = "0.3"
+temp-dir = "0.1"
 itertools = "0.3"
 lazy_static = "1"
 tracing = "0.1"

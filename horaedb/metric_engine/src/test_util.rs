@@ -15,16 +15,27 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+#[macro_export]
+macro_rules! arrow_schema {
+    ($(($field_name:expr, $data_type:ident)),* $(,)?) => {{
+        let fields = vec![
+            $(
+                arrow::datatypes::Field::new($field_name, arrow::datatypes::DataType::$data_type, true),
+            )*
+        ];
+        std::sync::Arc::new(arrow::datatypes::Schema::new(fields))
+    }};
+}
 
-#![feature(duration_constructors)]
-pub mod error;
-mod macros;
-mod manifest;
-mod read;
-mod sst;
-pub mod storage;
-mod test_util;
-pub mod types;
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_arrow_schema_macro() {
+        let schema = arrow_schema![("a", UInt8), ("b", UInt8), ("c", UInt8), ("d", UInt8),];
 
-pub use error::{AnyhowError, Error, Result};
+        let expected_names = ["a", "b", "c", "d"];
+        for (i, f) in schema.fields().iter().enumerate() {
+            assert_eq!(f.name(), expected_names[i]);
+        }
+    }
+}

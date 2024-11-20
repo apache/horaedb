@@ -33,6 +33,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 arrow = { workspace = true }
+arrow-schema = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 datafusion = { workspace = true }
@@ -46,3 +47,6 @@ pb_types = { workspace = true }
 prost = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+temp-dir = { workspace = true }
