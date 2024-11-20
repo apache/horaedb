@@ -40,7 +40,6 @@ datafusion = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
-log = { workspace = true }
 macros = { workspace = true }
 object_store = { workspace = true }
 parquet = { workspace = true, features = ["object_store"] }
@@ -48,6 +47,7 @@ pb_types = { workspace = true }
 prost = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 temp-dir = { workspace = true }

@@ -47,7 +47,6 @@ itertools = "0.3"
 lazy_static = "1"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-log = "0.4"
 
 # This profile optimizes for good runtime performance.
 [profile.release]

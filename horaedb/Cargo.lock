@@ -1561,7 +1561,6 @@ dependencies = [
  "futures",
  "itertools 0.3.25",
  "lazy_static",
- "log",
  "macros",
  "object_store",
  "parquet",
@@ -1570,6 +1569,7 @@ dependencies = [
  "temp-dir",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
