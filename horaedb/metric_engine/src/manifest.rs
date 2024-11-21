@@ -108,33 +108,18 @@ impl Manifest {
             merge_options,
         )
         .await?;
-        let manifest_merge_clone = merger.clone();
+        // Merge all delta files when startup
+        merger.do_merge().await?;
 
-        // Start merge manifest task
-        tokio::spawn(async move {
-            manifest_merge_clone.run().await;
-        });
+        {
+            let merger = merger.clone();
+            // Start merger in background
+            tokio::spawn(async move {
+                merger.run().await;
+            });
+        }
 
-        // TODO: merge deltas with snapshot
-        let payload = match store.get(&snapshot_path).await {
-            Ok(v) => {
-                let bytes = v
-                    .bytes()
-                    .await
-                    .context("failed to read manifest snapshot")?;
-                let pb_payload = pb_types::Manifest::decode(bytes)
-                    .context("failed to decode manifest snapshot")?;
-                Payload::try_from(pb_payload)?
-            }
-            Err(err) => {
-                if err.to_string().contains("not found") {
-                    Payload { files: vec![] }
-                } else {
-                    let context = format!("Failed to get manifest snapshot, path:{snapshot_path}");
-                    return Err(AnyhowError::new(err).context(context).into());
-                }
-            }
-        };
+        let payload = read_snapshot(&store, &snapshot_path).await?;
 
         Ok(Self {
             delta_dir,
@@ -145,7 +130,6 @@ impl Manifest {
     }
 
     pub async fn add_file(&self, id: FileId, meta: FileMeta) -> Result<()> {
-        // Return error when there
         self.merger.maybe_schedule_merge().await?;
 
         let new_sst_path = Path::from(format!("{}/{id}", self.delta_dir));
@@ -202,7 +186,7 @@ pub struct ManifestMergeOptions {
 impl Default for ManifestMergeOptions {
     fn default() -> Self {
         Self {
-            channel_size: 100,
+            channel_size: 10,
             merge_interval_seconds: 5,
             min_merge_threshold: 10,
             soft_merge_threshold: 50,
@@ -238,8 +222,6 @@ impl ManifestMerger {
             deltas_num: AtomicUsize::new(0),
             merge_options,
         };
-        // Merge all manifest files when start
-        manifest_merge.do_merge().await?;
 
         Ok(Arc::new(manifest_merge))
     }
@@ -266,8 +248,8 @@ impl ManifestMerger {
         }
     }
 
-    async fn sender(&self, task: MergeType) {
-        if let Err(err) = self.sender.send(task).await {
+    fn schedule_merge(&self, task: MergeType) {
+        if let Err(err) = self.sender.try_send(task) {
             error!("Failed to send merge task, err:{err}");
         }
     }
@@ -276,13 +258,13 @@ impl ManifestMerger {
         let current_num = self.deltas_num.load(Ordering::Relaxed);
 
         if current_num > self.merge_options.hard_merge_threshold {
-            self.sender(MergeType::Hard).await;
+            self.schedule_merge(MergeType::Hard);
             return Err(AnyhowError::msg(format!(
                 "Manifest has too many delta files, value:{current_num}"
             ))
             .into());
         } else if current_num > self.merge_options.soft_merge_threshold {
-            self.sender(MergeType::Soft).await;
+            self.schedule_merge(MergeType::Soft);
         }
 
         Ok(())
@@ -316,29 +298,7 @@ impl ManifestMerger {
             delta_files.push(res);
         }
 
-        let mut payload = match self.store.get(&self.snapshot_path).await {
-            Ok(v) => {
-                let bytes = v
-                    .bytes()
-                    .await
-                    .context("failed to read manifest snapshot")?;
-                let pb_payload = pb_types::Manifest::decode(bytes)
-                    .context("failed to decode manifest snapshot")?;
-                Payload::try_from(pb_payload)?
-            }
-            Err(err) => {
-                if err.to_string().contains("not found") {
-                    Payload { files: vec![] }
-                } else {
-                    let context = format!(
-                        "Failed to get manifest snapshot, path:{}",
-                        self.snapshot_path
-                    );
-                    return Err(AnyhowError::new(err).context(context).into());
-                }
-            }
-        };
-
+        let mut payload = read_snapshot(&self.store, &self.snapshot_path).await?;
         payload.files.extend(delta_files);
         payload.dedup_files();
 
@@ -386,6 +346,28 @@ impl ManifestMerger {
         }
 
         Ok(())
+    }
+}
+
+async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Payload> {
+    match store.get(path).await {
+        Ok(v) => {
+            let bytes = v
+                .bytes()
+                .await
+                .context("failed to read manifest snapshot")?;
+            let pb_payload =
+                pb_types::Manifest::decode(bytes).context("failed to decode manifest snapshot")?;
+            Payload::try_from(pb_payload)
+        }
+        Err(err) => {
+            if err.to_string().contains("not found") {
+                Ok(Payload { files: vec![] })
+            } else {
+                let context = format!("Failed to get manifest snapshot, path:{path}");
+                Err(AnyhowError::new(err).context(context).into())
+            }
+        }
     }
 }
 
