@@ -1167,6 +1167,7 @@ mod test {
     }
 
     #[test]
+    #[ignore = "https://github.com/apache/horaedb/issues/1215"]
     fn test_disk_cache_multi_thread_fetch_same_block() {
         let rt = Arc::new(Builder::default().build().unwrap());
         rt.block_on(async {
