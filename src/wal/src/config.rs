@@ -56,7 +56,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            storage: StorageConfig::RocksDB(Box::default()),
+            storage: StorageConfig::Local(Box::default()),
             disable_data: false,
         }
     }

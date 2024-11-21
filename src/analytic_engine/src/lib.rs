@@ -145,7 +145,8 @@ pub struct Config {
 
     /// Wal storage config
     ///
-    /// Now, following three storages are supported:
+    /// Now, following storages are supported:
+    /// + Local Disk
     /// + RocksDB
     /// + OBKV
     /// + Kafka

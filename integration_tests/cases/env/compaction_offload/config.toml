@@ -24,7 +24,7 @@ grpc_port = 8831
 read_parallelism = 8
 
 [analytic.wal]
-type = "RocksDB"
+type = "Local"
 data_dir = "/tmp/horaedb"
 
 [analytic.storage]
