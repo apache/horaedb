@@ -29,14 +29,11 @@ use bytes::Bytes;
 use futures::{stream::FuturesUnordered, StreamExt, TryStreamExt};
 use object_store::{path::Path, PutPayload};
 use prost::Message;
-use tokio::{
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        RwLock,
-    },
-    time::timeout,
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    RwLock,
 };
-use tracing::{error, info};
+use tracing::error;
 
 use crate::{
     sst::{FileId, FileMeta, SstFile},
@@ -46,14 +43,12 @@ use crate::{
 
 pub const PREFIX_PATH: &str = "manifest";
 pub const SNAPSHOT_FILENAME: &str = "snapshot";
-pub const DELTA_MANIFEST_PREFIX: &str = "delta_manifest";
+pub const DELTA_PREFIX: &str = "delta";
 
 pub struct Manifest {
-    path: String,
-    snapshot_path: Path,
-    delta_manifest_path: Path,
+    delta_dir: Path,
     store: ObjectStoreRef,
-    manifest_merge: Arc<ManifestMerge>,
+    merger: Arc<ManifestMerger>,
 
     payload: RwLock<Payload>,
 }
@@ -63,6 +58,8 @@ pub struct Payload {
 }
 
 impl Payload {
+    // TODO: we could sort sst files by name asc, then the dedup will be more
+    // efficient
     pub fn dedup_files(&mut self) {
         let mut seen = HashSet::with_capacity(self.files.len());
         self.files.retain(|file| seen.insert(file.id));
@@ -97,27 +94,28 @@ impl From<Payload> for pb_types::Manifest {
 
 impl Manifest {
     pub async fn try_new(
-        path: String,
+        root_dir: String,
         store: ObjectStoreRef,
         merge_options: ManifestMergeOptions,
     ) -> Result<Self> {
-        let snapshot_path = Path::from(format!("{path}/{SNAPSHOT_FILENAME}"));
-        let delta_manifest_path = Path::from(format!("{path}/{DELTA_MANIFEST_PREFIX}"));
+        let snapshot_path = Path::from(format!("{root_dir}/{SNAPSHOT_FILENAME}"));
+        let delta_dir = Path::from(format!("{root_dir}/{DELTA_PREFIX}"));
 
-        let manifest_merge = ManifestMerge::try_new(
+        let merger = ManifestMerger::try_new(
             snapshot_path.clone(),
-            delta_manifest_path.clone(),
+            delta_dir.clone(),
             store.clone(),
             merge_options,
         )
         .await?;
-        let manifest_merge_clone = manifest_merge.clone();
+        let manifest_merge_clone = merger.clone();
 
         // Start merge manifest task
         tokio::spawn(async move {
             manifest_merge_clone.run().await;
         });
 
+        // TODO: merge deltas with snapshot
         let payload = match store.get(&snapshot_path).await {
             Ok(v) => {
                 let bytes = v
@@ -139,20 +137,18 @@ impl Manifest {
         };
 
         Ok(Self {
-            path,
-            snapshot_path,
-            delta_manifest_path,
+            delta_dir,
             store,
-            manifest_merge,
+            merger,
             payload: RwLock::new(payload),
         })
     }
 
     pub async fn add_file(&self, id: FileId, meta: FileMeta) -> Result<()> {
-        // Schedule force merge manifest
-        self.manifest_merge.schedule_force_merge().await?;
+        // Return error when there
+        self.merger.maybe_schedule_merge().await?;
 
-        let new_sst_path = Path::from(format!("{}/{id}", self.delta_manifest_path));
+        let new_sst_path = Path::from(format!("{}/{id}", self.delta_dir));
         let new_sst = SstFile { id, meta };
 
         let new_sst_payload = pb_types::SstFile::from(new_sst.clone());
@@ -166,14 +162,13 @@ impl Manifest {
         self.store
             .put(&new_sst_path, put_payload)
             .await
-            .context("Failed to update manifest file")?;
+            .with_context(|| format!("Failed to write delta manifest, path:{}", new_sst_path))?;
 
         // 2. Update cached payload
-        let mut payload = self.payload.write().await;
-        payload.files.push(new_sst);
-
-        // 3. Schedule manifest merge
-        self.manifest_merge.schedule_merge().await;
+        {
+            let mut payload = self.payload.write().await;
+            payload.files.push(new_sst);
+        }
 
         Ok(())
     }
@@ -190,17 +185,18 @@ impl Manifest {
     }
 }
 
-enum ManifestMergeTask {
-    ForceMergeManifest,
-    MergeManifest,
+enum MergeType {
+    Hard,
+    Soft,
 }
 
 #[derive(Clone)]
 pub struct ManifestMergeOptions {
     channel_size: usize,
     merge_interval_seconds: usize,
-    merge_threshold: usize,
-    force_merge_threshold: usize,
+    min_merge_threshold: usize,
+    hard_merge_threshold: usize,
+    soft_merge_threshold: usize,
 }
 
 impl Default for ManifestMergeOptions {
@@ -208,41 +204,42 @@ impl Default for ManifestMergeOptions {
         Self {
             channel_size: 100,
             merge_interval_seconds: 5,
-            merge_threshold: 20,
-            force_merge_threshold: 50,
+            min_merge_threshold: 10,
+            soft_merge_threshold: 50,
+            hard_merge_threshold: 90,
         }
     }
 }
 
-struct ManifestMerge {
+struct ManifestMerger {
     snapshot_path: Path,
-    delta_manifest_path: Path,
+    delta_dir: Path,
     store: ObjectStoreRef,
-    sender: Sender<ManifestMergeTask>,
-    receiver: RwLock<Receiver<ManifestMergeTask>>,
-    sst_num: AtomicUsize,
+    sender: Sender<MergeType>,
+    receiver: RwLock<Receiver<MergeType>>,
+    deltas_num: AtomicUsize,
     merge_options: ManifestMergeOptions,
 }
 
-impl ManifestMerge {
+impl ManifestMerger {
     async fn try_new(
         snapshot_path: Path,
-        delta_manifest_path: Path,
+        delta_dir: Path,
         store: ObjectStoreRef,
         merge_options: ManifestMergeOptions,
     ) -> Result<Arc<Self>> {
         let (tx, rx) = mpsc::channel(merge_options.channel_size);
         let manifest_merge = Self {
             snapshot_path,
-            delta_manifest_path,
+            delta_dir,
             store,
             sender: tx,
             receiver: RwLock::new(rx),
-            sst_num: AtomicUsize::new(0),
+            deltas_num: AtomicUsize::new(0),
             merge_options,
         };
         // Merge all manifest files when start
-        manifest_merge.merge_manifest().await?;
+        manifest_merge.do_merge().await?;
 
         Ok(Arc::new(manifest_merge))
     }
@@ -251,82 +248,55 @@ impl ManifestMerge {
         let merge_interval = Duration::from_secs(self.merge_options.merge_interval_seconds as u64);
         let mut receiver = self.receiver.write().await;
         loop {
-            match timeout(merge_interval, receiver.recv()).await {
-                Ok(Some(ManifestMergeTask::ForceMergeManifest)) => {
-                    if self.sst_num.load(Ordering::Relaxed)
-                        < self.merge_options.force_merge_threshold
-                    {
-                        continue;
-                    }
-                    match self.merge_manifest().await {
-                        Ok(_) => {
-                            self.sst_num.store(0, Ordering::Relaxed);
-                        }
-                        Err(err) => {
-                            error!("Failed to force merge manifest, err: {:?}", err);
+            tokio::select! {
+                _ = tokio::time::sleep(merge_interval) => {
+                    if self.deltas_num.load(Ordering::Relaxed) > self.merge_options.min_merge_threshold {
+                        if let Err(err) = self.do_merge().await {
+                            error!("Failed to merge delta, err:{err}");
                         }
                     }
+
                 }
-                Ok(Some(ManifestMergeTask::MergeManifest)) => {
-                    if self.sst_num.load(Ordering::Relaxed) < self.merge_options.merge_threshold {
-                        continue;
+                _merge_type = receiver.recv() => {
+                    if let Err(err) = self.do_merge().await {
+                        error!("Failed to merge delta, err:{err}");
                     }
-                    match self.merge_manifest().await {
-                        Ok(_) => {
-                            self.sst_num.store(0, Ordering::Relaxed);
-                        }
-                        Err(err) => {
-                            error!("Failed to merge manifest, err: {:?}", err);
-                        }
-                    }
-                }
-                Ok(None) => {
-                    // The channel is disconnected.
-                    info!("Channel disconnected, merge manifest task exit");
-                    break;
-                }
-                Err(_) => {
-                    info!("Schedule merge manifest task start");
-                    match self.merge_manifest().await {
-                        Ok(_) => {
-                            self.sst_num.store(0, Ordering::Relaxed);
-                        }
-                        Err(err) => {
-                            error!("Failed to merge manifest, err: {:?}", err);
-                        }
-                    }
-                    info!("Schedule merge manifest task end");
                 }
             }
         }
     }
 
-    async fn sender(&self, task: ManifestMergeTask) {
+    async fn sender(&self, task: MergeType) {
         if let Err(err) = self.sender.send(task).await {
-            error!("Failed to send merge manifest task, err: {:?}", err);
+            error!("Failed to send merge task, err:{err}");
         }
     }
 
-    async fn schedule_force_merge(&self) -> Result<()> {
-        if self.sst_num.load(Ordering::Relaxed) >= self.merge_options.force_merge_threshold {
-            self.sender(ManifestMergeTask::ForceMergeManifest).await;
-            return Err(AnyhowError::msg("manifest files reach force merge threshold").into());
+    async fn maybe_schedule_merge(&self) -> Result<()> {
+        let current_num = self.deltas_num.load(Ordering::Relaxed);
+
+        if current_num > self.merge_options.hard_merge_threshold {
+            self.sender(MergeType::Hard).await;
+            return Err(AnyhowError::msg(format!(
+                "Manifest has too many delta files, value:{current_num}"
+            ))
+            .into());
+        } else if current_num > self.merge_options.soft_merge_threshold {
+            self.sender(MergeType::Soft).await;
         }
+
         Ok(())
     }
 
-    async fn schedule_merge(&self) {
-        self.sst_num.fetch_add(1, Ordering::Relaxed);
-        if self.sst_num.load(Ordering::Relaxed) >= self.merge_options.merge_threshold {
-            self.sender(ManifestMergeTask::MergeManifest).await;
-        }
-    }
-
-    async fn merge_manifest(&self) -> Result<()> {
+    async fn do_merge(&self) -> Result<()> {
         let paths = self
             .store
-            .list(Some(&self.delta_manifest_path))
-            .map(|value| value.map(|v| v.location).context("failed to get path"))
+            .list(Some(&self.delta_dir))
+            .map(|value| {
+                value
+                    .map(|v| v.location)
+                    .context("failed to get delta file")
+            })
             .try_collect::<Vec<_>>()
             .await?;
         if paths.is_empty() {
@@ -337,13 +307,13 @@ impl ManifestMerge {
         for path in paths.clone() {
             let store = self.store.clone();
             // TODO: use thread pool to read manifest files
-            let handle = tokio::spawn(async move { read_manifest(store, path).await });
+            let handle = tokio::spawn(async move { read_delta_file(store, path).await });
             stream_read.push(handle);
         }
-        let mut sst_files = Vec::with_capacity(stream_read.len());
+        let mut delta_files = Vec::with_capacity(stream_read.len());
         while let Some(res) = stream_read.next().await {
-            let sst_file = res.context("failed to read manifest files")??;
-            sst_files.push(sst_file);
+            let res = res.context("failed to read delta file")??;
+            delta_files.push(res);
         }
 
         let mut payload = match self.store.get(&self.snapshot_path).await {
@@ -369,7 +339,7 @@ impl ManifestMerge {
             }
         };
 
-        payload.files.extend(sst_files);
+        payload.files.extend(delta_files);
         payload.dedup_files();
 
         let pb_manifest = pb_types::Manifest {
@@ -396,34 +366,51 @@ impl ManifestMerge {
         for path in paths {
             let store = self.store.clone();
             // TODO: use thread pool to delete sst files
-            let handle = tokio::spawn(async move { delete_manifest(store, path).await });
+            let handle = tokio::spawn(async move { delete_delta_file(store, path).await });
             stream_delete.push(handle);
         }
+
         while let Some(res) = stream_delete.next().await {
-            res.context("failed to delete old manifest file")??;
+            match res {
+                Err(e) => {
+                    error!("Failed to join delete delta task, err:{e}")
+                }
+                Ok(v) => {
+                    if let Err(e) = v {
+                        error!("Failed to delete delta, err:{e}")
+                    } else {
+                        self.deltas_num.fetch_sub(1, Ordering::Relaxed);
+                    }
+                }
+            }
         }
 
         Ok(())
     }
 }
 
-async fn read_manifest(store: ObjectStoreRef, sst_path: Path) -> Result<SstFile> {
+async fn read_delta_file(store: ObjectStoreRef, sst_path: Path) -> Result<SstFile> {
     let bytes = store
         .get(&sst_path)
         .await
-        .context("failed to read manifest file")?
+        .with_context(|| format!("failed to get delta file, path:{sst_path}"))?
         .bytes()
         .await
-        .context("failed to read manifest file")?;
-    let pb_sst = pb_types::SstFile::decode(bytes).context("failed to decode manifest file")?;
-    let sst = SstFile::try_from(pb_sst)?;
+        .with_context(|| format!("failed to read delta file, path:{sst_path}"))?;
+
+    let pb_sst = pb_types::SstFile::decode(bytes)
+        .with_context(|| format!("failed to decode delta file, path:{sst_path}"))?;
+
+    let sst = SstFile::try_from(pb_sst)
+        .with_context(|| format!("failed to convert delta file, path:{sst_path}"))?;
     Ok(sst)
 }
 
-async fn delete_manifest(store: ObjectStoreRef, sst_path: Path) -> Result<()> {
-    store.delete(&sst_path).await.context(format!(
-        "Failed to delete manifest files, path:{}",
-        sst_path
-    ))?;
+async fn delete_delta_file(store: ObjectStoreRef, path: Path) -> Result<()> {
+    store
+        .delete(&path)
+        .await
+        .with_context(|| format!("Failed to delete delta files, path:{path}"))?;
+
     Ok(())
 }
