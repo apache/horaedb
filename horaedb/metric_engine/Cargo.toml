@@ -34,6 +34,7 @@ workspace = true
 anyhow = { workspace = true }
 arrow = { workspace = true }
 arrow-schema = { workspace = true }
+async-scoped = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 datafusion = { workspace = true }
