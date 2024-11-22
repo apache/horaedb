@@ -47,6 +47,7 @@ pb_types = { workspace = true }
 prost = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 temp-dir = { workspace = true }

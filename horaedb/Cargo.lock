@@ -1569,6 +1569,7 @@ dependencies = [
  "temp-dir",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
