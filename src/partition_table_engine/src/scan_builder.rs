@@ -36,7 +36,7 @@ use table_engine::{
     table::ReadRequest,
 };
 
-use super::partitioned_predicates;
+use crate::partitioned_predicates;
 #[derive(Debug)]
 pub struct PartitionedTableScanBuilder {
     table_name: String,
@@ -110,7 +110,9 @@ impl TableScanBuilder for PartitionedTableScanBuilder {
                     &partitions,
                     &mut partitioned_key_indices,
                 )
-                .map_err(|e| DataFusionError::Internal(format!("err:{e}")))?,
+                .map_err(|e| {
+                    DataFusionError::Internal(format!("partition predicates failed, err:{e}"))
+                })?,
             )
         } else {
             // since FilterExtractor.extract only cover some specific expr
@@ -131,8 +133,9 @@ impl TableScanBuilder for PartitionedTableScanBuilder {
 mod tests {
     use common_types::{column_schema::Builder as ColBuilder, datum::DatumKind, schema::Builder};
     use datafusion::logical_expr::{
+        binary_expr,
         expr::{BinaryExpr, InList},
-        Expr, Operator,
+        in_list, Expr, Operator,
     };
     use table_engine::{
         partition::{
@@ -142,7 +145,7 @@ mod tests {
         predicate::PredicateBuilder,
     };
 
-    use super::partitioned_predicates;
+    use crate::partitioned_predicates;
 
     #[test]
     fn test_partitioned_predicate() {
@@ -200,21 +203,21 @@ mod tests {
         let df_partition_rule = DfPartitionRuleAdapter::new(partition_info, &schema).unwrap();
 
         let exprs = vec![
-            Expr::BinaryExpr(BinaryExpr {
-                left: Box::new(Expr::Column("col1".into())),
-                op: Operator::Eq,
-                right: Box::new(Expr::Literal("33".into())),
-            }),
-            Expr::InList(InList {
-                expr: Box::new(Expr::Column("col2".into())),
-                list: vec![
+            binary_expr(
+                Expr::Column("col1".into()),
+                Operator::Eq,
+                Expr::Literal("33".into()),
+            ),
+            in_list(
+                Expr::Column("col2".into()),
+                vec![
                     Expr::Literal("aa".into()),
                     Expr::Literal("bb".into()),
                     Expr::Literal("cc".into()),
                     Expr::Literal("dd".into()),
                 ],
-                negated: false,
-            }),
+                false,
+            ),
         ];
         let mut partitioned_key_indices = PartitionedFilterKeyIndex::new();
         let partitions = df_partition_rule

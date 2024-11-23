@@ -140,7 +140,12 @@ impl Resolver {
                     let plan = Arc::new(UnresolvedSubTableScan {
                         table: table.clone(),
                         table_scan_ctx: if let Some(ref predicates) = unresolved.predicates {
+                            // Since all each partition has different predicate, so we shall build
+                            // seperate ctx regarding each partition
+                            // with different predicate
                             let mut ctx = unresolved.table_scan_ctx.clone();
+                            // overwrite old predicate (it's the predidcate before partiton
+                            // calculation) with optimized predicate
                             ctx.predicate = Arc::new(predicates[idx].clone());
                             ctx
                         } else {

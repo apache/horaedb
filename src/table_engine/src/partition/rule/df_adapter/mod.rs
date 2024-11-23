@@ -32,7 +32,11 @@ use crate::partition::{
 
 mod extractor;
 
-pub type PartitionedFilterKeyIndex = HashMap<usize, HashMap<usize, BTreeSet<usize>>>;
+pub type PartitionId = usize; // partiton number (id)
+pub type FilterIndex = usize; // filter (or expr) index regarding predicate.exprs()
+pub type KeyIndex = usize; // key index regarding inlist expr
+pub type FilterKeyIndex = HashMap<FilterIndex, BTreeSet<KeyIndex>>;
+pub type PartitionedFilterKeyIndex = HashMap<PartitionId, FilterKeyIndex>;
 pub type IndexedPartitionFilter = Vec<(usize, PartitionFilter)>;
 pub type IndexedPartitionFilterRef<'a> = &'a [(usize, PartitionFilter)];
 
