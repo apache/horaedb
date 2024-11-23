@@ -254,42 +254,68 @@ mod tests {
         let predicates = predicates.unwrap();
         assert!(predicates.len() == 2);
 
-        assert!(predicates[0].exprs().len() == 2);
+        assert!(predicates[0].exprs().len() == 3);
         assert!(
             predicates[0].exprs()[0]
-                == Expr::BinaryExpr(BinaryExpr {
-                    left: Box::new(Expr::Column("col1".into())),
-                    op: Operator::Eq,
-                    right: Box::new(Expr::Literal("33".into())),
-                })
+                == binary_expr(
+                    Expr::Column("col1".into()),
+                    Operator::Eq,
+                    Expr::Literal("33".into())
+                )
         );
         assert!(
             predicates[0].exprs()[1]
-                == Expr::InList(InList {
-                    expr: Box::new(Expr::Column("col2".into())),
-                    list: vec![
+                == in_list(
+                    Expr::Column("col2".into()),
+                    vec![
                         Expr::Literal("aa".into()),
                         Expr::Literal("bb".into()),
                         Expr::Literal("cc".into()),
                     ],
-                    negated: false,
-                })
+                    false,
+                )
+        );
+        assert!(
+            predicates[0].exprs()[2]
+                == in_list(
+                    Expr::Column("col3".into()),
+                    vec![
+                        Expr::Literal("1".into()),
+                        Expr::Literal("2".into()),
+                        Expr::Literal("3".into()),
+                        Expr::Literal("4".into()),
+                    ],
+                    false,
+                )
         );
         assert!(
             predicates[1].exprs()[0]
-                == Expr::BinaryExpr(BinaryExpr {
-                    left: Box::new(Expr::Column("col1".into())),
-                    op: Operator::Eq,
-                    right: Box::new(Expr::Literal("33".into())),
-                })
+                == binary_expr(
+                    Expr::Column("col1".into()),
+                    Operator::Eq,
+                    Expr::Literal("33".into())
+                )
         );
         assert!(
             predicates[1].exprs()[1]
-                == Expr::InList(InList {
-                    expr: Box::new(Expr::Column("col2".into())),
-                    list: vec![Expr::Literal("dd".into()),],
-                    negated: false,
-                })
+                == in_list(
+                    Expr::Column("col2".into()),
+                    vec![Expr::Literal("dd".into()),],
+                    false,
+                )
+        );
+        assert!(
+            predicates[1].exprs()[2]
+                == in_list(
+                    Expr::Column("col3".into()),
+                    vec![
+                        Expr::Literal("1".into()),
+                        Expr::Literal("2".into()),
+                        Expr::Literal("3".into()),
+                        Expr::Literal("4".into()),
+                    ],
+                    false,
+                )
         );
     }
 }
