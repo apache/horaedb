@@ -187,6 +187,9 @@ mod tests {
             let col2 = ColBuilder::new("col2".to_string(), DatumKind::String)
                 .build()
                 .expect("should succeed to build column schema");
+            let col3 = ColBuilder::new("col3".to_string(), DatumKind::String)
+                .build()
+                .expect("should succeed to build column schema");
             builder
                 .auto_increment_column_id(true)
                 .add_key_column(col_ts)
@@ -194,6 +197,8 @@ mod tests {
                 .add_key_column(col1)
                 .unwrap()
                 .add_key_column(col2)
+                .unwrap()
+                .add_key_column(col3)
                 .unwrap()
                 .primary_key_indexes(vec![1, 2])
                 .build()
@@ -215,6 +220,16 @@ mod tests {
                     Expr::Literal("bb".into()),
                     Expr::Literal("cc".into()),
                     Expr::Literal("dd".into()),
+                ],
+                false,
+            ),
+            in_list(
+                Expr::Column("col3".into()),
+                vec![
+                    Expr::Literal("1".into()),
+                    Expr::Literal("2".into()),
+                    Expr::Literal("3".into()),
+                    Expr::Literal("4".into()),
                 ],
                 false,
             ),
