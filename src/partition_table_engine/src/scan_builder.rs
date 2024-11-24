@@ -132,11 +132,7 @@ impl TableScanBuilder for PartitionedTableScanBuilder {
 #[cfg(test)]
 mod tests {
     use common_types::{column_schema::Builder as ColBuilder, datum::DatumKind, schema::Builder};
-    use datafusion::logical_expr::{
-        binary_expr,
-        expr::{BinaryExpr, InList},
-        in_list, Expr, Operator,
-    };
+    use datafusion::logical_expr::{binary_expr, in_list, Expr, Operator};
     use table_engine::{
         partition::{
             rule::df_adapter::{DfPartitionRuleAdapter, PartitionedFilterKeyIndex},
