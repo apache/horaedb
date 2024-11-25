@@ -68,7 +68,7 @@ impl Timestamp {
     pub const MIN: Timestamp = Timestamp(i64::MIN);
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TimeRange(Range<Timestamp>);
 
 impl From<Range<Timestamp>> for TimeRange {

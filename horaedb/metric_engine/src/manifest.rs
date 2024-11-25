@@ -267,23 +267,14 @@ impl ManifestMerger {
     }
 
     async fn do_merge(&self) -> Result<()> {
-        let paths = self
-            .store
-            .list(Some(&self.delta_dir))
-            .map(|value| {
-                value
-                    .map(|v| v.location)
-                    .with_context(|| format!("Failed to list delta files, path:{}", self.delta_dir))
-            })
-            .try_collect::<Vec<_>>()
-            .await?;
+        let paths = list_delta_paths(&self.store, &self.delta_dir).await?;
         if paths.is_empty() {
             return Ok(());
         }
 
         let (_, results) = TokioScope::scope_and_block(|scope| {
             for path in &paths {
-                scope.spawn(async move { read_delta_file(&self.store, path).await });
+                scope.spawn(async { read_delta_file(&self.store, path).await });
             }
         });
 
@@ -319,7 +310,7 @@ impl ManifestMerger {
         // 2. Delete the merged manifest files
         let (_, results) = TokioScope::scope_and_block(|scope| {
             for path in &paths {
-                scope.spawn(async move { delete_delta_file(&self.store, path).await });
+                scope.spawn(async { delete_delta_file(&self.store, path).await });
             }
         });
 
@@ -390,6 +381,20 @@ async fn delete_delta_file(store: &ObjectStoreRef, path: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn list_delta_paths(store: &ObjectStoreRef, delta_dir: &Path) -> Result<Vec<Path>> {
+    let paths = store
+        .list(Some(delta_dir))
+        .map(|value| {
+            value
+                .map(|v| v.location)
+                .with_context(|| format!("Failed to list delta paths, delta dir:{}", delta_dir))
+        })
+        .try_collect::<Vec<_>>()
+        .await?;
+
+    Ok(paths)
+}
+
 #[cfg(test)]
 mod tests {
     use std::{sync::Arc, thread::sleep};
@@ -414,7 +419,7 @@ mod tests {
         .unwrap();
 
         for i in 0..20 {
-            let time_range = TimeRange::new(i.into(), (i + 1).into());
+            let time_range = (i..i + 1).into();
             let meta = FileMeta {
                 max_sequence: i as u64,
                 num_rows: i as u32,
@@ -424,13 +429,13 @@ mod tests {
             manifest.add_file(i as u64, meta).await.unwrap();
         }
 
-        let find_range = TimeRange::new(10.into(), 15.into());
+        let find_range = (10..15).into();
         let mut ssts = manifest.find_ssts(&find_range).await;
 
         let mut expected_ssts = (10..15)
             .map(|i| {
                 let id = i as u64;
-                let time_range = TimeRange::new(i.into(), (i + 1).into());
+                let time_range = (i..i + 1).into();
                 let meta = FileMeta {
                     max_sequence: i as u64,
                     num_rows: i as u32,
@@ -454,6 +459,7 @@ mod tests {
             .to_string_lossy()
             .to_string();
         let snapshot_path = Path::from(format!("{root_dir}/{SNAPSHOT_FILENAME}"));
+        let delta_dir = Path::from(format!("{root_dir}/{DELTA_PREFIX}"));
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .enable_all()
@@ -475,7 +481,7 @@ mod tests {
 
         // Add manifest files
         for i in 0..20 {
-            let time_range = TimeRange::new(i.into(), (i + 1).into());
+            let time_range = (i..i + 1).into();
             let meta = FileMeta {
                 max_sequence: i as u64,
                 num_rows: i as u32,
@@ -486,7 +492,7 @@ mod tests {
         }
 
         // Wait for merge manifest to finish
-        sleep(Duration::from_secs(1));
+        sleep(Duration::from_secs(2));
 
         let mut mem_ssts = manifest.payload.read().await.files.clone();
         let mut ssts = read_snapshot(&store, &snapshot_path).await.unwrap().files;
@@ -494,5 +500,8 @@ mod tests {
         mem_ssts.sort_by(|a, b| a.id.cmp(&b.id));
         ssts.sort_by(|a, b| a.id.cmp(&b.id));
         assert_eq!(mem_ssts, ssts);
+
+        let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
+        assert!(delta_paths.is_empty());
     }
 }
