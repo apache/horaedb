@@ -142,11 +142,8 @@ impl KeyRule {
         group: &[usize],
         filters: &[PartitionFilter],
     ) -> Result<PartitionedFilterKeyIndex> {
-        let mut partitions = BTreeSet::new();
         // Retrieve all the key DatumView instances along with their corresponding
-        // indices related to their positions in the predicate inlist. Since DatumView
-        // only implements PartialEq or PartialOrd, it cannot be stored directly in a
-        // HashSet or BTreeSet.
+        // indices related to their positions in the predicate inlist.
         let expanded_group = expand_partition_keys_group(group, filters)?;
 
         let mut partitioned_key_indices = PartitionedFilterKeyIndex::new();
@@ -154,7 +151,6 @@ impl KeyRule {
             // batch all the keys for hash computation
             let partition_keys = indexed_partition_keys.iter().map(|item| item.1.clone());
             let partition = compute_partition(partition_keys, self.partition_num);
-            partitions.insert(partition);
 
             // collect all the key indices related to all predicate expr in the target
             // partition
@@ -221,7 +217,7 @@ impl PartitionRule for KeyRule {
 
         let filters = indexed_filters
             .iter()
-            .map(|value| value.1.clone())
+            .map(|(_idx, filter)| filter.clone())
             .collect::<Vec<_>>();
 
         // Group the filters by their columns.

@@ -21,10 +21,11 @@ use std::collections::HashSet;
 use common_types::datum::Datum;
 use datafusion::logical_expr::{expr::InList, Expr, Operator};
 use df_operator::visitor::find_columns_by_expr;
-use itertools::enumerate;
 
-use super::IndexedPartitionFilter;
-use crate::partition::rule::filter::{PartitionCondition, PartitionFilter};
+use crate::partition::rule::{
+    df_adapter::IndexedPartitionFilter,
+    filter::{PartitionCondition, PartitionFilter},
+};
 
 /// The datafusion filter exprs extractor
 ///
@@ -58,7 +59,7 @@ impl FilterExtractor for KeyExtractor {
         }
 
         let mut target = Vec::with_capacity(filters.len());
-        for (index, filter) in enumerate(filters) {
+        for (index, filter) in filters.iter().enumerate() {
             // If no target columns included in `filter`, ignore this `filter`.
             let columns_in_filter = find_columns_by_expr(filter)
                 .into_iter()
@@ -80,7 +81,6 @@ impl FilterExtractor for KeyExtractor {
 
             // Finally, we try to convert `filter` to `PartitionFilter`.
             // We just support the simple situation: "colum = value" now.
-            // TODO: support "colum in [value list]".
             // TODO: we need to compare and check the datatype of column and value.
             // (Actually, there is type conversion on high-level, but when converted data
             // is overflow, it may take no effect).

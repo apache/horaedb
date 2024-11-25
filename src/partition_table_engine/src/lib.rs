@@ -136,18 +136,17 @@ pub fn partitioned_predicates(
             let exprs = predicate.mut_exprs();
             for (filter_idx, key_indices) in filter_indices {
                 if let Expr::InList(InList {
-                    expr: _expr,
                     list,
                     negated: false,
+                    ..
                 }) = &mut exprs[*filter_idx]
                 {
-                    let keep = list
-                        .iter()
-                        .enumerate()
-                        .map(|(idx, _)| key_indices.contains(&idx))
-                        .collect::<Vec<_>>();
-                    let mut keep = keep.iter();
-                    list.retain(|_| *keep.next().unwrap());
+                    let mut idx = 0;
+                    list.retain(|_| {
+                        let should_kept = key_indices.contains(&idx);
+                        idx += 1;
+                        should_kept
+                    });
                 }
             }
         }
