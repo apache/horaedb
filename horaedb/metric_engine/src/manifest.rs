@@ -25,19 +25,23 @@ use std::{
 };
 
 use anyhow::Context;
+use async_scoped::TokioScope;
 use bytes::Bytes;
-use futures::{stream::FuturesUnordered, StreamExt, TryStreamExt};
+use futures::{StreamExt, TryStreamExt};
 use object_store::{path::Path, PutPayload};
 use prost::Message;
-use tokio::sync::{
-    mpsc::{self, Receiver, Sender},
-    RwLock,
+use tokio::{
+    runtime::Runtime,
+    sync::{
+        mpsc::{self, Receiver, Sender},
+        RwLock,
+    },
 };
 use tracing::error;
 
 use crate::{
     sst::{FileId, FileMeta, SstFile},
-    types::{ObjectStoreRef, TimeRange},
+    types::{ManifestMergeOptions, ObjectStoreRef, TimeRange},
     AnyhowError, Error, Result,
 };
 
@@ -96,6 +100,7 @@ impl Manifest {
     pub async fn try_new(
         root_dir: String,
         store: ObjectStoreRef,
+        runtime: Arc<Runtime>,
         merge_options: ManifestMergeOptions,
     ) -> Result<Self> {
         let snapshot_path = Path::from(format!("{root_dir}/{SNAPSHOT_FILENAME}"));
@@ -105,6 +110,7 @@ impl Manifest {
             snapshot_path.clone(),
             delta_dir.clone(),
             store.clone(),
+            runtime.clone(),
             merge_options,
         )
         .await?;
@@ -112,7 +118,7 @@ impl Manifest {
         {
             let merger = merger.clone();
             // Start merger in background
-            tokio::spawn(async move {
+            runtime.spawn(async move {
                 merger.run().await;
             });
         }
@@ -175,31 +181,11 @@ enum MergeType {
     Soft,
 }
 
-#[derive(Clone)]
-pub struct ManifestMergeOptions {
-    channel_size: usize,
-    merge_interval_seconds: usize,
-    min_merge_threshold: usize,
-    hard_merge_threshold: usize,
-    soft_merge_threshold: usize,
-}
-
-impl Default for ManifestMergeOptions {
-    fn default() -> Self {
-        Self {
-            channel_size: 10,
-            merge_interval_seconds: 5,
-            min_merge_threshold: 10,
-            soft_merge_threshold: 50,
-            hard_merge_threshold: 90,
-        }
-    }
-}
-
 struct ManifestMerger {
     snapshot_path: Path,
     delta_dir: Path,
     store: ObjectStoreRef,
+    runtime: Arc<Runtime>,
     sender: Sender<MergeType>,
     receiver: RwLock<Receiver<MergeType>>,
     deltas_num: AtomicUsize,
@@ -211,6 +197,7 @@ impl ManifestMerger {
         snapshot_path: Path,
         delta_dir: Path,
         store: ObjectStoreRef,
+        runtime: Arc<Runtime>,
         merge_options: ManifestMergeOptions,
     ) -> Result<Arc<Self>> {
         let (tx, rx) = mpsc::channel(merge_options.channel_size);
@@ -218,6 +205,7 @@ impl ManifestMerger {
             snapshot_path,
             delta_dir,
             store,
+            runtime,
             sender: tx,
             receiver: RwLock::new(rx),
             deltas_num: AtomicUsize::new(0),
@@ -279,31 +267,21 @@ impl ManifestMerger {
     }
 
     async fn do_merge(&self) -> Result<()> {
-        let paths = self
-            .store
-            .list(Some(&self.delta_dir))
-            .map(|value| {
-                value
-                    .map(|v| v.location)
-                    .context("failed to get delta file path")
-            })
-            .try_collect::<Vec<_>>()
-            .await?;
+        let paths = list_delta_paths(&self.store, &self.delta_dir).await?;
         if paths.is_empty() {
             return Ok(());
         }
 
-        let mut stream_read = FuturesUnordered::new();
-        for path in paths.clone() {
-            let store = self.store.clone();
-            // TODO: use thread pool to read manifest files
-            let handle = tokio::spawn(async move { read_delta_file(store, path).await });
-            stream_read.push(handle);
-        }
-        let mut delta_files = Vec::with_capacity(stream_read.len());
-        while let Some(res) = stream_read.next().await {
-            let res = res.context("Failed to join read delta task")??;
-            delta_files.push(res);
+        let (_, results) = TokioScope::scope_and_block(|scope| {
+            for path in &paths {
+                scope.spawn(async { read_delta_file(&self.store, path).await });
+            }
+        });
+
+        let mut delta_files = Vec::with_capacity(results.len());
+        for res in results {
+            let sst_file = res.context("Failed to join read delta files task")??;
+            delta_files.push(sst_file);
         }
 
         let mut payload = read_snapshot(&self.store, &self.snapshot_path).await?;
@@ -327,21 +305,19 @@ impl ManifestMerger {
         self.store
             .put(&self.snapshot_path, put_payload)
             .await
-            .context("Failed to update manifest")?;
+            .with_context(|| format!("Failed to update manifest, path:{}", self.snapshot_path))?;
 
         // 2. Delete the merged manifest files
-        let mut stream_delete = FuturesUnordered::new();
-        for path in paths {
-            let store = self.store.clone();
-            // TODO: use thread pool to delete sst files
-            let handle = tokio::spawn(async move { delete_delta_file(store, path).await });
-            stream_delete.push(handle);
-        }
+        let (_, results) = TokioScope::scope_and_block(|scope| {
+            for path in &paths {
+                scope.spawn(async { delete_delta_file(&self.store, path).await });
+            }
+        });
 
-        while let Some(res) = stream_delete.next().await {
+        for res in results {
             match res {
                 Err(e) => {
-                    error!("Failed to join delete delta task, err:{e}")
+                    error!("Failed to join delete delta files task, err:{e}")
                 }
                 Ok(v) => {
                     if let Err(e) = v {
@@ -363,25 +339,25 @@ async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Payload> {
             let bytes = v
                 .bytes()
                 .await
-                .context("failed to read manifest snapshot")?;
-            let pb_payload =
-                pb_types::Manifest::decode(bytes).context("failed to decode manifest snapshot")?;
+                .with_context(|| format!("Failed to read manifest snapshot, path:{path}"))?;
+            let pb_payload = pb_types::Manifest::decode(bytes)
+                .with_context(|| format!("Failed to decode manifest snapshot, path:{path}"))?;
             Payload::try_from(pb_payload)
         }
         Err(err) => {
             if err.to_string().contains("not found") {
                 Ok(Payload { files: vec![] })
             } else {
-                let context = format!("Failed to get manifest snapshot, path:{path}");
+                let context = format!("Failed to read manifest snapshot, path:{path}");
                 Err(AnyhowError::new(err).context(context).into())
             }
         }
     }
 }
 
-async fn read_delta_file(store: ObjectStoreRef, sst_path: Path) -> Result<SstFile> {
+async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<SstFile> {
     let bytes = store
-        .get(&sst_path)
+        .get(sst_path)
         .await
         .with_context(|| format!("failed to get delta file, path:{sst_path}"))?
         .bytes()
@@ -396,11 +372,136 @@ async fn read_delta_file(store: ObjectStoreRef, sst_path: Path) -> Result<SstFil
     Ok(sst)
 }
 
-async fn delete_delta_file(store: ObjectStoreRef, path: Path) -> Result<()> {
+async fn delete_delta_file(store: &ObjectStoreRef, path: &Path) -> Result<()> {
     store
-        .delete(&path)
+        .delete(path)
         .await
         .with_context(|| format!("Failed to delete delta files, path:{path}"))?;
 
     Ok(())
+}
+
+async fn list_delta_paths(store: &ObjectStoreRef, delta_dir: &Path) -> Result<Vec<Path>> {
+    let paths = store
+        .list(Some(delta_dir))
+        .map(|value| {
+            value
+                .map(|v| v.location)
+                .with_context(|| format!("Failed to list delta paths, delta dir:{}", delta_dir))
+        })
+        .try_collect::<Vec<_>>()
+        .await?;
+
+    Ok(paths)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, thread::sleep};
+
+    use object_store::local::LocalFileSystem;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_find_manifest() {
+        let root_dir = temp_dir::TempDir::new().unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let store = Arc::new(LocalFileSystem::new());
+
+        let manifest = Manifest::try_new(
+            root_dir.path().to_string_lossy().to_string(),
+            store,
+            Arc::new(runtime),
+            ManifestMergeOptions::default(),
+        )
+        .await
+        .unwrap();
+
+        for i in 0..20 {
+            let time_range = (i..i + 1).into();
+            let meta = FileMeta {
+                max_sequence: i as u64,
+                num_rows: i as u32,
+                size: i as u32,
+                time_range,
+            };
+            manifest.add_file(i as u64, meta).await.unwrap();
+        }
+
+        let find_range = (10..15).into();
+        let mut ssts = manifest.find_ssts(&find_range).await;
+
+        let mut expected_ssts = (10..15)
+            .map(|i| {
+                let id = i as u64;
+                let time_range = (i..i + 1).into();
+                let meta = FileMeta {
+                    max_sequence: i as u64,
+                    num_rows: i as u32,
+                    size: i as u32,
+                    time_range,
+                };
+                SstFile { id, meta }
+            })
+            .collect::<Vec<_>>();
+
+        expected_ssts.sort_by(|a, b| a.id.cmp(&b.id));
+        ssts.sort_by(|a, b| a.id.cmp(&b.id));
+        assert_eq!(expected_ssts, ssts);
+    }
+
+    #[tokio::test]
+    async fn test_merge_manifest() {
+        let root_dir = temp_dir::TempDir::new()
+            .unwrap()
+            .path()
+            .to_string_lossy()
+            .to_string();
+        let snapshot_path = Path::from(format!("{root_dir}/{SNAPSHOT_FILENAME}"));
+        let delta_dir = Path::from(format!("{root_dir}/{DELTA_PREFIX}"));
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(4)
+            .enable_all()
+            .build()
+            .unwrap();
+        let store: ObjectStoreRef = Arc::new(LocalFileSystem::new());
+
+        let manifest = Manifest::try_new(
+            root_dir,
+            store.clone(),
+            Arc::new(runtime),
+            ManifestMergeOptions {
+                merge_interval_seconds: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        // Add manifest files
+        for i in 0..20 {
+            let time_range = (i..i + 1).into();
+            let meta = FileMeta {
+                max_sequence: i as u64,
+                num_rows: i as u32,
+                size: i as u32,
+                time_range,
+            };
+            manifest.add_file(i as u64, meta).await.unwrap();
+        }
+
+        // Wait for merge manifest to finish
+        sleep(Duration::from_secs(2));
+
+        let mut mem_ssts = manifest.payload.read().await.files.clone();
+        let mut ssts = read_snapshot(&store, &snapshot_path).await.unwrap().files;
+
+        mem_ssts.sort_by(|a, b| a.id.cmp(&b.id));
+        ssts.sort_by(|a, b| a.id.cmp(&b.id));
+        assert_eq!(mem_ssts, ssts);
+
+        let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
+        assert!(delta_paths.is_empty());
+    }
 }

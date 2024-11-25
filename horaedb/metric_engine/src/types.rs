@@ -68,7 +68,7 @@ impl Timestamp {
     pub const MIN: Timestamp = Timestamp(i64::MIN);
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TimeRange(Range<Timestamp>);
 
 impl From<Range<Timestamp>> for TimeRange {
@@ -145,4 +145,43 @@ impl Default for WriteOptions {
             column_options: None,
         }
     }
+}
+
+pub struct RuntimeOptions {
+    pub compact_thread_num: usize,
+}
+
+impl Default for RuntimeOptions {
+    fn default() -> Self {
+        Self {
+            compact_thread_num: 4,
+        }
+    }
+}
+
+pub struct ManifestMergeOptions {
+    pub channel_size: usize,
+    pub merge_interval_seconds: usize,
+    pub min_merge_threshold: usize,
+    pub hard_merge_threshold: usize,
+    pub soft_merge_threshold: usize,
+}
+
+impl Default for ManifestMergeOptions {
+    fn default() -> Self {
+        Self {
+            channel_size: 10,
+            merge_interval_seconds: 5,
+            min_merge_threshold: 10,
+            soft_merge_threshold: 50,
+            hard_merge_threshold: 90,
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct StorageOptions {
+    pub write_opts: WriteOptions,
+    pub manifest_merge_opts: ManifestMergeOptions,
+    pub runtime_opts: RuntimeOptions,
 }

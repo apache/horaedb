@@ -54,12 +54,16 @@ use parquet::{
     format::SortingColumn,
     schema::types::ColumnPath,
 };
+use tokio::runtime::Runtime;
 
 use crate::{
-    manifest::{Manifest, ManifestMergeOptions},
+    manifest::Manifest,
     read::{DefaultParquetFileReaderFactory, MergeExec},
     sst::{allocate_id, FileId, FileMeta, SstFile},
-    types::{ObjectStoreRef, TimeRange, WriteOptions, WriteResult, SEQ_COLUMN_NAME},
+    types::{
+        ObjectStoreRef, RuntimeOptions, StorageOptions, TimeRange, WriteOptions, WriteResult,
+        SEQ_COLUMN_NAME,
+    },
     Result,
 };
 
@@ -93,6 +97,25 @@ pub trait TimeMergeStorage {
     async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
 
+struct StorageRuntimes {
+    compact_runtime: Arc<Runtime>,
+}
+
+impl StorageRuntimes {
+    pub fn new(runtime_opts: RuntimeOptions) -> Result<Self> {
+        let compact_runtime = tokio::runtime::Builder::new_multi_thread()
+            .thread_name("storage-compact")
+            .worker_threads(runtime_opts.compact_thread_num)
+            .enable_all()
+            .build()
+            .context("build storgae compact runtime")?;
+
+        Ok(Self {
+            compact_runtime: Arc::new(compact_runtime),
+        })
+    }
+}
+
 /// `TimeMergeStorage` implementation using cloud object storage, it will split
 /// data into different segments(aka `segment_duration`) based time range.
 ///
@@ -105,6 +128,7 @@ pub struct CloudObjectStorage {
     arrow_schema: SchemaRef,
     num_primary_keys: usize,
     manifest: Manifest,
+    runtimes: StorageRuntimes,
 
     df_schema: DFSchema,
     write_props: WriterProperties,
@@ -128,14 +152,16 @@ impl CloudObjectStorage {
         store: ObjectStoreRef,
         arrow_schema: SchemaRef,
         num_primary_keys: usize,
-        write_options: WriteOptions,
-        merge_options: ManifestMergeOptions,
+        storage_opts: StorageOptions,
     ) -> Result<Self> {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
+        let runtimes = StorageRuntimes::new(storage_opts.runtime_opts)?;
+
         let manifest = Manifest::try_new(
             format!("{path}/{manifest_prefix}"),
             store.clone(),
-            merge_options,
+            runtimes.compact_runtime.clone(),
+            storage_opts.manifest_merge_opts,
         )
         .await?;
         let mut new_fields = arrow_schema.fields.clone().to_vec();
@@ -149,7 +175,7 @@ impl CloudObjectStorage {
             arrow_schema.metadata.clone(),
         ));
         let df_schema = DFSchema::try_from(arrow_schema.clone()).context("build DFSchema")?;
-        let write_props = Self::build_write_props(write_options, num_primary_keys);
+        let write_props = Self::build_write_props(storage_opts.write_opts, num_primary_keys);
         Ok(Self {
             path,
             num_primary_keys,
@@ -157,6 +183,7 @@ impl CloudObjectStorage {
             store,
             arrow_schema,
             manifest,
+            runtimes,
             df_schema,
             write_props,
         })
@@ -414,7 +441,7 @@ mod tests {
     use object_store::local::LocalFileSystem;
 
     use super::*;
-    use crate::{arrow_schema, manifest::ManifestMergeOptions, types::Timestamp};
+    use crate::{arrow_schema, types::Timestamp};
 
     #[tokio::test]
     async fn test_build_scan_plan() {
@@ -426,8 +453,7 @@ mod tests {
             store,
             schema.clone(),
             1, // num_primary_keys
-            WriteOptions::default(),
-            ManifestMergeOptions::default(),
+            StorageOptions::default(),
         )
         .await
         .unwrap();
@@ -472,8 +498,7 @@ mod tests {
             store,
             schema.clone(),
             2, // num_primary_keys
-            WriteOptions::default(),
-            ManifestMergeOptions::default(),
+            StorageOptions::default(),
         )
         .await
         .unwrap();
@@ -549,8 +574,7 @@ mod tests {
             store,
             schema.clone(),
             1,
-            WriteOptions::default(),
-            ManifestMergeOptions::default(),
+            StorageOptions::default(),
         )
         .await
         .unwrap();

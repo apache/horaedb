@@ -31,7 +31,7 @@ pub const PREFIX_PATH: &str = "data";
 
 pub type FileId = u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SstFile {
     pub id: FileId,
     pub meta: FileMeta,
@@ -58,7 +58,7 @@ impl From<SstFile> for pb_types::SstFile {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileMeta {
     pub max_sequence: u64,
     pub num_rows: u32,
