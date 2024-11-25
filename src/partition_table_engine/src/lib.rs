@@ -141,13 +141,13 @@ pub fn partitioned_predicates(
                     negated: false,
                 }) = &mut exprs[*filter_idx]
                 {
-                    let filtered_list = list
+                    let keep = list
                         .iter()
                         .enumerate()
-                        .filter(|(idx, _)| key_indices.contains(idx))
-                        .map(|(_, value)| value.clone())
+                        .map(|(idx, _)| key_indices.contains(&idx))
                         .collect::<Vec<_>>();
-                    *list = filtered_list;
+                    let mut keep = keep.iter();
+                    list.retain(|_| *keep.next().unwrap());
                 }
             }
         }
