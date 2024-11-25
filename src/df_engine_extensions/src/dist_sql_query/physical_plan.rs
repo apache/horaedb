@@ -47,7 +47,7 @@ use datafusion::{
 };
 use futures::{future::BoxFuture, FutureExt, Stream, StreamExt};
 use runtime::Priority;
-use table_engine::{remote::model::TableIdentifier, table::ReadRequest};
+use table_engine::{predicate::Predicate, remote::model::TableIdentifier, table::ReadRequest};
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector, TraceMetricWhenDrop};
 
 use crate::dist_sql_query::{RemotePhysicalPlanExecutor, RemoteTaskContext, TableScanContext};
@@ -62,6 +62,7 @@ pub struct UnresolvedPartitionedScan {
     pub table_scan_ctx: TableScanContext,
     pub metrics_collector: MetricsCollector,
     pub priority: Priority,
+    pub predicates: Option<Vec<Predicate>>,
 }
 
 impl UnresolvedPartitionedScan {
@@ -69,6 +70,7 @@ impl UnresolvedPartitionedScan {
         table_name: &str,
         sub_tables: Vec<TableIdentifier>,
         read_request: ReadRequest,
+        predicates: Option<Vec<Predicate>>,
     ) -> Self {
         let metrics_collector = MetricsCollector::new(table_name.to_string());
         let table_scan_ctx = TableScanContext {
@@ -83,6 +85,7 @@ impl UnresolvedPartitionedScan {
             table_scan_ctx,
             metrics_collector,
             priority: read_request.priority,
+            predicates,
         }
     }
 }

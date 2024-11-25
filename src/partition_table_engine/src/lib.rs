@@ -27,14 +27,17 @@ use std::sync::Arc;
 
 use analytic_engine::TableOptions;
 use async_trait::async_trait;
+use datafusion::logical_expr::expr::{Expr, InList};
 use generic_error::BoxError;
-use snafu::{OptionExt, ResultExt};
+use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::{
     engine::{
         CloseShardRequest, CloseTableRequest, CreateTableParams, CreateTableRequest,
-        DropTableRequest, OpenShardRequest, OpenShardResult, OpenTableRequest, Result, TableEngine,
-        Unexpected, UnexpectedNoCause,
+        DropTableRequest, InvalidPartitionContext, OpenShardRequest, OpenShardResult,
+        OpenTableRequest, Result, TableEngine, Unexpected, UnexpectedNoCause,
     },
+    partition::rule::df_adapter::PartitionedFilterKeyIndex,
+    predicate::Predicate,
     remote::RemoteEngineRef,
     table::TableRef,
     PARTITION_TABLE_ENGINE_TYPE,
@@ -109,4 +112,44 @@ impl TableEngine for PartitionTableEngine {
     async fn close_shard(&self, _request: CloseShardRequest) -> Vec<Result<String>> {
         vec![Ok("".to_string())]
     }
+}
+
+pub fn partitioned_predicates(
+    predicate: Arc<Predicate>,
+    partitions: &[usize],
+    partitioned_key_indices: &mut PartitionedFilterKeyIndex,
+) -> Result<Vec<Predicate>> {
+    ensure!(
+        partitions.len() == partitioned_key_indices.keys().len(),
+        InvalidPartitionContext {
+            msg: format!(
+                "partitions length:{}, partitioned_key_indices length: {}",
+                partitions.len(),
+                partitioned_key_indices.keys().len()
+            )
+        }
+    );
+    let mut predicates = vec![(*predicate).clone(); partitions.len()];
+    for (idx, predicate) in predicates.iter_mut().enumerate() {
+        let partition = partitions[idx];
+        if let Some(filter_indices) = partitioned_key_indices.get(&partition) {
+            let exprs = predicate.mut_exprs();
+            for (filter_idx, key_indices) in filter_indices {
+                if let Expr::InList(InList {
+                    list,
+                    negated: false,
+                    ..
+                }) = &mut exprs[*filter_idx]
+                {
+                    let mut idx = 0;
+                    list.retain(|_| {
+                        let should_kept = key_indices.contains(&idx);
+                        idx += 1;
+                        should_kept
+                    });
+                }
+            }
+        }
+    }
+    Ok(predicates)
 }

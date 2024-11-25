@@ -30,7 +30,9 @@ use snafu::OptionExt;
 
 use crate::partition::{
     rule::{
-        filter::PartitionCondition, PartitionFilter, PartitionRule, PartitionedRow, PartitionedRows,
+        df_adapter::{IndexedPartitionFilterRef, PartitionedFilterKeyIndex},
+        filter::PartitionCondition,
+        PartitionFilter, PartitionRule, PartitionedRow, PartitionedRows,
     },
     Internal, LocateWritePartition, Result,
 };
@@ -139,15 +141,29 @@ impl KeyRule {
         &self,
         group: &[usize],
         filters: &[PartitionFilter],
-    ) -> Result<BTreeSet<usize>> {
-        let mut partitions = BTreeSet::new();
+    ) -> Result<PartitionedFilterKeyIndex> {
+        // Retrieve all the key DatumView instances along with their corresponding
+        // indices related to their positions in the predicate inlist.
         let expanded_group = expand_partition_keys_group(group, filters)?;
-        for partition_keys in expanded_group {
-            let partition = compute_partition(partition_keys.into_iter(), self.partition_num);
-            partitions.insert(partition);
+
+        let mut partitioned_key_indices = PartitionedFilterKeyIndex::new();
+        for indexed_partition_keys in expanded_group {
+            // batch all the keys for hash computation
+            let partition_keys = indexed_partition_keys.iter().map(|item| item.1.clone());
+            let partition = compute_partition(partition_keys, self.partition_num);
+
+            // collect all the key indices related to all predicate expr in the target
+            // partition
+            let filter_inlist_indices = partitioned_key_indices.entry(partition).or_default();
+            for (index, item) in indexed_partition_keys.iter().enumerate() {
+                filter_inlist_indices
+                    .entry(group[index])
+                    .or_default()
+                    .insert(item.0);
+            }
         }
 
-        Ok(partitions)
+        Ok(partitioned_key_indices)
     }
 
     #[inline]
@@ -189,16 +205,25 @@ impl PartitionRule for KeyRule {
         Ok(PartitionedRows::Multiple(Box::new(iter)))
     }
 
-    fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>> {
+    fn locate_partitions_for_read(
+        &self,
+        indexed_filters: IndexedPartitionFilterRef,
+        partitioned_key_indices: &mut PartitionedFilterKeyIndex,
+    ) -> Result<Vec<usize>> {
         // Filters are empty.
-        if filters.is_empty() {
+        if indexed_filters.is_empty() {
             return Ok(self.all_partitions());
         }
+
+        let filters = indexed_filters
+            .iter()
+            .map(|(_idx, filter)| filter.clone())
+            .collect::<Vec<_>>();
 
         // Group the filters by their columns.
         // If found invalid filter, return all partitions.
         let candidate_partition_keys_groups = self
-            .get_candidate_partition_keys_groups(filters)
+            .get_candidate_partition_keys_groups(&filters)
             .map_err(|e| {
                 error!("KeyRule locate partition for read, err:{}", e);
             })
@@ -208,11 +233,31 @@ impl PartitionRule for KeyRule {
         }
 
         let (first_group, rest_groups) = candidate_partition_keys_groups.split_first().unwrap();
-        let mut target_partitions = self.compute_partition_for_keys_group(first_group, filters)?;
+        let mut partitioned_key_indices_all =
+            self.compute_partition_for_keys_group(first_group, filters.as_slice())?;
+        let mut target_partitions: BTreeSet<usize> =
+            partitioned_key_indices_all.keys().copied().collect();
         for group in rest_groups {
             // Same as above, if found invalid, return all partitions.
-            let partitions = match self.compute_partition_for_keys_group(group, filters) {
-                Ok(partitions) => partitions,
+            let partitions = match self.compute_partition_for_keys_group(group, filters.as_slice())
+            {
+                Ok(partitioned_filter_key_index_rest) => {
+                    for (partition_rest, filter_key_index_rest) in
+                        &partitioned_filter_key_index_rest
+                    {
+                        // merge all the rest key indices.
+                        let filter_key_index = partitioned_key_indices_all
+                            .entry(*partition_rest)
+                            .or_default();
+                        for item in filter_key_index_rest {
+                            filter_key_index
+                                .entry(*item.0)
+                                .or_default()
+                                .extend(item.1.iter());
+                        }
+                    }
+                    partitioned_filter_key_index_rest.keys().copied().collect()
+                }
                 Err(e) => {
                     error!("KeyRule locate partition for read, err:{}", e);
                     return Ok(self.all_partitions());
@@ -225,6 +270,8 @@ impl PartitionRule for KeyRule {
                 .collect::<BTreeSet<_>>();
         }
 
+        partitioned_key_indices.extend(partitioned_key_indices_all);
+
         Ok(target_partitions.into_iter().collect())
     }
 }
@@ -232,7 +279,7 @@ impl PartitionRule for KeyRule {
 fn expand_partition_keys_group<'a>(
     group: &[usize],
     filters: &'a [PartitionFilter],
-) -> Result<impl Iterator<Item = Vec<DatumView<'a>>>> {
+) -> Result<impl Iterator<Item = Vec<(usize, DatumView<'a>)>>> {
     let mut datum_by_columns = Vec::with_capacity(group.len());
     for filter_idx in group {
         let filter = &filters[*filter_idx];
@@ -252,7 +299,7 @@ fn expand_partition_keys_group<'a>(
 
     Ok(datum_by_columns
         .into_iter()
-        .map(|filters| filters.into_iter())
+        .map(|filters| filters.into_iter().enumerate())
         .multi_cartesian_product())
 }
 
@@ -546,7 +593,7 @@ mod tests {
         // Expanded group
         let expanded_group = expand_partition_keys_group(&group, &filters)
             .unwrap()
-            .map(|v| v.iter().map(|view| view.to_datum()).collect_vec())
+            .map(|v| v.iter().map(|view| view.1.to_datum()).collect_vec())
             .collect_vec();
         let expected = vec![
             vec![Datum::UInt32(1), Datum::UInt32(2), Datum::UInt32(3)],

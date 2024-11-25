@@ -313,6 +313,7 @@ impl TestContext {
             "test",
             sub_tables,
             self.request.clone(),
+            None,
         ));
 
         let filter: Arc<dyn ExecutionPlan> =
@@ -364,6 +365,7 @@ impl TestContext {
             "test",
             self.sub_table_groups[0].clone(),
             self.request.clone(),
+            None,
         ));
 
         self.build_aggr_plan_with_input(unresolved_scan)

@@ -97,6 +97,9 @@ pub enum Error {
         msg: Option<String>,
         source: GenericError,
     },
+
+    #[snafu(display("Invalid partiton context, err:{}", msg))]
+    InvalidPartitionContext { msg: String },
 }
 
 define_result!(Error);

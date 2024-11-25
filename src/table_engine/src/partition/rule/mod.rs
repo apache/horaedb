@@ -22,10 +22,12 @@ mod factory;
 mod filter;
 mod key;
 mod random;
-
 use common_types::row::{Row, RowGroup};
 
-use self::filter::PartitionFilter;
+use self::{
+    df_adapter::{IndexedPartitionFilterRef, PartitionedFilterKeyIndex},
+    filter::PartitionFilter,
+};
 use crate::partition::Result;
 
 /// The partitioned rows of the written requests.
@@ -67,7 +69,11 @@ pub trait PartitionRule: Send + Sync + 'static {
     /// passed here.
     ///
     /// If unexpected filters still found, all partitions will be returned.
-    fn locate_partitions_for_read(&self, filters: &[PartitionFilter]) -> Result<Vec<usize>>;
+    fn locate_partitions_for_read(
+        &self,
+        indexed_filters: IndexedPartitionFilterRef,
+        partitioned_key_indices: &mut PartitionedFilterKeyIndex,
+    ) -> Result<Vec<usize>>;
 }
 
 pub type PartitionRulePtr = Box<dyn PartitionRule>;
