@@ -17,15 +17,5 @@
 
 //! Storage Engine for metrics.
 
-#![feature(duration_constructors)]
-mod compaction;
-pub mod error;
-mod macros;
-mod manifest;
-mod read;
-mod sst;
-pub mod storage;
-mod test_util;
-pub mod types;
-
-pub use error::{AnyhowError, Error, Result};
+struct TimeWindowCompactionStrategy;
+struct SizeTieredCompactionStrategy;
