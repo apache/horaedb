@@ -15,7 +15,26 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+use std::time::Duration;
 
-struct TimeWindowCompactionStrategy;
-struct SizeTieredCompactionStrategy;
+use crate::{compaction::Task, sst::SstFile, Result};
+
+pub trait Picker {
+    fn pick_candidate(&self, ssts: &[SstFile]) -> Result<Task>;
+}
+
+pub struct TimeWindowCompactionStrategy {
+    segment_duration: Duration,
+}
+
+impl TimeWindowCompactionStrategy {
+    pub fn new(segment_duration: Duration) -> Self {
+        Self { segment_duration }
+    }
+}
+
+impl Picker for TimeWindowCompactionStrategy {
+    fn pick_candidate(&self, ssts: &[SstFile]) -> Result<Task> {
+        todo!()
+    }
+}
