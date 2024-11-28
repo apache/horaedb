@@ -17,11 +17,7 @@
 
 use std::time::Duration;
 
-use crate::{compaction::Task, sst::SstFile, Result};
-
-pub trait Picker {
-    fn pick_candidate(&self, ssts: &[SstFile]) -> Result<Task>;
-}
+use crate::{compaction::Task, sst::SstFile};
 
 pub struct TimeWindowCompactionStrategy {
     segment_duration: Duration,
@@ -31,10 +27,8 @@ impl TimeWindowCompactionStrategy {
     pub fn new(segment_duration: Duration) -> Self {
         Self { segment_duration }
     }
-}
 
-impl Picker for TimeWindowCompactionStrategy {
-    fn pick_candidate(&self, ssts: &[SstFile]) -> Result<Task> {
+    pub fn pick_candidate(&self, _ssts: Vec<SstFile>) -> Option<Task> {
         todo!()
     }
 }

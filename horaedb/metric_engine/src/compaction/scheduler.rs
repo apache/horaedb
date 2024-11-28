@@ -19,20 +19,18 @@ use std::{sync::atomic::AtomicU64, time::Duration};
 
 use anyhow::Context;
 use tokio::{
-    select,
     sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
     time::sleep,
 };
+use tracing::warn;
 
-use crate::{compaction::Task, types::RuntimeRef, Result};
-
-pub struct Runner {
-    runtime: RuntimeRef,
-    segment_duration: Duration,
-}
-
-impl Runner {}
+use crate::{
+    compaction::{picker::TimeWindowCompactionStrategy, Task},
+    manifest::ManifestRef,
+    types::{ObjectStoreRef, RuntimeRef},
+    Result,
+};
 
 pub struct Scheduler {
     runtime: RuntimeRef,
@@ -44,24 +42,27 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(runtime: RuntimeRef, config: SchedulerConfig) -> Self {
+    pub fn new(
+        runtime: RuntimeRef,
+        manifest: ManifestRef,
+        store: ObjectStoreRef,
+        segment_duration: Duration,
+        config: SchedulerConfig,
+    ) -> Self {
         let (task_tx, task_rx) = mpsc::channel(config.max_pending_compaction_tasks);
         let task_handle = {
             let rt = runtime.clone();
+            let store = store.clone();
+            let manifest = manifest.clone();
             runtime.spawn(async move {
-                Self::loop_task(rt, task_rx, config.memory_limit).await;
+                Self::recv_task_loop(rt, task_rx, store, manifest, config.memory_limit).await;
             })
         };
         let picker_handle = {
             let task_tx = task_tx.clone();
             let interval = config.schedule_interval;
             runtime.spawn(async move {
-                tokio::select! {
-                    _ = sleep(interval) => {
-                        // let task = picker.pick_candidate(&ssts).await;
-                        // task_tx.send(task).await;
-                    }
-                }
+                Self::generate_task_loop(manifest, task_tx, interval, segment_duration).await;
             })
         };
 
@@ -82,9 +83,41 @@ impl Scheduler {
         Ok(())
     }
 
-    async fn loop_task(rt: RuntimeRef, mut task_rx: Receiver<Task>, mem_limit: u64) {
-        while let Some(i) = task_rx.recv().await {
-            println!("got = {:?}", i);
+    async fn recv_task_loop(
+        rt: RuntimeRef,
+        mut task_rx: Receiver<Task>,
+        store: ObjectStoreRef,
+        manifest: ManifestRef,
+        _mem_limit: u64,
+    ) {
+        while let Some(task) = task_rx.recv().await {
+            let store = store.clone();
+            let manifest = manifest.clone();
+            rt.spawn(async move {
+                let runner = Runner { store, manifest };
+                if let Err(e) = runner.do_compaction(task).await {
+                    warn!("Do compaction failed, err:{e}");
+                }
+            });
+        }
+    }
+
+    async fn generate_task_loop(
+        manifest: ManifestRef,
+        task_tx: Sender<Task>,
+        schedule_interval: Duration,
+        segment_duration: Duration,
+    ) {
+        let compactor = TimeWindowCompactionStrategy::new(segment_duration);
+        loop {
+            let ssts = manifest.all_ssts().await;
+            if let Some(task) = compactor.pick_candidate(ssts) {
+                if let Err(e) = task_tx.try_send(task) {
+                    warn!("Send task failed, err:{e}");
+                }
+            }
+
+            sleep(schedule_interval).await;
         }
     }
 }
@@ -102,5 +135,18 @@ impl Default for SchedulerConfig {
             memory_limit: bytesize::gb(2 as u64),
             max_pending_compaction_tasks: 10,
         }
+    }
+}
+
+pub struct Runner {
+    store: ObjectStoreRef,
+    manifest: ManifestRef,
+}
+
+impl Runner {
+    // TODO: Merge input sst files into one new sst file
+    // and delete the expired sst files
+    async fn do_compaction(&self, _task: Task) -> Result<()> {
+        todo!()
     }
 }

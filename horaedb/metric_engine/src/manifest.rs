@@ -41,13 +41,15 @@ use tracing::error;
 
 use crate::{
     sst::{FileId, FileMeta, SstFile},
-    types::{ManifestMergeOptions, ObjectStoreRef, TimeRange},
+    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange},
     AnyhowError, Error, Result,
 };
 
 pub const PREFIX_PATH: &str = "manifest";
 pub const SNAPSHOT_FILENAME: &str = "snapshot";
 pub const DELTA_PREFIX: &str = "delta";
+
+pub type ManifestRef = Arc<Manifest>;
 
 pub struct Manifest {
     delta_dir: Path,
@@ -66,7 +68,7 @@ impl Payload {
     // efficient
     pub fn dedup_files(&mut self) {
         let mut seen = HashSet::with_capacity(self.files.len());
-        self.files.retain(|file| seen.insert(file.id));
+        self.files.retain(|file| seen.insert(file.id()));
     }
 }
 
@@ -137,7 +139,7 @@ impl Manifest {
         self.merger.maybe_schedule_merge().await?;
 
         let new_sst_path = Path::from(format!("{}/{id}", self.delta_dir));
-        let new_sst = SstFile { id, meta };
+        let new_sst = SstFile::new(id, meta);
 
         let new_sst_payload = pb_types::SstFile::from(new_sst.clone());
         let mut buf: Vec<u8> = Vec::with_capacity(new_sst_payload.encoded_len());
@@ -164,13 +166,19 @@ impl Manifest {
         Ok(())
     }
 
+    // TODO: avoid clone
+    pub async fn all_ssts(&self) -> Vec<SstFile> {
+        let payload = self.payload.read().await;
+        payload.files.clone()
+    }
+
     pub async fn find_ssts(&self, time_range: &TimeRange) -> Vec<SstFile> {
         let payload = self.payload.read().await;
 
         payload
             .files
             .iter()
-            .filter(move |f| f.meta.time_range.overlaps(time_range))
+            .filter(move |f| f.meta().time_range.overlaps(time_range))
             .cloned()
             .collect()
     }
@@ -185,7 +193,7 @@ struct ManifestMerger {
     snapshot_path: Path,
     delta_dir: Path,
     store: ObjectStoreRef,
-    runtime: Arc<Runtime>,
+    runtime: RuntimeRef,
     sender: Sender<MergeType>,
     receiver: RwLock<Receiver<MergeType>>,
     deltas_num: AtomicUsize,
@@ -442,12 +450,12 @@ mod tests {
                     size: i as u32,
                     time_range,
                 };
-                SstFile { id, meta }
+                SstFile::new(id, meta)
             })
             .collect::<Vec<_>>();
 
-        expected_ssts.sort_by(|a, b| a.id.cmp(&b.id));
-        ssts.sort_by(|a, b| a.id.cmp(&b.id));
+        expected_ssts.sort_by(|a, b| a.id().cmp(&b.id()));
+        ssts.sort_by(|a, b| a.id().cmp(&b.id()));
         assert_eq!(expected_ssts, ssts);
     }
 
@@ -497,8 +505,8 @@ mod tests {
         let mut mem_ssts = manifest.payload.read().await.files.clone();
         let mut ssts = read_snapshot(&store, &snapshot_path).await.unwrap().files;
 
-        mem_ssts.sort_by(|a, b| a.id.cmp(&b.id));
-        ssts.sort_by(|a, b| a.id.cmp(&b.id));
+        mem_ssts.sort_by(|a, b| a.id().cmp(&b.id()));
+        ssts.sort_by(|a, b| a.id().cmp(&b.id()));
         assert_eq!(mem_ssts, ssts);
 
         let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();

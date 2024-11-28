@@ -17,8 +17,8 @@
 
 use std::{
     sync::{
-        atomic::{AtomicU64, Ordering},
-        LazyLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, LazyLock,
     },
     time::SystemTime,
 };
@@ -31,10 +31,46 @@ pub const PREFIX_PATH: &str = "data";
 
 pub type FileId = u64;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct SstFile {
-    pub id: FileId,
-    pub meta: FileMeta,
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    id: FileId,
+    meta: FileMeta,
+
+    in_compaction: AtomicBool,
+}
+
+impl Inner {
+    pub fn new(id: FileId, meta: FileMeta) -> Self {
+        Self {
+            id,
+            meta,
+            in_compaction: AtomicBool::new(false),
+        }
+    }
+}
+
+impl SstFile {
+    pub fn new(id: FileId, meta: FileMeta) -> Self {
+        let inner = Arc::new(Inner::new(id, meta));
+        Self { inner }
+    }
+
+    pub fn id(&self) -> FileId {
+        self.inner.id
+    }
+
+    pub fn meta(&self) -> &FileMeta {
+        &self.inner.meta
+    }
+
+    pub fn mark_compaction(&self) {
+        self.inner.in_compaction.store(true, Ordering::Relaxed);
+    }
 }
 
 impl TryFrom<pb_types::SstFile> for SstFile {
@@ -45,18 +81,26 @@ impl TryFrom<pb_types::SstFile> for SstFile {
         let meta = value.meta.unwrap();
         let meta = meta.try_into()?;
 
-        Ok(Self { id: value.id, meta })
+        Ok(Self::new(value.id, meta))
     }
 }
 
 impl From<SstFile> for pb_types::SstFile {
     fn from(value: SstFile) -> Self {
         pb_types::SstFile {
-            id: value.id,
-            meta: Some(value.meta.into()),
+            id: value.id(),
+            meta: Some(value.meta().clone().into()),
         }
     }
 }
+
+impl PartialEq for SstFile {
+    fn eq(&self, other: &Self) -> bool {
+        self.id() == other.id() && self.meta() == self.meta()
+    }
+}
+
+impl Eq for SstFile {}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileMeta {

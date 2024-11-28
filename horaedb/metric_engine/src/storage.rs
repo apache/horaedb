@@ -57,7 +57,7 @@ use parquet::{
 use tokio::runtime::Runtime;
 
 use crate::{
-    manifest::Manifest,
+    manifest::{Manifest, ManifestRef},
     read::{DefaultParquetFileReaderFactory, MergeExec},
     sst::{allocate_id, FileId, FileMeta, SstFile},
     types::{
@@ -127,7 +127,7 @@ pub struct CloudObjectStorage {
     store: ObjectStoreRef,
     arrow_schema: SchemaRef,
     num_primary_keys: usize,
-    manifest: Manifest,
+    manifest: ManifestRef,
     runtimes: StorageRuntimes,
 
     df_schema: DFSchema,
@@ -157,13 +157,15 @@ impl CloudObjectStorage {
         let manifest_prefix = crate::manifest::PREFIX_PATH;
         let runtimes = StorageRuntimes::new(storage_opts.runtime_opts)?;
 
-        let manifest = Manifest::try_new(
-            format!("{path}/{manifest_prefix}"),
-            store.clone(),
-            runtimes.compact_runtime.clone(),
-            storage_opts.manifest_merge_opts,
-        )
-        .await?;
+        let manifest = Arc::new(
+            Manifest::try_new(
+                format!("{path}/{manifest_prefix}"),
+                store.clone(),
+                runtimes.compact_runtime.clone(),
+                storage_opts.manifest_merge_opts,
+            )
+            .await?,
+        );
         let mut new_fields = arrow_schema.fields.clone().to_vec();
         new_fields.push(Arc::new(Field::new(
             SEQ_COLUMN_NAME,
@@ -324,8 +326,8 @@ impl CloudObjectStorage {
             .into_iter()
             .map(|f| {
                 vec![PartitionedFile::new(
-                    self.build_file_path(f.id),
-                    f.meta.size as u64,
+                    self.build_file_path(f.id()),
+                    f.meta().size as u64,
                 )]
             })
             .collect::<Vec<_>>();
@@ -405,7 +407,7 @@ impl TimeMergeStorage for CloudObjectStorage {
         }
 
         let ssts_by_segment = total_ssts.into_iter().group_by(|file| {
-            file.meta.time_range.start.0 / self.segment_duration.as_millis() as i64
+            file.meta().time_range.start.0 / self.segment_duration.as_millis() as i64
         });
 
         let mut plan_for_all_segments = Vec::new();
@@ -429,7 +431,7 @@ impl TimeMergeStorage for CloudObjectStorage {
         return Ok(res);
     }
 
-    async fn compact(&self, req: CompactRequest) -> Result<()> {
+    async fn compact(&self, _req: CompactRequest) -> Result<()> {
         todo!()
     }
 }
@@ -460,14 +462,16 @@ mod tests {
         let plan = storage
             .build_scan_plan(
                 (100..103)
-                    .map(|id| SstFile {
-                        id,
-                        meta: FileMeta {
-                            max_sequence: id,
-                            num_rows: 1,
-                            size: 1,
-                            time_range: (1..10).into(),
-                        },
+                    .map(|id| {
+                        SstFile::new(
+                            id,
+                            FileMeta {
+                                max_sequence: id,
+                                num_rows: 1,
+                                size: 1,
+                                time_range: (1..10).into(),
+                            },
+                        )
                     })
                     .collect(),
                 None,
