@@ -57,9 +57,10 @@ use parquet::{
 use tokio::runtime::Runtime;
 
 use crate::{
-    manifest::Manifest,
+    compaction::{CompactionScheduler, SchedulerConfig},
+    manifest::{Manifest, ManifestRef},
     read::{DefaultParquetFileReaderFactory, MergeExec},
-    sst::{allocate_id, FileId, FileMeta, SstFile},
+    sst::{allocate_id, FileMeta, SstFile, SstPathGenerator},
     types::{
         ObjectStoreRef, RuntimeOptions, StorageOptions, TimeRange, WriteOptions, WriteResult,
         SEQ_COLUMN_NAME,
@@ -97,21 +98,31 @@ pub trait TimeMergeStorage {
     async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
 
+#[derive(Clone)]
 struct StorageRuntimes {
-    compact_runtime: Arc<Runtime>,
+    manifest_compact_runtime: Arc<Runtime>,
+    sst_compact_runtime: Arc<Runtime>,
 }
 
 impl StorageRuntimes {
     pub fn new(runtime_opts: RuntimeOptions) -> Result<Self> {
-        let compact_runtime = tokio::runtime::Builder::new_multi_thread()
-            .thread_name("storage-compact")
-            .worker_threads(runtime_opts.compact_thread_num)
+        let manifest_compact_runtime = tokio::runtime::Builder::new_multi_thread()
+            .thread_name("man-compact")
+            .worker_threads(runtime_opts.manifest_compact_thread_num)
+            .enable_all()
+            .build()
+            .context("build storgae compact runtime")?;
+
+        let sst_compact_runtime = tokio::runtime::Builder::new_multi_thread()
+            .thread_name("sst-compact")
+            .worker_threads(runtime_opts.sst_compact_thread_num)
             .enable_all()
             .build()
             .context("build storgae compact runtime")?;
 
         Ok(Self {
-            compact_runtime: Arc::new(compact_runtime),
+            manifest_compact_runtime: Arc::new(manifest_compact_runtime),
+            sst_compact_runtime: Arc::new(sst_compact_runtime),
         })
     }
 }
@@ -127,11 +138,13 @@ pub struct CloudObjectStorage {
     store: ObjectStoreRef,
     arrow_schema: SchemaRef,
     num_primary_keys: usize,
-    manifest: Manifest,
+    manifest: ManifestRef,
     runtimes: StorageRuntimes,
 
     df_schema: DFSchema,
     write_props: WriterProperties,
+    sst_path_gen: Arc<SstPathGenerator>,
+    compact_scheduler: CompactionScheduler,
 }
 
 /// It will organize the data in the following way:
@@ -154,16 +167,17 @@ impl CloudObjectStorage {
         num_primary_keys: usize,
         storage_opts: StorageOptions,
     ) -> Result<Self> {
-        let manifest_prefix = crate::manifest::PREFIX_PATH;
         let runtimes = StorageRuntimes::new(storage_opts.runtime_opts)?;
 
-        let manifest = Manifest::try_new(
-            format!("{path}/{manifest_prefix}"),
-            store.clone(),
-            runtimes.compact_runtime.clone(),
-            storage_opts.manifest_merge_opts,
-        )
-        .await?;
+        let manifest = Arc::new(
+            Manifest::try_new(
+                path.clone(),
+                store.clone(),
+                runtimes.manifest_compact_runtime.clone(),
+                storage_opts.manifest_merge_opts,
+            )
+            .await?,
+        );
         let mut new_fields = arrow_schema.fields.clone().to_vec();
         new_fields.push(Arc::new(Field::new(
             SEQ_COLUMN_NAME,
@@ -176,6 +190,15 @@ impl CloudObjectStorage {
         ));
         let df_schema = DFSchema::try_from(arrow_schema.clone()).context("build DFSchema")?;
         let write_props = Self::build_write_props(storage_opts.write_opts, num_primary_keys);
+        let sst_path_gen = Arc::new(SstPathGenerator::new(path.clone()));
+        let compact_scheduler = CompactionScheduler::new(
+            runtimes.sst_compact_runtime.clone(),
+            manifest.clone(),
+            store.clone(),
+            segment_duration,
+            sst_path_gen.clone(),
+            SchedulerConfig::default(),
+        );
         Ok(Self {
             path,
             num_primary_keys,
@@ -186,18 +209,14 @@ impl CloudObjectStorage {
             runtimes,
             df_schema,
             write_props,
+            sst_path_gen,
+            compact_scheduler,
         })
-    }
-
-    fn build_file_path(&self, id: FileId) -> String {
-        let root = &self.path;
-        let prefix = crate::sst::PREFIX_PATH;
-        format!("{root}/{prefix}/{id}")
     }
 
     async fn write_batch(&self, batch: RecordBatch) -> Result<WriteResult> {
         let file_id = allocate_id();
-        let file_path = self.build_file_path(file_id);
+        let file_path = self.sst_path_gen.generate(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer = ParquetObjectWriter::new(self.store.clone(), file_path.clone());
         let mut writer = AsyncArrowWriter::try_new(
@@ -324,8 +343,8 @@ impl CloudObjectStorage {
             .into_iter()
             .map(|f| {
                 vec![PartitionedFile::new(
-                    self.build_file_path(f.id),
-                    f.meta.size as u64,
+                    self.sst_path_gen.generate(f.id()),
+                    f.meta().size as u64,
                 )]
             })
             .collect::<Vec<_>>();
@@ -405,7 +424,7 @@ impl TimeMergeStorage for CloudObjectStorage {
         }
 
         let ssts_by_segment = total_ssts.into_iter().group_by(|file| {
-            file.meta.time_range.start.0 / self.segment_duration.as_millis() as i64
+            file.meta().time_range.start.0 / self.segment_duration.as_millis() as i64
         });
 
         let mut plan_for_all_segments = Vec::new();
@@ -429,7 +448,7 @@ impl TimeMergeStorage for CloudObjectStorage {
         return Ok(res);
     }
 
-    async fn compact(&self, req: CompactRequest) -> Result<()> {
+    async fn compact(&self, _req: CompactRequest) -> Result<()> {
         todo!()
     }
 }
@@ -460,14 +479,16 @@ mod tests {
         let plan = storage
             .build_scan_plan(
                 (100..103)
-                    .map(|id| SstFile {
-                        id,
-                        meta: FileMeta {
-                            max_sequence: id,
-                            num_rows: 1,
-                            size: 1,
-                            time_range: (1..10).into(),
-                        },
+                    .map(|id| {
+                        SstFile::new(
+                            id,
+                            FileMeta {
+                                max_sequence: id,
+                                num_rows: 1,
+                                size: 1,
+                                time_range: (1..10).into(),
+                            },
+                        )
                     })
                     .collect(),
                 None,
@@ -481,7 +502,7 @@ mod tests {
         assert_eq!(
             r#"MergeExec: [primary_keys: 1, seq_idx: 1]
   SortPreservingMergeExec: [pk1@0 ASC, __seq__@1 ASC], fetch=1024
-    ParquetExec: file_groups={3 groups: [[mock/data/100], [mock/data/101], [mock/data/102]]}, projection=[pk1, __seq__], output_orderings=[[pk1@0 ASC, __seq__@1 ASC], [pk1@0 ASC, __seq__@1 ASC], [pk1@0 ASC, __seq__@1 ASC]]
+    ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, __seq__], output_orderings=[[pk1@0 ASC, __seq__@1 ASC], [pk1@0 ASC, __seq__@1 ASC], [pk1@0 ASC, __seq__@1 ASC]]
 "#,
             format!("{display_plan}")
         );

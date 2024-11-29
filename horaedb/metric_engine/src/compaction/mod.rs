@@ -15,17 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+mod picker;
+mod scheduler;
 
-#![feature(duration_constructors)]
-mod compaction;
-pub mod error;
-mod macros;
-mod manifest;
-mod read;
-mod sst;
-pub mod storage;
-mod test_util;
-pub mod types;
+pub use scheduler::{Scheduler as CompactionScheduler, SchedulerConfig};
 
-pub use error::{AnyhowError, Error, Result};
+use crate::sst::{FileId, SstFile};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Input {
+    files: Vec<SstFile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Task {
+    pub inputs: Vec<FileId>,
+    pub expireds: Vec<FileId>,
+}

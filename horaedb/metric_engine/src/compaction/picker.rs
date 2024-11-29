@@ -15,17 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+use std::time::Duration;
 
-#![feature(duration_constructors)]
-mod compaction;
-pub mod error;
-mod macros;
-mod manifest;
-mod read;
-mod sst;
-pub mod storage;
-mod test_util;
-pub mod types;
+use crate::{compaction::Task, sst::SstFile};
 
-pub use error::{AnyhowError, Error, Result};
+pub struct TimeWindowCompactionStrategy {
+    segment_duration: Duration,
+}
+
+impl TimeWindowCompactionStrategy {
+    pub fn new(segment_duration: Duration) -> Self {
+        Self { segment_duration }
+    }
+
+    pub fn pick_candidate(&self, _ssts: Vec<SstFile>) -> Option<Task> {
+        todo!()
+    }
+}
