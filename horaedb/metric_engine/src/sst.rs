@@ -27,7 +27,7 @@ use macros::ensure;
 
 use crate::{types::TimeRange, Error};
 
-pub const PREFIX_PATH: &str = "data";
+const PREFIX_PATH: &str = "data";
 
 pub type FileId = u64;
 
@@ -155,4 +155,19 @@ static NEXT_ID: LazyLock<AtomicU64> = LazyLock::new(|| {
 
 pub fn allocate_id() -> u64 {
     NEXT_ID.fetch_add(1, Ordering::SeqCst)
+}
+
+#[derive(Debug, Clone)]
+pub struct SstPathGenerator {
+    prefix: String,
+}
+
+impl SstPathGenerator {
+    pub fn new(prefix: String) -> Self {
+        Self { prefix }
+    }
+
+    pub fn generate(&self, id: FileId) -> String {
+        format!("{}/{}/{}.sst", self.prefix, PREFIX_PATH, id)
+    }
 }

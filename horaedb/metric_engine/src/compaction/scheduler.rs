@@ -15,7 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{sync::atomic::AtomicU64, time::Duration};
+use std::{
+    sync::{atomic::AtomicU64, Arc},
+    time::Duration,
+};
 
 use anyhow::Context;
 use tokio::{
@@ -28,6 +31,7 @@ use tracing::warn;
 use crate::{
     compaction::{picker::TimeWindowCompactionStrategy, Task},
     manifest::ManifestRef,
+    sst::SstPathGenerator,
     types::{ObjectStoreRef, RuntimeRef},
     Result,
 };
@@ -47,6 +51,7 @@ impl Scheduler {
         manifest: ManifestRef,
         store: ObjectStoreRef,
         segment_duration: Duration,
+        sst_path_gen: Arc<SstPathGenerator>,
         config: SchedulerConfig,
     ) -> Self {
         let (task_tx, task_rx) = mpsc::channel(config.max_pending_compaction_tasks);
@@ -55,7 +60,15 @@ impl Scheduler {
             let store = store.clone();
             let manifest = manifest.clone();
             runtime.spawn(async move {
-                Self::recv_task_loop(rt, task_rx, store, manifest, config.memory_limit).await;
+                Self::recv_task_loop(
+                    rt,
+                    task_rx,
+                    store,
+                    manifest,
+                    sst_path_gen,
+                    config.memory_limit,
+                )
+                .await;
             })
         };
         let picker_handle = {
@@ -88,6 +101,7 @@ impl Scheduler {
         mut task_rx: Receiver<Task>,
         store: ObjectStoreRef,
         manifest: ManifestRef,
+        _sst_path_gen: Arc<SstPathGenerator>,
         _mem_limit: u64,
     ) {
         while let Some(task) = task_rx.recv().await {

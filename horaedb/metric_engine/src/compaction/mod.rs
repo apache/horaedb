@@ -18,6 +18,8 @@
 mod picker;
 mod scheduler;
 
+pub use scheduler::{Scheduler as CompactionScheduler, SchedulerConfig};
+
 use crate::sst::{FileId, SstFile};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -151,13 +151,15 @@ impl Default for WriteOptions {
 }
 
 pub struct RuntimeOptions {
-    pub compact_thread_num: usize,
+    pub manifest_compact_thread_num: usize,
+    pub sst_compact_thread_num: usize,
 }
 
 impl Default for RuntimeOptions {
     fn default() -> Self {
         Self {
-            compact_thread_num: 4,
+            manifest_compact_thread_num: 2,
+            sst_compact_thread_num: 4,
         }
     }
 }

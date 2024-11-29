@@ -105,8 +105,9 @@ impl Manifest {
         runtime: Arc<Runtime>,
         merge_options: ManifestMergeOptions,
     ) -> Result<Self> {
-        let snapshot_path = Path::from(format!("{root_dir}/{SNAPSHOT_FILENAME}"));
-        let delta_dir = Path::from(format!("{root_dir}/{DELTA_PREFIX}"));
+        let prefix = crate::manifest::PREFIX_PATH;
+        let snapshot_path = Path::from(format!("{root_dir}/{prefix}/{SNAPSHOT_FILENAME}"));
+        let delta_dir = Path::from(format!("{root_dir}/{prefix}/{DELTA_PREFIX}"));
 
         let merger = ManifestMerger::try_new(
             snapshot_path.clone(),
