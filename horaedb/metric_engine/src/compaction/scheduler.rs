@@ -146,7 +146,7 @@ impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             schedule_interval: Duration::from_secs(30),
-            memory_limit: bytesize::gb(2 as u64),
+            memory_limit: bytesize::gb(2_u64),
             max_pending_compaction_tasks: 10,
         }
     }

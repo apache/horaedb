@@ -105,9 +105,8 @@ impl Manifest {
         runtime: Arc<Runtime>,
         merge_options: ManifestMergeOptions,
     ) -> Result<Self> {
-        let prefix = crate::manifest::PREFIX_PATH;
-        let snapshot_path = Path::from(format!("{root_dir}/{prefix}/{SNAPSHOT_FILENAME}"));
-        let delta_dir = Path::from(format!("{root_dir}/{prefix}/{DELTA_PREFIX}"));
+        let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
+        let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
 
         let merger = ManifestMerger::try_new(
             snapshot_path.clone(),
@@ -455,8 +454,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        expected_ssts.sort_by(|a, b| a.id().cmp(&b.id()));
-        ssts.sort_by(|a, b| a.id().cmp(&b.id()));
+        expected_ssts.sort_by_key(|a| a.id());
+        ssts.sort_by_key(|a| a.id());
         assert_eq!(expected_ssts, ssts);
     }
 
@@ -467,8 +466,8 @@ mod tests {
             .path()
             .to_string_lossy()
             .to_string();
-        let snapshot_path = Path::from(format!("{root_dir}/{SNAPSHOT_FILENAME}"));
-        let delta_dir = Path::from(format!("{root_dir}/{DELTA_PREFIX}"));
+        let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
+        let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(4)
             .enable_all()
@@ -506,8 +505,8 @@ mod tests {
         let mut mem_ssts = manifest.payload.read().await.files.clone();
         let mut ssts = read_snapshot(&store, &snapshot_path).await.unwrap().files;
 
-        mem_ssts.sort_by(|a, b| a.id().cmp(&b.id()));
-        ssts.sort_by(|a, b| a.id().cmp(&b.id()));
+        mem_ssts.sort_by_key(|a| a.id());
+        ssts.sort_by_key(|a| a.id());
         assert_eq!(mem_ssts, ssts);
 
         let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
