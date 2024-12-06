@@ -17,6 +17,7 @@
 
 use std::{
     collections::HashSet,
+    io::Write,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -24,11 +25,12 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_scoped::TokioScope;
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt};
 use object_store::{path::Path, PutPayload};
+use parquet::data_type::AsBytes;
 use prost::Message;
 use tokio::{
     runtime::Runtime,
@@ -41,7 +43,7 @@ use tracing::error;
 
 use crate::{
     sst::{FileId, FileMeta, SstFile},
-    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange},
+    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange, Timestamp},
     AnyhowError, Error, Result,
 };
 
@@ -59,6 +61,7 @@ pub struct Manifest {
     payload: RwLock<Payload>,
 }
 
+#[derive(Default)]
 pub struct Payload {
     files: Vec<SstFile>,
 }
@@ -69,6 +72,20 @@ impl Payload {
     pub fn dedup_files(&mut self) {
         let mut seen = HashSet::with_capacity(self.files.len());
         self.files.retain(|file| seen.insert(file.id()));
+    }
+}
+
+impl TryFrom<Bytes> for Payload {
+    type Error = Error;
+
+    fn try_from(value: Bytes) -> Result<Self> {
+        if value.is_empty() {
+            return Ok(Self::default());
+        } else {
+            let snapshot = Snapshot::try_from_bytes(value)?;
+            let files = snapshot.to_sstfiles()?;
+            Ok(Self { files })
+        }
     }
 }
 
@@ -125,7 +142,9 @@ impl Manifest {
             });
         }
 
-        let payload = read_snapshot(&store, &snapshot_path).await?;
+        let bytes = read_object(&store, &snapshot_path).await?;
+        // TODO: add upgrade logic
+        let payload = bytes.try_into()?;
 
         Ok(Self {
             delta_dir,
@@ -181,6 +200,257 @@ impl Manifest {
             .filter(move |f| f.meta().time_range.overlaps(time_range))
             .cloned()
             .collect()
+    }
+}
+
+#[repr(packed)]
+#[derive(Debug)]
+struct SnapshotHeader {
+    pub magic: u32,
+    pub version: u8,
+    pub flag: u8,
+    pub length: u64,
+}
+
+impl SnapshotHeader {
+    // use #[repr(packed)] to force unalignment and avoid hard code internal types
+    // here, better solutions?
+    pub const LENGTH: usize = size_of::<SnapshotHeader>();
+    pub const MAGIC: u32 = 0x32A489BF;
+
+    pub fn new(length: u64) -> Self {
+        Self {
+            magic: SnapshotHeader::MAGIC,
+            version: SnapshotRecordV1::VERSION,
+            flag: 0,
+            length,
+        }
+    }
+
+    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() < Self::LENGTH {
+            return Err(anyhow!("invalid bytes, length: {}", bytes.len()).into());
+        } else {
+            let magic = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+            let version = bytes[5];
+            let flag = bytes[6];
+            let length = u64::from_le_bytes(bytes[6..14].try_into().unwrap());
+            Ok(Self {
+                magic,
+                version,
+                flag,
+                length,
+            })
+        }
+    }
+
+    pub fn write_to(&self, mut writter: &mut &mut [u8]) -> Result<()> {
+        if writter.len() < SnapshotHeader::LENGTH {
+            return Err(anyhow!(
+                "writter buf is too small for writing the header, length: {}",
+                writter.len()
+            )
+            .into());
+        }
+        let magic = self.magic;
+        let binding = self.magic.to_le_bytes();
+        let xx = binding.as_slice();
+        writter.write(self.magic.to_le_bytes().as_slice()).unwrap();
+        writter
+            .write(self.version.to_le_bytes().as_slice())
+            .unwrap();
+        writter.write(self.flag.to_le_bytes().as_slice()).unwrap();
+        writter.write(self.length.to_le_bytes().as_slice()).unwrap();
+        Ok(())
+    }
+}
+
+#[repr(packed)]
+#[derive(Debug)]
+struct SnapshotRecordV1 {
+    id: u64,
+    time_range_start: i64,
+    time_range_end: i64,
+    size: u32,
+    num_rows: u32,
+}
+
+impl SnapshotRecordV1 {
+    const LENGTH: usize = size_of::<SnapshotRecordV1>();
+    pub const VERSION: u8 = 1;
+
+    pub fn write_to(&self, mut writter: &mut &mut [u8]) -> Result<()> {
+        if writter.len() < SnapshotRecordV1::LENGTH {
+            return Err(anyhow!(
+                "writter buf is too small for writing the record, length: {}",
+                writter.len()
+            )
+            .into());
+        }
+        writter.write(self.id.to_le_bytes().as_slice()).unwrap();
+        writter
+            .write(self.time_range_start.to_le_bytes().as_slice())
+            .unwrap();
+        writter
+            .write(self.time_range_end.to_le_bytes().as_slice())
+            .unwrap();
+        writter.write(self.size.to_le_bytes().as_slice()).unwrap();
+        writter
+            .write(self.num_rows.to_le_bytes().as_slice())
+            .unwrap();
+        Ok(())
+    }
+
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+}
+
+impl From<SstFile> for SnapshotRecordV1 {
+    fn from(value: SstFile) -> Self {
+        SnapshotRecordV1 {
+            id: value.id(),
+            time_range_start: value.meta().time_range.start.0,
+            time_range_end: value.meta().time_range.end.0,
+            size: value.meta().size,
+            num_rows: value.meta().num_rows,
+        }
+    }
+}
+
+impl TryFrom<&[u8]> for SnapshotRecordV1 {
+    type Error = Error;
+
+    fn try_from(value: &[u8]) -> Result<Self> {
+        if value.len() < SnapshotRecordV1::LENGTH {
+            return Err(anyhow!("invalid value len: {}", value.len()).into());
+        }
+        let id = u64::from_le_bytes(value[0..8].try_into().unwrap());
+        let time_range_start = i64::from_le_bytes(value[8..16].try_into().unwrap());
+        let time_range_end = i64::from_le_bytes(value[16..24].try_into().unwrap());
+        let size = u32::from_le_bytes(value[24..28].try_into().unwrap());
+        let num_rows = u32::from_le_bytes(value[28..32].try_into().unwrap());
+        Ok(SnapshotRecordV1 {
+            id,
+            time_range_start,
+            time_range_end,
+            size,
+            num_rows,
+        })
+    }
+}
+
+impl Into<SstFile> for SnapshotRecordV1 {
+    fn into(self) -> SstFile {
+        let file_meta = FileMeta {
+            max_sequence: self.id(),
+            num_rows: self.num_rows,
+            size: self.size,
+            time_range: TimeRange::new(
+                Timestamp::from(self.time_range_start),
+                Timestamp::from(self.time_range_end),
+            ),
+        };
+        SstFile::new(self.id(), file_meta)
+    }
+}
+
+struct Snapshot {
+    header: SnapshotHeader,
+    inner: Bytes,
+}
+
+impl Default for Snapshot {
+    // create an empty Snapshot
+    fn default() -> Self {
+        let header = SnapshotHeader::new(0);
+        Self {
+            header,
+            inner: Bytes::new(),
+        }
+    }
+}
+
+impl Snapshot {
+    pub fn try_from_bytes(bytes: Bytes) -> Result<Self> {
+        if bytes.is_empty() {
+            return Ok(Snapshot::default());
+        }
+        let header = SnapshotHeader::try_from_bytes(bytes.as_bytes())?;
+        let header_length = header.length as usize;
+        if header_length > 0
+            && (header_length % SnapshotRecordV1::LENGTH != 0
+                || header_length + SnapshotHeader::LENGTH != bytes.len())
+        {
+            return Err(anyhow!(
+                "create snapshot from bytes failed, invalid bytes, header length = {}, total length: {}",
+                header_length,
+                bytes.len()
+            ).into());
+        }
+        Ok(Self {
+            header,
+            inner: bytes,
+        })
+    }
+
+    pub fn to_sstfiles(&self) -> Result<Vec<SstFile>> {
+        if self.header.length == 0 {
+            return Ok(Vec::new());
+        } else {
+            let buf = self.inner.as_bytes();
+            let mut result: Vec<SstFile> = Vec::new();
+            let mut index = SnapshotHeader::LENGTH;
+            while index < buf.len() {
+                let record =
+                    SnapshotRecordV1::try_from(&buf[index..index + SnapshotRecordV1::LENGTH])?;
+                index += SnapshotRecordV1::LENGTH;
+                result.push(record.into());
+            }
+
+            Ok(result)
+        }
+    }
+
+    pub fn dedup_sstfiles(&self, sstfiles: &mut Vec<SstFile>) -> Result<()> {
+        let buf = self.inner.as_bytes();
+        let mut ids = HashSet::new();
+        let mut index = SnapshotHeader::LENGTH;
+        while index < buf.len() {
+            let record = SnapshotRecordV1::try_from(&buf[index..index + SnapshotRecordV1::LENGTH])?;
+            index += SnapshotRecordV1::LENGTH;
+            ids.insert(record.id());
+        }
+        sstfiles.retain(|item| !ids.contains(&item.id()));
+
+        Ok(())
+    }
+
+    pub fn merge_sstfiles(&mut self, sstfiles: Vec<SstFile>) {
+        // update header
+        self.header.length += (sstfiles.len() * SnapshotRecordV1::LENGTH) as u64;
+        // final snapshot
+        let mut snapshot = vec![1u8; SnapshotHeader::LENGTH + self.header.length as usize];
+        let mut writter = snapshot.as_mut_slice();
+
+        // write new head
+        self.header.write_to(&mut writter).unwrap();
+        // write old records
+        if !self.inner.is_empty() {
+            writter
+                .write(&self.inner.as_bytes()[SnapshotHeader::LENGTH..])
+                .unwrap();
+        }
+        // write new records
+        for sst in sstfiles {
+            let record: SnapshotRecordV1 = sst.into();
+            let written = record.write_to(&mut writter).unwrap();
+        }
+        self.inner = Bytes::from(snapshot);
+    }
+
+    pub fn into_bytes(self) -> Bytes {
+        self.inner
     }
 }
 
@@ -291,24 +561,13 @@ impl ManifestMerger {
             let sst_file = res.context("Failed to join read delta files task")??;
             delta_files.push(sst_file);
         }
-
-        let mut payload = read_snapshot(&self.store, &self.snapshot_path).await?;
-        payload.files.extend(delta_files);
-        payload.dedup_files();
-
-        let pb_manifest = pb_types::Manifest {
-            files: payload
-                .files
-                .into_iter()
-                .map(|f| f.into())
-                .collect::<Vec<_>>(),
-        };
-        let mut buf = Vec::with_capacity(pb_manifest.encoded_len());
-        pb_manifest
-            .encode(&mut buf)
-            .context("failed to encode manifest")?;
-        let put_payload = PutPayload::from_bytes(Bytes::from(buf));
-
+        let snapshot_bytes = read_object(&self.store, &self.snapshot_path).await?;
+        let mut snapshot = Snapshot::try_from_bytes(snapshot_bytes)?;
+        // TODO: no need to dedup every time.
+        snapshot.dedup_sstfiles(&mut delta_files)?;
+        snapshot.merge_sstfiles(delta_files);
+        let snapshot_bytes = snapshot.into_bytes();
+        let put_payload = PutPayload::from_bytes(snapshot_bytes);
         // 1. Persist the snapshot
         self.store
             .put(&self.snapshot_path, put_payload)
@@ -338,6 +597,24 @@ impl ManifestMerger {
         }
 
         Ok(())
+    }
+}
+
+async fn read_object(store: &ObjectStoreRef, path: &Path) -> Result<Bytes> {
+    match store.get(path).await {
+        Ok(v) => v
+            .bytes()
+            .await
+            .with_context(|| format!("Failed to read manifest snapshot, path:{path}"))
+            .map_err(|e| e.into()),
+        Err(err) => {
+            if err.to_string().contains("not found") {
+                Ok(Bytes::new())
+            } else {
+                let context = format!("Failed to read file, path:{path}");
+                Err(AnyhowError::new(err).context(context).into())
+            }
+        }
     }
 }
 
@@ -503,7 +780,9 @@ mod tests {
         sleep(Duration::from_secs(2));
 
         let mut mem_ssts = manifest.payload.read().await.files.clone();
-        let mut ssts = read_snapshot(&store, &snapshot_path).await.unwrap().files;
+        let snapshot = read_object(&store, &snapshot_path).await.unwrap();
+        let payload: Payload = snapshot.try_into().unwrap();
+        let mut ssts = payload.files;
 
         mem_ssts.sort_by_key(|a| a.id());
         ssts.sort_by_key(|a| a.id());
@@ -511,5 +790,60 @@ mod tests {
 
         let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
         assert!(delta_paths.is_empty());
+    }
+
+    #[test]
+    fn test_snapshot_header() {
+        let header = SnapshotHeader::new(257);
+        let mut vec = vec![0u8; SnapshotHeader::LENGTH];
+        let mut writter = vec.as_mut_slice();
+        header.write_to(&mut writter).unwrap();
+        assert!(writter.len() == 0);
+        assert!((vec[3], vec[2], vec[1], vec[0]) == (0x32, 0xa4, 0x89, 0xbf)); // magic
+        assert!(vec[4] == 1); // version
+        assert!(vec[5] == 0); // flag
+        assert!(vec[6] == 1); // 1
+        assert!(vec[7] == 1); // 1 * 256 = 256
+        assert!(vec[8] == 0); // 0
+        assert!(vec[9] == 0); // 0
+        assert!(vec[10] == 0); // 0
+        assert!(vec[11] == 0); // 0
+        assert!(vec[12] == 0); // 0
+        assert!(vec[13] == 0); // 0
+
+        let mut vec = vec![0u8; SnapshotHeader::LENGTH - 1];
+        let mut writter = &mut vec[..];
+        let result = header.write_to(&mut writter);
+        assert!(result.is_err()); // buf not enough
+    }
+
+    #[test]
+    fn test_snapshot_record() {
+        let sstfile = SstFile::new(
+            99,
+            FileMeta {
+                max_sequence: 99,
+                num_rows: 100,
+                size: 938,
+                time_range: TimeRange::new(1i64.into(), 2i64.into()),
+            },
+        );
+        let record: SnapshotRecordV1 = sstfile.into();
+        let mut vec: Vec<u8> = vec![0u8; SnapshotRecordV1::LENGTH];
+        let mut writter = vec.as_mut_slice();
+        record.write_to(&mut writter).unwrap();
+
+        assert!(writter.len() == 0);
+        assert!(vec[0] == 99); // id
+        assert!(vec[8] == 1); // start time
+        assert!(vec[16] == 2); // end time
+        assert!(vec[24] == 170); // size_byte_0 , 170
+        assert!(vec[25] == 3); // size_byte_1, 3 * 256
+        assert!(vec[28] == 100); // num_rows
+
+        let mut vec = vec![0u8; SnapshotRecordV1::LENGTH - 1];
+        let mut writter = vec.as_mut_slice();
+        let result = record.write_to(&mut writter);
+        assert!(result.is_err()); // buf not enough
     }
 }
