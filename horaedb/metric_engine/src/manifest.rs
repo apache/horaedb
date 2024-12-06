@@ -213,6 +213,15 @@ struct SnapshotHeader {
 }
 
 impl SnapshotHeader {
+    // format: | magic(u32) | version(u8) |  flags(u8) | length(u64) |
+    // The Magic field (u32) is used to ensure the validity of the data source.
+    // The Flags field (u8) is reserved for future extensibility, such as enabling
+    // compression or supporting additional features.
+    // The length field (u64) represents the total length of the subsequent records
+    // and serves as a straightforward method for verifying their integrity.
+    // (length = record_length
+    // * record_count)
+
     // use #[repr(packed)] to force unalignment and avoid hard code internal types
     // here, better solutions?
     pub const LENGTH: usize = size_of::<SnapshotHeader>();
@@ -276,6 +285,7 @@ struct SnapshotRecordV1 {
 }
 
 impl SnapshotRecordV1 {
+    // format: | id(u64) | time_range(i64*2)| size(u32) |  num_rows(u32)|
     const LENGTH: usize = size_of::<SnapshotRecordV1>();
     pub const VERSION: u8 = 1;
 
