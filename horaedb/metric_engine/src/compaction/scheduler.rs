@@ -123,9 +123,11 @@ impl Scheduler {
         segment_duration: Duration,
     ) {
         let compactor = TimeWindowCompactionStrategy::new(segment_duration);
+        // TODO: obtain expire time
+        let expire_time = None;
         loop {
             let ssts = manifest.all_ssts().await;
-            if let Some(task) = compactor.pick_candidate(ssts) {
+            if let Some(task) = compactor.pick_candidate(ssts, expire_time) {
                 if let Err(e) = task_tx.try_send(task) {
                     warn!("Send task failed, err:{e}");
                 }

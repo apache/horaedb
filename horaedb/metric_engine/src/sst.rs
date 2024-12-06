@@ -25,7 +25,10 @@ use std::{
 
 use macros::ensure;
 
-use crate::{types::TimeRange, Error};
+use crate::{
+    types::{TimeRange, Timestamp},
+    Error,
+};
 
 const PREFIX_PATH: &str = "data";
 
@@ -70,6 +73,18 @@ impl SstFile {
 
     pub fn mark_compaction(&self) {
         self.inner.in_compaction.store(true, Ordering::Relaxed);
+    }
+
+    pub fn is_uncompacted(&self) -> bool {
+        !self.inner.in_compaction.load(Ordering::Relaxed)
+    }
+
+    pub fn is_expired(&self, expire_time: Option<Timestamp>) -> bool {
+        if let Some(expire_time) = expire_time {
+            self.meta().time_range.end < expire_time
+        } else {
+            false
+        }
     }
 }
 
