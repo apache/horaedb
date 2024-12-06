@@ -253,7 +253,7 @@ impl SnapshotHeader {
         }
     }
 
-    pub fn write_to(&self, mut writter: &mut &mut [u8]) -> Result<()> {
+    pub fn write_to(&self, writter: &mut &mut [u8]) -> Result<()> {
         if writter.len() < SnapshotHeader::LENGTH {
             return Err(anyhow!(
                 "writter buf is too small for writing the header, length: {}",
@@ -261,9 +261,6 @@ impl SnapshotHeader {
             )
             .into());
         }
-        let magic = self.magic;
-        let binding = self.magic.to_le_bytes();
-        let xx = binding.as_slice();
         writter.write(self.magic.to_le_bytes().as_slice()).unwrap();
         writter
             .write(self.version.to_le_bytes().as_slice())
@@ -289,7 +286,7 @@ impl SnapshotRecordV1 {
     const LENGTH: usize = size_of::<SnapshotRecordV1>();
     pub const VERSION: u8 = 1;
 
-    pub fn write_to(&self, mut writter: &mut &mut [u8]) -> Result<()> {
+    pub fn write_to(&self, writter: &mut &mut [u8]) -> Result<()> {
         if writter.len() < SnapshotRecordV1::LENGTH {
             return Err(anyhow!(
                 "writter buf is too small for writing the record, length: {}",
@@ -454,7 +451,7 @@ impl Snapshot {
         // write new records
         for sst in sstfiles {
             let record: SnapshotRecordV1 = sst.into();
-            let written = record.write_to(&mut writter).unwrap();
+            record.write_to(&mut writter).unwrap();
         }
         self.inner = Bytes::from(snapshot);
     }
@@ -791,6 +788,7 @@ mod tests {
 
         let mut mem_ssts = manifest.payload.read().await.files.clone();
         let snapshot = read_object(&store, &snapshot_path).await.unwrap();
+        let snapshot_len = snapshot.len();
         let payload: Payload = snapshot.try_into().unwrap();
         let mut ssts = payload.files;
 
@@ -798,6 +796,26 @@ mod tests {
         ssts.sort_by_key(|a| a.id());
         assert_eq!(mem_ssts, ssts);
 
+        let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
+        assert!(delta_paths.is_empty());
+
+        // Add manifest files again to verify dedup
+        for i in 0..20 {
+            let time_range = (i..i + 1).into();
+            let meta = FileMeta {
+                max_sequence: i as u64,
+                num_rows: i as u32,
+                size: i as u32,
+                time_range,
+            };
+            manifest.add_file(i as u64, meta).await.unwrap();
+        }
+
+        // Wait for merge manifest to finish
+        sleep(Duration::from_secs(2));
+
+        let snapshot_again = read_object(&store, &snapshot_path).await.unwrap();
+        assert!(snapshot_len == snapshot_again.len()); // dedup took effect.
         let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
         assert!(delta_paths.is_empty());
     }
