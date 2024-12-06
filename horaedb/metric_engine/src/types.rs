@@ -33,7 +33,7 @@ pub const SEQ_COLUMN_NAME: &str = "__seq__";
 
 pub type RuntimeRef = Arc<Runtime>;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
 
 impl Add for Timestamp {
