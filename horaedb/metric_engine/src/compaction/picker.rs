@@ -15,10 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    time::Duration,
-};
+use std::{collections::BTreeMap, time::Duration};
 
 use tracing::debug;
 
@@ -177,7 +174,7 @@ mod tests {
             .pick_candidate(ssts.clone(), Some(15.into()))
             .unwrap();
 
-        // ssts should be grouped by tree segments:
+        // ssts should be grouped into three segments:
         // | 0 1 | 2 3 | 4 |
         let excepted_task = Task {
             inputs: vec![ssts[3].clone(), ssts[2].clone()],
