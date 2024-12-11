@@ -19,6 +19,7 @@ use std::{
     collections::HashMap,
     ops::{Add, Deref, Range},
     sync::Arc,
+    time::Duration,
 };
 
 use object_store::ObjectStore;
@@ -33,7 +34,7 @@ pub const SEQ_COLUMN_NAME: &str = "__seq__";
 
 pub type RuntimeRef = Arc<Runtime>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Timestamp(pub i64);
 
 impl Add for Timestamp {
@@ -69,6 +70,11 @@ impl Deref for Timestamp {
 impl Timestamp {
     pub const MAX: Timestamp = Timestamp(i64::MAX);
     pub const MIN: Timestamp = Timestamp(i64::MIN);
+
+    pub fn truncate_by(&self, duration: Duration) -> Self {
+        let duration_millis = duration.as_millis() as i64;
+        Timestamp(self.0 / duration_millis * duration_millis)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

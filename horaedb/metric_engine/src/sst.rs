@@ -75,16 +75,19 @@ impl SstFile {
         self.inner.in_compaction.store(true, Ordering::Relaxed);
     }
 
-    pub fn is_uncompacted(&self) -> bool {
-        !self.inner.in_compaction.load(Ordering::Relaxed)
+    pub fn is_compaction(&self) -> bool {
+        self.inner.in_compaction.load(Ordering::Relaxed)
     }
 
     pub fn is_expired(&self, expire_time: Option<Timestamp>) -> bool {
-        if let Some(expire_time) = expire_time {
-            self.meta().time_range.end < expire_time
-        } else {
-            false
+        match expire_time {
+            Some(expire_time) => self.meta().time_range.end < expire_time,
+            None => false,
         }
+    }
+
+    pub fn size(&self) -> u32 {
+        self.meta().size
     }
 }
 

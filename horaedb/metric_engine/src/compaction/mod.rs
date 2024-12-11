@@ -20,7 +20,7 @@ mod scheduler;
 
 pub use scheduler::{Scheduler as CompactionScheduler, SchedulerConfig};
 
-use crate::sst::{FileId, SstFile};
+use crate::sst::SstFile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Input {
@@ -29,6 +29,6 @@ pub struct Input {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Task {
-    pub inputs: Vec<FileId>,
-    pub expireds: Vec<FileId>,
+    pub inputs: Vec<SstFile>,
+    pub expireds: Vec<SstFile>,
 }
