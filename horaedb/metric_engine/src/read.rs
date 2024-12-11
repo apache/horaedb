@@ -36,7 +36,6 @@ use datafusion::{
     datasource::physical_plan::{FileMeta, ParquetFileReaderFactory},
     error::{DataFusionError, Result as DfResult},
     execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext},
-    logical_expr::AggregateUDFImpl,
     parquet::arrow::async_reader::AsyncFileReader,
     physical_plan::{
         metrics::ExecutionPlanMetricsSet, DisplayAs, Distribution, ExecutionPlan, PlanProperties,
@@ -48,6 +47,7 @@ use parquet::arrow::async_reader::ParquetObjectReader;
 
 use crate::{
     compare_primitive_columns,
+    operator::MergeOperator,
     types::{ObjectStoreRef, SEQ_COLUMN_NAME},
 };
 
@@ -92,9 +92,8 @@ pub(crate) struct MergeExec {
     num_primary_keys: usize,
     /// Sequence column index
     seq_idx: usize,
-    // (idx, merge_op)
-    value_idx: usize,
-    value_op: Arc<dyn AggregateUDFImpl>,
+    /// Operator to merge values when primary keys are the same
+    value_operator: Arc<dyn MergeOperator>,
 }
 
 impl MergeExec {
@@ -102,15 +101,13 @@ impl MergeExec {
         input: Arc<dyn ExecutionPlan>,
         num_primary_keys: usize,
         seq_idx: usize,
-        value_idx: usize,
-        value_op: Arc<dyn AggregateUDFImpl>,
+        value_operator: Arc<dyn MergeOperator>,
     ) -> Self {
         Self {
             input,
             num_primary_keys,
             seq_idx,
-            value_idx,
-            value_op,
+            value_operator,
         }
     }
 }
@@ -162,8 +159,7 @@ impl ExecutionPlan for MergeExec {
             Arc::clone(&children[0]),
             self.num_primary_keys,
             self.seq_idx,
-            self.value_idx,
-            self.value_op.clone(),
+            self.value_operator.clone(),
         )))
     }
 
@@ -180,8 +176,7 @@ impl ExecutionPlan for MergeExec {
             self.input.execute(partition, context)?,
             self.num_primary_keys,
             self.seq_idx,
-            self.value_idx,
-            self.value_op.clone(),
+            self.value_operator.clone(),
         )))
     }
 }
@@ -190,8 +185,7 @@ struct MergeStream {
     stream: SendableRecordBatchStream,
     num_primary_keys: usize,
     seq_idx: usize,
-    value_idx: usize,
-    value_op: Arc<dyn AggregateUDFImpl>,
+    value_operator: Arc<dyn MergeOperator>,
 
     pending_batch: Option<RecordBatch>,
     arrow_schema: SchemaRef,
@@ -202,8 +196,7 @@ impl MergeStream {
         stream: SendableRecordBatchStream,
         num_primary_keys: usize,
         seq_idx: usize,
-        value_idx: usize,
-        value_op: Arc<dyn AggregateUDFImpl>,
+        value_operator: Arc<dyn MergeOperator>,
     ) -> Self {
         let fields = stream
             .schema()
@@ -225,8 +218,7 @@ impl MergeStream {
             stream,
             num_primary_keys,
             seq_idx,
-            value_idx,
-            value_op,
+            value_operator,
             pending_batch: None,
             arrow_schema,
         }
@@ -242,6 +234,7 @@ impl MergeStream {
         for k in 0..self.num_primary_keys {
             let lhs_col = lhs.column(k);
             let rhs_col = rhs.column(k);
+
             compare_primitive_columns!(
                 lhs_col, rhs_col, lhs_idx, rhs_idx, // TODO: Add more types here
                 UInt8Type, Int8Type, UInt32Type, Int32Type, UInt64Type, Int64Type
@@ -277,12 +270,13 @@ impl MergeStream {
                     &rows_with_same_primary_keys,
                     0,
                 ) {
-                    // only keep the last row in this batch
-                    batches.push(pending.slice(pending.num_rows() - 1, 1));
+                    batches.push(self.value_operator.merge(&pending).unwrap());
                 }
             }
             batches.push(
-                rows_with_same_primary_keys.slice(rows_with_same_primary_keys.num_rows() - 1, 1),
+                self.value_operator
+                    .merge(&rows_with_same_primary_keys)
+                    .unwrap(),
             );
 
             start_idx = end_idx;

@@ -22,6 +22,7 @@ mod compaction;
 pub mod error;
 mod macros;
 mod manifest;
+pub mod operator;
 mod read;
 mod sst;
 pub mod storage;
