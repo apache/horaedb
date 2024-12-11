@@ -16,7 +16,7 @@
 // under the License.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     time::Duration,
 };
 
@@ -45,13 +45,10 @@ impl TimeWindowCompactionStrategy {
     ) -> Option<Task> {
         let (uncompacted_files, expired_files) =
             Self::find_uncompacted_and_expired_files(ssts, expire_time);
-        debug!(
-            "uncompacted_files: {:?}, expired_files: {:?}",
-            uncompacted_files, expired_files
-        );
+        debug!(uncompacted_files = ?uncompacted_files, expired_files = ?expired_files, "Begin pick candidate");
 
         let files_by_segment = self.files_by_segment(uncompacted_files);
-        let compaction_files = self.pick_compaction_files(files_by_segment);
+        let compaction_files = self.pick_compaction_files(files_by_segment)?;
 
         if compaction_files.is_empty() && expired_files.is_empty() {
             return None;
@@ -60,12 +57,16 @@ impl TimeWindowCompactionStrategy {
         for f in &compaction_files {
             f.mark_compaction();
         }
+        for f in &expired_files {
+            f.mark_compaction();
+        }
 
         let task = Task {
             inputs: compaction_files,
             expireds: expired_files,
         };
-        debug!("Pick compaction task: {:?}", task);
+
+        debug!(task = ?task, "End pick candidate");
 
         Some(task)
     }
@@ -89,11 +90,12 @@ impl TimeWindowCompactionStrategy {
         (uncompacted_files, expired_files)
     }
 
-    fn files_by_segment(&self, files: Vec<SstFile>) -> HashMap<Timestamp, Vec<SstFile>> {
-        let mut files_by_segment = HashMap::new();
+    fn files_by_segment(&self, files: Vec<SstFile>) -> BTreeMap<Timestamp, Vec<SstFile>> {
+        let mut files_by_segment = BTreeMap::new();
         let segment_duration = self.segment_duration;
         for file in files {
-            let segment = file.meta().time_range.end.truncate_by(segment_duration);
+            let segment = file.meta().time_range.start.truncate_by(segment_duration);
+            debug!(segment = ?segment, file = ?file);
             files_by_segment
                 .entry(segment)
                 .or_insert_with(Vec::new)
@@ -101,57 +103,53 @@ impl TimeWindowCompactionStrategy {
         }
 
         debug!(
-            "Group files of similar timestamp into same segment: {:?}",
-            files_by_segment
+            files = ?files_by_segment,
+            "Group files of similar timestamp into segment"
         );
         files_by_segment
     }
 
     fn pick_compaction_files(
         &self,
-        mut files_by_segment: HashMap<Timestamp, Vec<SstFile>>,
-    ) -> Vec<SstFile> {
-        let all_segments: BTreeSet<_> = files_by_segment.keys().copied().collect();
+        files_by_segment: BTreeMap<Timestamp, Vec<SstFile>>,
+    ) -> Option<Vec<SstFile>> {
+        for (segment, mut files) in files_by_segment.into_iter().rev() {
+            debug!(segment = ?segment, files = ?files, "Loop segment for pick files");
+            if files.len() < 2 {
+                continue;
+            }
 
-        for segment in all_segments {
-            if let Some(mut files) = files_by_segment.remove(&segment) {
-                if files.len() < 2 {
-                    debug!(
-                        "No compaction necessary for files size {} , segment {:?}",
-                        files.len(),
-                        segment,
-                    );
-                    continue;
-                }
+            // Prefer to compact smaller files first.
+            files.sort_unstable_by_key(SstFile::size);
 
-                // Pick files for compaction
-                files.sort_unstable_by_key(SstFile::size);
+            let mut input_size = 0;
+            let memory_limit = self.config.memory_limit;
+            let compaction_files_limit = self.config.compaction_files_limit;
 
-                let mut input_size = 0;
-                let memory_limit = self.config.memory_limit;
-                let compaction_files_limit = self.config.compaction_files_limit;
+            let compaction_files = files
+                .into_iter()
+                .take(compaction_files_limit)
+                .take_while(|f| {
+                    input_size += f.size() as u64;
+                    input_size <= memory_limit
+                })
+                .collect::<Vec<_>>();
 
-                let compaction_files = files
-                    .into_iter()
-                    .take(compaction_files_limit)
-                    .take_while(|f| {
-                        input_size += f.size() as u64;
-                        input_size <= memory_limit
-                    })
-                    .collect::<Vec<_>>();
-
-                if compaction_files.len() >= 2 {
-                    return compaction_files;
-                }
+            if compaction_files.len() >= 2 {
+                return Some(compaction_files);
             }
         }
-        Vec::new()
+
+        None
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    use itertools::Itertools;
+    use test_log::test;
 
     use super::*;
     use crate::sst::FileMeta;
@@ -162,80 +160,35 @@ mod tests {
         let config = SchedulerConfig::default();
         let strategy = TimeWindowCompactionStrategy::new(segment_duration, config);
 
-        let sst1 = SstFile::new(
-            1,
-            FileMeta {
-                time_range: (0..10).into(),
-                size: 1,
-                max_sequence: 1,
-                num_rows: 1,
-            },
-        );
-        let sst2 = SstFile::new(
-            2,
-            FileMeta {
-                time_range: (10..20).into(),
-                size: 2,
-                max_sequence: 2,
-                num_rows: 2,
-            },
-        );
-        let sst3 = SstFile::new(
-            3,
-            FileMeta {
-                time_range: (20..30).into(),
-                size: 3,
-                max_sequence: 3,
-                num_rows: 3,
-            },
-        );
-        let sst4 = SstFile::new(
-            4,
-            FileMeta {
-                time_range: (30..40).into(),
-                size: 4,
-                max_sequence: 4,
-                num_rows: 4,
-            },
-        );
-        let sst5 = SstFile::new(
-            5,
-            FileMeta {
-                time_range: (40..50).into(),
-                size: 5,
-                max_sequence: 5,
-                num_rows: 5,
-            },
-        );
-
-        let ssts = vec![
-            sst1.clone(),
-            sst2.clone(),
-            sst3.clone(),
-            sst4.clone(),
-            sst5.clone(),
-        ];
-
+        let ssts = (0_i64..5_i64)
+            .map(|i| {
+                SstFile::new(
+                    i as u64,
+                    FileMeta {
+                        max_sequence: i as u64,
+                        num_rows: i as u32,
+                        size: (100 - i) as u32, // size desc
+                        time_range: (i * 10..(i * 10 + 10)).into(),
+                    },
+                )
+            })
+            .collect_vec();
         let task = strategy
             .pick_candidate(ssts.clone(), Some(15.into()))
             .unwrap();
 
+        // ssts should be grouped by tree segments:
+        // | 0 1 | 2 3 | 4 |
         let excepted_task = Task {
-            inputs: vec![sst2, sst3],
-            expireds: vec![sst1],
+            inputs: vec![ssts[3].clone(), ssts[2].clone()],
+            expireds: vec![ssts[0].clone()],
         };
 
-        assert_eq!(task.inputs.len(), 2);
-        assert_eq!(task.expireds.len(), 1);
         assert_eq!(task, excepted_task);
 
-        let task = strategy.pick_candidate(ssts, None).unwrap();
-        let excepted_task = Task {
-            inputs: vec![sst4, sst5],
-            expireds: vec![],
-        };
-        assert_eq!(task.inputs.len(), 2);
-        assert_eq!(task.expireds.len(), 0);
-        assert_eq!(task, excepted_task);
+        // sst1, sst3, ss4 are in compaction, so it should not be picked again.
+        // sst2, sst5 are in different segment, so it also should not be picked.
+        let task = strategy.pick_candidate(ssts, None);
+        assert!(task.is_none());
     }
 }

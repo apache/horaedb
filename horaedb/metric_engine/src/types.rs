@@ -196,3 +196,25 @@ pub struct StorageOptions {
     pub manifest_merge_opts: ManifestMergeOptions,
     pub runtime_opts: RuntimeOptions,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_timestamp_truncate_by() {
+        let testcases = [
+            // ts, segment, expected
+            (0, 20, 0),
+            (10, 20, 0),
+            (20, 20, 20),
+            (30, 20, 20),
+            (40, 20, 40),
+            (41, 20, 40),
+        ];
+        for (ts, segment, expected) in testcases {
+            let actual = Timestamp::from(ts).truncate_by(Duration::from_millis(segment));
+            assert_eq!(actual.0, expected);
+        }
+    }
+}

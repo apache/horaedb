@@ -53,3 +53,4 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 temp-dir = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }
