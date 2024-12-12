@@ -19,6 +19,7 @@ use std::{
     collections::HashMap,
     ops::{Add, Deref, Range},
     sync::Arc,
+    time::Duration,
 };
 
 use object_store::ObjectStore;
@@ -33,7 +34,7 @@ pub const SEQ_COLUMN_NAME: &str = "__seq__";
 
 pub type RuntimeRef = Arc<Runtime>;
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Timestamp(pub i64);
 
 impl Add for Timestamp {
@@ -69,6 +70,11 @@ impl Deref for Timestamp {
 impl Timestamp {
     pub const MAX: Timestamp = Timestamp(i64::MAX);
     pub const MIN: Timestamp = Timestamp(i64::MIN);
+
+    pub fn truncate_by(&self, duration: Duration) -> Self {
+        let duration_millis = duration.as_millis() as i64;
+        Timestamp(self.0 / duration_millis * duration_millis)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -201,4 +207,26 @@ pub struct StorageOptions {
     pub manifest_merge_opts: ManifestMergeOptions,
     pub runtime_opts: RuntimeOptions,
     pub update_mode: UpdateMode,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_timestamp_truncate_by() {
+        let testcases = [
+            // ts, segment, expected
+            (0, 20, 0),
+            (10, 20, 0),
+            (20, 20, 20),
+            (30, 20, 20),
+            (40, 20, 40),
+            (41, 20, 40),
+        ];
+        for (ts, segment, expected) in testcases {
+            let actual = Timestamp::from(ts).truncate_by(Duration::from_millis(segment));
+            assert_eq!(actual.0, expected);
+        }
+    }
 }

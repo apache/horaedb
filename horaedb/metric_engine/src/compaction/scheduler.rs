@@ -73,9 +73,8 @@ impl Scheduler {
         };
         let picker_handle = {
             let task_tx = task_tx.clone();
-            let interval = config.schedule_interval;
             runtime.spawn(async move {
-                Self::generate_task_loop(manifest, task_tx, interval, segment_duration).await;
+                Self::generate_task_loop(manifest, task_tx, segment_duration, config).await;
             })
         };
 
@@ -119,13 +118,16 @@ impl Scheduler {
     async fn generate_task_loop(
         manifest: ManifestRef,
         task_tx: Sender<Task>,
-        schedule_interval: Duration,
         segment_duration: Duration,
+        config: SchedulerConfig,
     ) {
-        let compactor = TimeWindowCompactionStrategy::new(segment_duration);
+        let compactor = TimeWindowCompactionStrategy::new(segment_duration, config);
+        let schedule_interval = config.schedule_interval;
+        // TODO: obtain expire time
+        let expire_time = None;
         loop {
             let ssts = manifest.all_ssts().await;
-            if let Some(task) = compactor.pick_candidate(ssts) {
+            if let Some(task) = compactor.pick_candidate(ssts, expire_time) {
                 if let Err(e) = task_tx.try_send(task) {
                     warn!("Send task failed, err:{e}");
                 }
@@ -136,10 +138,12 @@ impl Scheduler {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct SchedulerConfig {
     pub schedule_interval: Duration,
     pub memory_limit: u64,
     pub max_pending_compaction_tasks: usize,
+    pub compaction_files_limit: usize,
 }
 
 impl Default for SchedulerConfig {
@@ -148,6 +152,7 @@ impl Default for SchedulerConfig {
             schedule_interval: Duration::from_secs(30),
             memory_limit: bytesize::gb(2_u64),
             max_pending_compaction_tasks: 10,
+            compaction_files_limit: 10,
         }
     }
 }
