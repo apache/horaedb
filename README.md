@@ -32,7 +32,7 @@ docker run -d --name horaedb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
-  ghcr.io/apache/horaedb-server:nightly-20231222-f57b3827
+  apache/horaedb-server
 ```
 
 #### Run HoraeDB cluster with two horaedb-server node and one horaemeta-server node.

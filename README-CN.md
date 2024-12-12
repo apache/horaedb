@@ -23,7 +23,7 @@ docker run -d --name horaedb-server \
   -p 8831:8831 \
   -p 3307:3307 \
   -p 5440:5440 \
-  ghcr.io/apache/horaedb-server:nightly-20231222-f57b3827
+  apache/horaedb-server
 ```
 
 #### 使用 docker compose 运行集群，包含两个 horaedb 节点和一个 horaemeta 节点
