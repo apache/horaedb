@@ -26,6 +26,7 @@ pub mod operator;
 mod read;
 mod sst;
 pub mod storage;
+#[cfg(test)]
 mod test_util;
 pub mod types;
 

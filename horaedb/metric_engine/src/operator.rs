@@ -82,13 +82,15 @@ impl MergeOperator for BytesMergeOperator {
                     if binary_array.is_empty() {
                        return column.clone();
                     }
-                    // bytes buffer is cheap for clone.
+
                     let offsets = binary_array.offsets();
                     let start = offsets[0] as usize;
                     let length = offsets[offsets.len()-1] as usize - start;
                     if length == 0 {
                        return column.clone();
                     }
+
+                    // bytes buffer is cheap for clone.
                     let byte_buffer = binary_array.values().slice_with_length(start,length). clone();
                     debug!(byte_buffer = ?byte_buffer, offset = ?offsets, "BytesMergeOperator merge");
                     let offsets = OffsetBuffer::from_lengths([byte_buffer.len()]);

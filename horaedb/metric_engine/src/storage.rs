@@ -469,10 +469,9 @@ impl TimeMergeStorage for CloudObjectStorage {
 mod tests {
     use object_store::local::LocalFileSystem;
     use test_log::test;
-    use tracing::debug;
 
     use super::*;
-    use crate::{arrow_schema, record_batch, types::Timestamp};
+    use crate::{arrow_schema, record_batch, test_util::check_stream, types::Timestamp};
 
     #[tokio::test]
     async fn test_build_scan_plan() {
@@ -565,7 +564,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut result_stream = storage
+        let result_stream = storage
             .scan(ScanRequest {
                 range: TimeRange::new(Timestamp(0), Timestamp::MAX),
                 predicate: vec![],
@@ -587,13 +586,8 @@ mod tests {
             )
             .unwrap(),
         ];
-        let mut idx = 0;
-        while let Some(batch) = result_stream.next().await {
-            debug!(idx = idx, batch = ?batch, "Loop batch");
-            let batch = batch.unwrap();
-            assert_eq!(expected_batch[idx], batch);
-            idx += 1;
-        }
+
+        check_stream(result_stream, expected_batch).await;
     }
 
     #[tokio::test]

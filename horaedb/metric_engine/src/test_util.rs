@@ -27,7 +27,7 @@ use datafusion::{
     error::Result as DfResult,
     execution::{RecordBatchStream, SendableRecordBatchStream},
 };
-use futures::Stream;
+use futures::{Stream, StreamExt};
 
 #[macro_export]
 macro_rules! arrow_schema {
@@ -92,7 +92,6 @@ macro_rules! create_array {
 ///
 /// Example:
 /// ```
-/// use datafusion_common::{create_array, record_batch};
 /// let batch = record_batch!(
 ///     ("a", Int32, vec![1, 2, 3]),
 ///     ("b", Float64, vec![Some(4.0), None, Some(5.0)]),
@@ -154,7 +153,18 @@ where
     Box::pin(DequeBasedStream { batches, schema })
 }
 
-#[cfg(test)]
+pub async fn check_stream<I>(mut stream: SendableRecordBatchStream, expected: I)
+where
+    I: IntoIterator<Item = RecordBatch>,
+{
+    let mut iter = expected.into_iter();
+    while let Some(batch) = stream.next().await {
+        let batch = batch.unwrap();
+        assert_eq!(batch, iter.next().unwrap());
+    }
+    assert!(iter.next().is_none());
+}
+
 mod tests {
     use futures::StreamExt;
 

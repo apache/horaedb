@@ -359,18 +359,17 @@ impl RecordBatchStream for MergeStream {
 #[cfg(test)]
 mod tests {
     use test_log::test;
-    use tracing::debug;
 
     use super::*;
     use crate::{
         operator::{BytesMergeOperator, LastValueOperator, MergeOperatorRef},
         record_batch,
-        test_util::make_sendable_record_batches,
+        test_util::{check_stream, make_sendable_record_batches},
     };
 
     #[test(tokio::test)]
     async fn test_merge_stream() {
-        let expected = vec![
+        let expected = [
             record_batch!(
                 ("pk1", UInt8, vec![11, 12]),
                 ("value", Binary, vec![b"2", b"4"])
@@ -382,7 +381,7 @@ mod tests {
 
         test_merge_stream_for_append_mode(Arc::new(LastValueOperator), expected).await;
 
-        let expected = vec![
+        let expected = [
             record_batch!(
                 ("pk1", UInt8, vec![11, 12]),
                 ("value", Binary, vec![b"12", b"34"])
@@ -396,10 +395,10 @@ mod tests {
             .await;
     }
 
-    async fn test_merge_stream_for_append_mode(
-        merge_op: MergeOperatorRef,
-        expected: Vec<RecordBatch>,
-    ) {
+    async fn test_merge_stream_for_append_mode<I>(merge_op: MergeOperatorRef, expected: I)
+    where
+        I: IntoIterator<Item = RecordBatch>,
+    {
         let stream = make_sendable_record_batches([
             record_batch!(
                 ("pk1", UInt8, vec![11, 11, 12, 12, 13]),
@@ -421,14 +420,7 @@ mod tests {
             .unwrap(),
         ]);
 
-        let mut stream = MergeStream::new(stream, 1, 2, merge_op);
-        let mut i = 0;
-        while let Some(batch) = stream.next().await {
-            let batch = batch.unwrap();
-            assert_eq!(batch, expected[i]);
-            debug!(i=?i, batch = ?batch, "Check merged record");
-            i += 1;
-        }
-        assert_eq!(i, expected.len());
+        let stream = MergeStream::new(stream, 1, 2, merge_op);
+        check_stream(Box::pin(stream), expected).await;
     }
 }
