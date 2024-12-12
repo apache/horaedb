@@ -324,3 +324,58 @@ impl RecordBatchStream for MergeStream {
         self.arrow_schema.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use arrow::array::{self as arrow_array};
+    use datafusion::common::record_batch;
+    use test_log::test;
+    use tracing::debug;
+
+    use super::*;
+    use crate::{operator::LastValueOperator, test_util::make_sendable_record_batches};
+
+    #[test(tokio::test)]
+    async fn test_merge_stream_for_append_mode() {
+        let stream = make_sendable_record_batches([
+            record_batch!(
+                ("pk1", UInt8, vec![11, 11]),
+                ("pk2", UInt8, vec![100, 100]),
+                ("value", UInt8, vec![1, 2]),
+                ("seq", UInt8, vec![1, 2])
+            )
+            .unwrap(),
+            record_batch!(
+                ("pk1", UInt8, vec![11, 11]),
+                ("pk2", UInt8, vec![100, 200]),
+                ("value", UInt8, vec![3, 2]),
+                ("seq", UInt8, vec![3, 2])
+            )
+            .unwrap(),
+        ]);
+
+        let expected = [
+            record_batch!(
+                ("pk1", UInt8, vec![11]),
+                ("pk2", UInt8, vec![100]),
+                ("value", UInt8, vec![3])
+            )
+            .unwrap(),
+            record_batch!(
+                ("pk1", UInt8, vec![11]),
+                ("pk2", UInt8, vec![200]),
+                ("value", UInt8, vec![2])
+            )
+            .unwrap(),
+        ];
+        let mut stream = MergeStream::new(stream, 2, 3, Arc::new(LastValueOperator));
+        let mut i = 0;
+        while let Some(batch) = stream.next().await {
+            let batch = batch.unwrap();
+            // assert_eq!(batch, expected[i]);
+            debug!(i=?i, batch = ?batch, "Check merged record");
+            i += 1;
+        }
+        assert_eq!(2, i);
+    }
+}

@@ -15,6 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::{
+    collections::VecDeque,
+    pin::Pin,
+    task::{Context, Poll},
+};
+
+use arrow::array::RecordBatch;
+use arrow_schema::SchemaRef;
+use datafusion::{
+    error::Result as DfResult,
+    execution::{RecordBatchStream, SendableRecordBatchStream},
+};
+use futures::Stream;
+
 #[macro_export]
 macro_rules! arrow_schema {
     ($(($field_name:expr, $data_type:ident)),* $(,)?) => {{
@@ -27,8 +41,47 @@ macro_rules! arrow_schema {
     }};
 }
 
+struct VecBasedStream {
+    batches: VecDeque<RecordBatch>,
+    schema: SchemaRef,
+}
+
+impl RecordBatchStream for VecBasedStream {
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+}
+
+impl Stream for VecBasedStream {
+    type Item = DfResult<RecordBatch>;
+
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        if self.batches.is_empty() {
+            return Poll::Ready(None);
+        }
+
+        Poll::Ready(Some(Ok(self.batches.pop_front().unwrap())))
+    }
+}
+
+/// Creates an record batch stream for testing purposes.
+pub fn make_sendable_record_batches<I>(batches: I) -> SendableRecordBatchStream
+where
+    I: IntoIterator<Item = RecordBatch>,
+{
+    let batches = VecDeque::from_iter(batches);
+    let schema = batches[0].schema();
+    Box::pin(VecBasedStream { batches, schema })
+}
+
 #[cfg(test)]
 mod tests {
+    use arrow::array::{self as arrow_array};
+    use datafusion::common::record_batch;
+    use futures::StreamExt;
+
+    use super::*;
+
     #[test]
     fn test_arrow_schema_macro() {
         let schema = arrow_schema![("a", UInt8), ("b", UInt8), ("c", UInt8), ("d", UInt8),];
@@ -37,5 +90,21 @@ mod tests {
         for (i, f) in schema.fields().iter().enumerate() {
             assert_eq!(f.name(), expected_names[i]);
         }
+    }
+
+    #[tokio::test]
+    async fn test_sendable_record_batch() {
+        let input = [
+            record_batch!(("pk1", UInt8, vec![11, 11]), ("pk2", UInt8, vec![100, 100])).unwrap(),
+            record_batch!(("pk1", UInt8, vec![22, 22]), ("pk2", UInt8, vec![200, 200])).unwrap(),
+        ];
+        let mut stream = make_sendable_record_batches(input.clone());
+        let mut i = 0;
+        while let Some(batch) = stream.next().await {
+            let batch = batch.unwrap();
+            assert_eq!(batch, input[i]);
+            i += 1;
+        }
+        assert_eq!(2, i);
     }
 }
