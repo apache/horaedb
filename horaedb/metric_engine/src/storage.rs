@@ -467,12 +467,12 @@ impl TimeMergeStorage for CloudObjectStorage {
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::{self as arrow_array};
-    use datafusion::common::record_batch;
     use object_store::local::LocalFileSystem;
+    use test_log::test;
+    use tracing::debug;
 
     use super::*;
-    use crate::{arrow_schema, types::Timestamp};
+    use crate::{arrow_schema, record_batch, types::Timestamp};
 
     #[tokio::test]
     async fn test_build_scan_plan() {
@@ -519,7 +519,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn test_storage_write_and_scan() {
         let schema = arrow_schema!(("pk1", UInt8), ("pk2", UInt8), ("value", Int64));
         let root_dir = temp_dir::TempDir::new().unwrap();
@@ -589,6 +589,7 @@ mod tests {
         ];
         let mut idx = 0;
         while let Some(batch) = result_stream.next().await {
+            debug!(idx = idx, batch = ?batch, "Loop batch");
             let batch = batch.unwrap();
             assert_eq!(expected_batch[idx], batch);
             idx += 1;

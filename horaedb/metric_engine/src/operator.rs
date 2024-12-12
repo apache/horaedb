@@ -31,6 +31,8 @@ pub trait MergeOperator: Send + Sync + Debug {
     fn merge(&self, _batch: &RecordBatch) -> Result<RecordBatch>;
 }
 
+pub type MergeOperatorRef = Arc<dyn MergeOperator>;
+
 #[derive(Debug)]
 pub struct LastValueOperator;
 
@@ -97,10 +99,10 @@ impl MergeOperator for BytesMergeOperator {
 #[cfg(test)]
 mod tests {
     use arrow::array::{self as arrow_array};
-    use datafusion::common::{create_array, record_batch};
+    use datafusion::common::create_array;
 
     use super::*;
-    use crate::arrow_schema;
+    use crate::{arrow_schema, record_batch};
 
     #[test]
     fn test_last_value_operator() {
@@ -125,30 +127,22 @@ mod tests {
     #[test]
     fn test_bytes_merge_operator() {
         let operator = BytesMergeOperator::new(vec![2]);
-        let schema = arrow_schema!(("pk1", UInt8), ("pk2", UInt8), ("value", Binary));
 
-        let batch = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                create_array!(UInt8, vec![11, 11, 11, 11]),
-                create_array!(UInt8, vec![100, 100, 100, 100]),
-                Arc::new(BinaryArray::from_vec(vec![
-                    b"one", b"two", b"three", b"four",
-                ])),
-            ],
+        let batch = record_batch!(
+            ("pk1", UInt8, vec![11, 11, 11, 11]),
+            ("pk2", UInt8, vec![100, 100, 100, 100]),
+            ("value", Binary, vec![b"one", b"two", b"three", b"four"])
         )
         .unwrap();
 
         let actual = operator.merge(&batch).unwrap();
-        let expected = RecordBatch::try_new(
-            schema.clone(),
-            vec![
-                create_array!(UInt8, vec![11]),
-                create_array!(UInt8, vec![100]),
-                Arc::new(BinaryArray::from_vec(vec![b"onetwothreefour"])),
-            ],
+        let expected = record_batch!(
+            ("pk1", UInt8, vec![11]),
+            ("pk2", UInt8, vec![100]),
+            ("value", Binary, vec![b"onetwothreefour"])
         )
         .unwrap();
+
         assert_eq!(actual, expected);
     }
 }

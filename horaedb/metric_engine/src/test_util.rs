@@ -41,18 +41,98 @@ macro_rules! arrow_schema {
     }};
 }
 
-struct VecBasedStream {
+#[macro_export]
+macro_rules! create_array {
+    (Boolean, $values: expr) => {
+        std::sync::Arc::new(arrow::array::BooleanArray::from($values))
+    };
+    (Int8, $values: expr) => {
+        std::sync::Arc::new(arrow::array::Int8Array::from($values))
+    };
+    (Int16, $values: expr) => {
+        std::sync::Arc::new(arrow::array::Int16Array::from($values))
+    };
+    (Int32, $values: expr) => {
+        std::sync::Arc::new(arrow::array::Int32Array::from($values))
+    };
+    (Int64, $values: expr) => {
+        std::sync::Arc::new(arrow::array::Int64Array::from($values))
+    };
+    (UInt8, $values: expr) => {
+        std::sync::Arc::new(arrow::array::UInt8Array::from($values))
+    };
+    (UInt16, $values: expr) => {
+        std::sync::Arc::new(arrow::array::UInt16Array::from($values))
+    };
+    (UInt32, $values: expr) => {
+        std::sync::Arc::new(arrow::array::UInt32Array::from($values))
+    };
+    (UInt64, $values: expr) => {
+        std::sync::Arc::new(arrow::array::UInt64Array::from($values))
+    };
+    (Float16, $values: expr) => {
+        std::sync::Arc::new(arrow::array::Float16Array::from($values))
+    };
+    (Float32, $values: expr) => {
+        std::sync::Arc::new(arrow::array::Float32Array::from($values))
+    };
+    (Float64, $values: expr) => {
+        std::sync::Arc::new(arrow::array::Float64Array::from($values))
+    };
+    (Utf8, $values: expr) => {
+        std::sync::Arc::new(arrow::array::StringArray::from($values))
+    };
+    (Binary, $values: expr) => {
+        std::sync::Arc::new(arrow::array::BinaryArray::from_vec($values))
+    };
+}
+
+/// Creates a record batch from literal slice of values, suitable for rapid
+/// testing and development.
+///
+/// Example:
+/// ```
+/// use datafusion_common::{create_array, record_batch};
+/// let batch = record_batch!(
+///     ("a", Int32, vec![1, 2, 3]),
+///     ("b", Float64, vec![Some(4.0), None, Some(5.0)]),
+///     ("c", Utf8, vec!["alpha", "beta", "gamma"])
+/// );
+/// ```
+#[macro_export]
+macro_rules! record_batch {
+    ($(($name: expr, $type: ident, $values: expr)),*) => {
+        {
+            let schema = std::sync::Arc::new(arrow_schema::Schema::new(vec![
+                $(
+                    arrow_schema::Field::new($name, arrow_schema::DataType::$type, true),
+                )*
+            ]));
+
+            let batch = arrow::array::RecordBatch::try_new(
+                schema,
+                vec![$(
+                    $crate::create_array!($type, $values),
+                )*]
+            );
+
+            batch
+        }
+    }
+}
+
+struct DequeBasedStream {
     batches: VecDeque<RecordBatch>,
     schema: SchemaRef,
 }
 
-impl RecordBatchStream for VecBasedStream {
+impl RecordBatchStream for DequeBasedStream {
     fn schema(&self) -> SchemaRef {
         self.schema.clone()
     }
 }
 
-impl Stream for VecBasedStream {
+impl Stream for DequeBasedStream {
     type Item = DfResult<RecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -71,13 +151,11 @@ where
 {
     let batches = VecDeque::from_iter(batches);
     let schema = batches[0].schema();
-    Box::pin(VecBasedStream { batches, schema })
+    Box::pin(DequeBasedStream { batches, schema })
 }
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::{self as arrow_array};
-    use datafusion::common::record_batch;
     use futures::StreamExt;
 
     use super::*;
