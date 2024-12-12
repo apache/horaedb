@@ -216,7 +216,6 @@ impl Manifest {
 /// The length field (u64) represents the total length of the subsequent
 /// records and serves as a straightforward method for verifying their
 /// integrity. (length = record_length * record_count)
-#[derive(Debug)]
 struct SnapshotHeader {
     pub magic: u32,
     pub version: u8,
@@ -288,7 +287,7 @@ impl SnapshotHeader {
 /// +---------+-------------------+------------+---------------+
 /// | id(u64) | time_range(i64*2) | size(u32)  |  num_rows(u32)|
 /// +---------+-------------------+------------+---------------+
-/// ```#[derive(Debug)]
+/// ```
 struct SnapshotRecordV1 {
     id: u64,
     time_range: TimeRange,
