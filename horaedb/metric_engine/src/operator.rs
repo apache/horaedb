@@ -19,16 +19,17 @@ use std::{fmt::Debug, sync::Arc};
 
 use anyhow::Context;
 use arrow::{
-    array::{BinaryArray, RecordBatch},
+    array::{Array, BinaryArray, RecordBatch},
     buffer::OffsetBuffer,
 };
 use arrow_schema::DataType;
 use macros::ensure;
+use tracing::debug;
 
 use crate::Result;
 
 pub trait MergeOperator: Send + Sync + Debug {
-    fn merge(&self, _batch: &RecordBatch) -> Result<RecordBatch>;
+    fn merge(&self, batch: RecordBatch) -> Result<RecordBatch>;
 }
 
 pub type MergeOperatorRef = Arc<dyn MergeOperator>;
@@ -37,7 +38,7 @@ pub type MergeOperatorRef = Arc<dyn MergeOperator>;
 pub struct LastValueOperator;
 
 impl MergeOperator for LastValueOperator {
-    fn merge(&self, batch: &RecordBatch) -> Result<RecordBatch> {
+    fn merge(&self, batch: RecordBatch) -> Result<RecordBatch> {
         let last_row = batch.slice(batch.num_rows() - 1, 1);
         Ok(last_row)
     }
@@ -57,7 +58,7 @@ impl BytesMergeOperator {
 }
 
 impl MergeOperator for BytesMergeOperator {
-    fn merge(&self, batch: &RecordBatch) -> Result<RecordBatch> {
+    fn merge(&self, batch: RecordBatch) -> Result<RecordBatch> {
         assert!(batch.num_rows() > 0);
 
         for idx in &self.value_idxes {
@@ -67,7 +68,9 @@ impl MergeOperator for BytesMergeOperator {
                 "MergeOperator is only used for binary column, current:{data_type}"
             );
         }
+        debug!(batch = ?batch, "BytesMergeOperator merge");
 
+        let schema = batch.schema();
         let columns = batch
             .columns()
             .iter()
@@ -76,8 +79,18 @@ impl MergeOperator for BytesMergeOperator {
                 if self.value_idxes.contains(&idx) {
                     // For value column, we append all elements
                     let binary_array = column.as_any().downcast_ref::<BinaryArray>().unwrap();
+                    if binary_array.is_empty() {
+                       return column.clone();
+                    }
                     // bytes buffer is cheap for clone.
-                    let byte_buffer = binary_array.values().clone();
+                    let offsets = binary_array.offsets();
+                    let start = offsets[0] as usize;
+                    let length = offsets[offsets.len()-1] as usize - start;
+                    if length == 0 {
+                       return column.clone();
+                    }
+                    let byte_buffer = binary_array.values().slice_with_length(start,length). clone();
+                    debug!(byte_buffer = ?byte_buffer, offset = ?offsets, "BytesMergeOperator merge");
                     let offsets = OffsetBuffer::from_lengths([byte_buffer.len()]);
                     let concated_column = BinaryArray::new(offsets, byte_buffer, None);
                     Arc::new(concated_column)
@@ -89,7 +102,7 @@ impl MergeOperator for BytesMergeOperator {
             })
             .collect();
 
-        let merged_batch = RecordBatch::try_new(batch.schema(), columns)
+        let merged_batch = RecordBatch::try_new(schema, columns)
             .context("failed to construct RecordBatch in BytesMergeOperator.")?;
 
         Ok(merged_batch)
@@ -98,11 +111,9 @@ impl MergeOperator for BytesMergeOperator {
 
 #[cfg(test)]
 mod tests {
-    use arrow::array::{self as arrow_array};
-    use datafusion::common::create_array;
 
     use super::*;
-    use crate::{arrow_schema, record_batch};
+    use crate::record_batch;
 
     #[test]
     fn test_last_value_operator() {
@@ -114,7 +125,7 @@ mod tests {
         )
         .unwrap();
 
-        let actual = operator.merge(&batch).unwrap();
+        let actual = operator.merge(batch).unwrap();
         let expected = record_batch!(
             ("pk1", UInt8, vec![11]),
             ("pk2", UInt8, vec![100]),
@@ -135,7 +146,7 @@ mod tests {
         )
         .unwrap();
 
-        let actual = operator.merge(&batch).unwrap();
+        let actual = operator.merge(batch).unwrap();
         let expected = record_batch!(
             ("pk1", UInt8, vec![11]),
             ("pk2", UInt8, vec![100]),

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{any::Any, future::pending, pin::Pin, sync::Arc, task::Poll};
+use std::{any::Any, pin::Pin, sync::Arc, task::Poll};
 
 use anyhow::Context;
 use arrow::{
@@ -286,7 +286,7 @@ impl MergeStream {
                 )
                 .context("concat batch")?;
             } else {
-                output_batches.push(self.value_operator.merge(&pending)?);
+                output_batches.push(self.value_operator.merge(pending)?);
             }
         }
 
@@ -295,7 +295,7 @@ impl MergeStream {
         self.pending_batch = groupby_pk_batches.pop();
 
         for batch in groupby_pk_batches {
-            output_batches.push(self.value_operator.merge(&batch)?);
+            output_batches.push(self.value_operator.merge(batch)?);
         }
         if output_batches.is_empty() {
             return Ok(None);
@@ -322,22 +322,28 @@ impl Stream for MergeStream {
                 Poll::Ready(None) => {
                     let value = if let Some(mut pending) = self.pending_batch.take() {
                         pending.remove_column(self.seq_idx);
-                        Some(Ok(pending))
+                        let res = self
+                            .value_operator
+                            .merge(pending)
+                            .map_err(|e| DataFusionError::External(Box::new(e)));
+                        Some(res)
                     } else {
                         None
                     };
                     return Poll::Ready(value);
                 }
-                Poll::Ready(Some(v)) => match dbg!(v) {
+                Poll::Ready(Some(v)) => match v {
                     Ok(v) => match self.merge_batch(v) {
                         Ok(v) => {
                             if let Some(v) = v {
                                 return Poll::Ready(Some(Ok(v)));
                             }
                         }
-                        Err(_) => todo!(),
+                        Err(e) => {
+                            return Poll::Ready(Some(Err(DataFusionError::External(Box::new(e)))))
+                        }
                     },
-                    Err(_) => todo!(),
+                    Err(e) => return Poll::Ready(Some(Err(e))),
                 },
             }
         }
@@ -386,9 +392,8 @@ mod tests {
             record_batch!(("pk1", UInt8, vec![14]), ("value", Binary, vec![b"9"])).unwrap(),
         ];
 
-        // TODO
-        // test_merge_stream_for_append_mode(Arc::new(BytesMergeOperator::new(vec![1])), expected)
-        //     .await;
+        test_merge_stream_for_append_mode(Arc::new(BytesMergeOperator::new(vec![1])), expected)
+            .await;
     }
 
     async fn test_merge_stream_for_append_mode(
