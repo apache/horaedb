@@ -17,7 +17,7 @@
 
 use std::{
     collections::HashSet,
-    io::Write,
+    io::{Cursor, Write},
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -27,6 +27,7 @@ use std::{
 
 use anyhow::Context;
 use async_scoped::TokioScope;
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt};
 use macros::ensure;
@@ -83,7 +84,7 @@ impl TryFrom<Bytes> for Payload {
         if value.is_empty() {
             Ok(Self::default())
         } else {
-            let snapshot = Snapshot::try_from_bytes(value)?;
+            let snapshot = Snapshot::try_from(value)?;
             let files = snapshot.to_sstfiles()?;
             Ok(Self { files })
         }
@@ -204,18 +205,18 @@ impl Manifest {
     }
 }
 
-/// The layout for the string/bytes:
+/// The layout for the header.
 /// ```plaintext
-/// +-------------+--------------+------------+--------------------+
-/// | magic(u32)   | version(u8)  | flag(u8)   | length(u32) |
-/// +-------------+--------------+------------+--------------------+
+/// +-------------+--------------+------------+--------------+
+/// | magic(u32)  | version(u8)  | flag(u8)   | length(u32)  |
+/// +-------------+--------------+------------+--------------+
 /// ```
-/// The Magic field (u32) is used to ensure the validity of the data source.
-/// The Flags field (u8) is reserved for future extensibility, such as
-/// enabling compression or supporting additional features.
-/// The length field (u64) represents the total length of the subsequent
-/// records and serves as a straightforward method for verifying their
-/// integrity. (length = record_length * record_count)
+/// - The Magic field (u32) is used to ensure the validity of the data source.
+/// - The Flags field (u8) is reserved for future extensibility, such as
+///   enabling compression or supporting additional features.
+/// - The length field (u64) represents the total length of the subsequent
+///   records and serves as a straightforward method for verifying their
+///   integrity. (length = record_length * record_count)
 struct SnapshotHeader {
     pub magic: u32,
     pub version: u8,
@@ -223,9 +224,37 @@ struct SnapshotHeader {
     pub length: u64,
 }
 
+impl TryFrom<&[u8]> for SnapshotHeader {
+    type Error = Error;
+
+    fn try_from(bytes: &[u8]) -> Result<Self> {
+        ensure!(
+            bytes.len() >= Self::LENGTH,
+            "invalid bytes, length: {}",
+            bytes.len()
+        );
+
+        let mut cursor = Cursor::new(bytes);
+        let magic = cursor.read_u32::<LittleEndian>().unwrap();
+        ensure!(
+            magic == SnapshotHeader::MAGIC,
+            "invalid bytes to convert to header."
+        );
+        let version = cursor.read_u8().unwrap();
+        let flag = cursor.read_u8().unwrap();
+        let length = cursor.read_u64::<LittleEndian>().unwrap();
+        Ok(Self {
+            magic,
+            version,
+            flag,
+            length,
+        })
+    }
+}
+
 impl SnapshotHeader {
     pub const LENGTH: usize = 4 /*magic*/ + 1 /*version*/ + 1 /*flag*/ + 8 /*length*/;
-    pub const MAGIC: u32 = 0x32A489BF;
+    pub const MAGIC: u32 = 0xCAFE_6666;
 
     pub fn new(length: u64) -> Self {
         Self {
@@ -236,29 +265,6 @@ impl SnapshotHeader {
         }
     }
 
-    pub fn try_from_bytes(bytes: &[u8]) -> Result<Self> {
-        ensure!(
-            bytes.len() >= Self::LENGTH,
-            "invalid bytes, length: {}",
-            bytes.len()
-        );
-
-        let magic = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
-        ensure!(
-            magic == SnapshotHeader::MAGIC,
-            "invalid bytes to convert to header."
-        );
-        let version = bytes[5];
-        let flag = bytes[6];
-        let length = u64::from_le_bytes(bytes[6..14].try_into().unwrap());
-        Ok(Self {
-            magic,
-            version,
-            flag,
-            length,
-        })
-    }
-
     pub fn write_to(&self, writer: &mut &mut [u8]) -> Result<()> {
         ensure!(
             writer.len() >= SnapshotHeader::LENGTH,
@@ -267,26 +273,26 @@ impl SnapshotHeader {
         );
 
         writer
-            .write_all(self.magic.to_le_bytes().as_slice())
+            .write_u32::<LittleEndian>(self.magic)
             .context("write shall not fail.")?;
         writer
-            .write_all(self.version.to_le_bytes().as_slice())
+            .write_u8(self.version)
             .context("write shall not fail.")?;
         writer
-            .write_all(self.flag.to_le_bytes().as_slice())
+            .write_u8(self.flag)
             .context("write shall not fail.")?;
         writer
-            .write_all(self.length.to_le_bytes().as_slice())
+            .write_u64::<LittleEndian>(self.length)
             .context("write shall not fail.")?;
         Ok(())
     }
 }
 
-/// The layout for the string/bytes:
+/// The layout for manifest Record:
 /// ```plaintext
-/// +---------+-------------------+------------+---------------+
-/// | id(u64) | time_range(i64*2) | size(u32)  |  num_rows(u32)|
-/// +---------+-------------------+------------+---------------+
+/// +---------+-------------------+------------+-----------------+
+/// | id(u64) | time_range(i64*2) | size(u32)  |  num_rows(u32)  |
+/// +---------+-------------------+------------+-----------------+
 /// ```
 struct SnapshotRecordV1 {
     id: u64,
@@ -307,19 +313,19 @@ impl SnapshotRecordV1 {
         );
 
         writer
-            .write_all(self.id.to_le_bytes().as_slice())
+            .write_u64::<LittleEndian>(self.id)
             .context("write shall not fail.")?;
         writer
-            .write_all(self.time_range.start.to_le_bytes().as_slice())
+            .write_i64::<LittleEndian>(*self.time_range.start)
             .context("write shall not fail.")?;
         writer
-            .write_all(self.time_range.end.to_le_bytes().as_slice())
+            .write_i64::<LittleEndian>(*self.time_range.end)
             .context("write shall not fail.")?;
         writer
-            .write_all(self.size.to_le_bytes().as_slice())
+            .write_u32::<LittleEndian>(self.size)
             .context("write shall not fail.")?;
         writer
-            .write_all(self.num_rows.to_le_bytes().as_slice())
+            .write_u32::<LittleEndian>(self.num_rows)
             .context("write shall not fail.")?;
         Ok(())
     }
@@ -350,14 +356,15 @@ impl TryFrom<&[u8]> for SnapshotRecordV1 {
             value.len()
         );
 
-        let id = u64::from_le_bytes(value[0..8].try_into().unwrap());
-        let start = i64::from_le_bytes(value[8..16].try_into().unwrap());
-        let end = i64::from_le_bytes(value[16..24].try_into().unwrap());
-        let size = u32::from_le_bytes(value[24..28].try_into().unwrap());
-        let num_rows = u32::from_le_bytes(value[28..32].try_into().unwrap());
+        let mut cursor = Cursor::new(value);
+        let id = cursor.read_u64::<LittleEndian>().unwrap();
+        let start = cursor.read_i64::<LittleEndian>().unwrap();
+        let end = cursor.read_i64::<LittleEndian>().unwrap();
+        let size = cursor.read_u32::<LittleEndian>().unwrap();
+        let num_rows = cursor.read_u32::<LittleEndian>().unwrap();
         Ok(SnapshotRecordV1 {
             id,
-            time_range: TimeRange::new(start.into(), end.into()),
+            time_range: (start..end).into(),
             size,
             num_rows,
         })
@@ -392,12 +399,14 @@ impl Default for Snapshot {
     }
 }
 
-impl Snapshot {
-    pub fn try_from_bytes(bytes: Bytes) -> Result<Self> {
+impl TryFrom<Bytes> for Snapshot {
+    type Error = Error;
+
+    fn try_from(bytes: Bytes) -> Result<Self> {
         if bytes.is_empty() {
             return Ok(Snapshot::default());
         }
-        let header = SnapshotHeader::try_from_bytes(bytes.as_bytes())?;
+        let header = SnapshotHeader::try_from(bytes.as_bytes())?;
         let header_length = header.length as usize;
         ensure!(
             header_length > 0
@@ -413,13 +422,16 @@ impl Snapshot {
             inner: bytes,
         })
     }
+}
 
+impl Snapshot {
     pub fn to_sstfiles(&self) -> Result<Vec<SstFile>> {
         if self.header.length == 0 {
             Ok(Vec::new())
         } else {
             let buf = self.inner.as_bytes();
-            let mut result: Vec<SstFile> = Vec::with_capacity(self.header.length as usize);
+            let mut result: Vec<SstFile> =
+                Vec::with_capacity(self.header.length as usize / SnapshotRecordV1::LENGTH);
             let mut index = SnapshotHeader::LENGTH;
             while index < buf.len() {
                 let record =
@@ -582,7 +594,7 @@ impl ManifestMerger {
             delta_files.push(sst_file);
         }
         let snapshot_bytes = read_object(&self.store, &self.snapshot_path).await?;
-        let mut snapshot = Snapshot::try_from_bytes(snapshot_bytes)?;
+        let mut snapshot = Snapshot::try_from(snapshot_bytes)?;
         // TODO: no need to dedup every time.
         snapshot.dedup_sstfiles(&mut delta_files)?;
         snapshot.merge_sstfiles(delta_files);
@@ -702,9 +714,10 @@ async fn list_delta_paths(store: &ObjectStoreRef, delta_dir: &Path) -> Result<Ve
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, thread::sleep};
+    use std::sync::Arc;
 
     use object_store::local::LocalFileSystem;
+    use tokio::time::sleep;
 
     use super::*;
 
@@ -797,7 +810,7 @@ mod tests {
         }
 
         // Wait for merge manifest to finish
-        sleep(Duration::from_secs(2));
+        sleep(Duration::from_secs(2)).await;
 
         let mut mem_ssts = manifest.payload.read().await.files.clone();
         let snapshot = read_object(&store, &snapshot_path).await.unwrap();
@@ -825,7 +838,7 @@ mod tests {
         }
 
         // Wait for merge manifest to finish
-        sleep(Duration::from_secs(2));
+        sleep(Duration::from_secs(2)).await;
 
         let snapshot_again = read_object(&store, &snapshot_path).await.unwrap();
         assert!(snapshot_len == snapshot_again.len()); // dedup took effect.
@@ -840,17 +853,24 @@ mod tests {
         let mut writer = vec.as_mut_slice();
         header.write_to(&mut writer).unwrap();
         assert!(writer.is_empty());
-        assert!((vec[3], vec[2], vec[1], vec[0]) == (0x32, 0xa4, 0x89, 0xbf)); // magic
-        assert!(vec[4] == 1); // version
-        assert!(vec[5] == 0); // flag
-        assert!(vec[6] == 1); // 1
-        assert!(vec[7] == 1); // 1 * 256 = 256
-        assert!(vec[8] == 0); // 0
-        assert!(vec[9] == 0); // 0
-        assert!(vec[10] == 0); // 0
-        assert!(vec[11] == 0); // 0
-        assert!(vec[12] == 0); // 0
-        assert!(vec[13] == 0); // 0
+        let mut cursor = Cursor::new(vec);
+
+        assert_eq!(
+            SnapshotHeader::MAGIC,
+            cursor.read_u32::<LittleEndian>().unwrap()
+        );
+        assert_eq!(
+            1, // version
+            cursor.read_u8().unwrap()
+        );
+        assert_eq!(
+            0, // flag
+            cursor.read_u8().unwrap()
+        );
+        assert_eq!(
+            257, // length
+            cursor.read_u64::<LittleEndian>().unwrap()
+        );
 
         let mut vec = [0u8; SnapshotHeader::LENGTH - 1];
         let mut writer = vec.as_mut_slice();
@@ -866,7 +886,7 @@ mod tests {
                 max_sequence: 99,
                 num_rows: 100,
                 size: 938,
-                time_range: TimeRange::new(1i64.into(), 2i64.into()),
+                time_range: (100..200).into(),
             },
         );
         let record: SnapshotRecordV1 = sstfile.into();
@@ -875,13 +895,28 @@ mod tests {
         record.write_to(&mut writer).unwrap();
 
         assert!(writer.is_empty());
-        assert!(vec[0] == 99); // id
-        assert!(vec[8] == 1); // start time
-        assert!(vec[16] == 2); // end time
-        assert!(vec[24] == 170); // size_byte_0 , 170
-        assert!(vec[25] == 3); // size_byte_1, 3 * 256
-        assert!(vec[28] == 100); // num_rows
+        let mut cursor = Cursor::new(vec);
 
+        assert_eq!(
+            99, // id
+            cursor.read_u64::<LittleEndian>().unwrap()
+        );
+        assert_eq!(
+            100, // start range
+            cursor.read_i64::<LittleEndian>().unwrap()
+        );
+        assert_eq!(
+            200, // end range
+            cursor.read_i64::<LittleEndian>().unwrap()
+        );
+        assert_eq!(
+            938, // size
+            cursor.read_u32::<LittleEndian>().unwrap()
+        );
+        assert_eq!(
+            100, // num rows
+            cursor.read_u32::<LittleEndian>().unwrap()
+        );
         let mut vec = vec![0u8; SnapshotRecordV1::LENGTH - 1];
         let mut writer = vec.as_mut_slice();
         let result = record.write_to(&mut writer);

@@ -30,6 +30,7 @@ anyhow = { version = "1.0" }
 metric_engine = { path = "metric_engine" }
 thiserror = "1"
 bytes = "1"
+byteorder = "1"
 datafusion = "43"
 parquet = { version = "53" }
 object_store = { version = "0.11" }
