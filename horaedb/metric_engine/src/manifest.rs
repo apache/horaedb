@@ -25,10 +25,11 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use async_scoped::TokioScope;
 use bytes::Bytes;
 use futures::{StreamExt, TryStreamExt};
+use macros::ensure;
 use object_store::{path::Path, PutPayload};
 use parquet::data_type::AsBytes;
 use prost::Message;
@@ -43,7 +44,7 @@ use tracing::error;
 
 use crate::{
     sst::{FileId, FileMeta, SstFile},
-    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange, Timestamp},
+    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange},
     AnyhowError, Error, Result,
 };
 
@@ -80,7 +81,7 @@ impl TryFrom<Bytes> for Payload {
 
     fn try_from(value: Bytes) -> Result<Self> {
         if value.is_empty() {
-            return Ok(Self::default());
+            Ok(Self::default())
         } else {
             let snapshot = Snapshot::try_from_bytes(value)?;
             let files = snapshot.to_sstfiles()?;
@@ -203,7 +204,18 @@ impl Manifest {
     }
 }
 
-#[repr(packed)]
+/// The layout for the string/bytes:
+/// ```plaintext
+/// +-------------+--------------+------------+--------------------+
+/// | magic(u32)   | version(u8)  | flag(u8)   | length(u32) |
+/// +-------------+--------------+------------+--------------------+
+/// ```
+/// The Magic field (u32) is used to ensure the validity of the data source.
+/// The Flags field (u8) is reserved for future extensibility, such as
+/// enabling compression or supporting additional features.
+/// The length field (u64) represents the total length of the subsequent
+/// records and serves as a straightforward method for verifying their
+/// integrity. (length = record_length * record_count)
 #[derive(Debug)]
 struct SnapshotHeader {
     pub magic: u32,
@@ -213,18 +225,7 @@ struct SnapshotHeader {
 }
 
 impl SnapshotHeader {
-    // format: | magic(u32) | version(u8) |  flags(u8) | length(u64) |
-    // The Magic field (u32) is used to ensure the validity of the data source.
-    // The Flags field (u8) is reserved for future extensibility, such as enabling
-    // compression or supporting additional features.
-    // The length field (u64) represents the total length of the subsequent records
-    // and serves as a straightforward method for verifying their integrity.
-    // (length = record_length
-    // * record_count)
-
-    // use #[repr(packed)] to force unalignment and avoid hard code internal types
-    // here, better solutions?
-    pub const LENGTH: usize = size_of::<SnapshotHeader>();
+    pub const LENGTH: usize = 4 /*magic*/ + 1 /*version*/ + 1 /*flag*/ + 8 /*length*/;
     pub const MAGIC: u32 = 0x32A489BF;
 
     pub fn new(length: u64) -> Self {
@@ -237,74 +238,90 @@ impl SnapshotHeader {
     }
 
     pub fn try_from_bytes(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() < Self::LENGTH {
-            return Err(anyhow!("invalid bytes, length: {}", bytes.len()).into());
-        } else {
-            let magic = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
-            let version = bytes[5];
-            let flag = bytes[6];
-            let length = u64::from_le_bytes(bytes[6..14].try_into().unwrap());
-            Ok(Self {
-                magic,
-                version,
-                flag,
-                length,
-            })
-        }
+        ensure!(
+            bytes.len() >= Self::LENGTH,
+            "invalid bytes, length: {}",
+            bytes.len()
+        );
+
+        let magic = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        ensure!(
+            magic == SnapshotHeader::MAGIC,
+            "invalid bytes to convert to header."
+        );
+        let version = bytes[5];
+        let flag = bytes[6];
+        let length = u64::from_le_bytes(bytes[6..14].try_into().unwrap());
+        Ok(Self {
+            magic,
+            version,
+            flag,
+            length,
+        })
     }
 
-    pub fn write_to(&self, writter: &mut &mut [u8]) -> Result<()> {
-        if writter.len() < SnapshotHeader::LENGTH {
-            return Err(anyhow!(
-                "writter buf is too small for writing the header, length: {}",
-                writter.len()
-            )
-            .into());
-        }
-        writter.write(self.magic.to_le_bytes().as_slice()).unwrap();
-        writter
-            .write(self.version.to_le_bytes().as_slice())
-            .unwrap();
-        writter.write(self.flag.to_le_bytes().as_slice()).unwrap();
-        writter.write(self.length.to_le_bytes().as_slice()).unwrap();
+    pub fn write_to(&self, writer: &mut &mut [u8]) -> Result<()> {
+        ensure!(
+            writer.len() >= SnapshotHeader::LENGTH,
+            "writer buf is too small for writing the header, length: {}",
+            writer.len()
+        );
+
+        writer
+            .write_all(self.magic.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
+        writer
+            .write_all(self.version.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
+        writer
+            .write_all(self.flag.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
+        writer
+            .write_all(self.length.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
         Ok(())
     }
 }
 
-#[repr(packed)]
-#[derive(Debug)]
+/// The layout for the string/bytes:
+/// ```plaintext
+/// +---------+-------------------+------------+---------------+
+/// | id(u64) | time_range(i64*2) | size(u32)  |  num_rows(u32)|
+/// +---------+-------------------+------------+---------------+
+/// ```#[derive(Debug)]
 struct SnapshotRecordV1 {
     id: u64,
-    time_range_start: i64,
-    time_range_end: i64,
+    time_range: TimeRange,
     size: u32,
     num_rows: u32,
 }
 
 impl SnapshotRecordV1 {
-    // format: | id(u64) | time_range(i64*2)| size(u32) |  num_rows(u32)|
-    const LENGTH: usize = size_of::<SnapshotRecordV1>();
+    const LENGTH: usize = 8 /*id*/+ 16 /*time range*/ + 4 /*size*/ + 4 /*num rows*/;
     pub const VERSION: u8 = 1;
 
-    pub fn write_to(&self, writter: &mut &mut [u8]) -> Result<()> {
-        if writter.len() < SnapshotRecordV1::LENGTH {
-            return Err(anyhow!(
-                "writter buf is too small for writing the record, length: {}",
-                writter.len()
-            )
-            .into());
-        }
-        writter.write(self.id.to_le_bytes().as_slice()).unwrap();
-        writter
-            .write(self.time_range_start.to_le_bytes().as_slice())
-            .unwrap();
-        writter
-            .write(self.time_range_end.to_le_bytes().as_slice())
-            .unwrap();
-        writter.write(self.size.to_le_bytes().as_slice()).unwrap();
-        writter
-            .write(self.num_rows.to_le_bytes().as_slice())
-            .unwrap();
+    pub fn write_to(&self, writer: &mut &mut [u8]) -> Result<()> {
+        ensure!(
+            writer.len() >= SnapshotRecordV1::LENGTH,
+            "writer buf is too small for writing the record, length: {}",
+            writer.len()
+        );
+
+        writer
+            .write_all(self.id.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
+        writer
+            .write_all(self.time_range.start.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
+        writer
+            .write_all(self.time_range.end.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
+        writer
+            .write_all(self.size.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
+        writer
+            .write_all(self.num_rows.to_le_bytes().as_slice())
+            .context("write shall not fail.")?;
         Ok(())
     }
 
@@ -317,8 +334,7 @@ impl From<SstFile> for SnapshotRecordV1 {
     fn from(value: SstFile) -> Self {
         SnapshotRecordV1 {
             id: value.id(),
-            time_range_start: value.meta().time_range.start.0,
-            time_range_end: value.meta().time_range.end.0,
+            time_range: value.meta().time_range.clone(),
             size: value.meta().size,
             num_rows: value.meta().num_rows,
         }
@@ -329,36 +345,35 @@ impl TryFrom<&[u8]> for SnapshotRecordV1 {
     type Error = Error;
 
     fn try_from(value: &[u8]) -> Result<Self> {
-        if value.len() < SnapshotRecordV1::LENGTH {
-            return Err(anyhow!("invalid value len: {}", value.len()).into());
-        }
+        ensure!(
+            value.len() >= SnapshotRecordV1::LENGTH,
+            "invalid value len: {}",
+            value.len()
+        );
+
         let id = u64::from_le_bytes(value[0..8].try_into().unwrap());
-        let time_range_start = i64::from_le_bytes(value[8..16].try_into().unwrap());
-        let time_range_end = i64::from_le_bytes(value[16..24].try_into().unwrap());
+        let start = i64::from_le_bytes(value[8..16].try_into().unwrap());
+        let end = i64::from_le_bytes(value[16..24].try_into().unwrap());
         let size = u32::from_le_bytes(value[24..28].try_into().unwrap());
         let num_rows = u32::from_le_bytes(value[28..32].try_into().unwrap());
         Ok(SnapshotRecordV1 {
             id,
-            time_range_start,
-            time_range_end,
+            time_range: TimeRange::new(start.into(), end.into()),
             size,
             num_rows,
         })
     }
 }
 
-impl Into<SstFile> for SnapshotRecordV1 {
-    fn into(self) -> SstFile {
+impl From<SnapshotRecordV1> for SstFile {
+    fn from(record: SnapshotRecordV1) -> Self {
         let file_meta = FileMeta {
-            max_sequence: self.id(),
-            num_rows: self.num_rows,
-            size: self.size,
-            time_range: TimeRange::new(
-                Timestamp::from(self.time_range_start),
-                Timestamp::from(self.time_range_end),
-            ),
+            max_sequence: record.id(),
+            num_rows: record.num_rows,
+            size: record.size,
+            time_range: record.time_range.clone(),
         };
-        SstFile::new(self.id(), file_meta)
+        SstFile::new(record.id(), file_meta)
     }
 }
 
@@ -385,16 +400,15 @@ impl Snapshot {
         }
         let header = SnapshotHeader::try_from_bytes(bytes.as_bytes())?;
         let header_length = header.length as usize;
-        if header_length > 0
-            && (header_length % SnapshotRecordV1::LENGTH != 0
-                || header_length + SnapshotHeader::LENGTH != bytes.len())
-        {
-            return Err(anyhow!(
-                "create snapshot from bytes failed, invalid bytes, header length = {}, total length: {}",
+        ensure!(
+            header_length > 0
+                && header_length % SnapshotRecordV1::LENGTH == 0
+                && header_length + SnapshotHeader::LENGTH == bytes.len(),
+            "create snapshot from bytes failed, invalid bytes, header length = {}, total length: {}",
                 header_length,
                 bytes.len()
-            ).into());
-        }
+        );
+
         Ok(Self {
             header,
             inner: bytes,
@@ -403,10 +417,10 @@ impl Snapshot {
 
     pub fn to_sstfiles(&self) -> Result<Vec<SstFile>> {
         if self.header.length == 0 {
-            return Ok(Vec::new());
+            Ok(Vec::new())
         } else {
             let buf = self.inner.as_bytes();
-            let mut result: Vec<SstFile> = Vec::new();
+            let mut result: Vec<SstFile> = Vec::with_capacity(self.header.length as usize);
             let mut index = SnapshotHeader::LENGTH;
             while index < buf.len() {
                 let record =
@@ -437,21 +451,21 @@ impl Snapshot {
         // update header
         self.header.length += (sstfiles.len() * SnapshotRecordV1::LENGTH) as u64;
         // final snapshot
-        let mut snapshot = vec![1u8; SnapshotHeader::LENGTH + self.header.length as usize];
-        let mut writter = snapshot.as_mut_slice();
+        let mut snapshot = vec![0u8; SnapshotHeader::LENGTH + self.header.length as usize];
+        let mut writer = snapshot.as_mut_slice();
 
         // write new head
-        self.header.write_to(&mut writter).unwrap();
+        self.header.write_to(&mut writer).unwrap();
         // write old records
         if !self.inner.is_empty() {
-            writter
-                .write(&self.inner.as_bytes()[SnapshotHeader::LENGTH..])
+            writer
+                .write_all(&self.inner.as_bytes()[SnapshotHeader::LENGTH..])
                 .unwrap();
         }
         // write new records
         for sst in sstfiles {
             let record: SnapshotRecordV1 = sst.into();
-            record.write_to(&mut writter).unwrap();
+            record.write_to(&mut writer).unwrap();
         }
         self.inner = Bytes::from(snapshot);
     }
@@ -824,9 +838,9 @@ mod tests {
     fn test_snapshot_header() {
         let header = SnapshotHeader::new(257);
         let mut vec = vec![0u8; SnapshotHeader::LENGTH];
-        let mut writter = vec.as_mut_slice();
-        header.write_to(&mut writter).unwrap();
-        assert!(writter.len() == 0);
+        let mut writer = vec.as_mut_slice();
+        header.write_to(&mut writer).unwrap();
+        assert!(writer.is_empty());
         assert!((vec[3], vec[2], vec[1], vec[0]) == (0x32, 0xa4, 0x89, 0xbf)); // magic
         assert!(vec[4] == 1); // version
         assert!(vec[5] == 0); // flag
@@ -839,9 +853,9 @@ mod tests {
         assert!(vec[12] == 0); // 0
         assert!(vec[13] == 0); // 0
 
-        let mut vec = vec![0u8; SnapshotHeader::LENGTH - 1];
-        let mut writter = &mut vec[..];
-        let result = header.write_to(&mut writter);
+        let mut vec = [0u8; SnapshotHeader::LENGTH - 1];
+        let mut writer = vec.as_mut_slice();
+        let result = header.write_to(&mut writer);
         assert!(result.is_err()); // buf not enough
     }
 
@@ -858,10 +872,10 @@ mod tests {
         );
         let record: SnapshotRecordV1 = sstfile.into();
         let mut vec: Vec<u8> = vec![0u8; SnapshotRecordV1::LENGTH];
-        let mut writter = vec.as_mut_slice();
-        record.write_to(&mut writter).unwrap();
+        let mut writer = vec.as_mut_slice();
+        record.write_to(&mut writer).unwrap();
 
-        assert!(writter.len() == 0);
+        assert!(writer.is_empty());
         assert!(vec[0] == 99); // id
         assert!(vec[8] == 1); // start time
         assert!(vec[16] == 2); // end time
@@ -870,8 +884,8 @@ mod tests {
         assert!(vec[28] == 100); // num_rows
 
         let mut vec = vec![0u8; SnapshotRecordV1::LENGTH - 1];
-        let mut writter = vec.as_mut_slice();
-        let result = record.write_to(&mut writter);
+        let mut writer = vec.as_mut_slice();
+        let result = record.write_to(&mut writer);
         assert!(result.is_err()); // buf not enough
     }
 }
