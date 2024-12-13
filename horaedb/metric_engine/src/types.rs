@@ -121,6 +121,7 @@ pub struct WriteResult {
     pub size: usize,
 }
 
+#[derive(Debug)]
 pub struct ColumnOptions {
     pub enable_dict: Option<bool>,
     pub enable_bloom_filter: Option<bool>,
@@ -128,6 +129,7 @@ pub struct ColumnOptions {
     pub compression: Option<Compression>,
 }
 
+#[derive(Debug)]
 pub struct WriteOptions {
     pub max_row_group_size: usize,
     pub write_bacth_size: usize,
@@ -156,6 +158,7 @@ impl Default for WriteOptions {
     }
 }
 
+#[derive(Debug)]
 pub struct RuntimeOptions {
     pub manifest_compact_thread_num: usize,
     pub sst_compact_thread_num: usize,
@@ -170,6 +173,7 @@ impl Default for RuntimeOptions {
     }
 }
 
+#[derive(Debug)]
 pub struct ManifestMergeOptions {
     pub channel_size: usize,
     pub merge_interval_seconds: usize,
@@ -190,11 +194,19 @@ impl Default for ManifestMergeOptions {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
+pub enum UpdateMode {
+    #[default]
+    Overwrite,
+    Append,
+}
+
+#[derive(Debug, Default)]
 pub struct StorageOptions {
     pub write_opts: WriteOptions,
     pub manifest_merge_opts: ManifestMergeOptions,
     pub runtime_opts: RuntimeOptions,
+    pub update_mode: UpdateMode,
 }
 
 #[cfg(test)]

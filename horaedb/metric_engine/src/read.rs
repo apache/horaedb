@@ -15,13 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{
-    any::Any,
-    pin::Pin,
-    sync::Arc,
-    task::{Context, Poll},
-};
+use std::{any::Any, pin::Pin, sync::Arc, task::Poll};
 
+use anyhow::Context;
 use arrow::{
     array::{AsArray, RecordBatch},
     compute::concat_batches,
@@ -36,7 +32,6 @@ use datafusion::{
     datasource::physical_plan::{FileMeta, ParquetFileReaderFactory},
     error::{DataFusionError, Result as DfResult},
     execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext},
-    logical_expr::AggregateUDFImpl,
     parquet::arrow::async_reader::AsyncFileReader,
     physical_plan::{
         metrics::ExecutionPlanMetricsSet, DisplayAs, Distribution, ExecutionPlan, PlanProperties,
@@ -45,10 +40,13 @@ use datafusion::{
 use futures::{Stream, StreamExt};
 use itertools::Itertools;
 use parquet::arrow::async_reader::ParquetObjectReader;
+use tracing::debug;
 
 use crate::{
     compare_primitive_columns,
+    operator::MergeOperator,
     types::{ObjectStoreRef, SEQ_COLUMN_NAME},
+    Result,
 };
 
 #[derive(Debug, Clone)]
@@ -92,9 +90,8 @@ pub(crate) struct MergeExec {
     num_primary_keys: usize,
     /// Sequence column index
     seq_idx: usize,
-    // (idx, merge_op)
-    value_idx: usize,
-    value_op: Arc<dyn AggregateUDFImpl>,
+    /// Operator to merge values when primary keys are the same
+    value_operator: Arc<dyn MergeOperator>,
 }
 
 impl MergeExec {
@@ -102,15 +99,13 @@ impl MergeExec {
         input: Arc<dyn ExecutionPlan>,
         num_primary_keys: usize,
         seq_idx: usize,
-        value_idx: usize,
-        value_op: Arc<dyn AggregateUDFImpl>,
+        value_operator: Arc<dyn MergeOperator>,
     ) -> Self {
         Self {
             input,
             num_primary_keys,
             seq_idx,
-            value_idx,
-            value_op,
+            value_operator,
         }
     }
 }
@@ -162,8 +157,7 @@ impl ExecutionPlan for MergeExec {
             Arc::clone(&children[0]),
             self.num_primary_keys,
             self.seq_idx,
-            self.value_idx,
-            self.value_op.clone(),
+            self.value_operator.clone(),
         )))
     }
 
@@ -180,8 +174,7 @@ impl ExecutionPlan for MergeExec {
             self.input.execute(partition, context)?,
             self.num_primary_keys,
             self.seq_idx,
-            self.value_idx,
-            self.value_op.clone(),
+            self.value_operator.clone(),
         )))
     }
 }
@@ -190,8 +183,7 @@ struct MergeStream {
     stream: SendableRecordBatchStream,
     num_primary_keys: usize,
     seq_idx: usize,
-    value_idx: usize,
-    value_op: Arc<dyn AggregateUDFImpl>,
+    value_operator: Arc<dyn MergeOperator>,
 
     pending_batch: Option<RecordBatch>,
     arrow_schema: SchemaRef,
@@ -202,8 +194,7 @@ impl MergeStream {
         stream: SendableRecordBatchStream,
         num_primary_keys: usize,
         seq_idx: usize,
-        value_idx: usize,
-        value_op: Arc<dyn AggregateUDFImpl>,
+        value_operator: Arc<dyn MergeOperator>,
     ) -> Self {
         let fields = stream
             .schema()
@@ -225,8 +216,7 @@ impl MergeStream {
             stream,
             num_primary_keys,
             seq_idx,
-            value_idx,
-            value_op,
+            value_operator,
             pending_batch: None,
             arrow_schema,
         }
@@ -242,6 +232,7 @@ impl MergeStream {
         for k in 0..self.num_primary_keys {
             let lhs_col = lhs.column(k);
             let rhs_col = rhs.column(k);
+
             compare_primitive_columns!(
                 lhs_col, rhs_col, lhs_idx, rhs_idx, // TODO: Add more types here
                 UInt8Type, Int8Type, UInt32Type, Int32Type, UInt64Type, Int64Type
@@ -258,9 +249,15 @@ impl MergeStream {
         true
     }
 
-    // TODO: only support deduplication now, merge operation will be added later.
-    fn merge_batch(&mut self, batch: RecordBatch) -> DfResult<RecordBatch> {
-        let mut batches = vec![];
+    fn merge_batch(&mut self, batch: RecordBatch) -> Result<Option<RecordBatch>> {
+        if batch.num_rows() == 0 {
+            return Ok(None);
+        }
+
+        debug!(pending_batch = ?self.pending_batch, "Merge batch");
+
+        // Group rows with the same primary keys
+        let mut groupby_pk_batches = Vec::new();
         let mut start_idx = 0;
         while start_idx < batch.num_rows() {
             let mut end_idx = start_idx + 1;
@@ -269,58 +266,86 @@ impl MergeStream {
             {
                 end_idx += 1;
             }
-            let rows_with_same_primary_keys = batch.slice(start_idx, end_idx - start_idx);
-            if let Some(pending) = self.pending_batch.take() {
-                if !self.primary_key_eq(
-                    &pending,
-                    pending.num_rows() - 1,
-                    &rows_with_same_primary_keys,
-                    0,
-                ) {
-                    // only keep the last row in this batch
-                    batches.push(pending.slice(pending.num_rows() - 1, 1));
-                }
-            }
-            batches.push(
-                rows_with_same_primary_keys.slice(rows_with_same_primary_keys.num_rows() - 1, 1),
-            );
-
+            groupby_pk_batches.push(batch.slice(start_idx, end_idx - start_idx));
             start_idx = end_idx;
+            debug!(end_idx = end_idx, "Group rows with the same primary keys");
+        }
+
+        let rows_with_same_primary_keys = &groupby_pk_batches[0];
+        let mut output_batches = Vec::new();
+        if let Some(pending) = self.pending_batch.take() {
+            if self.primary_key_eq(
+                &pending,
+                pending.num_rows() - 1,
+                rows_with_same_primary_keys,
+                0,
+            ) {
+                groupby_pk_batches[0] = concat_batches(
+                    &self.stream.schema(),
+                    [&pending, rows_with_same_primary_keys],
+                )
+                .context("concat batch")?;
+            } else {
+                output_batches.push(self.value_operator.merge(pending)?);
+            }
         }
 
         // last batch may have overlapping rows with the next batch, so keep them in
         // pending_batch
-        self.pending_batch = batches.pop();
+        self.pending_batch = groupby_pk_batches.pop();
 
-        concat_batches(&self.stream.schema(), batches.iter())
-            .map_err(|e| DataFusionError::ArrowError(e, None))
-            .map(|mut batch| {
-                // Remove seq column
-                batch.remove_column(self.seq_idx);
-                batch
-            })
+        for batch in groupby_pk_batches {
+            output_batches.push(self.value_operator.merge(batch)?);
+        }
+        if output_batches.is_empty() {
+            return Ok(None);
+        }
+
+        let mut output_batches =
+            concat_batches(&self.stream.schema(), output_batches.iter()).context("concat batch")?;
+        // Remove seq column
+        output_batches.remove_column(self.seq_idx);
+        Ok(Some(output_batches))
     }
 }
 
 impl Stream for MergeStream {
     type Item = DfResult<RecordBatch>;
 
-    fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context) -> Poll<Option<Self::Item>> {
-        match self.stream.poll_next_unpin(ctx) {
-            Poll::Pending => Poll::Pending,
-            Poll::Ready(None) => {
-                let value = if let Some(mut pending) = self.pending_batch.take() {
-                    pending.remove_column(self.seq_idx);
-                    Some(Ok(pending))
-                } else {
-                    None
-                };
-                Poll::Ready(value)
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        ctx: &mut std::task::Context,
+    ) -> Poll<Option<Self::Item>> {
+        loop {
+            match self.stream.poll_next_unpin(ctx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(None) => {
+                    let value = if let Some(mut pending) = self.pending_batch.take() {
+                        pending.remove_column(self.seq_idx);
+                        let res = self
+                            .value_operator
+                            .merge(pending)
+                            .map_err(|e| DataFusionError::External(Box::new(e)));
+                        Some(res)
+                    } else {
+                        None
+                    };
+                    return Poll::Ready(value);
+                }
+                Poll::Ready(Some(v)) => match v {
+                    Ok(v) => match self.merge_batch(v) {
+                        Ok(v) => {
+                            if let Some(v) = v {
+                                return Poll::Ready(Some(Ok(v)));
+                            }
+                        }
+                        Err(e) => {
+                            return Poll::Ready(Some(Err(DataFusionError::External(Box::new(e)))))
+                        }
+                    },
+                    Err(e) => return Poll::Ready(Some(Err(e))),
+                },
             }
-            Poll::Ready(Some(v)) => Poll::Ready(Some(v.and_then(|batch| {
-                let batch = self.merge_batch(batch)?;
-                Ok(batch)
-            }))),
         }
     }
 }
@@ -328,5 +353,74 @@ impl Stream for MergeStream {
 impl RecordBatchStream for MergeStream {
     fn schema(&self) -> SchemaRef {
         self.arrow_schema.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use test_log::test;
+
+    use super::*;
+    use crate::{
+        operator::{BytesMergeOperator, LastValueOperator, MergeOperatorRef},
+        record_batch,
+        test_util::{check_stream, make_sendable_record_batches},
+    };
+
+    #[test(tokio::test)]
+    async fn test_merge_stream() {
+        let expected = [
+            record_batch!(
+                ("pk1", UInt8, vec![11, 12]),
+                ("value", Binary, vec![b"2", b"4"])
+            )
+            .unwrap(),
+            record_batch!(("pk1", UInt8, vec![13]), ("value", Binary, vec![b"8"])).unwrap(),
+            record_batch!(("pk1", UInt8, vec![14]), ("value", Binary, vec![b"9"])).unwrap(),
+        ];
+
+        test_merge_stream_for_append_mode(Arc::new(LastValueOperator), expected).await;
+
+        let expected = [
+            record_batch!(
+                ("pk1", UInt8, vec![11, 12]),
+                ("value", Binary, vec![b"12", b"34"])
+            )
+            .unwrap(),
+            record_batch!(("pk1", UInt8, vec![13]), ("value", Binary, vec![b"5678"])).unwrap(),
+            record_batch!(("pk1", UInt8, vec![14]), ("value", Binary, vec![b"9"])).unwrap(),
+        ];
+
+        test_merge_stream_for_append_mode(Arc::new(BytesMergeOperator::new(vec![1])), expected)
+            .await;
+    }
+
+    async fn test_merge_stream_for_append_mode<I>(merge_op: MergeOperatorRef, expected: I)
+    where
+        I: IntoIterator<Item = RecordBatch>,
+    {
+        let stream = make_sendable_record_batches([
+            record_batch!(
+                ("pk1", UInt8, vec![11, 11, 12, 12, 13]),
+                ("value", Binary, vec![b"1", b"2", b"3", b"4", b"5"]),
+                ("seq", UInt8, vec![1, 2, 3, 4, 5])
+            )
+            .unwrap(),
+            record_batch!(
+                ("pk1", UInt8, vec![13, 13]),
+                ("value", Binary, vec![b"6", b"7"]),
+                ("seq", UInt8, vec![6, 7])
+            )
+            .unwrap(),
+            record_batch!(
+                ("pk1", UInt8, vec![13, 14]),
+                ("value", Binary, vec![b"8", b"9"]),
+                ("seq", UInt8, vec![8, 9])
+            )
+            .unwrap(),
+        ]);
+
+        let stream = MergeStream::new(stream, 1, 2, merge_op);
+        check_stream(Box::pin(stream), expected).await;
     }
 }
