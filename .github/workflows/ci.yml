@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Metric Engine CI
+name: HoraeDB CI
 
 on:
   merge_group:
@@ -23,20 +23,26 @@ on:
   push:
     branches:
       - main
+      - analytic-engine
       - dev
     paths:
-      - 'horaedb/**'
+      - '**.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/ci.yml'
+      - 'licenserc.toml'
   pull_request:
     paths:
-      - 'horaedb/**'
+      - '**.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/ci.yml'
 
 # Common environment variables
 env:
   RUSTFLAGS: "-C debuginfo=1"
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
-  LOCK_FILE: Cargo.lock
-  RUST_VERSION: nightly-2024-01-28
 
 jobs:
   style-check:
@@ -47,9 +53,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
           sudo make ensure-disk-quota
@@ -59,15 +62,11 @@ jobs:
           sudo apt install --yes protobuf-compiler
       - name: Install check binaries
         run: |
-          rustup component add clippy
-          rustup component add rustfmt
           cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
       - name: Run Style Check
-        working-directory: horaedb
         run: |
           make fmt sort clippy
       - name: Check lock
-        working-directory: horaedb
         run: |
           git diff --exit-code
 
@@ -79,9 +78,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${RUST_VERSION} --profile minimal
       - name: Release Disk Quota
         run: |
           sudo make ensure-disk-quota
@@ -90,10 +86,8 @@ jobs:
           sudo apt update
           sudo apt install --yes protobuf-compiler
       - name: Run Unit Tests
-        working-directory: horaedb
         run: |
           make test
       - name: Check lock
-        working-directory: horaedb
         run: |
           git diff --exit-code
