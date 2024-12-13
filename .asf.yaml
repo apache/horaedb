@@ -23,10 +23,9 @@ github:
   homepage: https://horaedb.apache.org
   labels:
     - rust
-    - sql
-    - database
     - distributed-database
     - cloud-native
+    - prometheus-remote-storage
     - tsdb
     - timeseries-database
     - timeseries-analysis
@@ -38,6 +37,10 @@ github:
     rebase:  true
   protected_branches:
     main:
+      required_pull_request_reviews:
+        dismiss_stale_reviews: false
+        required_approving_review_count: 1
+    analytic-engine:
       required_pull_request_reviews:
         dismiss_stale_reviews: false
         required_approving_review_count: 1
