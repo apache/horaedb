@@ -16,7 +16,7 @@ Apache HoraeDB (incubating) is a high-performance, distributed, cloud native tim
 
 ## Notice
 
-The `main` branch for developing new engine described in this [RFC](docs/rfcs/20240827-metric-engine.md), and it's in rapid development and unstable, we plan to release a workable version towards end of 2025.
+The `main` branch is used for developing new engine described in this [RFC](docs/rfcs/20240827-metric-engine.md), it's in rapid development and unstable, we plan to release a workable version towards end of 2025.
 
 The old, stable engine is in [analytic-engine](https://github.com/apache/horaedb/tree/analytic-engine) branch.
 
