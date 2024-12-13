@@ -23,10 +23,9 @@ github:
   homepage: https://horaedb.apache.org
   labels:
     - rust
-    - sql
-    - database
     - distributed-database
     - cloud-native
+    - prometheus-remote-storage
     - tsdb
     - timeseries-database
     - timeseries-analysis

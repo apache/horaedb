@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: HoraeDB CI
+name: Metric Engine CI
 
 on:
   merge_group:
@@ -25,23 +25,10 @@ on:
       - main
       - dev
     paths:
-      - 'src/**'
-      - 'integration_tests/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/ci.yml'
-      - 'licenserc.toml'
+      - 'horaedb/**'
   pull_request:
     paths:
-      - 'src/**'
-      - 'integration_tests/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/ci.yml'
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+      - 'horaedb/**'
 
 # Common environment variables
 env:
@@ -57,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - run: |
@@ -75,20 +62,21 @@ jobs:
           rustup component add clippy
           rustup component add rustfmt
           cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/korandoru/hawkeye/releases/download/v5.8.1/hawkeye-installer.sh | sh
       - name: Run Style Check
+        working-directory: horaedb
         run: |
-          make fmt
-          make check-cargo-toml
-          make check-asf-header
-          make clippy
+          make fmt sort clippy
+      - name: Check lock
+        working-directory: horaedb
+        run: |
+          git diff --exit-code
 
   unit-test:
     name: unit-test
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - run: |
@@ -101,176 +89,11 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
-      - name: Backup Lock File
-        run: |
-          cp ${LOCK_FILE} ${LOCK_FILE}.bak
       - name: Run Unit Tests
+        working-directory: horaedb
         run: |
-          make test-ut
-          echo "Checking if ${LOCK_FILE} has changed..."
-      - name: Check Lock File
+          make test
+      - name: Check lock
+        working-directory: horaedb
         run: |
-          diff ${LOCK_FILE} ${LOCK_FILE}.bak
-
-  integration-test:
-    name: integration-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.21
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${RUST_VERSION} --profile minimal
-      - name: Release Disk Quota
-        run: |
-          sudo make ensure-disk-quota
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes protobuf-compiler
-      - name: Run integration tests
-        run: |
-          make integration-test
-        env:
-          RUST_BACKTRACE: "1"
-      - name: Upload Logs
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: CI-${{ github.sha }}
-          path: |
-            /tmp/horaedb-stdout.log
-            /tmp/horaemeta-stdout.log
-            /tmp/horaedb-stdout-0.log
-            /tmp/horaedb-stdout-1.log
-
-  sdk-test:
-    name: sdk-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.21
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${RUST_VERSION} --profile minimal
-      - name: Release Disk Quota
-        run: |
-          sudo make ensure-disk-quota
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes protobuf-compiler
-      - name: Build and Run HoraeDB Cluster
-        working-directory: integration_tests
-        run: |
-          make prepare
-          make run-horaemeta
-          make run-horaedb-cluster
-      - name: Run Go SDK tests
-        working-directory: integration_tests
-        run: |
-          make run-go
-      - name: Run Java SDK tests
-        working-directory: integration_tests
-        run: |
-          make run-java
-      - name: Run Rust SDK tests
-        working-directory: integration_tests
-        run: |
-          make run-rust
-      - name: Run MySQL client tests
-        working-directory: integration_tests
-        run: |
-          make run-mysql
-      - name: Run PostgreSQL client tests
-        working-directory: integration_tests
-        run: |
-          make run-postgresql
-      - name: Run Prometheus query tests
-        working-directory: integration_tests
-        run: |
-          make run-prom
-      - name: Run OpenTSDB tests
-        working-directory: integration_tests
-        run: |
-          make run-opentsdb
-      - name: Upload Logs
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: sdk-test-${{ github.sha }}
-          path: |
-            /tmp/horaedb-stdout.log
-
-  recovery-test:
-    name: recovery-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${RUST_VERSION} --profile minimal
-      - name: Release Disk Quota
-        run: |
-          sudo make ensure-disk-quota
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes protobuf-compiler
-      - name: Run recovery tests
-        working-directory: integration_tests
-        run: |
-          make run-recovery
-      - name: Upload Logs
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: recovery-test-${{ github.sha }}
-          path: |
-            /tmp/horaedb-stdout.log
-
-  dist-query-test:
-    name: dist-query-test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: true
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.21
-      - run: |
-          rustup set auto-self-update disable
-          rustup toolchain install ${RUST_VERSION} --profile minimal
-      - name: Release Disk Quota
-        run: |
-          sudo make ensure-disk-quota
-      - name: Setup Build Environment
-        run: |
-          sudo apt update
-          sudo apt install --yes protobuf-compiler
-      - name: Run dist query tests
-        working-directory: integration_tests
-        run: |
-          make run-dist-query
-      - name: Upload Logs
-        if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: dist-query-test-${{ github.sha }}
-          path: |
-            /tmp/horaedb-stdout.log
+          git diff --exit-code

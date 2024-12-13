@@ -16,190 +16,40 @@
 # under the License.
 
 [workspace.package]
-version = "2.2.0-dev"
+version = "2.2.0-alpha"
 authors = ["HoraeDB Authors"]
 edition = "2021"
 license = "Apache-2.0"
 
 [workspace]
 resolver = "2"
-# In alphabetical order
-members = [
-    "horaectl",
-    "integration_tests",
-    "integration_tests/sdk/rust",
-    "src/analytic_engine",
-    "src/benchmarks",
-    "src/catalog",
-    "src/catalog_impls",
-    "src/cluster",
-    "src/common_types",
-    "src/components/alloc_tracker",
-    "src/components/arena",
-    "src/components/arrow_ext",
-    "src/components/bytes_ext",
-    "src/components/codec",
-    "src/components/future_ext",
-    "src/components/hash_ext",
-    "src/components/id_allocator",
-    "src/components/logger",
-    "src/components/macros",
-    "src/components/message_queue",
-    "src/components/metric_ext",
-    "src/components/notifier",
-    "src/components/object_store",
-    "src/components/panic_ext",
-    "src/components/parquet_ext",
-    "src/components/partitioned_lock",
-    "src/components/profile",
-    "src/components/runtime",
-    "src/components/sampling_cache",
-    "src/components/size_ext",
-    "src/components/skiplist",
-    "src/components/system_stats",
-    "src/components/table_kv",
-    "src/components/test_util",
-    "src/components/time_ext",
-    "src/components/timed_task",
-    "src/components/toml_ext",
-    "src/components/trace_metric",
-    "src/components/trace_metric_derive",
-    "src/components/trace_metric_derive_tests",
-    "src/components/tracing_util",
-    "src/df_engine_extensions",
-    "src/df_operator",
-    "src/horaedb",
-    "src/interpreters",
-    "src/meta_client",
-    "src/partition_table_engine",
-    "src/proxy",
-    "src/query_engine",
-    "src/query_frontend",
-    "src/remote_engine_client",
-    "src/router",
-    "src/server",
-    "src/system_catalog",
-    "src/table_engine",
-    "src/tools",
-    "src/wal"
-]
-
-default-members = ["src/horaedb"]
+members = ["src/metric_engine", "src/pb_types", "src/server"]
 
 [workspace.dependencies]
-alloc_tracker = { path = "src/components/alloc_tracker" }
-arrow = { version = "49.0.0", features = ["prettyprint"] }
-arrow_ipc = { version = "49.0.0" }
-arrow_ext = { path = "src/components/arrow_ext" }
-analytic_engine = { path = "src/analytic_engine" }
 anyhow = { version = "1.0" }
-arena = { path = "src/components/arena" }
-async-stream = "0.3.4"
-async-trait = "0.1.72"
-atomic_enum = "0.2.0"
-base64 = "0.13"
-bytes = "1"
+metric_engine = { path = "src/metric_engine" }
 thiserror = "1"
-bytes_ext = { path = "src/components/bytes_ext" }
-catalog = { path = "src/catalog" }
-catalog_impls = { path = "src/catalog_impls" }
-horaedbproto = { git = "https://github.com/apache/incubator-horaedb-proto.git", rev = "fac8564e6e3d50e51daa2af6eb905e747f3191b0" }
-codec = { path = "src/components/codec" }
-chrono = "0.4"
-clap = { version = "4.5.1", features = ["derive"] }
-clru = "0.6.1"
-cluster = { path = "src/cluster" }
-criterion = "0.5"
-horaedb-client = "1.0.2"
-common_types = { path = "src/common_types" }
-datafusion = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "e21b03154" }
-datafusion-proto = { git = "https://github.com/CeresDB/arrow-datafusion.git", rev = "e21b03154" }
-derive_builder = "0.12"
-df_operator = { path = "src/df_operator" }
-df_engine_extensions = { path = "src/df_engine_extensions" }
-future_ext = { path = "src/components/future_ext" }
-etcd-client = { version = "0.10.3", features = ["tls"] }
-env_logger = "0.6"
+bytes = "1"
+byteorder = "1"
+datafusion = "43"
+parquet = { version = "53" }
+object_store = { version = "0.11" }
+pb_types = { path = "src/pb_types" }
+prost = { version = "0.13" }
+arrow = { version = "53", features = ["prettyprint"] }
+bytesize = "1"
+arrow-schema = "53"
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+async-stream = "0.3"
 futures = "0.3"
-generic_error = { path = "src/components/generic_error" }
-hash_ext = { path = "src/components/hash_ext" }
-hex = "0.4.3"
-hyperloglog = { git = "https://github.com/jedisct1/rust-hyperloglog.git", rev = "425487ce910f26636fbde8c4d640b538431aad50" }
-id_allocator = { path = "src/components/id_allocator" }
-influxql-logical-planner = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "iox_query_influxql" }
-influxql-parser = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "influxdb_influxql_parser" }
-influxql-query = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "iox_query" }
-influxql-schema = { git = "https://github.com/CeresDB/influxql.git", rev = "05a8a9f", package = "schema" }
-interpreters = { path = "src/interpreters" }
-itertools = "0.10.5"
-lz4_flex = { version = "0.11", default-features = false, features = ["frame"] }
-lazy_static = "1.4.0"
-logger = { path = "src/components/logger" }
-lru = "0.7.6"
-macros = { path = "src/components/macros" }
-message_queue = { path = "src/components/message_queue" }
-meta_client = { path = "src/meta_client" }
-metric_ext = { path = "src/components/metric_ext" }
-notifier = { path = "src/components/notifier" }
-object_store = { path = "src/components/object_store" }
-once_cell = "1.18"
-panic_ext = { path = "src/components/panic_ext" }
-partitioned_lock = { path = "src/components/partitioned_lock" }
-partition_table_engine = { path = "src/partition_table_engine" }
-parquet_ext = { path = "src/components/parquet_ext" }
-parquet = { version = "49.0.0" }
-paste = "1.0"
-pin-project-lite = "0.2.8"
-pprof = "0.12.1"
-profile = { path = "src/components/profile" }
-prom-remote-api = { version = "0.2.2" }
-prometheus = "0.12"
-prometheus-static-metric = "0.5"
-prost = "0.11"
-proxy = { path = "src/proxy" }
-query_engine = { path = "src/query_engine" }
-query_frontend = { path = "src/query_frontend" }
-rand = "0.8.5"
-regex = "1"
-remote_engine_client = { path = "src/remote_engine_client" }
-reqwest = { version = "0.12.4", default-features = false, features = [
-    "rustls-tls",
-    "json",
-    "http2",
-] }
-router = { path = "src/router" }
-runtime = { path = "src/components/runtime" }
-sampling_cache = { path = "src/components/sampling_cache" }
-snafu = { version = "0.6.10", features = ["backtraces"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0.60"
-server = { path = "src/server" }
-size_ext = { path = "src/components/size_ext" }
-smallvec = "1.6"
-slog = "2.7"
-spin = "0.9.6"
-system_statis = { path = "src/components/system_stats" }
-sqlparser = { version = "0.39.0", features = ["serde"] }
-system_catalog = { path = "src/system_catalog" }
-table_engine = { path = "src/table_engine" }
-table_kv = { path = "src/components/table_kv" }
-tabled = "0.16.0"
-tempfile = "3.1.0"
-test_util = { path = "src/components/test_util" }
-time_ext = { path = "src/components/time_ext" }
-toml = "0.7"
-toml_ext = { path = "src/components/toml_ext" }
-timed_task = { path = "src/components/timed_task" }
-tracing_util = { path = "src/components/tracing_util" }
-trace_metric = { path = "src/components/trace_metric" }
-trace_metric_derive = { path = "src/components/trace_metric_derive" }
-trace_metric_derive_tests = { path = "src/components/trace_metric_derive_tests" }
-tonic = "0.8.1"
-tokio = { version = "1.29", features = ["full"] }
-uuid = "1.6.1"
-wal = { path = "src/wal" }
-xorfilter-rs = { git = "https://github.com/CeresDB/xorfilter", rev = "ac8ef01" }
-zstd = { version = "0.12", default-features = false }
+temp-dir = "0.1"
+itertools = "0.3"
+lazy_static = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+async-scoped = { version = "0.9.0", features = ["use-tokio"] }
+test-log = "0.2"
 
 # This profile optimizes for good runtime performance.
 [profile.release]

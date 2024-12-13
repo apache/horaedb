@@ -30,7 +30,3 @@ group_imports = "StdExternalCrate"
 
 normalize_comments = true
 normalize_doc_attributes = true
-
-ignore = [
-    "proto",
-]
