@@ -1382,7 +1382,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "horaedb-server"
-version = "2.0.0"
+version = "2.2.0-alpha"
 dependencies = [
  "futures",
  "metric_engine",
@@ -1654,7 +1654,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "metric_engine"
-version = "2.0.0"
+version = "2.2.0-alpha"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1927,7 +1927,7 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pb_types"
-version = "2.0.0"
+version = "2.2.0-alpha"
 dependencies = [
  "prost",
  "prost-build",
