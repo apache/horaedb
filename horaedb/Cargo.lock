@@ -1665,6 +1665,7 @@ dependencies = [
  "arrow-schema",
  "async-scoped",
  "async-trait",
+ "byteorder",
  "bytes",
  "bytesize",
  "datafusion",
