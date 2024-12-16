@@ -55,8 +55,8 @@ use crate::{
     read::ParquetReader,
     sst::{allocate_id, FileMeta, SstPathGenerator},
     types::{
-        ObjectStoreRef, RuntimeOptions, StorageOptions, StorageSchema, TimeRange, UpdateMode,
-        WriteOptions, WriteResult, SEQ_COLUMN_NAME,
+        ObjectStoreRef, RuntimeOptions, StorageOptions, StorageSchema, TimeRange, WriteOptions,
+        WriteResult, SEQ_COLUMN_NAME,
     },
     Result,
 };
@@ -130,16 +130,9 @@ pub struct CloudObjectStorage {
     path: String,
     store: ObjectStoreRef,
     schema: StorageSchema,
-    // arrow_schema: SchemaRef,
-    // num_primary_keys: usize,
-    // seq_idx: usize,
-    // value_idxes: Vec<usize>,
-    // update_mode: UpdateMode,
     manifest: ManifestRef,
     runtimes: StorageRuntimes,
-
     parquet_reader: Arc<ParquetReader>,
-    // df_schema: DFSchema,
     write_props: WriterProperties,
     sst_path_gen: Arc<SstPathGenerator>,
     compact_scheduler: CompactionScheduler,
@@ -201,19 +194,20 @@ impl CloudObjectStorage {
         };
         let write_props = Self::build_write_props(storage_opts.write_opts, num_primary_keys);
         let sst_path_gen = Arc::new(SstPathGenerator::new(path.clone()));
+        let parquet_reader = Arc::new(ParquetReader::new(
+            store.clone(),
+            schema.clone(),
+            sst_path_gen.clone(),
+        ));
         let compact_scheduler = CompactionScheduler::new(
             runtimes.sst_compact_runtime.clone(),
             manifest.clone(),
             store.clone(),
             segment_duration,
             sst_path_gen.clone(),
+            parquet_reader.clone(),
             SchedulerConfig::default(),
         );
-        let parquet_reader = Arc::new(ParquetReader::new(
-            store.clone(),
-            schema.clone(),
-            sst_path_gen.clone(),
-        ));
         Ok(Self {
             path,
             schema,

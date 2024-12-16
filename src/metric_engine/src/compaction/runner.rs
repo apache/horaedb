@@ -18,13 +18,16 @@
 use std::sync::Arc;
 
 use crate::{
-    compaction::Task, manifest::ManifestRef, sst::SstPathGenerator, types::ObjectStoreRef, Result,
+    compaction::Task, manifest::ManifestRef, read::ParquetReader, sst::SstPathGenerator,
+    types::ObjectStoreRef, Result,
 };
 
+#[derive(Clone)]
 pub struct Runner {
     store: ObjectStoreRef,
     manifest: ManifestRef,
     sst_path_gen: Arc<SstPathGenerator>,
+    parquet_reader: Arc<ParquetReader>,
 }
 
 impl Runner {
@@ -32,11 +35,13 @@ impl Runner {
         store: ObjectStoreRef,
         manifest: ManifestRef,
         sst_path_gen: Arc<SstPathGenerator>,
+        parquet_reader: Arc<ParquetReader>,
     ) -> Self {
         Self {
             store,
             manifest,
             sst_path_gen,
+            parquet_reader,
         }
     }
 

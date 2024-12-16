@@ -32,6 +32,7 @@ use super::runner::Runner;
 use crate::{
     compaction::{picker::TimeWindowCompactionStrategy, Task},
     manifest::ManifestRef,
+    read::ParquetReader,
     sst::SstPathGenerator,
     types::{ObjectStoreRef, RuntimeRef},
     Result,
@@ -53,6 +54,7 @@ impl Scheduler {
         store: ObjectStoreRef,
         segment_duration: Duration,
         sst_path_gen: Arc<SstPathGenerator>,
+        parquet_reader: Arc<ParquetReader>,
         config: SchedulerConfig,
     ) -> Self {
         let (task_tx, task_rx) = mpsc::channel(config.max_pending_compaction_tasks);
@@ -67,6 +69,7 @@ impl Scheduler {
                     store,
                     manifest,
                     sst_path_gen,
+                    parquet_reader,
                     config.memory_limit,
                 )
                 .await;
@@ -102,14 +105,13 @@ impl Scheduler {
         store: ObjectStoreRef,
         manifest: ManifestRef,
         sst_path_gen: Arc<SstPathGenerator>,
+        parquet_reader: Arc<ParquetReader>,
         _mem_limit: u64,
     ) {
+        let runner = Runner::new(store, manifest, sst_path_gen, parquet_reader);
         while let Some(task) = task_rx.recv().await {
-            let store = store.clone();
-            let manifest = manifest.clone();
-            let sst_path_gen = sst_path_gen.clone();
+            let runner = runner.clone();
             rt.spawn(async move {
-                let runner = Runner::new(store, manifest, sst_path_gen);
                 if let Err(e) = runner.do_compaction(task).await {
                     warn!("Do compaction failed, err:{e}");
                 }
