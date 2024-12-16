@@ -21,6 +21,7 @@ use std::{
 };
 
 use anyhow::Context;
+use parquet::file::properties::WriterProperties;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
@@ -34,7 +35,7 @@ use crate::{
     manifest::ManifestRef,
     read::ParquetReader,
     sst::SstPathGenerator,
-    types::{ObjectStoreRef, RuntimeRef},
+    types::{ObjectStoreRef, RuntimeRef, StorageSchema},
     Result,
 };
 
@@ -52,6 +53,7 @@ impl Scheduler {
         runtime: RuntimeRef,
         manifest: ManifestRef,
         store: ObjectStoreRef,
+        schema: StorageSchema,
         segment_duration: Duration,
         sst_path_gen: Arc<SstPathGenerator>,
         parquet_reader: Arc<ParquetReader>,
@@ -62,15 +64,18 @@ impl Scheduler {
             let rt = runtime.clone();
             let store = store.clone();
             let manifest = manifest.clone();
+            let write_props = config.write_props.clone();
             runtime.spawn(async move {
                 Self::recv_task_loop(
                     rt,
                     task_rx,
                     store,
+                    schema,
                     manifest,
                     sst_path_gen,
                     parquet_reader,
                     config.memory_limit,
+                    write_props,
                 )
                 .await;
             })
@@ -103,12 +108,21 @@ impl Scheduler {
         rt: RuntimeRef,
         mut task_rx: Receiver<Task>,
         store: ObjectStoreRef,
+        schema: StorageSchema,
         manifest: ManifestRef,
         sst_path_gen: Arc<SstPathGenerator>,
         parquet_reader: Arc<ParquetReader>,
         _mem_limit: u64,
+        write_props: WriterProperties,
     ) {
-        let runner = Runner::new(store, manifest, sst_path_gen, parquet_reader);
+        let runner = Runner::new(
+            store,
+            schema,
+            manifest,
+            sst_path_gen,
+            parquet_reader,
+            write_props,
+        );
         while let Some(task) = task_rx.recv().await {
             let runner = runner.clone();
             rt.spawn(async move {
@@ -125,8 +139,8 @@ impl Scheduler {
         segment_duration: Duration,
         config: SchedulerConfig,
     ) {
-        let compactor = TimeWindowCompactionStrategy::new(segment_duration, config);
         let schedule_interval = config.schedule_interval;
+        let compactor = TimeWindowCompactionStrategy::new(segment_duration, config);
         // TODO: obtain expire time
         let expire_time = None;
         loop {
@@ -142,12 +156,13 @@ impl Scheduler {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SchedulerConfig {
     pub schedule_interval: Duration,
     pub memory_limit: u64,
     pub max_pending_compaction_tasks: usize,
     pub compaction_files_limit: usize,
+    pub write_props: WriterProperties,
 }
 
 impl Default for SchedulerConfig {
@@ -157,6 +172,7 @@ impl Default for SchedulerConfig {
             memory_limit: bytesize::gb(2_u64),
             max_pending_compaction_tasks: 10,
             compaction_files_limit: 10,
+            write_props: WriterProperties::default(),
         }
     }
 }

@@ -112,6 +112,11 @@ impl TimeRange {
     pub fn overlaps(&self, other: &TimeRange) -> bool {
         self.0.start < other.0.end && other.0.start < self.0.end
     }
+
+    pub fn merge(&mut self, other: &TimeRange) {
+        self.0.start = self.0.start.min(other.0.start);
+        self.0.end = self.0.end.max(other.0.end);
+    }
 }
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;

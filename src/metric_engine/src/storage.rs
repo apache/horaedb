@@ -199,14 +199,19 @@ impl CloudObjectStorage {
             schema.clone(),
             sst_path_gen.clone(),
         ));
+
         let compact_scheduler = CompactionScheduler::new(
             runtimes.sst_compact_runtime.clone(),
             manifest.clone(),
             store.clone(),
+            schema.clone(),
             segment_duration,
             sst_path_gen.clone(),
             parquet_reader.clone(),
-            SchedulerConfig::default(),
+            SchedulerConfig {
+                write_props: write_props.clone(),
+                ..Default::default()
+            },
         );
         Ok(Self {
             path,
