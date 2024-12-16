@@ -28,14 +28,25 @@ use arrow::{
 };
 use arrow_schema::SchemaRef;
 use datafusion::{
-    common::internal_err,
-    datasource::physical_plan::{FileMeta, ParquetFileReaderFactory},
-    error::{DataFusionError, Result as DfResult},
-    execution::{RecordBatchStream, SendableRecordBatchStream, TaskContext},
-    parquet::arrow::async_reader::AsyncFileReader,
-    physical_plan::{
-        metrics::ExecutionPlanMetricsSet, DisplayAs, Distribution, ExecutionPlan, PlanProperties,
+    common::{internal_err, DFSchema},
+    datasource::{
+        listing::PartitionedFile,
+        physical_plan::{FileMeta, FileScanConfig, ParquetExec, ParquetFileReaderFactory},
     },
+    error::{DataFusionError, Result as DfResult},
+    execution::{
+        context::ExecutionProps, object_store::ObjectStoreUrl, RecordBatchStream,
+        SendableRecordBatchStream, TaskContext,
+    },
+    logical_expr::utils::conjunction,
+    parquet::arrow::async_reader::AsyncFileReader,
+    physical_expr::{create_physical_expr, LexOrdering},
+    physical_plan::{
+        metrics::ExecutionPlanMetricsSet, sorts::sort_preserving_merge::SortPreservingMergeExec,
+        DisplayAs, Distribution, ExecutionPlan, PlanProperties,
+    },
+    physical_planner::create_physical_sort_exprs,
+    prelude::{ident, Expr},
 };
 use futures::{Stream, StreamExt};
 use itertools::Itertools;
@@ -44,8 +55,9 @@ use tracing::debug;
 
 use crate::{
     compare_primitive_columns,
-    operator::MergeOperator,
-    types::{ObjectStoreRef, SEQ_COLUMN_NAME},
+    operator::{BytesMergeOperator, LastValueOperator, MergeOperator, MergeOperatorRef},
+    sst::{SstFile, SstPathGenerator},
+    types::{ObjectStoreRef, StorageSchema, UpdateMode, SEQ_COLUMN_NAME},
     Result,
 };
 
@@ -183,7 +195,7 @@ struct MergeStream {
     stream: SendableRecordBatchStream,
     num_primary_keys: usize,
     seq_idx: usize,
-    value_operator: Arc<dyn MergeOperator>,
+    value_operator: MergeOperatorRef,
 
     pending_batch: Option<RecordBatch>,
     arrow_schema: SchemaRef,
@@ -194,7 +206,7 @@ impl MergeStream {
         stream: SendableRecordBatchStream,
         num_primary_keys: usize,
         seq_idx: usize,
-        value_operator: Arc<dyn MergeOperator>,
+        value_operator: MergeOperatorRef,
     ) -> Self {
         let fields = stream
             .schema()
@@ -356,14 +368,111 @@ impl RecordBatchStream for MergeStream {
     }
 }
 
+pub struct ParquetReader {
+    store: ObjectStoreRef,
+    schema: StorageSchema,
+    sst_path_gen: Arc<SstPathGenerator>,
+}
+
+impl ParquetReader {
+    pub fn new(
+        store: ObjectStoreRef,
+        schema: StorageSchema,
+        sst_path_gen: Arc<SstPathGenerator>,
+    ) -> Self {
+        Self {
+            store,
+            schema,
+            sst_path_gen,
+        }
+    }
+
+    fn build_sort_exprs(&self, df_schema: &DFSchema, sort_seq: bool) -> Result<LexOrdering> {
+        let mut sort_exprs = (0..self.schema.num_primary_keys)
+            .map(|i| {
+                ident(self.schema.arrow_schema.field(i).name())
+                    .sort(true /* asc */, true /* nulls_first */)
+            })
+            .collect::<Vec<_>>();
+        if sort_seq {
+            sort_exprs.push(ident(SEQ_COLUMN_NAME).sort(true, true));
+        }
+        let sort_exprs =
+            create_physical_sort_exprs(&sort_exprs, df_schema, &ExecutionProps::default())
+                .context("create physical sort exprs")?;
+
+        Ok(sort_exprs)
+    }
+
+    pub fn build_df_plan(
+        &self,
+        ssts: Vec<SstFile>,
+        projections: Option<Vec<usize>>,
+        predicates: Vec<Expr>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        // we won't use url for selecting object_store.
+        let dummy_url = ObjectStoreUrl::parse("empty://").unwrap();
+        let df_schema =
+            DFSchema::try_from(self.schema.arrow_schema.clone()).context("build DFSchema")?;
+        let sort_exprs = self.build_sort_exprs(&df_schema, true /* sort_seq */)?;
+
+        let file_groups = ssts
+            .into_iter()
+            .map(|f| {
+                vec![PartitionedFile::new(
+                    self.sst_path_gen.generate(f.id()),
+                    f.meta().size as u64,
+                )]
+            })
+            .collect::<Vec<_>>();
+        let scan_config = FileScanConfig::new(dummy_url, self.schema.arrow_schema.clone())
+            .with_output_ordering(vec![sort_exprs.clone(); file_groups.len()])
+            .with_file_groups(file_groups)
+            .with_projection(projections);
+
+        let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
+            Arc::new(DefaultParquetFileReaderFactory::new(self.store.clone())),
+        );
+        if let Some(expr) = conjunction(predicates) {
+            let filters = create_physical_expr(&expr, &df_schema, &ExecutionProps::new())
+                .context("create physical expr")?;
+            builder = builder.with_predicate(filters);
+        }
+
+        // TODO: fetch using multiple threads since read from parquet will incur CPU
+        // when convert between arrow and parquet.
+        let parquet_exec = builder.build();
+        let sort_exec = SortPreservingMergeExec::new(sort_exprs, Arc::new(parquet_exec))
+            // TODO: make fetch size configurable.
+            .with_fetch(Some(1024))
+            .with_round_robin_repartition(true);
+
+        let merge_exec = MergeExec::new(
+            Arc::new(sort_exec),
+            self.schema.num_primary_keys,
+            self.schema.seq_idx,
+            match self.schema.update_mode {
+                UpdateMode::Overwrite => Arc::new(LastValueOperator),
+                UpdateMode::Append => {
+                    Arc::new(BytesMergeOperator::new(self.schema.value_idxes.clone()))
+                }
+            },
+        );
+        Ok(Arc::new(merge_exec))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use object_store::local::LocalFileSystem;
     use test_log::test;
 
     use super::*;
     use crate::{
+        arrow_schema,
         operator::{BytesMergeOperator, LastValueOperator, MergeOperatorRef},
         record_batch,
+        sst::FileMeta,
         test_util::{check_stream, make_sendable_record_batches},
     };
 
@@ -379,7 +488,7 @@ mod tests {
             record_batch!(("pk1", UInt8, vec![14]), ("value", Binary, vec![b"9"])).unwrap(),
         ];
 
-        test_merge_stream_for_append_mode(Arc::new(LastValueOperator), expected).await;
+        test_merge_stream_inner(Arc::new(LastValueOperator), expected).await;
 
         let expected = [
             record_batch!(
@@ -391,11 +500,10 @@ mod tests {
             record_batch!(("pk1", UInt8, vec![14]), ("value", Binary, vec![b"9"])).unwrap(),
         ];
 
-        test_merge_stream_for_append_mode(Arc::new(BytesMergeOperator::new(vec![1])), expected)
-            .await;
+        test_merge_stream_inner(Arc::new(BytesMergeOperator::new(vec![1])), expected).await;
     }
 
-    async fn test_merge_stream_for_append_mode<I>(merge_op: MergeOperatorRef, expected: I)
+    async fn test_merge_stream_inner<I>(merge_op: MergeOperatorRef, expected: I)
     where
         I: IntoIterator<Item = RecordBatch>,
     {
@@ -422,5 +530,51 @@ mod tests {
 
         let stream = MergeStream::new(stream, 1, 2, merge_op);
         check_stream(Box::pin(stream), expected).await;
+    }
+
+    #[tokio::test]
+    async fn test_build_scan_plan() {
+        let schema = arrow_schema!(("pk1", UInt8), ("value", UInt8), (SEQ_COLUMN_NAME, UInt64));
+        let store = Arc::new(LocalFileSystem::new());
+        let reader = ParquetReader::new(
+            store,
+            StorageSchema {
+                arrow_schema: schema.clone(),
+                num_primary_keys: 1,
+                seq_idx: 2,
+                value_idxes: vec![1],
+                update_mode: UpdateMode::Overwrite,
+            },
+            Arc::new(SstPathGenerator::new("mock".to_string())),
+        );
+        let plan = reader
+            .build_df_plan(
+                (100..103)
+                    .map(|id| {
+                        SstFile::new(
+                            id,
+                            FileMeta {
+                                max_sequence: id,
+                                num_rows: 1,
+                                size: 1,
+                                time_range: (1..10).into(),
+                            },
+                        )
+                    })
+                    .collect(),
+                None,
+                vec![],
+            )
+            .unwrap();
+        let display_plan =
+            datafusion::physical_plan::display::DisplayableExecutionPlan::new(plan.as_ref())
+                .indent(true);
+        assert_eq!(
+            r#"MergeExec: [primary_keys: 1, seq_idx: 2]
+  SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC], fetch=1024
+    ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]]
+"#,
+            format!("{display_plan}")
+        );
     }
 }

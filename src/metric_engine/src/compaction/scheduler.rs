@@ -28,6 +28,7 @@ use tokio::{
 };
 use tracing::warn;
 
+use super::runner::Runner;
 use crate::{
     compaction::{picker::TimeWindowCompactionStrategy, Task},
     manifest::ManifestRef,
@@ -100,14 +101,15 @@ impl Scheduler {
         mut task_rx: Receiver<Task>,
         store: ObjectStoreRef,
         manifest: ManifestRef,
-        _sst_path_gen: Arc<SstPathGenerator>,
+        sst_path_gen: Arc<SstPathGenerator>,
         _mem_limit: u64,
     ) {
         while let Some(task) = task_rx.recv().await {
             let store = store.clone();
             let manifest = manifest.clone();
+            let sst_path_gen = sst_path_gen.clone();
             rt.spawn(async move {
-                let runner = Runner { store, manifest };
+                let runner = Runner::new(store, manifest, sst_path_gen);
                 if let Err(e) = runner.do_compaction(task).await {
                     warn!("Do compaction failed, err:{e}");
                 }
@@ -154,18 +156,5 @@ impl Default for SchedulerConfig {
             max_pending_compaction_tasks: 10,
             compaction_files_limit: 10,
         }
-    }
-}
-
-pub struct Runner {
-    store: ObjectStoreRef,
-    manifest: ManifestRef,
-}
-
-impl Runner {
-    // TODO: Merge input sst files into one new sst file
-    // and delete the expired sst files
-    async fn do_compaction(&self, _task: Task) -> Result<()> {
-        todo!()
     }
 }

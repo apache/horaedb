@@ -16,6 +16,7 @@
 // under the License.
 
 mod picker;
+mod runner;
 mod scheduler;
 
 pub use scheduler::{Scheduler as CompactionScheduler, SchedulerConfig};
