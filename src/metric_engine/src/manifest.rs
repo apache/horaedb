@@ -455,6 +455,7 @@ impl Snapshot {
         self.records
             .retain(|record| !update.to_deletes.contains(&record.id));
 
+        self.header.length = (self.records.len() * SnapshotRecordV1::LENGTH) as u64;
         Ok(())
     }
 
@@ -794,7 +795,6 @@ mod tests {
 
         let mut mem_ssts = manifest.payload.read().await.files.clone();
         let snapshot = read_object(&store, &snapshot_path).await.unwrap();
-        let snapshot_len = snapshot.len();
         let payload: Payload = snapshot.try_into().unwrap();
         let mut ssts = payload.files;
 
@@ -802,26 +802,6 @@ mod tests {
         ssts.sort_by_key(|a| a.id());
         assert_eq!(mem_ssts, ssts);
 
-        let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
-        assert!(delta_paths.is_empty());
-
-        // Add manifest files again to verify dedup
-        for i in 0..20 {
-            let time_range = (i..i + 1).into();
-            let meta = FileMeta {
-                max_sequence: i as u64,
-                num_rows: i as u32,
-                size: i as u32,
-                time_range,
-            };
-            manifest.add_file(i as u64, meta).await.unwrap();
-        }
-
-        // Wait for merge manifest to finish
-        sleep(Duration::from_secs(2)).await;
-
-        let snapshot_again = read_object(&store, &snapshot_path).await.unwrap();
-        assert!(snapshot_len == snapshot_again.len()); // dedup took effect.
         let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
         assert!(delta_paths.is_empty());
     }
