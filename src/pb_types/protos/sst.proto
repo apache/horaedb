@@ -41,10 +41,6 @@ message SstFile {
   SstMeta meta = 2;
 }
 
-message Manifest {
-  repeated SstFile files = 1;
-}
-
 message ManifestUpdate {
   repeated SstFile to_adds = 1;
   repeated uint64 to_deletes = 2;
