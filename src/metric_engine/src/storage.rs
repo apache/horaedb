@@ -151,7 +151,7 @@ pub struct CloudObjectStorage {
 /// ```
 /// `root_path` is composed of `path` and `segment_duration`.
 impl CloudObjectStorage {
-    pub async fn try_new(
+    pub fn try_new(
         path: String,
         segment_duration: Duration,
         store: ObjectStoreRef,
@@ -160,15 +160,16 @@ impl CloudObjectStorage {
         storage_opts: StorageOptions,
     ) -> Result<Self> {
         let runtimes = StorageRuntimes::new(storage_opts.runtime_opts)?;
-        let manifest = Arc::new(
+        let manifest = runtimes.manifest_compact_runtime.block_on(async {
             Manifest::try_new(
                 path.clone(),
                 store.clone(),
                 runtimes.manifest_compact_runtime.clone(),
                 storage_opts.manifest_merge_opts,
             )
-            .await?,
-        );
+            .await
+        })?;
+        let manifest = Arc::new(manifest);
         let schema = {
             let value_idxes = (num_primary_keys..arrow_schema.fields.len()).collect::<Vec<_>>();
             ensure!(!value_idxes.is_empty(), "no value column found");
@@ -427,8 +428,8 @@ mod tests {
     use super::*;
     use crate::{arrow_schema, record_batch, test_util::check_stream, types::Timestamp};
 
-    #[test(tokio::test)]
-    async fn test_storage_write_and_scan() {
+    #[test(test)]
+    fn test_storage_write_and_scan() {
         let schema = arrow_schema!(("pk1", UInt8), ("pk2", UInt8), ("value", Int64));
         let root_dir = temp_dir::TempDir::new().unwrap();
         let store = Arc::new(LocalFileSystem::new());
@@ -440,67 +441,68 @@ mod tests {
             2, // num_primary_keys
             StorageOptions::default(),
         )
-        .await
         .unwrap();
 
-        let batch = record_batch!(
-            ("pk1", UInt8, vec![11, 11, 9, 10, 5]),
-            ("pk2", UInt8, vec![100, 100, 1, 2, 3]),
-            ("value", Int64, vec![2, 7, 4, 6, 1])
-        )
-        .unwrap();
-        storage
-            .write(WriteRequest {
-                batch,
-                time_range: (1..10).into(),
-                enable_check: true,
-            })
-            .await
-            .unwrap();
-
-        let batch = record_batch!(
-            ("pk1", UInt8, vec![11, 11, 9, 10]),
-            ("pk2", UInt8, vec![100, 99, 1, 2]),
-            ("value", Int64, vec![22, 77, 44, 66])
-        )
-        .unwrap();
-        storage
-            .write(WriteRequest {
-                batch,
-                time_range: (10..20).into(),
-                enable_check: true,
-            })
-            .await
-            .unwrap();
-
-        let result_stream = storage
-            .scan(ScanRequest {
-                range: TimeRange::new(Timestamp(0), Timestamp::MAX),
-                predicate: vec![],
-                projections: None,
-            })
-            .await
-            .unwrap();
-        let expected_batch = [
-            record_batch!(
-                ("pk1", UInt8, vec![5, 9, 10, 11]),
-                ("pk2", UInt8, vec![3, 1, 2, 99]),
-                ("value", Int64, vec![1, 44, 66, 77])
+        storage.runtimes.sst_compact_runtime.block_on(async {
+            let batch = record_batch!(
+                ("pk1", UInt8, vec![11, 11, 9, 10, 5]),
+                ("pk2", UInt8, vec![100, 100, 1, 2, 3]),
+                ("value", Int64, vec![2, 7, 4, 6, 1])
             )
-            .unwrap(),
-            record_batch!(
-                ("pk1", UInt8, vec![11]),
-                ("pk2", UInt8, vec![100]),
-                ("value", Int64, vec![22])
-            )
-            .unwrap(),
-        ];
+            .unwrap();
+            storage
+                .write(WriteRequest {
+                    batch,
+                    time_range: (1..10).into(),
+                    enable_check: true,
+                })
+                .await
+                .unwrap();
 
-        check_stream(result_stream, expected_batch).await;
+            let batch = record_batch!(
+                ("pk1", UInt8, vec![11, 11, 9, 10]),
+                ("pk2", UInt8, vec![100, 99, 1, 2]),
+                ("value", Int64, vec![22, 77, 44, 66])
+            )
+            .unwrap();
+            storage
+                .write(WriteRequest {
+                    batch,
+                    time_range: (10..20).into(),
+                    enable_check: true,
+                })
+                .await
+                .unwrap();
+
+            let result_stream = storage
+                .scan(ScanRequest {
+                    range: TimeRange::new(Timestamp(0), Timestamp::MAX),
+                    predicate: vec![],
+                    projections: None,
+                })
+                .await
+                .unwrap();
+            let expected_batch = [
+                record_batch!(
+                    ("pk1", UInt8, vec![5, 9, 10, 11]),
+                    ("pk2", UInt8, vec![3, 1, 2, 99]),
+                    ("value", Int64, vec![1, 44, 66, 77])
+                )
+                .unwrap(),
+                record_batch!(
+                    ("pk1", UInt8, vec![11]),
+                    ("pk2", UInt8, vec![100]),
+                    ("value", Int64, vec![22])
+                )
+                .unwrap(),
+            ];
+
+            check_stream(result_stream, expected_batch).await;
+        });
     }
 
-    #[tokio::test]
-    async fn test_storage_sort_batch() {
+    #[test]
+    fn test_storage_sort_batch() {
         let schema = arrow_schema!(("a", UInt8), ("b", UInt8), ("c", UInt8), ("c", UInt8));
         let root_dir = temp_dir::TempDir::new().unwrap();
         let store = Arc::new(LocalFileSystem::new());
@@ -512,32 +514,32 @@ mod tests {
             1,
             StorageOptions::default(),
         )
-        .await
         .unwrap();
+        storage.runtimes.sst_compact_runtime.block_on(async {
+            let batch = record_batch!(
+                ("a", UInt8, vec![2, 1, 3, 4, 8, 6, 5, 7]),
+                ("b", UInt8, vec![1, 3, 4, 8, 2, 6, 5, 7]),
+                ("c", UInt8, vec![8, 6, 2, 4, 3, 1, 5, 7]),
+                ("d", UInt8, vec![2, 7, 4, 6, 1, 3, 5, 8])
+            )
+            .unwrap();
 
-        let batch = record_batch!(
-            ("a", UInt8, vec![2, 1, 3, 4, 8, 6, 5, 7]),
-            ("b", UInt8, vec![1, 3, 4, 8, 2, 6, 5, 7]),
-            ("c", UInt8, vec![8, 6, 2, 4, 3, 1, 5, 7]),
-            ("d", UInt8, vec![2, 7, 4, 6, 1, 3, 5, 8])
-        )
-        .unwrap();
-
-        let mut sorted_batches = storage.sort_batch(batch).await.unwrap();
-        let expected_bacth = record_batch!(
-            ("a", UInt8, vec![1, 2, 3, 4, 5, 6, 7, 8]),
-            ("b", UInt8, vec![3, 1, 4, 8, 5, 6, 7, 2]),
-            ("c", UInt8, vec![6, 8, 2, 4, 5, 1, 7, 3]),
-            ("d", UInt8, vec![7, 2, 4, 6, 5, 3, 8, 1])
-        )
-        .unwrap();
-        let mut offset = 0;
-        while let Some(sorted_batch) = sorted_batches.next().await {
-            let sorted_batch = sorted_batch.unwrap();
-            let length = sorted_batch.num_rows();
-            let batch = expected_bacth.slice(offset, length);
-            assert_eq!(sorted_batch, batch);
-            offset += length;
-        }
+            let mut sorted_batches = storage.sort_batch(batch).await.unwrap();
+            let expected_bacth = record_batch!(
+                ("a", UInt8, vec![1, 2, 3, 4, 5, 6, 7, 8]),
+                ("b", UInt8, vec![3, 1, 4, 8, 5, 6, 7, 2]),
+                ("c", UInt8, vec![6, 8, 2, 4, 5, 1, 7, 3]),
+                ("d", UInt8, vec![7, 2, 4, 6, 5, 3, 8, 1])
+            )
+            .unwrap();
+            let mut offset = 0;
+            while let Some(sorted_batch) = sorted_batches.next().await {
+                let sorted_batch = sorted_batch.unwrap();
+                let length = sorted_batch.num_rows();
+                let batch = expected_bacth.slice(offset, length);
+                assert_eq!(sorted_batch, batch);
+                offset += length;
+            }
+        });
     }
 }
