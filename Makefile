@@ -47,8 +47,7 @@ udeps:
 	cd $(DIR); cargo udeps --all-targets --all-features --workspace
 
 clippy:
-	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings -D clippy::dbg-macro \
-	-A dead_code -A unused_variables -A clippy::unreachable -A clippy::too_many_arguments # Remove these once we have a clean build
+	cd $(DIR); cargo clippy --all-targets --all-features --workspace -- -D warnings -D clippy::dbg-macro -A clippy::too-many-arguments
 
 ensure-disk-quota:
 	bash ./scripts/free-disk-space.sh

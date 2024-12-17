@@ -17,7 +17,6 @@
 
 mod encoding;
 use std::{
-    collections::HashSet,
     io::{Cursor, Write},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -48,78 +47,22 @@ use uuid::Uuid;
 use crate::{
     ensure,
     sst::{FileId, FileMeta, SstFile},
-    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange},
+    types::{ManifestMergeOptions, ObjectStoreRef, TimeRange},
     AnyhowError, Error, Result,
 };
 
 pub const PREFIX_PATH: &str = "manifest";
 pub const SNAPSHOT_FILENAME: &str = "snapshot";
 pub const DELTA_PREFIX: &str = "delta";
-pub const TOMBSTONE_PREFIX: &str = "tombstone";
 
 pub type ManifestRef = Arc<Manifest>;
 
 pub struct Manifest {
     delta_dir: Path,
-    tombstone_dir: Path,
     store: ObjectStoreRef,
     merger: Arc<ManifestMerger>,
 
-    payload: RwLock<Payload>,
-}
-
-#[derive(Default)]
-pub struct Payload {
-    files: Vec<SstFile>,
-}
-
-impl Payload {
-    // TODO: we could sort sst files by name asc, then the dedup will be more
-    // efficient
-    pub fn dedup_files(&mut self) {
-        let mut seen = HashSet::with_capacity(self.files.len());
-        self.files.retain(|file| seen.insert(file.id()));
-    }
-}
-
-impl TryFrom<Bytes> for Payload {
-    type Error = Error;
-
-    fn try_from(value: Bytes) -> Result<Self> {
-        if value.is_empty() {
-            Ok(Self::default())
-        } else {
-            let snapshot = Snapshot::try_from(value)?;
-            let files = snapshot.into_ssts();
-            Ok(Self { files })
-        }
-    }
-}
-
-impl TryFrom<pb_types::Manifest> for Payload {
-    type Error = Error;
-
-    fn try_from(value: pb_types::Manifest) -> Result<Self> {
-        let files = value
-            .files
-            .into_iter()
-            .map(SstFile::try_from)
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(Self { files })
-    }
-}
-
-impl From<Payload> for pb_types::Manifest {
-    fn from(value: Payload) -> Self {
-        pb_types::Manifest {
-            files: value
-                .files
-                .into_iter()
-                .map(pb_types::SstFile::from)
-                .collect(),
-        }
-    }
+    ssts: RwLock<Vec<SstFile>>,
 }
 
 impl Manifest {
@@ -131,13 +74,11 @@ impl Manifest {
     ) -> Result<Self> {
         let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
         let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
-        let tombstone_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{TOMBSTONE_PREFIX}"));
 
         let merger = ManifestMerger::try_new(
             snapshot_path.clone(),
             delta_dir.clone(),
             store.clone(),
-            runtime.clone(),
             merge_options,
         )
         .await?;
@@ -150,16 +91,14 @@ impl Manifest {
             });
         }
 
-        let bytes = read_object(&store, &snapshot_path).await?;
-        // TODO: add upgrade logic
-        let payload = bytes.try_into()?;
+        let snapshot = read_snapshot(&store, &snapshot_path).await?;
+        let ssts = snapshot.into_ssts();
 
         Ok(Self {
             delta_dir,
-            tombstone_dir,
             store,
             merger,
-            payload: RwLock::new(payload),
+            ssts: RwLock::new(ssts),
         })
     }
 
@@ -185,15 +124,13 @@ impl Manifest {
 
         // 2. Update cached payload
         {
-            let mut payload = self.payload.write().await;
+            let mut ssts = self.ssts.write().await;
             for file in update.to_adds {
-                payload.files.push(file);
+                ssts.push(file);
             }
             // TODO: sort files in payload, so we can delete files more
             // efficiently.
-            payload
-                .files
-                .retain(|file| !update.to_deletes.contains(&file.id()));
+            ssts.retain(|file| !update.to_deletes.contains(&file.id()));
         }
 
         // 3. Update delta files num
@@ -204,16 +141,14 @@ impl Manifest {
 
     // TODO: avoid clone
     pub async fn all_ssts(&self) -> Vec<SstFile> {
-        let payload = self.payload.read().await;
-        payload.files.clone()
+        let ssts = self.ssts.read().await;
+        ssts.clone()
     }
 
     pub async fn find_ssts(&self, time_range: &TimeRange) -> Vec<SstFile> {
-        let payload = self.payload.read().await;
+        let ssts = self.ssts.read().await;
 
-        payload
-            .files
-            .iter()
+        ssts.iter()
             .filter(move |f| f.meta().time_range.overlaps(time_range))
             .cloned()
             .collect()
@@ -480,7 +415,6 @@ struct ManifestMerger {
     snapshot_path: Path,
     delta_dir: Path,
     store: ObjectStoreRef,
-    runtime: RuntimeRef,
     sender: Sender<MergeType>,
     receiver: RwLock<Receiver<MergeType>>,
     deltas_num: AtomicUsize,
@@ -492,7 +426,6 @@ impl ManifestMerger {
         snapshot_path: Path,
         delta_dir: Path,
         store: ObjectStoreRef,
-        runtime: Arc<Runtime>,
         merge_options: ManifestMergeOptions,
     ) -> Result<Arc<Self>> {
         let (tx, rx) = mpsc::channel(merge_options.channel_size);
@@ -500,7 +433,6 @@ impl ManifestMerger {
             snapshot_path,
             delta_dir,
             store,
-            runtime,
             sender: tx,
             receiver: RwLock::new(rx),
             deltas_num: AtomicUsize::new(0),
@@ -573,8 +505,7 @@ impl ManifestMerger {
             }
         });
 
-        let snapshot_bytes = read_object(&self.store, &self.snapshot_path).await?;
-        let mut snapshot = Snapshot::try_from(snapshot_bytes)?;
+        let mut snapshot = read_snapshot(&self.store, &self.snapshot_path).await?;
         for res in results {
             let manifest_update = res.context("Failed to join read delta files task")??;
             snapshot.merge_update(manifest_update)?;
@@ -613,38 +544,18 @@ impl ManifestMerger {
     }
 }
 
-async fn read_object(store: &ObjectStoreRef, path: &Path) -> Result<Bytes> {
-    match store.get(path).await {
-        Ok(v) => v
-            .bytes()
-            .await
-            .with_context(|| format!("Failed to read manifest snapshot, path:{path}"))
-            .map_err(|e| e.into()),
-        Err(err) => {
-            if err.to_string().contains("not found") {
-                Ok(Bytes::new())
-            } else {
-                let context = format!("Failed to read file, path:{path}");
-                Err(AnyhowError::new(err).context(context).into())
-            }
-        }
-    }
-}
-
-async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Payload> {
+async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Snapshot> {
     match store.get(path).await {
         Ok(v) => {
             let bytes = v
                 .bytes()
                 .await
                 .with_context(|| format!("Failed to read manifest snapshot, path:{path}"))?;
-            let pb_payload = pb_types::Manifest::decode(bytes)
-                .with_context(|| format!("Failed to decode manifest snapshot, path:{path}"))?;
-            Payload::try_from(pb_payload)
+            Snapshot::try_from(bytes)
         }
         Err(err) => {
             if err.to_string().contains("not found") {
-                Ok(Payload { files: vec![] })
+                Ok(Snapshot::default())
             } else {
                 let context = format!("Failed to read manifest snapshot, path:{path}");
                 Err(AnyhowError::new(err).context(context).into())
@@ -697,6 +608,7 @@ async fn list_delta_paths(store: &ObjectStoreRef, delta_dir: &Path) -> Result<Ve
 mod tests {
     use std::sync::Arc;
 
+    use itertools::Itertools;
     use object_store::local::LocalFileSystem;
     use tokio::time::sleep;
 
@@ -793,10 +705,13 @@ mod tests {
         // Wait for merge manifest to finish
         sleep(Duration::from_secs(2)).await;
 
-        let mut mem_ssts = manifest.payload.read().await.files.clone();
-        let snapshot = read_object(&store, &snapshot_path).await.unwrap();
-        let payload: Payload = snapshot.try_into().unwrap();
-        let mut ssts = payload.files;
+        let mut mem_ssts = manifest.ssts.read().await.clone();
+        let snapshot = read_snapshot(&store, &snapshot_path).await.unwrap();
+        let mut ssts = snapshot
+            .records
+            .into_iter()
+            .map(SstFile::from)
+            .collect_vec();
 
         mem_ssts.sort_by_key(|a| a.id());
         ssts.sort_by_key(|a| a.id());

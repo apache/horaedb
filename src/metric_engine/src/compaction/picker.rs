@@ -19,19 +19,56 @@ use std::{collections::BTreeMap, time::Duration};
 
 use tracing::debug;
 
-use super::SchedulerConfig;
-use crate::{compaction::Task, sst::SstFile, types::Timestamp};
+use crate::{compaction::Task, manifest::ManifestRef, sst::SstFile, types::Timestamp, util::now};
+
+pub struct Picker {
+    manifest: ManifestRef,
+    ttl: Option<Duration>,
+    strategy: TimeWindowCompactionStrategy,
+}
+
+impl Picker {
+    pub fn new(
+        manifest: ManifestRef,
+        ttl: Option<Duration>,
+        segment_duration: Duration,
+        new_sst_max_size: u64,
+        input_sst_max_num: usize,
+    ) -> Self {
+        Self {
+            manifest,
+            ttl,
+            strategy: TimeWindowCompactionStrategy::new(
+                segment_duration,
+                new_sst_max_size,
+                input_sst_max_num,
+            ),
+        }
+    }
+
+    pub async fn pick_candidate(&self) -> Option<Task> {
+        let ssts = self.manifest.all_ssts().await;
+        let expire_time = self.ttl.map(|ttl| (now() - ttl.as_micros() as i64).into());
+        self.strategy.pick_candidate(ssts, expire_time)
+    }
+}
 
 pub struct TimeWindowCompactionStrategy {
     segment_duration: Duration,
-    config: SchedulerConfig,
+    new_sst_max_size: u64,
+    input_sst_max_num: usize,
 }
 
 impl TimeWindowCompactionStrategy {
-    pub fn new(segment_duration: Duration, config: SchedulerConfig) -> Self {
+    pub fn new(
+        segment_duration: Duration,
+        new_sst_max_size: u64,
+        input_sst_max_num: usize,
+    ) -> Self {
         Self {
             segment_duration,
-            config,
+            new_sst_max_size,
+            input_sst_max_num,
         }
     }
 
@@ -120,12 +157,12 @@ impl TimeWindowCompactionStrategy {
             files.sort_unstable_by_key(SstFile::size);
 
             let mut input_size = 0;
-            let memory_limit = self.config.memory_limit;
-            let compaction_files_limit = self.config.compaction_files_limit;
+            // Suppose the comaction will reduce the size of files by 10%.
+            let memory_limit = (self.new_sst_max_size as f64 * 1.1) as u64;
 
             let compaction_files = files
                 .into_iter()
-                .take(compaction_files_limit)
+                .take(self.input_sst_max_num)
                 .take_while(|f| {
                     input_size += f.size() as u64;
                     input_size <= memory_limit
@@ -154,8 +191,7 @@ mod tests {
     #[test]
     fn test_pick_candidate() {
         let segment_duration = Duration::from_millis(20);
-        let config = SchedulerConfig::default();
-        let strategy = TimeWindowCompactionStrategy::new(segment_duration, config);
+        let strategy = TimeWindowCompactionStrategy::new(segment_duration, 9999, 10);
 
         let ssts = (0_i64..5_i64)
             .map(|i| {

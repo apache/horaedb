@@ -74,6 +74,10 @@ impl SstFile {
         self.inner.in_compaction.store(true, Ordering::Relaxed);
     }
 
+    pub fn unmark_compaction(&self) {
+        self.inner.in_compaction.store(false, Ordering::Relaxed);
+    }
+
     pub fn is_compaction(&self) -> bool {
         self.inner.in_compaction.load(Ordering::Relaxed)
     }

@@ -125,6 +125,7 @@ impl StorageRuntimes {
 ///
 /// Compaction will be done by merging segments within a segment, and segment
 /// will make it easy to support expiration.
+#[allow(dead_code)]
 pub struct CloudObjectStorage {
     segment_duration: Duration,
     path: String,

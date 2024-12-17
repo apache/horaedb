@@ -15,12 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{
-    sync::{atomic::AtomicU64, Arc},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
-use anyhow::Context;
 use parquet::file::properties::WriterProperties;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
@@ -29,21 +25,20 @@ use tokio::{
 };
 use tracing::warn;
 
-use super::runner::Runner;
+use super::{executor::Executor, picker::Picker};
 use crate::{
-    compaction::{picker::TimeWindowCompactionStrategy, Task},
+    compaction::Task,
     manifest::ManifestRef,
     read::ParquetReader,
     sst::SstPathGenerator,
     types::{ObjectStoreRef, RuntimeRef, StorageSchema},
-    Result,
 };
 
+#[allow(dead_code)]
 pub struct Scheduler {
     runtime: RuntimeRef,
 
     task_tx: Sender<Task>,
-    inused_memory: AtomicU64,
     task_handle: JoinHandle<()>,
     picker_handle: JoinHandle<()>,
 }
@@ -61,29 +56,35 @@ impl Scheduler {
     ) -> Self {
         let (task_tx, task_rx) = mpsc::channel(config.max_pending_compaction_tasks);
         let task_handle = {
-            let rt = runtime.clone();
             let store = store.clone();
             let manifest = manifest.clone();
             let write_props = config.write_props.clone();
+            let executor = Executor::new(
+                runtime.clone(),
+                store,
+                schema,
+                manifest,
+                sst_path_gen,
+                parquet_reader,
+                write_props,
+                config.memory_limit,
+            );
+
             runtime.spawn(async move {
-                Self::recv_task_loop(
-                    rt,
-                    task_rx,
-                    store,
-                    schema,
-                    manifest,
-                    sst_path_gen,
-                    parquet_reader,
-                    config.memory_limit,
-                    write_props,
-                )
-                .await;
+                Self::recv_task_loop(task_rx, executor).await;
             })
         };
         let picker_handle = {
             let task_tx = task_tx.clone();
             runtime.spawn(async move {
-                Self::generate_task_loop(manifest, task_tx, segment_duration, config).await;
+                let picker = Picker::new(
+                    manifest,
+                    config.ttl,
+                    segment_duration,
+                    config.new_sst_max_size,
+                    config.input_sst_max_num,
+                );
+                Self::generate_task_loop(task_tx, picker, config.schedule_interval).await;
             })
         };
 
@@ -92,60 +93,22 @@ impl Scheduler {
             task_tx,
             task_handle,
             picker_handle,
-            inused_memory: AtomicU64::new(0),
         }
     }
 
-    pub fn try_send(&self, task: Task) -> Result<()> {
-        self.task_tx
-            .try_send(task)
-            .context("failed to send task to scheduler")?;
-
-        Ok(())
-    }
-
-    async fn recv_task_loop(
-        rt: RuntimeRef,
-        mut task_rx: Receiver<Task>,
-        store: ObjectStoreRef,
-        schema: StorageSchema,
-        manifest: ManifestRef,
-        sst_path_gen: Arc<SstPathGenerator>,
-        parquet_reader: Arc<ParquetReader>,
-        _mem_limit: u64,
-        write_props: WriterProperties,
-    ) {
-        let runner = Runner::new(
-            store,
-            schema,
-            manifest,
-            sst_path_gen,
-            parquet_reader,
-            write_props,
-        );
+    async fn recv_task_loop(mut task_rx: Receiver<Task>, executor: Executor) {
         while let Some(task) = task_rx.recv().await {
-            let runner = runner.clone();
-            rt.spawn(async move {
-                if let Err(e) = runner.do_compaction(task).await {
-                    warn!("Do compaction failed, err:{e}");
-                }
-            });
+            executor.submit(task);
         }
     }
 
     async fn generate_task_loop(
-        manifest: ManifestRef,
         task_tx: Sender<Task>,
-        segment_duration: Duration,
-        config: SchedulerConfig,
+        picker: Picker,
+        schedule_interval: Duration,
     ) {
-        let schedule_interval = config.schedule_interval;
-        let compactor = TimeWindowCompactionStrategy::new(segment_duration, config);
-        // TODO: obtain expire time
-        let expire_time = None;
         loop {
-            let ssts = manifest.all_ssts().await;
-            if let Some(task) = compactor.pick_candidate(ssts, expire_time) {
+            if let Some(task) = picker.pick_candidate().await {
                 if let Err(e) = task_tx.try_send(task) {
                     warn!("Send task failed, err:{e}");
                 }
@@ -159,20 +122,26 @@ impl Scheduler {
 #[derive(Clone)]
 pub struct SchedulerConfig {
     pub schedule_interval: Duration,
-    pub memory_limit: u64,
     pub max_pending_compaction_tasks: usize,
-    pub compaction_files_limit: usize,
+    // Runner config
+    pub memory_limit: u64,
     pub write_props: WriterProperties,
+    // Picker config
+    pub ttl: Option<Duration>,
+    pub new_sst_max_size: u64,
+    pub input_sst_max_num: usize,
 }
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
             schedule_interval: Duration::from_secs(30),
-            memory_limit: bytesize::gb(2_u64),
             max_pending_compaction_tasks: 10,
-            compaction_files_limit: 10,
+            memory_limit: bytesize::gb(3_u64),
             write_props: WriterProperties::default(),
+            ttl: None,
+            new_sst_max_size: bytesize::gb(1_u64),
+            input_sst_max_num: 10,
         }
     }
 }

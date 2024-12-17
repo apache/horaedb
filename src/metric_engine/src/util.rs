@@ -15,22 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-mod executor;
-mod picker;
-mod scheduler;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use scheduler::{Scheduler as CompactionScheduler, SchedulerConfig};
-
-use crate::sst::SstFile;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Task {
-    pub inputs: Vec<SstFile>,
-    pub expireds: Vec<SstFile>,
-}
-
-impl Task {
-    pub fn input_size(&self) -> u64 {
-        self.inputs.iter().map(|f| f.size() as u64).sum()
-    }
+/// Current time in milliseconds.
+pub fn now() -> i64 {
+    let now = SystemTime::now();
+    let duration = now.duration_since(UNIX_EPOCH).unwrap();
+    duration.as_millis() as i64
 }
