@@ -31,9 +31,9 @@ use tracing::error;
 
 use crate::{
     compaction::Task,
-    manifest::ManifestRef,
+    manifest::{ManifestRef, ManifestUpdate},
     read::ParquetReader,
-    sst::{allocate_id, FileMeta, SstPathGenerator},
+    sst::{allocate_id, FileMeta, SstFile, SstPathGenerator},
     types::{ObjectStoreRef, StorageSchema},
     Result,
 };
@@ -126,12 +126,15 @@ impl Runner {
             time_range: time_range.clone(),
         };
         // First add new sst to manifest, then delete expired/old sst
-        self.manifest.add_file(file_id, file_meta).await?;
+        let to_adds = vec![SstFile::new(file_id, file_meta)];
+        let to_deletes = task
+            .expireds
+            .iter()
+            .map(|f| f.id())
+            .chain(task.inputs.iter().map(|f| f.id()))
+            .collect();
         self.manifest
-            .add_tombstone_files(task.expireds.clone())
-            .await?;
-        self.manifest
-            .add_tombstone_files(task.inputs.clone())
+            .update(ManifestUpdate::new(to_adds, to_deletes))
             .await?;
 
         let (_, results) = TokioScope::scope_and_block(|scope| {

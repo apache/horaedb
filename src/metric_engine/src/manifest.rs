@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+mod encoding;
 use std::{
     collections::HashSet,
     io::{Cursor, Write},
@@ -29,6 +30,7 @@ use anyhow::Context;
 use async_scoped::TokioScope;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use bytes::Bytes;
+pub use encoding::ManifestUpdate;
 use futures::{StreamExt, TryStreamExt};
 use object_store::{path::Path, PutPayload};
 use parquet::data_type::AsBytes;
@@ -88,7 +90,7 @@ impl TryFrom<Bytes> for Payload {
             Ok(Self::default())
         } else {
             let snapshot = Snapshot::try_from(value)?;
-            let files = snapshot.to_sstfiles()?;
+            let files = snapshot.into_ssts();
             Ok(Self { files })
         }
     }
@@ -162,43 +164,42 @@ impl Manifest {
     }
 
     pub async fn add_file(&self, id: FileId, meta: FileMeta) -> Result<()> {
+        let update = ManifestUpdate::new(vec![SstFile::new(id, meta)], Vec::new());
+        self.update(update).await
+    }
+
+    pub async fn update(&self, update: ManifestUpdate) -> Result<()> {
         self.merger.maybe_schedule_merge().await?;
-
-        let new_sst_path = Path::from(format!("{}/{id}", self.delta_dir));
-        let new_sst = SstFile::new(id, meta);
-
-        let new_sst_payload = pb_types::SstFile::from(new_sst.clone());
-        let mut buf: Vec<u8> = Vec::with_capacity(new_sst_payload.encoded_len());
-        new_sst_payload
+        let path = Path::from(format!("{}/{}", self.delta_dir, Uuid::new_v4()));
+        let pb_update = pb_types::ManifestUpdate::from(update.clone());
+        let mut buf: Vec<u8> = Vec::with_capacity(pb_update.encoded_len());
+        pb_update
             .encode(&mut buf)
-            .context("failed to encode manifest file")?;
-        let put_payload = PutPayload::from_bytes(Bytes::from(buf));
+            .context("failed to encode manifest update")?;
 
         // 1. Persist the delta manifest
         self.store
-            .put(&new_sst_path, put_payload)
+            .put(&path, PutPayload::from_bytes(Bytes::from(buf)))
             .await
-            .with_context(|| format!("Failed to write delta manifest, path:{}", new_sst_path))?;
+            .with_context(|| format!("Failed to write delta manifest, path:{}", path))?;
 
         // 2. Update cached payload
         {
             let mut payload = self.payload.write().await;
-            payload.files.push(new_sst);
+            for file in update.to_adds {
+                payload.files.push(file);
+            }
+            // TODO: sort files in payload, so we can delete files more
+            // efficiently.
+            payload
+                .files
+                .retain(|file| !update.to_deletes.contains(&file.id()));
         }
 
         // 3. Update delta files num
         self.merger.add_delta_num();
 
         Ok(())
-    }
-
-    // TODO: recovery tombstone files when startup
-    pub async fn add_tombstone_files<I>(&self, files: I) -> Result<()>
-    where
-        I: IntoIterator<Item = SstFile>,
-    {
-        let path = Path::from(format!("{}/{}", self.tombstone_dir, Uuid::new_v4()));
-        todo!()
     }
 
     // TODO: avoid clone
@@ -231,6 +232,7 @@ impl Manifest {
 /// - The length field (u64) represents the total length of the subsequent
 ///   records and serves as a straightforward method for verifying their
 ///   integrity. (length = record_length * record_count)
+#[derive(Debug)]
 struct SnapshotHeader {
     pub magic: u32,
     pub version: u8,
@@ -279,13 +281,10 @@ impl SnapshotHeader {
         }
     }
 
-    pub fn write_to(&self, writer: &mut &mut [u8]) -> Result<()> {
-        ensure!(
-            writer.len() >= SnapshotHeader::LENGTH,
-            "writer buf is too small for writing the header, length: {}",
-            writer.len()
-        );
-
+    pub fn write_to<W>(&self, mut writer: W) -> Result<()>
+    where
+        W: Write,
+    {
         writer
             .write_u32::<LittleEndian>(self.magic)
             .context("write shall not fail.")?;
@@ -319,13 +318,10 @@ impl SnapshotRecordV1 {
     const LENGTH: usize = 8 /*id*/+ 16 /*time range*/ + 4 /*size*/ + 4 /*num rows*/;
     pub const VERSION: u8 = 1;
 
-    pub fn write_to(&self, writer: &mut &mut [u8]) -> Result<()> {
-        ensure!(
-            writer.len() >= SnapshotRecordV1::LENGTH,
-            "writer buf is too small for writing the record, length: {}",
-            writer.len()
-        );
-
+    pub fn write_to<W>(&self, mut writer: W) -> Result<()>
+    where
+        W: Write,
+    {
         writer
             .write_u64::<LittleEndian>(self.id)
             .context("write shall not fail.")?;
@@ -399,7 +395,7 @@ impl From<SnapshotRecordV1> for SstFile {
 
 struct Snapshot {
     header: SnapshotHeader,
-    inner: Bytes,
+    records: Vec<SnapshotRecordV1>,
 }
 
 impl Default for Snapshot {
@@ -408,7 +404,7 @@ impl Default for Snapshot {
         let header = SnapshotHeader::new(0);
         Self {
             header,
-            inner: Bytes::new(),
+            records: Vec::new(),
         }
     }
 }
@@ -421,82 +417,56 @@ impl TryFrom<Bytes> for Snapshot {
             return Ok(Snapshot::default());
         }
         let header = SnapshotHeader::try_from(bytes.as_bytes())?;
-        let header_length = header.length as usize;
+        let record_total_length = header.length as usize;
         ensure!(
-            header_length > 0
-                && header_length % SnapshotRecordV1::LENGTH == 0
-                && header_length + SnapshotHeader::LENGTH == bytes.len(),
-            "create snapshot from bytes failed, invalid bytes, header length = {}, total length: {}",
-                header_length,
-                bytes.len()
+            record_total_length > 0
+                && record_total_length % SnapshotRecordV1::LENGTH == 0
+                && record_total_length + SnapshotHeader::LENGTH == bytes.len(),
+            "create snapshot from bytes failed, header:{header:?}, bytes_length: {}",
+            bytes.len()
         );
+        let mut index = SnapshotHeader::LENGTH;
+        let mut records = Vec::with_capacity(record_total_length / SnapshotRecordV1::LENGTH);
+        while index < bytes.len() {
+            let record =
+                SnapshotRecordV1::try_from(&bytes[index..index + SnapshotRecordV1::LENGTH])?;
+            records.push(record);
+            index += SnapshotRecordV1::LENGTH;
+        }
 
-        Ok(Self {
-            header,
-            inner: bytes,
-        })
+        Ok(Self { header, records })
     }
 }
 
 impl Snapshot {
-    pub fn to_sstfiles(&self) -> Result<Vec<SstFile>> {
+    pub fn into_ssts(self) -> Vec<SstFile> {
         if self.header.length == 0 {
-            Ok(Vec::new())
+            Vec::new()
         } else {
-            let buf = self.inner.as_bytes();
-            let mut result: Vec<SstFile> =
-                Vec::with_capacity(self.header.length as usize / SnapshotRecordV1::LENGTH);
-            let mut index = SnapshotHeader::LENGTH;
-            while index < buf.len() {
-                let record =
-                    SnapshotRecordV1::try_from(&buf[index..index + SnapshotRecordV1::LENGTH])?;
-                index += SnapshotRecordV1::LENGTH;
-                result.push(record.into());
-            }
-
-            Ok(result)
+            self.records.into_iter().map(|r| r.into()).collect()
         }
     }
 
-    pub fn dedup_sstfiles(&self, sstfiles: &mut Vec<SstFile>) -> Result<()> {
-        let buf = self.inner.as_bytes();
-        let mut ids = HashSet::new();
-        let mut index = SnapshotHeader::LENGTH;
-        while index < buf.len() {
-            let record = SnapshotRecordV1::try_from(&buf[index..index + SnapshotRecordV1::LENGTH])?;
-            index += SnapshotRecordV1::LENGTH;
-            ids.insert(record.id());
-        }
-        sstfiles.retain(|item| !ids.contains(&item.id()));
+    // TODO: Ensure no files duplicated
+    // https://github.com/apache/horaedb/issues/1608
+    pub fn merge_update(&mut self, update: ManifestUpdate) -> Result<()> {
+        self.records
+            .extend(update.to_adds.into_iter().map(SnapshotRecordV1::from));
+        self.records
+            .retain(|record| !update.to_deletes.contains(&record.id));
 
         Ok(())
     }
 
-    pub fn merge_sstfiles(&mut self, sstfiles: Vec<SstFile>) {
-        // update header
-        self.header.length += (sstfiles.len() * SnapshotRecordV1::LENGTH) as u64;
-        // final snapshot
-        let mut snapshot = vec![0u8; SnapshotHeader::LENGTH + self.header.length as usize];
-        let mut writer = snapshot.as_mut_slice();
+    pub fn into_bytes(self) -> Result<Bytes> {
+        let buf = Vec::with_capacity(self.header.length as usize + SnapshotHeader::LENGTH);
+        let mut cursor = Cursor::new(buf);
 
-        // write new head
-        self.header.write_to(&mut writer).unwrap();
-        // write old records
-        if !self.inner.is_empty() {
-            writer
-                .write_all(&self.inner.as_bytes()[SnapshotHeader::LENGTH..])
-                .unwrap();
+        self.header.write_to(&mut cursor)?;
+        for record in self.records {
+            record.write_to(&mut cursor).unwrap();
         }
-        // write new records
-        for sst in sstfiles {
-            let record: SnapshotRecordV1 = sst.into();
-            record.write_to(&mut writer).unwrap();
-        }
-        self.inner = Bytes::from(snapshot);
-    }
-
-    pub fn into_bytes(self) -> Bytes {
-        self.inner
+        Ok(Bytes::from(cursor.into_inner()))
     }
 }
 
@@ -602,17 +572,13 @@ impl ManifestMerger {
             }
         });
 
-        let mut delta_files = Vec::with_capacity(results.len());
-        for res in results {
-            let sst_file = res.context("Failed to join read delta files task")??;
-            delta_files.push(sst_file);
-        }
         let snapshot_bytes = read_object(&self.store, &self.snapshot_path).await?;
         let mut snapshot = Snapshot::try_from(snapshot_bytes)?;
-        // TODO: no need to dedup every time.
-        snapshot.dedup_sstfiles(&mut delta_files)?;
-        snapshot.merge_sstfiles(delta_files);
-        let snapshot_bytes = snapshot.into_bytes();
+        for res in results {
+            let manifest_update = res.context("Failed to join read delta files task")??;
+            snapshot.merge_update(manifest_update)?;
+        }
+        let snapshot_bytes = snapshot.into_bytes()?;
         let put_payload = PutPayload::from_bytes(snapshot_bytes);
         // 1. Persist the snapshot
         self.store
@@ -686,7 +652,7 @@ async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Payload> {
     }
 }
 
-async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<SstFile> {
+async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<ManifestUpdate> {
     let bytes = store
         .get(sst_path)
         .await
@@ -695,12 +661,12 @@ async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<SstF
         .await
         .with_context(|| format!("failed to read delta file, path:{sst_path}"))?;
 
-    let pb_sst = pb_types::SstFile::decode(bytes)
+    let pb_update = pb_types::ManifestUpdate::decode(bytes)
         .with_context(|| format!("failed to decode delta file, path:{sst_path}"))?;
 
-    let sst = SstFile::try_from(pb_sst)
+    let update = ManifestUpdate::try_from(pb_update)
         .with_context(|| format!("failed to convert delta file, path:{sst_path}"))?;
-    Ok(sst)
+    Ok(update)
 }
 
 async fn delete_delta_file(store: &ObjectStoreRef, path: &Path) -> Result<()> {
@@ -885,11 +851,6 @@ mod tests {
             257, // length
             cursor.read_u64::<LittleEndian>().unwrap()
         );
-
-        let mut vec = [0u8; SnapshotHeader::LENGTH - 1];
-        let mut writer = vec.as_mut_slice();
-        let result = header.write_to(&mut writer);
-        assert!(result.is_err()); // buf not enough
     }
 
     #[test]
@@ -931,9 +892,5 @@ mod tests {
             100, // num rows
             cursor.read_u32::<LittleEndian>().unwrap()
         );
-        let mut vec = vec![0u8; SnapshotRecordV1::LENGTH - 1];
-        let mut writer = vec.as_mut_slice();
-        let result = record.write_to(&mut writer);
-        assert!(result.is_err()); // buf not enough
     }
 }
