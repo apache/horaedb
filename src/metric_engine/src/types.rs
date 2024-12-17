@@ -22,6 +22,7 @@ use std::{
     time::Duration,
 };
 
+use arrow_schema::SchemaRef;
 use object_store::ObjectStore;
 use parquet::basic::{Compression, Encoding, ZstdLevel};
 use tokio::runtime::Runtime;
@@ -111,6 +112,11 @@ impl TimeRange {
     pub fn overlaps(&self, other: &TimeRange) -> bool {
         self.0.start < other.0.end && other.0.start < self.0.end
     }
+
+    pub fn merge(&mut self, other: &TimeRange) {
+        self.0.start = self.0.start.min(other.0.start);
+        self.0.end = self.0.end.max(other.0.end);
+    }
 }
 
 pub type ObjectStoreRef = Arc<dyn ObjectStore>;
@@ -194,7 +200,7 @@ impl Default for ManifestMergeOptions {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum UpdateMode {
     #[default]
     Overwrite,
@@ -206,6 +212,15 @@ pub struct StorageOptions {
     pub write_opts: WriteOptions,
     pub manifest_merge_opts: ManifestMergeOptions,
     pub runtime_opts: RuntimeOptions,
+    pub update_mode: UpdateMode,
+}
+
+#[derive(Debug, Clone)]
+pub struct StorageSchema {
+    pub arrow_schema: SchemaRef,
+    pub num_primary_keys: usize,
+    pub seq_idx: usize,
+    pub value_idxes: Vec<usize>,
     pub update_mode: UpdateMode,
 }
 

@@ -41,6 +41,7 @@ use tokio::{
     },
 };
 use tracing::error;
+use uuid::Uuid;
 
 use crate::{
     ensure,
@@ -52,11 +53,13 @@ use crate::{
 pub const PREFIX_PATH: &str = "manifest";
 pub const SNAPSHOT_FILENAME: &str = "snapshot";
 pub const DELTA_PREFIX: &str = "delta";
+pub const TOMBSTONE_PREFIX: &str = "tombstone";
 
 pub type ManifestRef = Arc<Manifest>;
 
 pub struct Manifest {
     delta_dir: Path,
+    tombstone_dir: Path,
     store: ObjectStoreRef,
     merger: Arc<ManifestMerger>,
 
@@ -126,6 +129,7 @@ impl Manifest {
     ) -> Result<Self> {
         let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
         let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
+        let tombstone_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{TOMBSTONE_PREFIX}"));
 
         let merger = ManifestMerger::try_new(
             snapshot_path.clone(),
@@ -150,6 +154,7 @@ impl Manifest {
 
         Ok(Self {
             delta_dir,
+            tombstone_dir,
             store,
             merger,
             payload: RwLock::new(payload),
@@ -185,6 +190,15 @@ impl Manifest {
         self.merger.add_delta_num();
 
         Ok(())
+    }
+
+    // TODO: recovery tombstone files when startup
+    pub async fn add_tombstone_files<I>(&self, files: I) -> Result<()>
+    where
+        I: IntoIterator<Item = SstFile>,
+    {
+        let path = Path::from(format!("{}/{}", self.tombstone_dir, Uuid::new_v4()));
+        todo!()
     }
 
     // TODO: avoid clone
