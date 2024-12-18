@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+mod encoding;
 use std::{
-    collections::HashSet,
     io::{Cursor, Write},
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -29,16 +29,14 @@ use anyhow::Context;
 use async_scoped::TokioScope;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use bytes::Bytes;
+pub use encoding::ManifestUpdate;
 use futures::{StreamExt, TryStreamExt};
 use object_store::{path::Path, PutPayload};
 use parquet::data_type::AsBytes;
 use prost::Message;
-use tokio::{
-    runtime::Runtime,
-    sync::{
-        mpsc::{self, Receiver, Sender},
-        RwLock,
-    },
+use tokio::sync::{
+    mpsc::{self, Receiver, Sender},
+    RwLock,
 };
 use tracing::error;
 use uuid::Uuid;
@@ -53,89 +51,31 @@ use crate::{
 pub const PREFIX_PATH: &str = "manifest";
 pub const SNAPSHOT_FILENAME: &str = "snapshot";
 pub const DELTA_PREFIX: &str = "delta";
-pub const TOMBSTONE_PREFIX: &str = "tombstone";
 
 pub type ManifestRef = Arc<Manifest>;
 
 pub struct Manifest {
     delta_dir: Path,
-    tombstone_dir: Path,
     store: ObjectStoreRef,
     merger: Arc<ManifestMerger>,
 
-    payload: RwLock<Payload>,
-}
-
-#[derive(Default)]
-pub struct Payload {
-    files: Vec<SstFile>,
-}
-
-impl Payload {
-    // TODO: we could sort sst files by name asc, then the dedup will be more
-    // efficient
-    pub fn dedup_files(&mut self) {
-        let mut seen = HashSet::with_capacity(self.files.len());
-        self.files.retain(|file| seen.insert(file.id()));
-    }
-}
-
-impl TryFrom<Bytes> for Payload {
-    type Error = Error;
-
-    fn try_from(value: Bytes) -> Result<Self> {
-        if value.is_empty() {
-            Ok(Self::default())
-        } else {
-            let snapshot = Snapshot::try_from(value)?;
-            let files = snapshot.to_sstfiles()?;
-            Ok(Self { files })
-        }
-    }
-}
-
-impl TryFrom<pb_types::Manifest> for Payload {
-    type Error = Error;
-
-    fn try_from(value: pb_types::Manifest) -> Result<Self> {
-        let files = value
-            .files
-            .into_iter()
-            .map(SstFile::try_from)
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(Self { files })
-    }
-}
-
-impl From<Payload> for pb_types::Manifest {
-    fn from(value: Payload) -> Self {
-        pb_types::Manifest {
-            files: value
-                .files
-                .into_iter()
-                .map(pb_types::SstFile::from)
-                .collect(),
-        }
-    }
+    ssts: RwLock<Vec<SstFile>>,
 }
 
 impl Manifest {
     pub async fn try_new(
         root_dir: String,
         store: ObjectStoreRef,
-        runtime: Arc<Runtime>,
+        runtime: RuntimeRef,
         merge_options: ManifestMergeOptions,
     ) -> Result<Self> {
         let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
         let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
-        let tombstone_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{TOMBSTONE_PREFIX}"));
 
         let merger = ManifestMerger::try_new(
             snapshot_path.clone(),
             delta_dir.clone(),
             store.clone(),
-            runtime.clone(),
             merge_options,
         )
         .await?;
@@ -148,42 +88,46 @@ impl Manifest {
             });
         }
 
-        let bytes = read_object(&store, &snapshot_path).await?;
-        // TODO: add upgrade logic
-        let payload = bytes.try_into()?;
+        let snapshot = read_snapshot(&store, &snapshot_path).await?;
+        let ssts = snapshot.into_ssts();
 
         Ok(Self {
             delta_dir,
-            tombstone_dir,
             store,
             merger,
-            payload: RwLock::new(payload),
+            ssts: RwLock::new(ssts),
         })
     }
 
     pub async fn add_file(&self, id: FileId, meta: FileMeta) -> Result<()> {
+        let update = ManifestUpdate::new(vec![SstFile::new(id, meta)], Vec::new());
+        self.update(update).await
+    }
+
+    pub async fn update(&self, update: ManifestUpdate) -> Result<()> {
         self.merger.maybe_schedule_merge().await?;
-
-        let new_sst_path = Path::from(format!("{}/{id}", self.delta_dir));
-        let new_sst = SstFile::new(id, meta);
-
-        let new_sst_payload = pb_types::SstFile::from(new_sst.clone());
-        let mut buf: Vec<u8> = Vec::with_capacity(new_sst_payload.encoded_len());
-        new_sst_payload
+        let path = Path::from(format!("{}/{}", self.delta_dir, Uuid::new_v4()));
+        let pb_update = pb_types::ManifestUpdate::from(update.clone());
+        let mut buf: Vec<u8> = Vec::with_capacity(pb_update.encoded_len());
+        pb_update
             .encode(&mut buf)
-            .context("failed to encode manifest file")?;
-        let put_payload = PutPayload::from_bytes(Bytes::from(buf));
+            .context("failed to encode manifest update")?;
 
         // 1. Persist the delta manifest
         self.store
-            .put(&new_sst_path, put_payload)
+            .put(&path, PutPayload::from_bytes(Bytes::from(buf)))
             .await
-            .with_context(|| format!("Failed to write delta manifest, path:{}", new_sst_path))?;
+            .with_context(|| format!("Failed to write delta manifest, path:{}", path))?;
 
         // 2. Update cached payload
         {
-            let mut payload = self.payload.write().await;
-            payload.files.push(new_sst);
+            let mut ssts = self.ssts.write().await;
+            for file in update.to_adds {
+                ssts.push(file);
+            }
+            // TODO: sort files in payload, so we can delete files more
+            // efficiently.
+            ssts.retain(|file| !update.to_deletes.contains(&file.id()));
         }
 
         // 3. Update delta files num
@@ -192,27 +136,16 @@ impl Manifest {
         Ok(())
     }
 
-    // TODO: recovery tombstone files when startup
-    pub async fn add_tombstone_files<I>(&self, files: I) -> Result<()>
-    where
-        I: IntoIterator<Item = SstFile>,
-    {
-        let path = Path::from(format!("{}/{}", self.tombstone_dir, Uuid::new_v4()));
-        todo!()
-    }
-
     // TODO: avoid clone
     pub async fn all_ssts(&self) -> Vec<SstFile> {
-        let payload = self.payload.read().await;
-        payload.files.clone()
+        let ssts = self.ssts.read().await;
+        ssts.clone()
     }
 
     pub async fn find_ssts(&self, time_range: &TimeRange) -> Vec<SstFile> {
-        let payload = self.payload.read().await;
+        let ssts = self.ssts.read().await;
 
-        payload
-            .files
-            .iter()
+        ssts.iter()
             .filter(move |f| f.meta().time_range.overlaps(time_range))
             .cloned()
             .collect()
@@ -231,6 +164,7 @@ impl Manifest {
 /// - The length field (u64) represents the total length of the subsequent
 ///   records and serves as a straightforward method for verifying their
 ///   integrity. (length = record_length * record_count)
+#[derive(Debug)]
 struct SnapshotHeader {
     pub magic: u32,
     pub version: u8,
@@ -279,13 +213,10 @@ impl SnapshotHeader {
         }
     }
 
-    pub fn write_to(&self, writer: &mut &mut [u8]) -> Result<()> {
-        ensure!(
-            writer.len() >= SnapshotHeader::LENGTH,
-            "writer buf is too small for writing the header, length: {}",
-            writer.len()
-        );
-
+    pub fn write_to<W>(&self, mut writer: W) -> Result<()>
+    where
+        W: Write,
+    {
         writer
             .write_u32::<LittleEndian>(self.magic)
             .context("write shall not fail.")?;
@@ -319,13 +250,10 @@ impl SnapshotRecordV1 {
     const LENGTH: usize = 8 /*id*/+ 16 /*time range*/ + 4 /*size*/ + 4 /*num rows*/;
     pub const VERSION: u8 = 1;
 
-    pub fn write_to(&self, writer: &mut &mut [u8]) -> Result<()> {
-        ensure!(
-            writer.len() >= SnapshotRecordV1::LENGTH,
-            "writer buf is too small for writing the record, length: {}",
-            writer.len()
-        );
-
+    pub fn write_to<W>(&self, mut writer: W) -> Result<()>
+    where
+        W: Write,
+    {
         writer
             .write_u64::<LittleEndian>(self.id)
             .context("write shall not fail.")?;
@@ -399,7 +327,7 @@ impl From<SnapshotRecordV1> for SstFile {
 
 struct Snapshot {
     header: SnapshotHeader,
-    inner: Bytes,
+    records: Vec<SnapshotRecordV1>,
 }
 
 impl Default for Snapshot {
@@ -408,7 +336,7 @@ impl Default for Snapshot {
         let header = SnapshotHeader::new(0);
         Self {
             header,
-            inner: Bytes::new(),
+            records: Vec::new(),
         }
     }
 }
@@ -421,82 +349,57 @@ impl TryFrom<Bytes> for Snapshot {
             return Ok(Snapshot::default());
         }
         let header = SnapshotHeader::try_from(bytes.as_bytes())?;
-        let header_length = header.length as usize;
+        let record_total_length = header.length as usize;
         ensure!(
-            header_length > 0
-                && header_length % SnapshotRecordV1::LENGTH == 0
-                && header_length + SnapshotHeader::LENGTH == bytes.len(),
-            "create snapshot from bytes failed, invalid bytes, header length = {}, total length: {}",
-                header_length,
-                bytes.len()
+            record_total_length > 0
+                && record_total_length % SnapshotRecordV1::LENGTH == 0
+                && record_total_length + SnapshotHeader::LENGTH == bytes.len(),
+            "create snapshot from bytes failed, header:{header:?}, bytes_length: {}",
+            bytes.len()
         );
+        let mut index = SnapshotHeader::LENGTH;
+        let mut records = Vec::with_capacity(record_total_length / SnapshotRecordV1::LENGTH);
+        while index < bytes.len() {
+            let record =
+                SnapshotRecordV1::try_from(&bytes[index..index + SnapshotRecordV1::LENGTH])?;
+            records.push(record);
+            index += SnapshotRecordV1::LENGTH;
+        }
 
-        Ok(Self {
-            header,
-            inner: bytes,
-        })
+        Ok(Self { header, records })
     }
 }
 
 impl Snapshot {
-    pub fn to_sstfiles(&self) -> Result<Vec<SstFile>> {
+    pub fn into_ssts(self) -> Vec<SstFile> {
         if self.header.length == 0 {
-            Ok(Vec::new())
+            Vec::new()
         } else {
-            let buf = self.inner.as_bytes();
-            let mut result: Vec<SstFile> =
-                Vec::with_capacity(self.header.length as usize / SnapshotRecordV1::LENGTH);
-            let mut index = SnapshotHeader::LENGTH;
-            while index < buf.len() {
-                let record =
-                    SnapshotRecordV1::try_from(&buf[index..index + SnapshotRecordV1::LENGTH])?;
-                index += SnapshotRecordV1::LENGTH;
-                result.push(record.into());
-            }
-
-            Ok(result)
+            self.records.into_iter().map(|r| r.into()).collect()
         }
     }
 
-    pub fn dedup_sstfiles(&self, sstfiles: &mut Vec<SstFile>) -> Result<()> {
-        let buf = self.inner.as_bytes();
-        let mut ids = HashSet::new();
-        let mut index = SnapshotHeader::LENGTH;
-        while index < buf.len() {
-            let record = SnapshotRecordV1::try_from(&buf[index..index + SnapshotRecordV1::LENGTH])?;
-            index += SnapshotRecordV1::LENGTH;
-            ids.insert(record.id());
-        }
-        sstfiles.retain(|item| !ids.contains(&item.id()));
+    // TODO: Ensure no files duplicated
+    // https://github.com/apache/horaedb/issues/1608
+    pub fn merge_update(&mut self, update: ManifestUpdate) -> Result<()> {
+        self.records
+            .extend(update.to_adds.into_iter().map(SnapshotRecordV1::from));
+        self.records
+            .retain(|record| !update.to_deletes.contains(&record.id));
 
+        self.header.length = (self.records.len() * SnapshotRecordV1::LENGTH) as u64;
         Ok(())
     }
 
-    pub fn merge_sstfiles(&mut self, sstfiles: Vec<SstFile>) {
-        // update header
-        self.header.length += (sstfiles.len() * SnapshotRecordV1::LENGTH) as u64;
-        // final snapshot
-        let mut snapshot = vec![0u8; SnapshotHeader::LENGTH + self.header.length as usize];
-        let mut writer = snapshot.as_mut_slice();
+    pub fn into_bytes(self) -> Result<Bytes> {
+        let buf = Vec::with_capacity(self.header.length as usize + SnapshotHeader::LENGTH);
+        let mut cursor = Cursor::new(buf);
 
-        // write new head
-        self.header.write_to(&mut writer).unwrap();
-        // write old records
-        if !self.inner.is_empty() {
-            writer
-                .write_all(&self.inner.as_bytes()[SnapshotHeader::LENGTH..])
-                .unwrap();
+        self.header.write_to(&mut cursor)?;
+        for record in self.records {
+            record.write_to(&mut cursor).unwrap();
         }
-        // write new records
-        for sst in sstfiles {
-            let record: SnapshotRecordV1 = sst.into();
-            record.write_to(&mut writer).unwrap();
-        }
-        self.inner = Bytes::from(snapshot);
-    }
-
-    pub fn into_bytes(self) -> Bytes {
-        self.inner
+        Ok(Bytes::from(cursor.into_inner()))
     }
 }
 
@@ -509,7 +412,6 @@ struct ManifestMerger {
     snapshot_path: Path,
     delta_dir: Path,
     store: ObjectStoreRef,
-    runtime: RuntimeRef,
     sender: Sender<MergeType>,
     receiver: RwLock<Receiver<MergeType>>,
     deltas_num: AtomicUsize,
@@ -521,7 +423,6 @@ impl ManifestMerger {
         snapshot_path: Path,
         delta_dir: Path,
         store: ObjectStoreRef,
-        runtime: Arc<Runtime>,
         merge_options: ManifestMergeOptions,
     ) -> Result<Arc<Self>> {
         let (tx, rx) = mpsc::channel(merge_options.channel_size);
@@ -529,7 +430,6 @@ impl ManifestMerger {
             snapshot_path,
             delta_dir,
             store,
-            runtime,
             sender: tx,
             receiver: RwLock::new(rx),
             deltas_num: AtomicUsize::new(0),
@@ -602,17 +502,12 @@ impl ManifestMerger {
             }
         });
 
-        let mut delta_files = Vec::with_capacity(results.len());
+        let mut snapshot = read_snapshot(&self.store, &self.snapshot_path).await?;
         for res in results {
-            let sst_file = res.context("Failed to join read delta files task")??;
-            delta_files.push(sst_file);
+            let manifest_update = res.context("Failed to join read delta files task")??;
+            snapshot.merge_update(manifest_update)?;
         }
-        let snapshot_bytes = read_object(&self.store, &self.snapshot_path).await?;
-        let mut snapshot = Snapshot::try_from(snapshot_bytes)?;
-        // TODO: no need to dedup every time.
-        snapshot.dedup_sstfiles(&mut delta_files)?;
-        snapshot.merge_sstfiles(delta_files);
-        let snapshot_bytes = snapshot.into_bytes();
+        let snapshot_bytes = snapshot.into_bytes()?;
         let put_payload = PutPayload::from_bytes(snapshot_bytes);
         // 1. Persist the snapshot
         self.store
@@ -646,38 +541,18 @@ impl ManifestMerger {
     }
 }
 
-async fn read_object(store: &ObjectStoreRef, path: &Path) -> Result<Bytes> {
-    match store.get(path).await {
-        Ok(v) => v
-            .bytes()
-            .await
-            .with_context(|| format!("Failed to read manifest snapshot, path:{path}"))
-            .map_err(|e| e.into()),
-        Err(err) => {
-            if err.to_string().contains("not found") {
-                Ok(Bytes::new())
-            } else {
-                let context = format!("Failed to read file, path:{path}");
-                Err(AnyhowError::new(err).context(context).into())
-            }
-        }
-    }
-}
-
-async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Payload> {
+async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Snapshot> {
     match store.get(path).await {
         Ok(v) => {
             let bytes = v
                 .bytes()
                 .await
                 .with_context(|| format!("Failed to read manifest snapshot, path:{path}"))?;
-            let pb_payload = pb_types::Manifest::decode(bytes)
-                .with_context(|| format!("Failed to decode manifest snapshot, path:{path}"))?;
-            Payload::try_from(pb_payload)
+            Snapshot::try_from(bytes)
         }
         Err(err) => {
             if err.to_string().contains("not found") {
-                Ok(Payload { files: vec![] })
+                Ok(Snapshot::default())
             } else {
                 let context = format!("Failed to read manifest snapshot, path:{path}");
                 Err(AnyhowError::new(err).context(context).into())
@@ -686,7 +561,7 @@ async fn read_snapshot(store: &ObjectStoreRef, path: &Path) -> Result<Payload> {
     }
 }
 
-async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<SstFile> {
+async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<ManifestUpdate> {
     let bytes = store
         .get(sst_path)
         .await
@@ -695,12 +570,12 @@ async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<SstF
         .await
         .with_context(|| format!("failed to read delta file, path:{sst_path}"))?;
 
-    let pb_sst = pb_types::SstFile::decode(bytes)
+    let pb_update = pb_types::ManifestUpdate::decode(bytes)
         .with_context(|| format!("failed to decode delta file, path:{sst_path}"))?;
 
-    let sst = SstFile::try_from(pb_sst)
+    let update = ManifestUpdate::try_from(pb_update)
         .with_context(|| format!("failed to convert delta file, path:{sst_path}"))?;
-    Ok(sst)
+    Ok(update)
 }
 
 async fn delete_delta_file(store: &ObjectStoreRef, path: &Path) -> Result<()> {
@@ -730,43 +605,30 @@ async fn list_delta_paths(store: &ObjectStoreRef, delta_dir: &Path) -> Result<Ve
 mod tests {
     use std::sync::Arc;
 
+    use itertools::Itertools;
     use object_store::local::LocalFileSystem;
     use tokio::time::sleep;
 
     use super::*;
 
-    #[tokio::test]
-    async fn test_find_manifest() {
+    #[test]
+    fn test_find_manifest() {
         let root_dir = temp_dir::TempDir::new().unwrap();
-        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
+        let rt = runtime.clone();
         let store = Arc::new(LocalFileSystem::new());
 
-        let manifest = Manifest::try_new(
-            root_dir.path().to_string_lossy().to_string(),
-            store,
-            Arc::new(runtime),
-            ManifestMergeOptions::default(),
-        )
-        .await
-        .unwrap();
+        rt.block_on(async move {
+            let manifest = Manifest::try_new(
+                root_dir.path().to_string_lossy().to_string(),
+                store,
+                runtime.clone(),
+                ManifestMergeOptions::default(),
+            )
+            .await
+            .unwrap();
 
-        for i in 0..20 {
-            let time_range = (i..i + 1).into();
-            let meta = FileMeta {
-                max_sequence: i as u64,
-                num_rows: i as u32,
-                size: i as u32,
-                time_range,
-            };
-            manifest.add_file(i as u64, meta).await.unwrap();
-        }
-
-        let find_range = (10..15).into();
-        let mut ssts = manifest.find_ssts(&find_range).await;
-
-        let mut expected_ssts = (10..15)
-            .map(|i| {
-                let id = i as u64;
+            for i in 0..20 {
                 let time_range = (i..i + 1).into();
                 let meta = FileMeta {
                     max_sequence: i as u64,
@@ -774,17 +636,34 @@ mod tests {
                     size: i as u32,
                     time_range,
                 };
-                SstFile::new(id, meta)
-            })
-            .collect::<Vec<_>>();
+                manifest.add_file(i as u64, meta).await.unwrap();
+            }
 
-        expected_ssts.sort_by_key(|a| a.id());
-        ssts.sort_by_key(|a| a.id());
-        assert_eq!(expected_ssts, ssts);
+            let find_range = (10..15).into();
+            let mut ssts = manifest.find_ssts(&find_range).await;
+
+            let mut expected_ssts = (10..15)
+                .map(|i| {
+                    let id = i as u64;
+                    let time_range = (i..i + 1).into();
+                    let meta = FileMeta {
+                        max_sequence: i as u64,
+                        num_rows: i as u32,
+                        size: i as u32,
+                        time_range,
+                    };
+                    SstFile::new(id, meta)
+                })
+                .collect::<Vec<_>>();
+
+            expected_ssts.sort_by_key(|a| a.id());
+            ssts.sort_by_key(|a| a.id());
+            assert_eq!(expected_ssts, ssts);
+        });
     }
 
-    #[tokio::test]
-    async fn test_merge_manifest() {
+    #[test]
+    fn test_merge_manifest() {
         let root_dir = temp_dir::TempDir::new()
             .unwrap()
             .path()
@@ -792,72 +671,53 @@ mod tests {
             .to_string();
         let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
         let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
-            .enable_all()
-            .build()
+        let runtime = Arc::new(tokio::runtime::Runtime::new().unwrap());
+        let rt = runtime.clone();
+
+        rt.block_on(async move {
+            let store: ObjectStoreRef = Arc::new(LocalFileSystem::new());
+            let manifest = Manifest::try_new(
+                root_dir,
+                store.clone(),
+                runtime.clone(),
+                ManifestMergeOptions {
+                    merge_interval_seconds: 1,
+                    ..Default::default()
+                },
+            )
+            .await
             .unwrap();
-        let store: ObjectStoreRef = Arc::new(LocalFileSystem::new());
 
-        let manifest = Manifest::try_new(
-            root_dir,
-            store.clone(),
-            Arc::new(runtime),
-            ManifestMergeOptions {
-                merge_interval_seconds: 1,
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
+            // Add manifest files
+            for i in 0..20 {
+                let time_range = (i..i + 1).into();
+                let meta = FileMeta {
+                    max_sequence: i as u64,
+                    num_rows: i as u32,
+                    size: i as u32,
+                    time_range,
+                };
+                manifest.add_file(i as u64, meta).await.unwrap();
+            }
 
-        // Add manifest files
-        for i in 0..20 {
-            let time_range = (i..i + 1).into();
-            let meta = FileMeta {
-                max_sequence: i as u64,
-                num_rows: i as u32,
-                size: i as u32,
-                time_range,
-            };
-            manifest.add_file(i as u64, meta).await.unwrap();
-        }
+            // Wait for merge manifest to finish
+            sleep(Duration::from_secs(2)).await;
 
-        // Wait for merge manifest to finish
-        sleep(Duration::from_secs(2)).await;
+            let mut mem_ssts = manifest.ssts.read().await.clone();
+            let snapshot = read_snapshot(&store, &snapshot_path).await.unwrap();
+            let mut ssts = snapshot
+                .records
+                .into_iter()
+                .map(SstFile::from)
+                .collect_vec();
 
-        let mut mem_ssts = manifest.payload.read().await.files.clone();
-        let snapshot = read_object(&store, &snapshot_path).await.unwrap();
-        let snapshot_len = snapshot.len();
-        let payload: Payload = snapshot.try_into().unwrap();
-        let mut ssts = payload.files;
+            mem_ssts.sort_by_key(|a| a.id());
+            ssts.sort_by_key(|a| a.id());
+            assert_eq!(mem_ssts, ssts);
 
-        mem_ssts.sort_by_key(|a| a.id());
-        ssts.sort_by_key(|a| a.id());
-        assert_eq!(mem_ssts, ssts);
-
-        let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
-        assert!(delta_paths.is_empty());
-
-        // Add manifest files again to verify dedup
-        for i in 0..20 {
-            let time_range = (i..i + 1).into();
-            let meta = FileMeta {
-                max_sequence: i as u64,
-                num_rows: i as u32,
-                size: i as u32,
-                time_range,
-            };
-            manifest.add_file(i as u64, meta).await.unwrap();
-        }
-
-        // Wait for merge manifest to finish
-        sleep(Duration::from_secs(2)).await;
-
-        let snapshot_again = read_object(&store, &snapshot_path).await.unwrap();
-        assert!(snapshot_len == snapshot_again.len()); // dedup took effect.
-        let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
-        assert!(delta_paths.is_empty());
+            let delta_paths = list_delta_paths(&store, &delta_dir).await.unwrap();
+            assert!(delta_paths.is_empty());
+        })
     }
 
     #[test]
@@ -885,11 +745,6 @@ mod tests {
             257, // length
             cursor.read_u64::<LittleEndian>().unwrap()
         );
-
-        let mut vec = [0u8; SnapshotHeader::LENGTH - 1];
-        let mut writer = vec.as_mut_slice();
-        let result = header.write_to(&mut writer);
-        assert!(result.is_err()); // buf not enough
     }
 
     #[test]
@@ -931,9 +786,5 @@ mod tests {
             100, // num rows
             cursor.read_u32::<LittleEndian>().unwrap()
         );
-        let mut vec = vec![0u8; SnapshotRecordV1::LENGTH - 1];
-        let mut writer = vec.as_mut_slice();
-        let result = record.write_to(&mut writer);
-        assert!(result.is_err()); // buf not enough
     }
 }

@@ -67,6 +67,7 @@ jobs:
       - name: Install check binaries
         run: |
           cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
+      - uses: Swatinem/rust-cache@v2
       - name: Run Style Check
         run: |
           make fmt sort clippy
@@ -80,8 +81,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - name: Release Disk Quota
         run: |
           sudo make ensure-disk-quota
@@ -89,6 +88,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
       - name: Run Unit Tests
         run: |
           make test
