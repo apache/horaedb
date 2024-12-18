@@ -107,14 +107,18 @@ impl TryFrom<&[u8]> for SnapshotHeader {
         );
 
         let mut cursor = Cursor::new(bytes);
-        let magic = cursor.read_u32::<LittleEndian>().unwrap();
+        let magic = cursor
+            .read_u32::<LittleEndian>()
+            .context("read snapshot header magic")?;
         ensure!(
             magic == SnapshotHeader::MAGIC,
             "invalid bytes to convert to header."
         );
-        let version = cursor.read_u8().unwrap();
-        let flag = cursor.read_u8().unwrap();
-        let length = cursor.read_u64::<LittleEndian>().unwrap();
+        let version = cursor.read_u8().context("read snapshot header version")?;
+        let flag = cursor.read_u8().context("read snapshot header flag")?;
+        let length = cursor
+            .read_u64::<LittleEndian>()
+            .context("read snapshot header length")?;
         Ok(Self {
             magic,
             version,
@@ -126,7 +130,7 @@ impl TryFrom<&[u8]> for SnapshotHeader {
 
 impl SnapshotHeader {
     pub const LENGTH: usize = 4 /*magic*/ + 1 /*version*/ + 1 /*flag*/ + 8 /*length*/;
-    pub const MAGIC: u32 = 0xCAFE_6666;
+    pub const MAGIC: u32 = 0xCAFE_1234;
 
     pub fn new(length: u64) -> Self {
         Self {
@@ -223,11 +227,21 @@ impl TryFrom<&[u8]> for SnapshotRecord {
         );
 
         let mut cursor = Cursor::new(value);
-        let id = cursor.read_u64::<LittleEndian>().unwrap();
-        let start = cursor.read_i64::<LittleEndian>().unwrap();
-        let end = cursor.read_i64::<LittleEndian>().unwrap();
-        let size = cursor.read_u32::<LittleEndian>().unwrap();
-        let num_rows = cursor.read_u32::<LittleEndian>().unwrap();
+        let id = cursor
+            .read_u64::<LittleEndian>()
+            .context("read record id")?;
+        let start = cursor
+            .read_i64::<LittleEndian>()
+            .context("read record start")?;
+        let end = cursor
+            .read_i64::<LittleEndian>()
+            .context("read record end")?;
+        let size = cursor
+            .read_u32::<LittleEndian>()
+            .context("read record size")?;
+        let num_rows = cursor
+            .read_u32::<LittleEndian>()
+            .context("read record num_rows")?;
         Ok(SnapshotRecord {
             id,
             time_range: (start..end).into(),

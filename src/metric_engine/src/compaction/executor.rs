@@ -132,7 +132,7 @@ impl Executor {
         }
     }
 
-    pub fn spawn(&self, task: Task) {
+    pub fn submit(&self, task: Task) {
         let runnable = Runnable {
             executor: self.clone(),
             task,

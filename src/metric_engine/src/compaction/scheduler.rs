@@ -98,7 +98,7 @@ impl Scheduler {
 
     async fn recv_task_loop(mut task_rx: Receiver<Task>, executor: Executor) {
         while let Some(task) = task_rx.recv().await {
-            executor.spawn(task);
+            executor.submit(task);
         }
     }
 
