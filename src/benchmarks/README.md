@@ -1,22 +1,15 @@
 # Benchmarks
 
-## Test Data
-todo
+A config template can be found in [here](config.toml).
 
-## Config
-A config template can be found in `config/bench.toml`.
-
-## Run benchmarks
+## How to run
 ```bash
-ANALYTIC_BENCH_CONFIG_PATH=/path/to/bench.toml cargo bench -p benchmarks
+ANALYTIC_BENCH_CONFIG_PATH=/path/to/config cargo bench -p benchmarks
 ```
 
-Print logs:
-```bash
-RUST_LOG=info ANALYTIC_BENCH_CONFIG_PATH=/path/to/bench.toml cargo bench -p benchmarks
-```
+Set `RUST_LOG=debug` to enable verbose log.
 
-Run specific bench:
+## Run specific bench:
 ```bash
-ANALYTIC_BENCH_CONFIG_PATH=/path/to/bench.toml cargo bench --bench bench -p benchmarks -- bench_encoding
+ANALYTIC_BENCH_CONFIG_PATH=/path/to/config cargo bench --bench bench -p benchmarks -- bench_encoding
 ```
