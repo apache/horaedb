@@ -69,12 +69,13 @@ pub struct WriteRequest {
 }
 
 pub struct ScanRequest {
-    range: TimeRange,
-    predicate: Vec<Expr>,
+    pub range: TimeRange,
+    pub predicate: Vec<Expr>,
     /// `None` means all columns.
-    projections: Option<Vec<usize>>,
+    pub projections: Option<Vec<usize>>,
 }
 
+#[derive(Default)]
 pub struct CompactRequest {}
 
 /// Time-aware merge storage interface.
@@ -90,6 +91,8 @@ pub trait TimeMergeStorage {
 
     async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
+
+pub type TimeMergeStorageRef = Arc<(dyn TimeMergeStorage + Send + Sync)>;
 
 #[derive(Clone)]
 struct StorageRuntimes {
@@ -416,7 +419,7 @@ impl TimeMergeStorage for CloudObjectStorage {
     }
 
     async fn compact(&self, _req: CompactRequest) -> Result<()> {
-        todo!()
+        self.compact_scheduler.trigger_compaction()
     }
 }
 
