@@ -99,7 +99,7 @@ impl Executor {
         let inused = self.inner.inused_memory.load(Ordering::Relaxed);
         let mem_limit = self.inner.mem_limit;
         ensure!(
-            inused + task_size > mem_limit,
+            inused + task_size <= mem_limit,
             "Compaction memory usage too high, inused:{inused}, task_size:{task_size}, limit:{mem_limit}"
         );
 
@@ -113,7 +113,7 @@ impl Executor {
         let task_size = task.input_size();
         self.inner
             .inused_memory
-            .fetch_add(task_size, Ordering::Relaxed);
+            .fetch_sub(task_size, Ordering::Relaxed);
     }
 
     pub fn on_failure(&self, task: &Task) {
@@ -137,7 +137,7 @@ impl Executor {
             executor: self.clone(),
             task,
         };
-        runnable.run()
+        runnable.spawn()
     }
 
     // TODO: Merge input sst files into one new sst file
@@ -257,7 +257,7 @@ pub struct Runnable {
 }
 
 impl Runnable {
-    fn run(self) {
+    fn spawn(self) {
         let rt = self.executor.inner.runtime.clone();
         rt.spawn(async move {
             if let Err(e) = self.executor.do_compaction(&self.task).await {
