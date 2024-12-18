@@ -17,36 +17,33 @@
 
 //! Benchmark configs.
 
-use std::{env, fs::File, io::Read};
+use std::{env, fs};
 
 use serde::Deserialize;
+use tracing::info;
 
 use crate::util::ReadableDuration;
 const BENCH_CONFIG_PATH_KEY: &str = "BENCH_CONFIG_PATH";
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct BenchConfig {
-    pub encoding_bench: EncodingConfig,
+    pub manifest: ManifestConfig,
 }
 
-pub fn bench_config_from_env() -> BenchConfig {
-    let path = env::var(BENCH_CONFIG_PATH_KEY).unwrap_or_else(|e| {
-        panic!("Env {BENCH_CONFIG_PATH_KEY} is required to run benches, err:{e}.")
-    });
+pub fn config_from_env() -> BenchConfig {
+    let path = env::var(BENCH_CONFIG_PATH_KEY)
+        .expect("Env {BENCH_CONFIG_PATH_KEY} is required to run benches");
 
-    let toml_buf = {
-        let mut file = File::open(&path).unwrap_or_else(|_| panic!("open {path} failed"));
-        let mut buf = String::new();
-        file.read_to_string(&mut buf)
-            .unwrap_or_else(|_| panic!("read {path} failed"));
-        buf
-    };
+    info!(config_path = ?path.as_str(), "Load bench config");
 
-    toml::from_str(&toml_buf).unwrap_or_else(|e| panic!("parse {path} failed: {e}"))
+    let toml_str = fs::read_to_string(&path).expect("read bench config file failed");
+    let config = toml::from_str(&toml_str).expect("parse bench config file failed");
+    info!(config = ?config, "Bench config");
+    config
 }
 
-#[derive(Deserialize)]
-pub struct EncodingConfig {
+#[derive(Deserialize, Debug)]
+pub struct ManifestConfig {
     pub record_count: usize,
     pub append_count: usize,
     pub bench_measurement_time: ReadableDuration,

@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[encoding_bench]
+[manifest]
 record_count = 1000
 append_count = 100
 bench_measurement_time = "5s"

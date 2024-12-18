@@ -23,18 +23,15 @@ use metric_engine::{
     sst::{FileMeta, SstFile},
 };
 
-// use pb_types;
-// use prost::Message;
-use crate::config::EncodingConfig;
+use crate::config::ManifestConfig;
 
 pub struct EncodingBench {
-    // pb_bytes: Bytes,
     raw_bytes: Bytes,
     to_append: Vec<SstFile>,
 }
 
 impl EncodingBench {
-    pub fn new(config: EncodingConfig) -> Self {
+    pub fn new(config: ManifestConfig) -> Self {
         let sstfile = SstFile::new(
             1,
             FileMeta {
@@ -45,18 +42,6 @@ impl EncodingBench {
             },
         );
         let sstfiles = vec![sstfile.clone(); config.record_count];
-
-        // let pb_manifest = pb_types::Manifest {
-        //     files: sstfiles
-        //         .clone()
-        //         .into_iter()
-        //         .map(|f| f.into())
-        //         .collect::<Vec<_>>(),
-        // };
-
-        // let mut buf: Vec<u8> = Vec::with_capacity(pb_manifest.encoded_len());
-        // let _ = pb_manifest.encode(&mut buf);
-
         let mut snapshot = Snapshot::try_from(Bytes::new()).unwrap();
         let update = ManifestUpdate {
             to_adds: sstfiles,
@@ -65,27 +50,9 @@ impl EncodingBench {
         let _ = snapshot.merge_update(update);
 
         EncodingBench {
-            // pb_bytes: Bytes::new(),
             raw_bytes: snapshot.into_bytes().unwrap(),
             to_append: vec![sstfile; config.append_count],
         }
-    }
-
-    pub fn pb_encoding_bench(&mut self) {
-        // mock do_merge procedure
-        // first decode snapshot and then append with delta sstfiles, serialize
-        // to bytes at last
-        // let mut manifest =
-        // pb_types::Manifest::decode(self.pb_bytes.clone()).unwrap();
-        // manifest.files.extend(
-        //     self.to_append
-        //         .clone()
-        //         .into_iter()
-        //         .map(|e| e.into())
-        //         .collect::<Vec<pb_types::SstFile>>(),
-        // );
-        // let mut buf: Vec<u8> = Vec::with_capacity(manifest.encoded_len());
-        // let _ = manifest.encode(&mut buf);
     }
 
     pub fn raw_bytes_bench(&mut self) {

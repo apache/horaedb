@@ -32,8 +32,9 @@ workspace = true
 
 [dependencies]
 bytes = { workspace = true }
-env_logger = { workspace = true }
+tracing = { workspace = true }
 metric_engine = { workspace = true }
+tracing-subscriber = { workspace = true }
 pb_types = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }

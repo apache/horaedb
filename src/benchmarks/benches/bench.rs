@@ -29,40 +29,29 @@ static INIT_LOG: Once = Once::new();
 
 pub fn init_bench() -> BenchConfig {
     INIT_LOG.call_once(|| {
-        env_logger::init();
+        // install global collector configured based on RUST_LOG env var.
+        tracing_subscriber::fmt::init();
     });
 
-    config::bench_config_from_env()
+    config::config_from_env()
 }
 
-// fn bench_encoding_iter(b: &mut Bencher<'_>, bench: &RefCell<EncodingBench>) {
-//     let mut bench = bench.borrow_mut();
-//     b.iter(|| bench.pb_encoding_bench())
-// }
-
-fn bench_encoding_iter(b: &mut Bencher<'_>, bench: &RefCell<EncodingBench>) {
-    let mut bench = bench.borrow_mut();
-    b.iter(|| bench.raw_bytes_bench())
-}
-
-fn bench_encoding(c: &mut Criterion) {
+fn bench_manifest_encoding(c: &mut Criterion) {
     let config = init_bench();
 
-    let mut group = c.benchmark_group("bench_encoding");
+    let mut group = c.benchmark_group("manifest_encoding");
 
-    group.measurement_time(config.encoding_bench.bench_measurement_time.0);
-    group.sample_size(config.encoding_bench.bench_sample_size);
+    group.measurement_time(config.manifest.bench_measurement_time.0);
+    group.sample_size(config.manifest.bench_sample_size);
 
-    let bench = RefCell::new(EncodingBench::new(config.encoding_bench));
-    // group.bench_with_input(
-    //     BenchmarkId::new("protobuf_encoding", 0),
-    //     &bench,
-    //     bench_encoding_iter,
-    // );
+    let bench = RefCell::new(EncodingBench::new(config.manifest));
     group.bench_with_input(
-        BenchmarkId::new("new_format_encoding", 0),
+        BenchmarkId::new("snapshot_encoding", 0),
         &bench,
-        bench_encoding_iter,
+        |b, bench| {
+            let mut bench = bench.borrow_mut();
+            b.iter(|| bench.raw_bytes_bench())
+        },
     );
     group.finish();
 }
@@ -70,7 +59,7 @@ fn bench_encoding(c: &mut Criterion) {
 criterion_group!(
     name = benches;
     config = Criterion::default();
-    targets = bench_encoding,
+    targets = bench_manifest_encoding,
 );
 
 criterion_main!(benches);

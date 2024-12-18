@@ -45,17 +45,6 @@ const MINUTE: u64 = SECOND * TIME_MAGNITUDE_2;
 const HOUR: u64 = MINUTE * TIME_MAGNITUDE_2;
 const DAY: u64 = HOUR * TIME_MAGNITUDE_3;
 
-/// Convert Duration to milliseconds.
-///
-/// Panic if overflow. Mainly used by `ReadableDuration`.
-#[inline]
-fn duration_to_ms(d: Duration) -> u64 {
-    let nanos = u64::from(d.subsec_nanos());
-    // Most of case, we can't have so large Duration, so here just panic if overflow
-    // now.
-    d.as_secs() * 1_000 + (nanos / 1_000_000)
-}
-
 impl FromStr for ReadableDuration {
     type Err = String;
 
@@ -110,7 +99,7 @@ impl FromStr for ReadableDuration {
 impl fmt::Display for ReadableDuration {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut dur = duration_to_ms(self.0);
+        let mut dur = self.0.as_millis() as u64;
         let mut written = false;
         if dur >= DAY {
             written = true;
@@ -161,7 +150,7 @@ impl<'de> Deserialize<'de> for ReadableDuration {
     {
         struct DurVisitor;
 
-        impl<'de> Visitor<'de> for DurVisitor {
+        impl Visitor<'_> for DurVisitor {
             type Value = ReadableDuration;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
