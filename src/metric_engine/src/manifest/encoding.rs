@@ -87,7 +87,7 @@ impl From<ManifestUpdate> for pb_types::ManifestUpdate {
 /// - The length field (u64) represents the total length of the subsequent
 ///   records and serves as a straightforward method for verifying their
 ///   integrity. (length = record_length * record_count)
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SnapshotHeader {
     pub magic: u32,
     pub version: u8,
@@ -158,6 +158,7 @@ impl SnapshotHeader {
 /// | id(u64) | time_range(i64*2) | size(u32)  |  num_rows(u32)  |
 /// +---------+-------------------+------------+-----------------+
 /// ```
+#[derive(Debug, PartialEq, Eq)]
 pub struct SnapshotRecord {
     id: u64,
     time_range: TimeRange,
@@ -335,23 +336,17 @@ mod tests {
         let mut writer = vec.as_mut_slice();
         header.write_to(&mut writer).unwrap();
         assert!(writer.is_empty());
-        let mut cursor = Cursor::new(vec);
+        let cursor = Cursor::new(vec);
+        let header = SnapshotHeader::try_new(cursor).unwrap();
 
         assert_eq!(
-            SnapshotHeader::MAGIC,
-            cursor.read_u32::<LittleEndian>().unwrap()
-        );
-        assert_eq!(
-            1, // version
-            cursor.read_u8().unwrap()
-        );
-        assert_eq!(
-            0, // flag
-            cursor.read_u8().unwrap()
-        );
-        assert_eq!(
-            257, // length
-            cursor.read_u64::<LittleEndian>().unwrap()
+            SnapshotHeader {
+                magic: SnapshotHeader::MAGIC,
+                version: 1,
+                flag: 0,
+                length: 257
+            },
+            header
         );
     }
 
@@ -372,27 +367,16 @@ mod tests {
         record.write_to(&mut writer).unwrap();
 
         assert!(writer.is_empty());
-        let mut cursor = Cursor::new(vec);
-
+        let cursor = Cursor::new(vec);
+        let record = SnapshotRecord::try_new(cursor).unwrap();
         assert_eq!(
-            99, // id
-            cursor.read_u64::<LittleEndian>().unwrap()
-        );
-        assert_eq!(
-            100, // start range
-            cursor.read_i64::<LittleEndian>().unwrap()
-        );
-        assert_eq!(
-            200, // end range
-            cursor.read_i64::<LittleEndian>().unwrap()
-        );
-        assert_eq!(
-            938, // size
-            cursor.read_u32::<LittleEndian>().unwrap()
-        );
-        assert_eq!(
-            100, // num rows
-            cursor.read_u32::<LittleEndian>().unwrap()
+            SnapshotRecord {
+                id: 99,
+                time_range: (100..200).into(),
+                size: 938,
+                num_rows: 100
+            },
+            record
         );
     }
 }
