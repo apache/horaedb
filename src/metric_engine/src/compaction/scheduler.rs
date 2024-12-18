@@ -44,6 +44,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         runtime: RuntimeRef,
         manifest: ManifestRef,

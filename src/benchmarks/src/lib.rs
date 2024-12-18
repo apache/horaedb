@@ -15,20 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Storage Engine for metrics.
+//! lib for benchmarks.
 
-#![feature(duration_constructors)]
-mod compaction;
-pub mod error;
-mod macros;
-pub mod manifest;
-pub mod operator;
-mod read;
-pub mod sst;
-pub mod storage;
-#[cfg(test)]
-mod test_util;
-pub mod types;
-pub(crate) mod util;
-
-pub use error::{AnyhowError, Error, Result};
+pub mod config;
+pub mod encoding_bench;
+mod util;

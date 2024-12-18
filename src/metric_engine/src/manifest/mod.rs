@@ -27,8 +27,7 @@ use std::{
 use anyhow::Context;
 use async_scoped::TokioScope;
 use bytes::Bytes;
-pub use encoding::ManifestUpdate;
-use encoding::Snapshot;
+pub use encoding::{ManifestUpdate, Snapshot};
 use futures::{StreamExt, TryStreamExt};
 use object_store::{path::Path, PutPayload};
 use prost::Message;
