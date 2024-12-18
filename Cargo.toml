@@ -23,7 +23,7 @@ license = "Apache-2.0"
 
 [workspace]
 resolver = "2"
-members = ["src/metric_engine", "src/pb_types", "src/server"]
+members = ["src/benchmarks", "src/metric_engine", "src/pb_types", "src/server"]
 
 [workspace.dependencies]
 anyhow = { version = "1.0" }
@@ -51,6 +51,10 @@ tracing-subscriber = "0.3"
 async-scoped = { version = "0.9.0", features = ["use-tokio"] }
 test-log = "0.2"
 uuid = { version = "1" }
+criterion = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8.19"
+env_logger = "0.11.5"
 
 # This profile optimizes for good runtime performance.
 [profile.release]
