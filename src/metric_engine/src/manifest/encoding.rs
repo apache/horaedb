@@ -15,12 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::io::{Cursor, Write};
+use std::io::{Cursor, Read, Write};
 
 use anyhow::Context;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use bytes::Bytes;
-use parquet::data_type::AsBytes;
+use bytes::{Buf, Bytes};
 
 use crate::{
     ensure,
@@ -96,38 +95,6 @@ pub struct SnapshotHeader {
     pub length: u64,
 }
 
-impl TryFrom<&[u8]> for SnapshotHeader {
-    type Error = Error;
-
-    fn try_from(bytes: &[u8]) -> Result<Self> {
-        ensure!(
-            bytes.len() >= Self::LENGTH,
-            "invalid bytes, length: {}",
-            bytes.len()
-        );
-
-        let mut cursor = Cursor::new(bytes);
-        let magic = cursor
-            .read_u32::<LittleEndian>()
-            .context("read snapshot header magic")?;
-        ensure!(
-            magic == SnapshotHeader::MAGIC,
-            "invalid bytes to convert to header."
-        );
-        let version = cursor.read_u8().context("read snapshot header version")?;
-        let flag = cursor.read_u8().context("read snapshot header flag")?;
-        let length = cursor
-            .read_u64::<LittleEndian>()
-            .context("read snapshot header length")?;
-        Ok(Self {
-            magic,
-            version,
-            flag,
-            length,
-        })
-    }
-}
-
 impl SnapshotHeader {
     pub const LENGTH: usize = 4 /*magic*/ + 1 /*version*/ + 1 /*flag*/ + 8 /*length*/;
     pub const MAGIC: u32 = 0xCAFE_1234;
@@ -139,6 +106,30 @@ impl SnapshotHeader {
             flag: 0,
             length,
         }
+    }
+
+    pub fn try_new<R>(mut reader: R) -> Result<Self>
+    where
+        R: Read,
+    {
+        let magic = reader
+            .read_u32::<LittleEndian>()
+            .context("read snapshot header magic")?;
+        ensure!(
+            magic == SnapshotHeader::MAGIC,
+            "invalid bytes to convert to header."
+        );
+        let version = reader.read_u8().context("read snapshot header version")?;
+        let flag = reader.read_u8().context("read snapshot header flag")?;
+        let length = reader
+            .read_u64::<LittleEndian>()
+            .context("read snapshot header length")?;
+        Ok(Self {
+            magic,
+            version,
+            flag,
+            length,
+        })
     }
 
     pub fn write_to<W>(&self, mut writer: W) -> Result<()>
@@ -216,17 +207,11 @@ impl From<SstFile> for SnapshotRecord {
     }
 }
 
-impl TryFrom<&[u8]> for SnapshotRecord {
-    type Error = Error;
-
-    fn try_from(value: &[u8]) -> Result<Self> {
-        ensure!(
-            value.len() >= SnapshotRecord::LENGTH,
-            "invalid value len: {}",
-            value.len()
-        );
-
-        let mut cursor = Cursor::new(value);
+impl SnapshotRecord {
+    fn try_new<R>(mut cursor: R) -> Result<Self>
+    where
+        R: Read,
+    {
         let id = cursor
             .read_u64::<LittleEndian>()
             .context("read record id")?;
@@ -286,21 +271,20 @@ impl TryFrom<Bytes> for Snapshot {
         if bytes.is_empty() {
             return Ok(Snapshot::default());
         }
-        let header = SnapshotHeader::try_from(bytes.as_bytes())?;
+        let bytes_len = bytes.len();
+        let mut cursor = Cursor::new(bytes);
+        let header = SnapshotHeader::try_new(&mut cursor)?;
         let record_total_length = header.length as usize;
         ensure!(
             record_total_length > 0
                 && record_total_length % SnapshotRecord::LENGTH == 0
-                && record_total_length + SnapshotHeader::LENGTH == bytes.len(),
-            "create snapshot from bytes failed, header:{header:?}, bytes_length: {}",
-            bytes.len()
+                && record_total_length + SnapshotHeader::LENGTH == bytes_len,
+            "create snapshot from bytes failed, header:{header:?}, bytes_length: {bytes_len}",
         );
-        let mut index = SnapshotHeader::LENGTH;
         let mut records = Vec::with_capacity(record_total_length / SnapshotRecord::LENGTH);
-        while index < bytes.len() {
-            let record = SnapshotRecord::try_from(&bytes[index..index + SnapshotRecord::LENGTH])?;
+        while cursor.has_remaining() {
+            let record = SnapshotRecord::try_new(&mut cursor)?;
             records.push(record);
-            index += SnapshotRecord::LENGTH;
         }
 
         Ok(Self { header, records })
