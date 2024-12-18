@@ -23,6 +23,7 @@ use actix_web::{
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
+use arrow::datatypes::{DataType, Field, Schema};
 use metric_engine::{
     storage::{CloudObjectStorage, CompactRequest, TimeMergeStorageRef},
     types::StorageOptions,
@@ -53,7 +54,11 @@ async fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt::init();
 
     let port = 5000;
-    let schema = todo!();
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("pk1", DataType::Int64, true),
+        Field::new("pk2", DataType::Int64, true),
+        Field::new("value", DataType::Int64, true),
+    ]));
     let store = Arc::new(LocalFileSystem::new());
     let storage = Arc::new(
         CloudObjectStorage::try_new(
