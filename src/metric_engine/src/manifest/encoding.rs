@@ -208,23 +208,23 @@ impl From<SstFile> for SnapshotRecord {
 }
 
 impl SnapshotRecord {
-    fn try_new<R>(mut cursor: R) -> Result<Self>
+    fn try_new<R>(mut reader: R) -> Result<Self>
     where
         R: Read,
     {
-        let id = cursor
+        let id = reader
             .read_u64::<LittleEndian>()
             .context("read record id")?;
-        let start = cursor
+        let start = reader
             .read_i64::<LittleEndian>()
             .context("read record start")?;
-        let end = cursor
+        let end = reader
             .read_i64::<LittleEndian>()
             .context("read record end")?;
-        let size = cursor
+        let size = reader
             .read_u32::<LittleEndian>()
             .context("read record size")?;
-        let num_rows = cursor
+        let num_rows = reader
             .read_u32::<LittleEndian>()
             .context("read record num_rows")?;
         Ok(SnapshotRecord {
