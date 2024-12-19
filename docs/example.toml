@@ -1,0 +1,7 @@
+port = 5000
+
+[metric_engine]
+
+[metric_engine.storage]
+type = "Local"
+data_dir = "/tmp/horaedb-storage"

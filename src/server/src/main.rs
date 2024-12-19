@@ -16,7 +16,8 @@
 // under the License.
 
 #![feature(duration_constructors)]
-use std::{sync::Arc, time::Duration};
+mod config;
+use std::{fs, sync::Arc, time::Duration};
 
 use actix_web::{
     get,
@@ -24,12 +25,22 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use arrow::datatypes::{DataType, Field, Schema};
+use clap::Parser;
+use config::{Config, StorageConfig};
 use metric_engine::{
     storage::{CloudObjectStorage, CompactRequest, TimeMergeStorageRef},
     types::StorageOptions,
 };
 use object_store::local::LocalFileSystem;
 use tracing::info;
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about)]
+struct Args {
+    /// Config file path
+    #[arg(short, long)]
+    config: String,
+}
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -48,38 +59,55 @@ struct AppState {
     storage: TimeMergeStorageRef,
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+pub fn main() {
     // install global collector configured based on RUST_LOG env var.
     tracing_subscriber::fmt::init();
 
-    let port = 5000;
+    let args = Args::parse();
+    let config_body = fs::read_to_string(args.config).expect("read config file failed");
+    let config: Config = toml::from_str(&config_body).unwrap();
+    info!(config = ?config, "Config loaded");
+
+    let port = config.port;
     let schema = Arc::new(Schema::new(vec![
         Field::new("pk1", DataType::Int64, true),
         Field::new("pk2", DataType::Int64, true),
+        Field::new("pk3", DataType::Int64, true),
         Field::new("value", DataType::Int64, true),
     ]));
-    let store = Arc::new(LocalFileSystem::new());
-    let storage = Arc::new(
-        CloudObjectStorage::try_new(
-            "/tmp/test".to_string(),
-            Duration::from_mins(10),
-            store,
-            schema,
-            2,
-            StorageOptions::default(),
-        )
-        .unwrap(),
-    );
-    let app_state = Data::new(AppState { storage });
-    info!(port, "Start HoraeDB http server...");
-    HttpServer::new(move || {
-        App::new()
-            .app_data(app_state.clone())
-            .service(hello)
-            .service(compact)
-    })
-    .bind(("127.0.0.1", port))?
-    .run()
-    .await
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build main runtime");
+    let storage_config = match config.metric_engine.storage {
+        StorageConfig::Local(v) => v,
+        StorageConfig::S3Like(_) => panic!("S3 not support yet"),
+    };
+    let _ = rt.block_on(async move {
+        let store = Arc::new(LocalFileSystem::new());
+        let storage = Arc::new(
+            CloudObjectStorage::try_new(
+                storage_config.data_dir,
+                Duration::from_mins(10),
+                store,
+                schema,
+                3,
+                StorageOptions::default(),
+            )
+            .unwrap(),
+        );
+        let app_state = Data::new(AppState { storage });
+        info!(port, "Start HoraeDB http server...");
+        HttpServer::new(move || {
+            App::new()
+                .app_data(app_state.clone())
+                .service(hello)
+                .service(compact)
+        })
+        .workers(4)
+        .bind(("127.0.0.1", port))
+        .expect("Server bind failed")
+        .run()
+        .await
+    });
 }
