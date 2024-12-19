@@ -68,6 +68,7 @@ impl Default for SstConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
+#[allow(clippy::large_enum_variant)]
 pub enum StorageConfig {
     Local(LocalStorageConfig),
     S3Like(S3LikeStorageConfig),

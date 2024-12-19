@@ -23,7 +23,13 @@ license = "Apache-2.0"
 
 [workspace]
 resolver = "2"
-members = ["src/common", "src/benchmarks", "src/metric_engine", "src/pb_types", "src/server"]
+members = [
+    "src/benchmarks",
+    "src/common",
+    "src/metric_engine",
+    "src/pb_types",
+    "src/server"
+]
 
 [workspace.dependencies]
 anyhow = { version = "1.0" }

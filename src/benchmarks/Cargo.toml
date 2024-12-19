@@ -32,8 +32,8 @@ workspace = true
 
 [dependencies]
 bytes = { workspace = true }
-metric_engine = { workspace = true }
 common = { workspace = true }
+metric_engine = { workspace = true }
 pb_types = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }
