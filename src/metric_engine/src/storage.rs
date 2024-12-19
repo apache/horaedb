@@ -55,8 +55,8 @@ use crate::{
     read::ParquetReader,
     sst::{allocate_id, FileMeta, SstPathGenerator},
     types::{
-        ObjectStoreRef, RuntimeOptions, StorageOptions, StorageSchema, TimeRange, WriteOptions,
-        WriteResult, SEQ_COLUMN_NAME,
+        ObjectStoreRef, StorageOptions, StorageSchema, TimeRange, WriteOptions, WriteResult,
+        SEQ_COLUMN_NAME,
     },
     Result,
 };
@@ -95,31 +95,17 @@ pub trait TimeMergeStorage {
 pub type TimeMergeStorageRef = Arc<(dyn TimeMergeStorage + Send + Sync)>;
 
 #[derive(Clone)]
-struct StorageRuntimes {
+pub struct StorageRuntimes {
     manifest_compact_runtime: Arc<Runtime>,
     sst_compact_runtime: Arc<Runtime>,
 }
 
 impl StorageRuntimes {
-    pub fn new(runtime_opts: RuntimeOptions) -> Result<Self> {
-        let manifest_compact_runtime = tokio::runtime::Builder::new_multi_thread()
-            .thread_name("man-compact")
-            .worker_threads(runtime_opts.manifest_compact_thread_num)
-            .enable_all()
-            .build()
-            .context("build storgae compact runtime")?;
-
-        let sst_compact_runtime = tokio::runtime::Builder::new_multi_thread()
-            .thread_name("sst-compact")
-            .worker_threads(runtime_opts.sst_compact_thread_num)
-            .enable_all()
-            .build()
-            .context("build storgae compact runtime")?;
-
-        Ok(Self {
-            manifest_compact_runtime: Arc::new(manifest_compact_runtime),
-            sst_compact_runtime: Arc::new(sst_compact_runtime),
-        })
+    pub fn new(manifest_compact_runtime: Arc<Runtime>, sst_compact_runtime: Arc<Runtime>) -> Self {
+        Self {
+            manifest_compact_runtime,
+            sst_compact_runtime,
+        }
     }
 }
 
@@ -154,25 +140,15 @@ pub struct CloudObjectStorage {
 /// ```
 /// `root_path` is composed of `path` and `segment_duration`.
 impl CloudObjectStorage {
-    pub fn try_new(
+    pub async fn try_new(
         path: String,
         segment_duration: Duration,
         store: ObjectStoreRef,
         arrow_schema: SchemaRef,
         num_primary_keys: usize,
         storage_opts: StorageOptions,
+        runtimes: StorageRuntimes,
     ) -> Result<Self> {
-        let runtimes = StorageRuntimes::new(storage_opts.runtime_opts)?;
-        let manifest = runtimes.manifest_compact_runtime.block_on(async {
-            Manifest::try_new(
-                path.clone(),
-                store.clone(),
-                runtimes.manifest_compact_runtime.clone(),
-                storage_opts.manifest_merge_opts,
-            )
-            .await
-        })?;
-        let manifest = Arc::new(manifest);
         let schema = {
             let value_idxes = (num_primary_keys..arrow_schema.fields.len()).collect::<Vec<_>>();
             ensure!(!value_idxes.is_empty(), "no value column found");
@@ -197,6 +173,14 @@ impl CloudObjectStorage {
                 update_mode,
             }
         };
+        let manifest = Manifest::try_new(
+            path.clone(),
+            store.clone(),
+            runtimes.manifest_compact_runtime.clone(),
+            storage_opts.manifest_merge_opts,
+        )
+        .await?;
+        let manifest = Arc::new(manifest);
         let write_props = Self::build_write_props(storage_opts.write_opts, num_primary_keys);
         let sst_path_gen = Arc::new(SstPathGenerator::new(path.clone()));
         let parquet_reader = Arc::new(ParquetReader::new(
@@ -431,22 +415,30 @@ mod tests {
     use super::*;
     use crate::{arrow_schema, record_batch, test_util::check_stream, types::Timestamp};
 
+    fn build_runtimes() -> StorageRuntimes {
+        let rt = Arc::new(Runtime::new().unwrap());
+        StorageRuntimes::new(rt.clone(), rt)
+    }
+
     #[test(test)]
     fn test_storage_write_and_scan() {
         let schema = arrow_schema!(("pk1", UInt8), ("pk2", UInt8), ("value", Int64));
         let root_dir = temp_dir::TempDir::new().unwrap();
         let store = Arc::new(LocalFileSystem::new());
-        let storage = CloudObjectStorage::try_new(
-            root_dir.path().to_string_lossy().to_string(),
-            Duration::from_hours(2),
-            store,
-            schema.clone(),
-            2, // num_primary_keys
-            StorageOptions::default(),
-        )
-        .unwrap();
+        let runtimes = build_runtimes();
+        runtimes.sst_compact_runtime.clone().block_on(async move {
+            let storage = CloudObjectStorage::try_new(
+                root_dir.path().to_string_lossy().to_string(),
+                Duration::from_hours(2),
+                store,
+                schema.clone(),
+                2, // num_primary_keys
+                StorageOptions::default(),
+                runtimes,
+            )
+            .await
+            .unwrap();
 
-        storage.runtimes.sst_compact_runtime.block_on(async {
             let batch = record_batch!(
                 ("pk1", UInt8, vec![11, 11, 9, 10, 5]),
                 ("pk2", UInt8, vec![100, 100, 1, 2, 3]),
@@ -509,16 +501,19 @@ mod tests {
         let schema = arrow_schema!(("a", UInt8), ("b", UInt8), ("c", UInt8), ("c", UInt8));
         let root_dir = temp_dir::TempDir::new().unwrap();
         let store = Arc::new(LocalFileSystem::new());
-        let storage = CloudObjectStorage::try_new(
-            root_dir.path().to_string_lossy().to_string(),
-            Duration::from_hours(2),
-            store,
-            schema.clone(),
-            1,
-            StorageOptions::default(),
-        )
-        .unwrap();
-        storage.runtimes.sst_compact_runtime.block_on(async {
+        let runtimes = build_runtimes();
+        runtimes.sst_compact_runtime.clone().block_on(async move {
+            let storage = CloudObjectStorage::try_new(
+                root_dir.path().to_string_lossy().to_string(),
+                Duration::from_hours(2),
+                store,
+                schema.clone(),
+                1,
+                StorageOptions::default(),
+                runtimes,
+            )
+            .await
+            .unwrap();
             let batch = record_batch!(
                 ("a", UInt8, vec![2, 1, 3, 4, 8, 6, 5, 7]),
                 ("b", UInt8, vec![1, 3, 4, 8, 2, 6, 5, 7]),

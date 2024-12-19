@@ -23,11 +23,18 @@ license = "Apache-2.0"
 
 [workspace]
 resolver = "2"
-members = ["src/benchmarks", "src/metric_engine", "src/pb_types", "src/server"]
+members = [
+    "src/benchmarks",
+    "src/common",
+    "src/metric_engine",
+    "src/pb_types",
+    "src/server"
+]
 
 [workspace.dependencies]
 anyhow = { version = "1.0" }
 metric_engine = { path = "src/metric_engine" }
+common = { path = "src/common" }
 thiserror = "1"
 bytes = "1"
 byteorder = "1"
@@ -38,6 +45,7 @@ pb_types = { path = "src/pb_types" }
 prost = { version = "0.13" }
 arrow = { version = "53", features = ["prettyprint"] }
 bytesize = "1"
+clap = "4"
 arrow-schema = "53"
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"

@@ -19,10 +19,9 @@
 
 use std::{env, fs};
 
+use common::ReadableDuration;
 use serde::Deserialize;
 use tracing::info;
-
-use crate::util::ReadableDuration;
 const BENCH_CONFIG_PATH_KEY: &str = "BENCH_CONFIG_PATH";
 
 #[derive(Debug, Deserialize)]
