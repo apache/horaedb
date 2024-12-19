@@ -19,6 +19,7 @@ use common::ReadableDuration;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct Config {
     pub port: u16,
     pub metric_engine: MetricEngineConfig,
@@ -34,6 +35,7 @@ impl Default for Config {
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct MetricEngineConfig {
     pub manifest: ManifestConfig,
     pub sst: SstConfig,
@@ -41,6 +43,7 @@ pub struct MetricEngineConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct ManifestConfig {
     pub background_thread_num: usize,
 }
@@ -54,6 +57,7 @@ impl Default for ManifestConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
 pub struct SstConfig {
     pub background_thread_num: usize,
 }

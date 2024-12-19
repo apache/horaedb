@@ -28,8 +28,8 @@ use arrow::datatypes::{DataType, Field, Schema};
 use clap::Parser;
 use config::{Config, StorageConfig};
 use metric_engine::{
-    storage::{CloudObjectStorage, CompactRequest, TimeMergeStorageRef},
-    types::StorageOptions,
+    storage::{CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef},
+    types::{RuntimeRef, StorageOptions},
 };
 use object_store::local::LocalFileSystem;
 use tracing::info;
@@ -79,6 +79,15 @@ pub fn main() {
         .enable_all()
         .build()
         .expect("build main runtime");
+    let manifest_compact_runtime = build_multi_runtime(
+        "manifest-compact",
+        config.metric_engine.manifest.background_thread_num,
+    );
+    let sst_compact_runtime = build_multi_runtime(
+        "sst-compact",
+        config.metric_engine.sst.background_thread_num,
+    );
+    let runtimes = StorageRuntimes::new(manifest_compact_runtime, sst_compact_runtime);
     let storage_config = match config.metric_engine.storage {
         StorageConfig::Local(v) => v,
         StorageConfig::S3Like(_) => panic!("S3 not support yet"),
@@ -93,7 +102,9 @@ pub fn main() {
                 schema,
                 3,
                 StorageOptions::default(),
+                runtimes,
             )
+            .await
             .unwrap(),
         );
         let app_state = Data::new(AppState { storage });
@@ -110,4 +121,15 @@ pub fn main() {
         .run()
         .await
     });
+}
+
+fn build_multi_runtime(name: &str, workers: usize) -> RuntimeRef {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .thread_name(name)
+        .worker_threads(workers)
+        .enable_all()
+        .build()
+        .expect("build tokio runtime");
+
+    Arc::new(rt)
 }
