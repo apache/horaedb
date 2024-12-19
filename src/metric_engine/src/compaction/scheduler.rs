@@ -17,13 +17,14 @@
 
 use std::{sync::Arc, time::Duration};
 
+use anyhow::Context;
 use parquet::file::properties::WriterProperties;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
     time::sleep,
 };
-use tracing::warn;
+use tracing::{info, warn};
 
 use super::{executor::Executor, picker::Picker};
 use crate::{
@@ -32,13 +33,14 @@ use crate::{
     read::ParquetReader,
     sst::SstPathGenerator,
     types::{ObjectStoreRef, RuntimeRef, StorageSchema},
+    Result,
 };
 
 #[allow(dead_code)]
 pub struct Scheduler {
     runtime: RuntimeRef,
 
-    task_tx: Sender<Task>,
+    trigger_tx: Sender<()>,
     task_handle: JoinHandle<()>,
     picker_handle: JoinHandle<()>,
 }
@@ -56,6 +58,7 @@ impl Scheduler {
         config: SchedulerConfig,
     ) -> Self {
         let (task_tx, task_rx) = mpsc::channel(config.max_pending_compaction_tasks);
+        let (trigger_tx, trigger_rx) = mpsc::channel::<()>(1);
         let task_handle = {
             let store = store.clone();
             let manifest = manifest.clone();
@@ -76,7 +79,6 @@ impl Scheduler {
             })
         };
         let picker_handle = {
-            let task_tx = task_tx.clone();
             runtime.spawn(async move {
                 let picker = Picker::new(
                     manifest,
@@ -85,16 +87,25 @@ impl Scheduler {
                     config.new_sst_max_size,
                     config.input_sst_max_num,
                 );
-                Self::generate_task_loop(task_tx, picker, config.schedule_interval).await;
+                Self::generate_task_loop(task_tx, trigger_rx, picker, config.schedule_interval)
+                    .await;
             })
         };
 
         Self {
             runtime,
-            task_tx,
+            trigger_tx,
             task_handle,
             picker_handle,
         }
+    }
+
+    pub fn trigger_compaction(&self) -> Result<()> {
+        self.trigger_tx
+            .try_send(())
+            .context("send trigger signal failed")?;
+
+        Ok(())
     }
 
     async fn recv_task_loop(mut task_rx: Receiver<Task>, executor: Executor) {
@@ -105,17 +116,35 @@ impl Scheduler {
 
     async fn generate_task_loop(
         task_tx: Sender<Task>,
+        mut trigger_rx: Receiver<()>,
         picker: Picker,
         schedule_interval: Duration,
     ) {
+        info!(
+            schedule_interval = ?schedule_interval,
+            "Scheduler generate task started"
+        );
         loop {
-            if let Some(task) = picker.pick_candidate().await {
-                if let Err(e) = task_tx.try_send(task) {
-                    warn!("Send task failed, err:{e}");
+            tokio::select! {
+                _ = sleep(schedule_interval) => {
+                    if let Some(task) = picker.pick_candidate().await {
+                        if let Err(e) = task_tx.try_send(task) {
+                            warn!("Send task failed, err:{e}");
+                        }
+                    }
+                }
+                signal = trigger_rx.recv() => {
+                    if signal.is_none() {
+                        info!("Scheduler generate task stopped");
+                        break;
+                    }
+                    if let Some(task) = picker.pick_candidate().await {
+                        if let Err(e) = task_tx.try_send(task) {
+                            warn!("Send task failed, err:{e}");
+                        }
+                    }
                 }
             }
-
-            sleep(schedule_interval).await;
         }
     }
 }

@@ -16,7 +16,7 @@
 # under the License.
 
 [package]
-name = "horaedb-server"
+name = "server"
 
 [package.license]
 workspace = true
@@ -31,8 +31,11 @@ workspace = true
 workspace = true
 
 [dependencies]
+actix-web = "4"
+arrow = { workspace = true }
 futures = { workspace = true }
 metric_engine = { workspace = true }
+object_store = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
