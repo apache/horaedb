@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct Config {
     pub port: u16,
+    pub write_worker_num: usize, // for test
     pub metric_engine: MetricEngineConfig,
 }
 
@@ -29,6 +30,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             port: 5000,
+            write_worker_num: 4,
             metric_engine: MetricEngineConfig::default(),
         }
     }
