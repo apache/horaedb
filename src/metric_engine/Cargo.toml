@@ -38,8 +38,8 @@ async-scoped = { workspace = true }
 async-trait = { workspace = true }
 byteorder = { workspace = true }
 bytes = { workspace = true }
-common = { workspace = true }
 bytesize = { workspace = true }
+common = { workspace = true }
 datafusion = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
