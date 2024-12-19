@@ -17,22 +17,27 @@
 
 #![feature(duration_constructors)]
 mod config;
-use std::{fs, sync::Arc, time::Duration};
+use std::{fs, iter::repeat_with, sync::Arc, time::Duration};
 
 use actix_web::{
     get,
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::{
+    array::{Int64Array, RecordBatch},
+    datatypes::{DataType, Field, Schema, SchemaRef},
+};
 use clap::Parser;
 use config::{Config, StorageConfig};
 use metric_engine::{
-    storage::{CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef},
+    storage::{
+        CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
+    },
     types::{RuntimeRef, StorageOptions},
 };
 use object_store::local::LocalFileSystem;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about)]
@@ -69,12 +74,6 @@ pub fn main() {
     info!(config = ?config, "Config loaded");
 
     let port = config.port;
-    let schema = Arc::new(Schema::new(vec![
-        Field::new("pk1", DataType::Int64, true),
-        Field::new("pk2", DataType::Int64, true),
-        Field::new("pk3", DataType::Int64, true),
-        Field::new("value", DataType::Int64, true),
-    ]));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -92,6 +91,7 @@ pub fn main() {
         StorageConfig::Local(v) => v,
         StorageConfig::S3Like(_) => panic!("S3 not support yet"),
     };
+    let write_rt = build_multi_runtime("write", 4);
     let _ = rt.block_on(async move {
         let store = Arc::new(LocalFileSystem::new());
         let storage = Arc::new(
@@ -99,7 +99,7 @@ pub fn main() {
                 storage_config.data_dir,
                 Duration::from_mins(10),
                 store,
-                schema,
+                build_schema(),
                 3,
                 StorageOptions::default(),
                 runtimes,
@@ -107,6 +107,7 @@ pub fn main() {
             .await
             .unwrap(),
         );
+        bench_write(write_rt.clone(), storage.clone());
         let app_state = Data::new(AppState { storage });
         info!(port, "Start HoraeDB http server...");
         HttpServer::new(move || {
@@ -132,4 +133,45 @@ fn build_multi_runtime(name: &str, workers: usize) -> RuntimeRef {
         .expect("build tokio runtime");
 
     Arc::new(rt)
+}
+
+fn build_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        Field::new("pk1", DataType::Int64, true),
+        Field::new("pk2", DataType::Int64, true),
+        Field::new("pk3", DataType::Int64, true),
+        Field::new("value", DataType::Int64, true),
+    ]))
+}
+fn bench_write(rt: RuntimeRef, storage: TimeMergeStorageRef) {
+    let schema = Arc::new(Schema::new(vec![
+        Field::new("pk1", DataType::Int64, true),
+        Field::new("pk2", DataType::Int64, true),
+        Field::new("pk3", DataType::Int64, true),
+        Field::new("value", DataType::Int64, true),
+    ]));
+    rt.spawn(async move {
+        loop {
+            let pk1: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+            let pk2: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+            let pk3: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+            let value: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+            let batch = RecordBatch::try_new(
+                schema.clone(),
+                vec![Arc::new(pk1), Arc::new(pk2), Arc::new(pk3), Arc::new(value)],
+            )
+            .unwrap();
+            let now = common::now();
+            if let Err(e) = storage
+                .write(WriteRequest {
+                    batch,
+                    enable_check: false,
+                    time_range: (now..now + 1).into(),
+                })
+                .await
+            {
+                error!("write failed, err:{}", e);
+            }
+        }
+    });
 }

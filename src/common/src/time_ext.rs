@@ -18,7 +18,7 @@
 use std::{
     fmt::{self, Write},
     str::FromStr,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{
@@ -207,6 +207,13 @@ impl<'de> Deserialize<'de> for ReadableDuration {
 
         deserializer.deserialize_str(DurVisitor)
     }
+}
+
+/// Current time in milliseconds.
+pub fn now() -> i64 {
+    let now = SystemTime::now();
+    let duration = now.duration_since(UNIX_EPOCH).unwrap();
+    duration.as_millis() as i64
 }
 
 #[cfg(test)]

@@ -29,6 +29,5 @@ pub mod storage;
 #[cfg(test)]
 mod test_util;
 pub mod types;
-pub(crate) mod util;
 
 pub use error::{AnyhowError, Error, Result};

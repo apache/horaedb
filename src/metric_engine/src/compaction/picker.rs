@@ -17,9 +17,10 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
+use common::now;
 use tracing::debug;
 
-use crate::{compaction::Task, manifest::ManifestRef, sst::SstFile, types::Timestamp, util::now};
+use crate::{compaction::Task, manifest::ManifestRef, sst::SstFile, types::Timestamp};
 
 pub struct Picker {
     manifest: ManifestRef,
