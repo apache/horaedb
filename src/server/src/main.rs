@@ -176,6 +176,7 @@ fn bench_write(rt: RuntimeRef, workers: usize, storage: TimeMergeStorageRef) {
                 {
                     error!("write failed, err:{}", e);
                 }
+                tokio::time::sleep(Duration::from_millis(1000)).await;
             }
         });
     }

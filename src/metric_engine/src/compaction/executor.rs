@@ -30,7 +30,7 @@ use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::WriterProperties,
 };
-use tracing::error;
+use tracing::{debug, error};
 
 use crate::{
     compaction::Task,
@@ -197,6 +197,7 @@ impl Executor {
             size: object_meta.size as u32,
             time_range: time_range.clone(),
         };
+        debug!(file_meta = ?file_meta, "Compact output new sst");
         // First add new sst to manifest, then delete expired/old sst
         let to_adds = vec![SstFile::new(file_id, file_meta)];
         let to_deletes = task
@@ -262,7 +263,7 @@ impl Runnable {
         let rt = self.executor.inner.runtime.clone();
         rt.spawn(async move {
             if let Err(e) = self.executor.do_compaction(&self.task).await {
-                error!("Do compaction failed, err:{e}");
+                error!("Do compaction failed, err:{e:?}");
                 self.executor.on_failure(&self.task);
             } else {
                 self.executor.on_success(&self.task);

@@ -35,7 +35,7 @@ use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     RwLock,
 };
-use tracing::error;
+use tracing::{error, info, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -102,6 +102,16 @@ impl Manifest {
 
     pub async fn update(&self, update: ManifestUpdate) -> Result<()> {
         self.merger.maybe_schedule_merge().await?;
+        self.merger.inc_delta_num();
+        let res = self.update_inner(update).await;
+        if res.is_err() {
+            self.merger.dec_delta_num();
+        }
+
+        res
+    }
+
+    pub async fn update_inner(&self, update: ManifestUpdate) -> Result<()> {
         let path = Path::from(format!("{}/{}", self.delta_dir, Uuid::new_v4()));
         let pb_update = pb_types::ManifestUpdate::from(update.clone());
         let mut buf: Vec<u8> = Vec::with_capacity(pb_update.encoded_len());
@@ -125,9 +135,6 @@ impl Manifest {
             // efficiently.
             ssts.retain(|file| !update.to_deletes.contains(&file.id()));
         }
-
-        // 3. Update delta files num
-        self.merger.add_delta_num();
 
         Ok(())
     }
@@ -177,11 +184,12 @@ impl ManifestMerger {
             store,
             sender: tx,
             receiver: RwLock::new(rx),
+            // Init this to 0, because we will merge all delta files.
             deltas_num: AtomicUsize::new(0),
             merge_options,
         };
         // Merge all delta files when startup
-        merger.do_merge().await?;
+        merger.do_merge(true /* first_run */).await?;
 
         Ok(Arc::new(merger))
     }
@@ -189,18 +197,19 @@ impl ManifestMerger {
     async fn run(&self) {
         let merge_interval = Duration::from_secs(self.merge_options.merge_interval_seconds as u64);
         let mut receiver = self.receiver.write().await;
+        info!(merge_interval = ?merge_interval, "Start manifest merge background job");
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(merge_interval) => {
                     if self.deltas_num.load(Ordering::Relaxed) > self.merge_options.min_merge_threshold {
-                        if let Err(err) = self.do_merge().await {
+                        if let Err(err) = self.do_merge(false /*first_run*/).await {
                             error!("Failed to merge delta, err:{err}");
                         }
                     }
                 }
                 _merge_type = receiver.recv() => {
                     if self.deltas_num.load(Ordering::Relaxed) > self.merge_options.min_merge_threshold {
-                        if let Err(err) = self.do_merge().await {
+                        if let Err(err) = self.do_merge(false /*first_run*/).await {
                             error!("Failed to merge delta, err:{err}");
                         }
                     }
@@ -211,17 +220,17 @@ impl ManifestMerger {
 
     fn schedule_merge(&self, task: MergeType) {
         if let Err(err) = self.sender.try_send(task) {
-            error!("Failed to send merge task, err:{err}");
+            trace!("Failed to send merge task, err:{err}");
         }
     }
 
     async fn maybe_schedule_merge(&self) -> Result<()> {
         let current_num = self.deltas_num.load(Ordering::Relaxed);
-
-        if current_num > self.merge_options.hard_merge_threshold {
+        let hard_limit = self.merge_options.hard_merge_threshold;
+        if current_num > hard_limit {
             self.schedule_merge(MergeType::Hard);
             return Err(AnyhowError::msg(format!(
-                "Manifest has too many delta files, value:{current_num}"
+                "Manifest has too many delta files, value:{current_num}, hard_limit:{hard_limit}"
             ))
             .into());
         } else if current_num > self.merge_options.soft_merge_threshold {
@@ -231,14 +240,23 @@ impl ManifestMerger {
         Ok(())
     }
 
-    fn add_delta_num(&self) {
-        self.deltas_num.fetch_add(1, Ordering::Relaxed);
+    fn inc_delta_num(&self) {
+        let prev = self.deltas_num.fetch_add(1, Ordering::Relaxed);
+        trace!(prev, "inc delta num");
     }
 
-    async fn do_merge(&self) -> Result<()> {
+    fn dec_delta_num(&self) {
+        let prev = self.deltas_num.fetch_sub(1, Ordering::Relaxed);
+        trace!(prev, "dec delta num");
+    }
+
+    async fn do_merge(&self, first_run: bool) -> Result<()> {
         let paths = list_delta_paths(&self.store, &self.delta_dir).await?;
         if paths.is_empty() {
             return Ok(());
+        }
+        if first_run {
+            self.deltas_num.store(paths.len(), Ordering::Relaxed);
         }
 
         let (_, results) = TokioScope::scope_and_block(|scope| {
@@ -276,7 +294,7 @@ impl ManifestMerger {
                     if let Err(e) = v {
                         error!("Failed to delete delta, err:{e}")
                     } else {
-                        self.deltas_num.fetch_sub(1, Ordering::Relaxed);
+                        self.dec_delta_num();
                     }
                 }
             }
@@ -324,6 +342,7 @@ async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<Mani
 }
 
 async fn delete_delta_file(store: &ObjectStoreRef, path: &Path) -> Result<()> {
+    trace!(path = ?path, "delete delta file");
     store
         .delete(path)
         .await

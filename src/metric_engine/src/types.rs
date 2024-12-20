@@ -176,7 +176,7 @@ pub struct ManifestMergeOptions {
 impl Default for ManifestMergeOptions {
     fn default() -> Self {
         Self {
-            channel_size: 10,
+            channel_size: 3,
             merge_interval_seconds: 5,
             min_merge_threshold: 10,
             soft_merge_threshold: 50,
