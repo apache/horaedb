@@ -16,20 +16,36 @@
 // under the License.
 
 #![feature(duration_constructors)]
-use std::{sync::Arc, time::Duration};
+mod config;
+use std::{fs, iter::repeat_with, sync::Arc, time::Duration};
 
 use actix_web::{
     get,
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
-use arrow::datatypes::{DataType, Field, Schema};
+use arrow::{
+    array::{Int64Array, RecordBatch},
+    datatypes::{DataType, Field, Schema, SchemaRef},
+};
+use clap::Parser;
+use config::{Config, StorageConfig};
 use metric_engine::{
-    storage::{CloudObjectStorage, CompactRequest, TimeMergeStorageRef},
-    types::StorageOptions,
+    storage::{
+        CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
+    },
+    types::{RuntimeRef, StorageOptions},
 };
 use object_store::local::LocalFileSystem;
-use tracing::info;
+use tracing::{error, info};
+
+#[derive(Parser, Debug)]
+#[command(version, about, long_about)]
+struct Args {
+    /// Config file path
+    #[arg(short, long)]
+    config: String,
+}
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -48,38 +64,119 @@ struct AppState {
     storage: TimeMergeStorageRef,
 }
 
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
+pub fn main() {
     // install global collector configured based on RUST_LOG env var.
     tracing_subscriber::fmt::init();
 
-    let port = 5000;
+    let args = Args::parse();
+    let config_body = fs::read_to_string(args.config).expect("read config file failed");
+    let config: Config = toml::from_str(&config_body).unwrap();
+    info!(config = ?config, "Config loaded");
+
+    let port = config.port;
+    let rt = build_multi_runtime("main", 1);
+    let manifest_compact_runtime = build_multi_runtime(
+        "manifest-compact",
+        config.metric_engine.manifest.background_thread_num,
+    );
+    let sst_compact_runtime = build_multi_runtime(
+        "sst-compact",
+        config.metric_engine.sst.background_thread_num,
+    );
+    let runtimes = StorageRuntimes::new(manifest_compact_runtime, sst_compact_runtime);
+    let storage_config = match config.metric_engine.storage {
+        StorageConfig::Local(v) => v,
+        StorageConfig::S3Like(_) => panic!("S3 not support yet"),
+    };
+    let write_worker_num = config.write_worker_num;
+    let write_rt = build_multi_runtime("write", write_worker_num);
+    let _ = rt.block_on(async move {
+        let store = Arc::new(LocalFileSystem::new());
+        let storage = Arc::new(
+            CloudObjectStorage::try_new(
+                storage_config.data_dir,
+                Duration::from_mins(10),
+                store,
+                build_schema(),
+                3,
+                StorageOptions::default(),
+                runtimes,
+            )
+            .await
+            .unwrap(),
+        );
+
+        bench_write(write_rt.clone(), write_worker_num, storage.clone());
+
+        let app_state = Data::new(AppState { storage });
+        info!(port, "Start HoraeDB http server...");
+        HttpServer::new(move || {
+            App::new()
+                .app_data(app_state.clone())
+                .service(hello)
+                .service(compact)
+        })
+        .workers(4)
+        .bind(("127.0.0.1", port))
+        .expect("Server bind failed")
+        .run()
+        .await
+    });
+}
+
+fn build_multi_runtime(name: &str, workers: usize) -> RuntimeRef {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .thread_name(name)
+        .worker_threads(workers)
+        .enable_all()
+        .build()
+        .expect("build tokio runtime");
+
+    Arc::new(rt)
+}
+
+fn build_schema() -> SchemaRef {
+    Arc::new(Schema::new(vec![
+        Field::new("pk1", DataType::Int64, true),
+        Field::new("pk2", DataType::Int64, true),
+        Field::new("pk3", DataType::Int64, true),
+        Field::new("value", DataType::Int64, true),
+    ]))
+}
+
+fn bench_write(rt: RuntimeRef, workers: usize, storage: TimeMergeStorageRef) {
     let schema = Arc::new(Schema::new(vec![
         Field::new("pk1", DataType::Int64, true),
         Field::new("pk2", DataType::Int64, true),
+        Field::new("pk3", DataType::Int64, true),
         Field::new("value", DataType::Int64, true),
     ]));
-    let store = Arc::new(LocalFileSystem::new());
-    let storage = Arc::new(
-        CloudObjectStorage::try_new(
-            "/tmp/test".to_string(),
-            Duration::from_mins(10),
-            store,
-            schema,
-            2,
-            StorageOptions::default(),
-        )
-        .unwrap(),
-    );
-    let app_state = Data::new(AppState { storage });
-    info!(port, "Start HoraeDB http server...");
-    HttpServer::new(move || {
-        App::new()
-            .app_data(app_state.clone())
-            .service(hello)
-            .service(compact)
-    })
-    .bind(("127.0.0.1", port))?
-    .run()
-    .await
+    for _ in 0..workers {
+        let storage = storage.clone();
+        let schema = schema.clone();
+        rt.spawn(async move {
+            loop {
+                let pk1: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+                let pk2: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+                let pk3: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+                let value: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
+                let batch = RecordBatch::try_new(
+                    schema.clone(),
+                    vec![Arc::new(pk1), Arc::new(pk2), Arc::new(pk3), Arc::new(value)],
+                )
+                .unwrap();
+                let now = common::now();
+                if let Err(e) = storage
+                    .write(WriteRequest {
+                        batch,
+                        enable_check: false,
+                        time_range: (now..now + 1).into(),
+                    })
+                    .await
+                {
+                    error!("write failed, err:{}", e);
+                }
+            }
+        });
+    }
 }

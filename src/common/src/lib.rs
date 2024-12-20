@@ -15,11 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+mod size_ext;
+mod time_ext;
 
-/// Current time in milliseconds.
-pub fn now() -> i64 {
-    let now = SystemTime::now();
-    let duration = now.duration_since(UNIX_EPOCH).unwrap();
-    duration.as_millis() as i64
-}
+pub use size_ext::ReadableSize;
+pub use time_ext::{now, ReadableDuration};

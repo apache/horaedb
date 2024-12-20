@@ -15,35 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[package]
-name = "benchmarks"
+port = 5000
 
-[package.license]
-workspace = true
+[metric_engine]
 
-[package.version]
-workspace = true
-
-[package.authors]
-workspace = true
-
-[package.edition]
-workspace = true
-
-[dependencies]
-bytes = { workspace = true }
-common = { workspace = true }
-metric_engine = { workspace = true }
-pb_types = { workspace = true }
-prost = { workspace = true }
-serde = { workspace = true }
-toml = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-
-[dev-dependencies]
-criterion = { workspace = true }
-
-[[bench]]
-name = "bench"
-harness = false
+[metric_engine.storage]
+type = "Local"
+data_dir = "/tmp/horaedb-storage"

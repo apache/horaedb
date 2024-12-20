@@ -165,21 +165,6 @@ impl Default for WriteOptions {
 }
 
 #[derive(Debug)]
-pub struct RuntimeOptions {
-    pub manifest_compact_thread_num: usize,
-    pub sst_compact_thread_num: usize,
-}
-
-impl Default for RuntimeOptions {
-    fn default() -> Self {
-        Self {
-            manifest_compact_thread_num: 2,
-            sst_compact_thread_num: 4,
-        }
-    }
-}
-
-#[derive(Debug)]
 pub struct ManifestMergeOptions {
     pub channel_size: usize,
     pub merge_interval_seconds: usize,
@@ -211,7 +196,6 @@ pub enum UpdateMode {
 pub struct StorageOptions {
     pub write_opts: WriteOptions,
     pub manifest_merge_opts: ManifestMergeOptions,
-    pub runtime_opts: RuntimeOptions,
     pub update_mode: UpdateMode,
 }
 
