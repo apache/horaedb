@@ -35,7 +35,7 @@ use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     RwLock,
 };
-use tracing::{error, info, trace};
+use tracing::{debug, error, info, trace};
 use uuid::Uuid;
 
 use crate::{
@@ -133,7 +133,11 @@ impl Manifest {
             }
             // TODO: sort files in payload, so we can delete files more
             // efficiently.
+            let ids = ssts.iter().map(|f| f.id()).collect::<Vec<_>>();
+            debug!(old_length = ssts.len(), deletes=update.to_deletes.len(),ids=?ids,"before update manifest");
             ssts.retain(|file| !update.to_deletes.contains(&file.id()));
+            let ids = ssts.iter().map(|f| f.id()).collect::<Vec<_>>();
+            debug!(old_length = ssts.len(), ids=?ids,"after update manifest");
         }
 
         Ok(())

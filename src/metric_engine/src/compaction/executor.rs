@@ -146,6 +146,7 @@ impl Executor {
     pub async fn do_compaction(&self, task: &Task) -> Result<()> {
         self.pre_check(task)?;
 
+        debug!(task = ?task, "Start do compaction");
         let mut time_range = task.inputs[0].meta().time_range.clone();
         for f in &task.inputs[1..] {
             time_range.merge(&f.meta().time_range);
@@ -205,28 +206,19 @@ impl Executor {
             .iter()
             .map(|f| f.id())
             .chain(task.inputs.iter().map(|f| f.id()))
-            .collect();
+            .collect::<Vec<_>>();
         self.inner
             .manifest
-            .update(ManifestUpdate::new(to_adds, to_deletes))
+            .update(ManifestUpdate::new(to_adds, to_deletes.clone()))
             .await?;
 
         // From now on, no error should be returned!
         // Because we have already updated manifest.
 
         let (_, results) = TokioScope::scope_and_block(|scope| {
-            for file in &task.expireds {
-                let path = Path::from(self.inner.sst_path_gen.generate(file.id()));
-                scope.spawn(async move {
-                    self.inner
-                        .store
-                        .delete(&path)
-                        .await
-                        .with_context(|| format!("failed to delete file, path:{path}"))
-                });
-            }
-            for file in &task.inputs {
-                let path = Path::from(self.inner.sst_path_gen.generate(file.id()));
+            for id in to_deletes {
+                let path = Path::from(self.inner.sst_path_gen.generate(id));
+                debug!(id, "Delete sst file");
                 scope.spawn(async move {
                     self.inner
                         .store
