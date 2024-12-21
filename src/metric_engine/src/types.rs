@@ -16,7 +16,6 @@
 // under the License.
 
 use std::{
-    collections::HashMap,
     ops::{Add, Deref, Range},
     sync::Arc,
     time::Duration,
@@ -24,7 +23,6 @@ use std::{
 
 use arrow_schema::SchemaRef;
 use object_store::ObjectStore;
-use parquet::basic::{Compression, Encoding, ZstdLevel};
 use tokio::runtime::Runtime;
 
 use crate::sst::FileId;
@@ -127,76 +125,11 @@ pub struct WriteResult {
     pub size: usize,
 }
 
-#[derive(Debug)]
-pub struct ColumnOptions {
-    pub enable_dict: Option<bool>,
-    pub enable_bloom_filter: Option<bool>,
-    pub encoding: Option<Encoding>,
-    pub compression: Option<Compression>,
-}
-
-#[derive(Debug)]
-pub struct WriteOptions {
-    pub max_row_group_size: usize,
-    pub write_bacth_size: usize,
-    pub enable_sorting_columns: bool,
-    // use to set column props with default value
-    pub enable_dict: bool,
-    pub enable_bloom_filter: bool,
-    pub encoding: Encoding,
-    pub compression: Compression,
-    // use to set column props with column name
-    pub column_options: Option<HashMap<String, ColumnOptions>>,
-}
-
-impl Default for WriteOptions {
-    fn default() -> Self {
-        Self {
-            max_row_group_size: 8192,
-            write_bacth_size: 1024,
-            enable_sorting_columns: true,
-            enable_dict: false,
-            enable_bloom_filter: false,
-            encoding: Encoding::PLAIN,
-            compression: Compression::ZSTD(ZstdLevel::default()),
-            column_options: None,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ManifestMergeOptions {
-    pub channel_size: usize,
-    pub merge_interval_seconds: usize,
-    pub min_merge_threshold: usize,
-    pub hard_merge_threshold: usize,
-    pub soft_merge_threshold: usize,
-}
-
-impl Default for ManifestMergeOptions {
-    fn default() -> Self {
-        Self {
-            channel_size: 3,
-            merge_interval_seconds: 5,
-            min_merge_threshold: 10,
-            soft_merge_threshold: 50,
-            hard_merge_threshold: 90,
-        }
-    }
-}
-
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum UpdateMode {
     #[default]
     Overwrite,
     Append,
-}
-
-#[derive(Debug, Default)]
-pub struct StorageOptions {
-    pub write_opts: WriteOptions,
-    pub manifest_merge_opts: ManifestMergeOptions,
-    pub update_mode: UpdateMode,
 }
 
 #[derive(Debug, Clone)]

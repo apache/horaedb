@@ -39,8 +39,9 @@ use tokio::sync::{
 use tracing::{debug, error, info, trace};
 
 use crate::{
+    config::ManifestMergeOptions,
     sst::{FileId, FileMeta, SstFile},
-    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange},
+    types::{ObjectStoreRef, RuntimeRef, TimeRange},
     AnyhowError, Result,
 };
 

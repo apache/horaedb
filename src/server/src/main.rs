@@ -31,10 +31,11 @@ use arrow::{
 use clap::Parser;
 use config::{Config, StorageConfig};
 use metric_engine::{
+    config::StorageOptions,
     storage::{
         CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
     },
-    types::{RuntimeRef, StorageOptions},
+    types::RuntimeRef,
 };
 use object_store::local::LocalFileSystem;
 use tracing::{error, info};
@@ -65,8 +66,12 @@ struct AppState {
 }
 
 pub fn main() {
-    // install global collector configured based on RUST_LOG env var.
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_file(true)
+        .with_line_number(true)
+        .with_target(false)
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
+        .init();
 
     let args = Args::parse();
     let config_body = fs::read_to_string(args.config).expect("read config file failed");

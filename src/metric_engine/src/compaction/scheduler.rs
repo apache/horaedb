@@ -18,7 +18,6 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
-use parquet::file::properties::WriterProperties;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
@@ -29,6 +28,7 @@ use tracing::{info, warn};
 use super::{executor::Executor, picker::Picker};
 use crate::{
     compaction::Task,
+    config::SchedulerConfig,
     manifest::ManifestRef,
     read::ParquetReader,
     sst::SstPathGenerator,
@@ -146,33 +146,6 @@ impl Scheduler {
                     }
                 }
             }
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct SchedulerConfig {
-    pub schedule_interval: Duration,
-    pub max_pending_compaction_tasks: usize,
-    // Runner config
-    pub memory_limit: u64,
-    pub write_props: WriterProperties,
-    // Picker config
-    pub ttl: Option<Duration>,
-    pub new_sst_max_size: u64,
-    pub input_sst_max_num: usize,
-}
-
-impl Default for SchedulerConfig {
-    fn default() -> Self {
-        Self {
-            schedule_interval: Duration::from_secs(5),
-            max_pending_compaction_tasks: 10,
-            memory_limit: bytesize::gb(30_u64),
-            write_props: WriterProperties::default(),
-            ttl: None,
-            new_sst_max_size: bytesize::gb(1_u64),
-            input_sst_max_num: 30,
         }
     }
 }

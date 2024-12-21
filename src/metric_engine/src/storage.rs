@@ -49,15 +49,13 @@ use parquet::{
 use tokio::runtime::Runtime;
 
 use crate::{
-    compaction::{CompactionScheduler, SchedulerConfig},
+    compaction::CompactionScheduler,
+    config::{SchedulerConfig, StorageOptions, WriteOptions},
     ensure,
     manifest::{Manifest, ManifestRef},
     read::ParquetReader,
     sst::{FileMeta, SstFile, SstPathGenerator},
-    types::{
-        ObjectStoreRef, StorageOptions, StorageSchema, TimeRange, WriteOptions, WriteResult,
-        SEQ_COLUMN_NAME,
-    },
+    types::{ObjectStoreRef, StorageSchema, TimeRange, WriteResult, SEQ_COLUMN_NAME},
     Result,
 };
 
