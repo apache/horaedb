@@ -53,7 +53,7 @@ use crate::{
     ensure,
     manifest::{Manifest, ManifestRef},
     read::ParquetReader,
-    sst::{allocate_id, FileMeta, SstPathGenerator},
+    sst::{FileMeta, SstFile, SstPathGenerator},
     types::{
         ObjectStoreRef, StorageOptions, StorageSchema, TimeRange, WriteOptions, WriteResult,
         SEQ_COLUMN_NAME,
@@ -217,7 +217,7 @@ impl CloudObjectStorage {
     }
 
     async fn write_batch(&self, batch: RecordBatch) -> Result<WriteResult> {
-        let file_id = allocate_id();
+        let file_id = SstFile::allocate_id();
         let file_path = self.sst_path_gen.generate(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer = ParquetObjectWriter::new(self.store.clone(), file_path.clone());

@@ -88,7 +88,8 @@ pub fn main() {
         StorageConfig::Local(v) => v,
         StorageConfig::S3Like(_) => panic!("S3 not support yet"),
     };
-    let write_worker_num = config.write_worker_num;
+    let write_worker_num = config.test.write_worker_num;
+    let enable_write = config.test.enable_write;
     let write_rt = build_multi_runtime("write", write_worker_num);
     let _ = rt.block_on(async move {
         let store = Arc::new(LocalFileSystem::new());
@@ -106,7 +107,9 @@ pub fn main() {
             .unwrap(),
         );
 
-        bench_write(write_rt.clone(), write_worker_num, storage.clone());
+        if enable_write {
+            bench_write(write_rt.clone(), write_worker_num, storage.clone());
+        }
 
         let app_state = Data::new(AppState { storage });
         info!(port, "Start HoraeDB http server...");

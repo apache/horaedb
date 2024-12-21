@@ -18,10 +18,10 @@
 mod encoding;
 use std::{
     sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc, LazyLock,
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use anyhow::Context;
@@ -29,6 +29,7 @@ use async_scoped::TokioScope;
 use bytes::Bytes;
 pub use encoding::{ManifestUpdate, Snapshot};
 use futures::{StreamExt, TryStreamExt};
+use itertools::Itertools;
 use object_store::{path::Path, PutPayload};
 use prost::Message;
 use tokio::sync::{
@@ -36,7 +37,6 @@ use tokio::sync::{
     RwLock,
 };
 use tracing::{debug, error, info, trace};
-use uuid::Uuid;
 
 use crate::{
     sst::{FileId, FileMeta, SstFile},
@@ -47,6 +47,19 @@ use crate::{
 pub const PREFIX_PATH: &str = "manifest";
 pub const SNAPSHOT_FILENAME: &str = "snapshot";
 pub const DELTA_PREFIX: &str = "delta";
+
+// Used for manifest delta filename
+// This number mustn't go backwards on restarts, otherwise file id
+// collisions are possible. So don't change time on the server
+// between server restarts.
+static NEXT_ID: LazyLock<AtomicU64> = LazyLock::new(|| {
+    AtomicU64::new(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64,
+    )
+});
 
 pub type ManifestRef = Arc<Manifest>;
 
@@ -75,7 +88,9 @@ impl Manifest {
             merge_options,
         )
         .await?;
-
+        let snapshot = read_snapshot(&store, &snapshot_path).await?;
+        let ssts = snapshot.into_ssts();
+        debug!(sst_len = ssts.len(), "Load manifest snapshot when startup");
         {
             let merger = merger.clone();
             // Start merger in background
@@ -83,9 +98,6 @@ impl Manifest {
                 merger.run().await;
             });
         }
-
-        let snapshot = read_snapshot(&store, &snapshot_path).await?;
-        let ssts = snapshot.into_ssts();
 
         Ok(Self {
             delta_dir,
@@ -112,7 +124,7 @@ impl Manifest {
     }
 
     pub async fn update_inner(&self, update: ManifestUpdate) -> Result<()> {
-        let path = Path::from(format!("{}/{}", self.delta_dir, Uuid::new_v4()));
+        let path = Path::from(format!("{}/{}", self.delta_dir, Self::allocate_id()));
         let pb_update = pb_types::ManifestUpdate::from(update.clone());
         let mut buf: Vec<u8> = Vec::with_capacity(pb_update.encoded_len());
         pb_update
@@ -133,11 +145,7 @@ impl Manifest {
             }
             // TODO: sort files in payload, so we can delete files more
             // efficiently.
-            let ids = ssts.iter().map(|f| f.id()).collect::<Vec<_>>();
-            debug!(old_length = ssts.len(), deletes=update.to_deletes.len(),ids=?ids,"before update manifest");
             ssts.retain(|file| !update.to_deletes.contains(&file.id()));
-            let ids = ssts.iter().map(|f| f.id()).collect::<Vec<_>>();
-            debug!(old_length = ssts.len(), ids=?ids,"after update manifest");
         }
 
         Ok(())
@@ -156,6 +164,10 @@ impl Manifest {
             .filter(move |f| f.meta().time_range.overlaps(time_range))
             .cloned()
             .collect()
+    }
+
+    fn allocate_id() -> u64 {
+        NEXT_ID.fetch_add(1, Ordering::SeqCst)
     }
 }
 
@@ -188,7 +200,7 @@ impl ManifestMerger {
             store,
             sender: tx,
             receiver: RwLock::new(rx),
-            // Init this to 0, because we will merge all delta files.
+            // Init this to 0, because we will merge all delta files when startup.
             deltas_num: AtomicUsize::new(0),
             merge_options,
         };
@@ -270,10 +282,17 @@ impl ManifestMerger {
         });
 
         let mut snapshot = read_snapshot(&self.store, &self.snapshot_path).await?;
+        trace!(sst_ids = ?snapshot.records.iter().map(|r| r.id()).collect_vec(), "Before snapshot merge deltas");
+        // Since the deltas is unsorted, so we have to first add all new files, then
+        // delete old files.
+        let mut to_deletes = Vec::new();
         for res in results {
             let manifest_update = res.context("Failed to join read delta files task")??;
-            snapshot.merge_update(manifest_update)?;
+            snapshot.add_records(manifest_update.to_adds);
+            to_deletes.extend(manifest_update.to_deletes);
         }
+        snapshot.delete_records(to_deletes);
+        trace!(sst_ids = ?snapshot.records.iter().map(|r| r.id()).collect_vec(), "After snapshot merge deltas");
         let snapshot_bytes = snapshot.into_bytes()?;
         let put_payload = PutPayload::from_bytes(snapshot_bytes);
         // 1. Persist the snapshot
@@ -285,6 +304,7 @@ impl ManifestMerger {
         // 2. Delete the merged manifest files
         let (_, results) = TokioScope::scope_and_block(|scope| {
             for path in &paths {
+                trace!(path = ?path, "delete delta file");
                 scope.spawn(async { delete_delta_file(&self.store, path).await });
             }
         });
@@ -346,7 +366,6 @@ async fn read_delta_file(store: &ObjectStoreRef, sst_path: &Path) -> Result<Mani
 }
 
 async fn delete_delta_file(store: &ObjectStoreRef, path: &Path) -> Result<()> {
-    trace!(path = ?path, "delete delta file");
     store
         .delete(path)
         .await

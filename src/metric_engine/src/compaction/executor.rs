@@ -30,14 +30,14 @@ use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::WriterProperties,
 };
-use tracing::{debug, error};
+use tracing::{debug, error, trace};
 
 use crate::{
     compaction::Task,
     ensure,
     manifest::{ManifestRef, ManifestUpdate},
     read::ParquetReader,
-    sst::{allocate_id, FileMeta, SstFile, SstPathGenerator},
+    sst::{FileMeta, SstFile, SstPathGenerator},
     types::{ObjectStoreRef, RuntimeRef, StorageSchema},
     Result,
 };
@@ -146,7 +146,7 @@ impl Executor {
     pub async fn do_compaction(&self, task: &Task) -> Result<()> {
         self.pre_check(task)?;
 
-        debug!(task = ?task, "Start do compaction");
+        debug!(input_len = task.inputs.len(), "Start do compaction");
         let mut time_range = task.inputs[0].meta().time_range.clone();
         for f in &task.inputs[1..] {
             time_range.merge(&f.meta().time_range);
@@ -158,7 +158,7 @@ impl Executor {
         let mut stream = execute_stream(plan, Arc::new(TaskContext::default()))
             .context("execute datafusion plan")?;
 
-        let file_id = allocate_id();
+        let file_id = SstFile::allocate_id();
         let file_path = self.inner.sst_path_gen.generate(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer =
@@ -218,7 +218,7 @@ impl Executor {
         let (_, results) = TokioScope::scope_and_block(|scope| {
             for id in to_deletes {
                 let path = Path::from(self.inner.sst_path_gen.generate(id));
-                debug!(id, "Delete sst file");
+                trace!(id, "Delete sst file");
                 scope.spawn(async move {
                     self.inner
                         .store

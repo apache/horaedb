@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 #[serde(default)]
 pub struct Config {
     pub port: u16,
-    pub write_worker_num: usize, // for test
+    pub test: TestConfig, // for test
     pub metric_engine: MetricEngineConfig,
 }
 
@@ -30,8 +30,24 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             port: 5000,
-            write_worker_num: 4,
+            test: TestConfig::default(),
             metric_engine: MetricEngineConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default)]
+pub struct TestConfig {
+    pub enable_write: bool,
+    pub write_worker_num: usize,
+}
+
+impl Default for TestConfig {
+    fn default() -> Self {
+        Self {
+            enable_write: true,
+            write_worker_num: 1,
         }
     }
 }
