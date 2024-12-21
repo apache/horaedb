@@ -99,12 +99,12 @@ impl SnapshotHeader {
     pub const LENGTH: usize = 4 /*magic*/ + 1 /*version*/ + 1 /*flag*/ + 8 /*length*/;
     pub const MAGIC: u32 = 0xCAFE_1234;
 
-    pub fn new(length: u64) -> Self {
+    pub fn new() -> Self {
         Self {
             magic: SnapshotHeader::MAGIC,
             version: SnapshotRecord::VERSION,
             flag: 0,
-            length,
+            length: 0,
         }
     }
 
@@ -251,13 +251,13 @@ impl From<SnapshotRecord> for SstFile {
 
 pub struct Snapshot {
     header: SnapshotHeader,
-    records: Vec<SnapshotRecord>,
+    pub records: Vec<SnapshotRecord>,
 }
 
 impl Default for Snapshot {
     // create an empty Snapshot
     fn default() -> Self {
-        let header = SnapshotHeader::new(0);
+        let header = SnapshotHeader::new();
         Self {
             header,
             records: Vec::new(),
@@ -303,18 +303,30 @@ impl Snapshot {
 
     // TODO: Ensure no files duplicated
     // https://github.com/apache/horaedb/issues/1608
-    pub fn merge_update(&mut self, update: ManifestUpdate) -> Result<()> {
+    pub fn add_records(&mut self, ssts: Vec<SstFile>) {
         self.records
-            .extend(update.to_adds.into_iter().map(SnapshotRecord::from));
-        self.records
-            .retain(|record| !update.to_deletes.contains(&record.id));
-
+            .extend(ssts.into_iter().map(SnapshotRecord::from));
         self.header.length = (self.records.len() * SnapshotRecord::LENGTH) as u64;
-        Ok(())
+    }
+
+    pub fn delete_records(&mut self, to_deletes: Vec<FileId>) {
+        // Since this may hurt performance, we only do this in debug mode.
+        if cfg!(debug_assertions) {
+            for id in &to_deletes {
+                assert!(
+                    self.records.iter().any(|r| r.id == *id),
+                    "File not found in snapshot, id:{id}"
+                );
+            }
+        }
+
+        self.records
+            .retain(|record| !to_deletes.contains(&record.id));
+        self.header.length = (self.records.len() * SnapshotRecord::LENGTH) as u64;
     }
 
     pub fn into_bytes(self) -> Result<Bytes> {
-        let buf = Vec::with_capacity(self.header.length as usize + SnapshotHeader::LENGTH);
+        let buf = Vec::with_capacity(self.header.length as usize * SnapshotHeader::LENGTH);
         let mut cursor = Cursor::new(buf);
 
         self.header.write_to(&mut cursor)?;
@@ -327,11 +339,12 @@ impl Snapshot {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
     fn test_snapshot_header() {
-        let header = SnapshotHeader::new(257);
+        let header = SnapshotHeader::new();
         let mut vec = vec![0u8; SnapshotHeader::LENGTH];
         let mut writer = vec.as_mut_slice();
         header.write_to(&mut writer).unwrap();
@@ -344,7 +357,7 @@ mod tests {
                 magic: SnapshotHeader::MAGIC,
                 version: 1,
                 flag: 0,
-                length: 257
+                length: 0
             },
             header
         );

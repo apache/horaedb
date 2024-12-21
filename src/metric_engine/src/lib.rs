@@ -19,6 +19,7 @@
 
 #![feature(duration_constructors)]
 mod compaction;
+pub mod config;
 pub mod error;
 mod macros;
 pub mod manifest;

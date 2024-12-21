@@ -18,7 +18,7 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use common::now;
-use tracing::debug;
+use tracing::trace;
 
 use crate::{compaction::Task, manifest::ManifestRef, sst::SstFile, types::Timestamp};
 
@@ -80,7 +80,7 @@ impl TimeWindowCompactionStrategy {
     ) -> Option<Task> {
         let (uncompacted_files, expired_files) =
             Self::find_uncompacted_and_expired_files(ssts, expire_time);
-        debug!(uncompacted_files = ?uncompacted_files, expired_files = ?expired_files, "Begin pick candidate");
+        trace!(uncompacted_files = ?uncompacted_files, expired_files = ?expired_files, "Begin pick candidate");
 
         let files_by_segment = self.files_by_segment(uncompacted_files);
         let compaction_files = self.pick_compaction_files(files_by_segment)?;
@@ -101,7 +101,7 @@ impl TimeWindowCompactionStrategy {
             expireds: expired_files,
         };
 
-        debug!(task = ?task, "End pick candidate");
+        trace!(task = ?task, "End pick candidate");
 
         Some(task)
     }
@@ -130,14 +130,14 @@ impl TimeWindowCompactionStrategy {
         let segment_duration = self.segment_duration;
         for file in files {
             let segment = file.meta().time_range.start.truncate_by(segment_duration);
-            debug!(segment = ?segment, file = ?file);
+            trace!(segment = ?segment, file = ?file);
             files_by_segment
                 .entry(segment)
                 .or_insert_with(Vec::new)
                 .push(file);
         }
 
-        debug!(
+        trace!(
             files = ?files_by_segment,
             "Group files of similar timestamp into segment"
         );
@@ -149,7 +149,7 @@ impl TimeWindowCompactionStrategy {
         files_by_segment: BTreeMap<Timestamp, Vec<SstFile>>,
     ) -> Option<Vec<SstFile>> {
         for (segment, mut files) in files_by_segment.into_iter().rev() {
-            debug!(segment = ?segment, files = ?files, "Loop segment for pick files");
+            trace!(segment = ?segment, files = ?files, "Loop segment for pick files");
             if files.len() < 2 {
                 continue;
             }

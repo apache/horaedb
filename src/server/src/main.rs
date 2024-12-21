@@ -31,10 +31,11 @@ use arrow::{
 use clap::Parser;
 use config::{Config, StorageConfig};
 use metric_engine::{
+    config::StorageOptions,
     storage::{
         CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
     },
-    types::{RuntimeRef, StorageOptions},
+    types::RuntimeRef,
 };
 use object_store::local::LocalFileSystem;
 use tracing::{error, info};
@@ -65,8 +66,12 @@ struct AppState {
 }
 
 pub fn main() {
-    // install global collector configured based on RUST_LOG env var.
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_file(true)
+        .with_line_number(true)
+        .with_target(false)
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
+        .init();
 
     let args = Args::parse();
     let config_body = fs::read_to_string(args.config).expect("read config file failed");
@@ -88,7 +93,9 @@ pub fn main() {
         StorageConfig::Local(v) => v,
         StorageConfig::S3Like(_) => panic!("S3 not support yet"),
     };
-    let write_worker_num = config.write_worker_num;
+    let write_worker_num = config.test.write_worker_num;
+    let write_interval = config.test.write_interval.0;
+    let enable_write = config.test.enable_write;
     let write_rt = build_multi_runtime("write", write_worker_num);
     let _ = rt.block_on(async move {
         let store = Arc::new(LocalFileSystem::new());
@@ -106,7 +113,14 @@ pub fn main() {
             .unwrap(),
         );
 
-        bench_write(write_rt.clone(), write_worker_num, storage.clone());
+        if enable_write {
+            bench_write(
+                storage.clone(),
+                write_rt.clone(),
+                write_worker_num,
+                write_interval,
+            );
+        }
 
         let app_state = Data::new(AppState { storage });
         info!(port, "Start HoraeDB http server...");
@@ -144,7 +158,7 @@ fn build_schema() -> SchemaRef {
     ]))
 }
 
-fn bench_write(rt: RuntimeRef, workers: usize, storage: TimeMergeStorageRef) {
+fn bench_write(storage: TimeMergeStorageRef, rt: RuntimeRef, workers: usize, interval: Duration) {
     let schema = Arc::new(Schema::new(vec![
         Field::new("pk1", DataType::Int64, true),
         Field::new("pk2", DataType::Int64, true),
@@ -176,6 +190,7 @@ fn bench_write(rt: RuntimeRef, workers: usize, storage: TimeMergeStorageRef) {
                 {
                     error!("write failed, err:{}", e);
                 }
+                tokio::time::sleep(interval).await;
             }
         });
     }

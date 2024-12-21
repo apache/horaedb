@@ -17,7 +17,8 @@
 
 port = 5000
 
-[metric_engine]
+[test]
+enable_write = true
 
 [metric_engine.storage]
 type = "Local"

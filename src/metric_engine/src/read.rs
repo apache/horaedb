@@ -51,7 +51,7 @@ use datafusion::{
 use futures::{Stream, StreamExt};
 use itertools::Itertools;
 use parquet::arrow::async_reader::ParquetObjectReader;
-use tracing::debug;
+use tracing::trace;
 
 use crate::{
     compare_primitive_columns,
@@ -266,7 +266,7 @@ impl MergeStream {
             return Ok(None);
         }
 
-        debug!(pending_batch = ?self.pending_batch, "Merge batch");
+        trace!(pending_batch = ?self.pending_batch, "Merge batch");
 
         // Group rows with the same primary keys
         let mut groupby_pk_batches = Vec::new();
@@ -280,7 +280,7 @@ impl MergeStream {
             }
             groupby_pk_batches.push(batch.slice(start_idx, end_idx - start_idx));
             start_idx = end_idx;
-            debug!(end_idx = end_idx, "Group rows with the same primary keys");
+            trace!(end_idx, "Group rows with the same primary keys");
         }
 
         let rows_with_same_primary_keys = &groupby_pk_batches[0];
