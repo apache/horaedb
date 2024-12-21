@@ -41,6 +41,7 @@ impl Default for Config {
 pub struct TestConfig {
     pub enable_write: bool,
     pub write_worker_num: usize,
+    pub write_interval: ReadableDuration,
 }
 
 impl Default for TestConfig {
@@ -48,6 +49,7 @@ impl Default for TestConfig {
         Self {
             enable_write: true,
             write_worker_num: 1,
+            write_interval: ReadableDuration::millis(500),
         }
     }
 }

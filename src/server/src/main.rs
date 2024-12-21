@@ -94,6 +94,7 @@ pub fn main() {
         StorageConfig::S3Like(_) => panic!("S3 not support yet"),
     };
     let write_worker_num = config.test.write_worker_num;
+    let write_interval = config.test.write_interval.0;
     let enable_write = config.test.enable_write;
     let write_rt = build_multi_runtime("write", write_worker_num);
     let _ = rt.block_on(async move {
@@ -113,7 +114,12 @@ pub fn main() {
         );
 
         if enable_write {
-            bench_write(write_rt.clone(), write_worker_num, storage.clone());
+            bench_write(
+                storage.clone(),
+                write_rt.clone(),
+                write_worker_num,
+                write_interval,
+            );
         }
 
         let app_state = Data::new(AppState { storage });
@@ -152,7 +158,7 @@ fn build_schema() -> SchemaRef {
     ]))
 }
 
-fn bench_write(rt: RuntimeRef, workers: usize, storage: TimeMergeStorageRef) {
+fn bench_write(storage: TimeMergeStorageRef, rt: RuntimeRef, workers: usize, interval: Duration) {
     let schema = Arc::new(Schema::new(vec![
         Field::new("pk1", DataType::Int64, true),
         Field::new("pk2", DataType::Int64, true),
@@ -184,7 +190,7 @@ fn bench_write(rt: RuntimeRef, workers: usize, storage: TimeMergeStorageRef) {
                 {
                     error!("write failed, err:{}", e);
                 }
-                tokio::time::sleep(Duration::from_millis(1000)).await;
+                tokio::time::sleep(interval).await;
             }
         });
     }
