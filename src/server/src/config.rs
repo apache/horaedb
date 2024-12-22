@@ -19,7 +19,7 @@ use common::ReadableDuration;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub port: u16,
     pub test: TestConfig, // for test
@@ -37,7 +37,7 @@ impl Default for Config {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct TestConfig {
     pub enable_write: bool,
     pub write_worker_num: usize,
@@ -55,7 +55,7 @@ impl Default for TestConfig {
 }
 
 #[derive(Default, Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct MetricEngineConfig {
     pub manifest: ManifestConfig,
     pub sst: SstConfig,
@@ -63,7 +63,7 @@ pub struct MetricEngineConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ManifestConfig {
     pub background_thread_num: usize,
 }
@@ -77,7 +77,7 @@ impl Default for ManifestConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct SstConfig {
     pub background_thread_num: usize,
 }
@@ -91,7 +91,7 @@ impl Default for SstConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
 pub enum StorageConfig {
     Local(LocalStorageConfig),
@@ -118,6 +118,7 @@ impl Default for LocalStorageConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct S3LikeStorageConfig {
     pub region: String,
     pub key_id: String,
@@ -134,6 +135,7 @@ pub struct S3LikeStorageConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct HttpOptions {
     pub pool_max_idle_per_host: usize,
     pub timeout: ReadableDuration,
