@@ -97,6 +97,7 @@ pub fn main() {
     };
     let write_worker_num = config.test.write_worker_num;
     let write_interval = config.test.write_interval.0;
+    let segment_duration = config.test.segment_duration.0;
     let enable_write = config.test.enable_write;
     let write_rt = build_multi_runtime("write", write_worker_num);
     let _ = rt.block_on(async move {
@@ -104,7 +105,7 @@ pub fn main() {
         let storage = Arc::new(
             CloudObjectStorage::try_new(
                 storage_config.data_dir,
-                Duration::from_mins(10),
+                segment_duration,
                 store,
                 build_schema(),
                 3,

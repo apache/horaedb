@@ -126,26 +126,32 @@ impl Scheduler {
     ) {
         info!(
             schedule_interval = ?schedule_interval,
-            "Scheduler generate task started"
+            "Scheduler generate task loop started"
         );
+        let send_task = |task| {
+            if let Err(e) = task_tx.try_send(task) {
+                warn!("Send task failed, err:{e}");
+            }
+        };
+
+        // Generate one task immediately
+        if let Some(task) = picker.pick_candidate().await {
+            send_task(task);
+        }
         loop {
             tokio::select! {
                 _ = sleep(schedule_interval) => {
                     if let Some(task) = picker.pick_candidate().await {
-                        if let Err(e) = task_tx.try_send(task) {
-                            warn!("Send task failed, err:{e}");
-                        }
+                        send_task(task);
                     }
                 }
                 signal = trigger_rx.recv() => {
                     if signal.is_none() {
-                        info!("Scheduler generate task stopped");
-                        break;
+                        info!("Scheduler generate task loop stopped");
+                        return;
                     }
                     if let Some(task) = picker.pick_candidate().await {
-                        if let Err(e) = task_tx.try_send(task) {
-                            warn!("Send task failed, err:{e}");
-                        }
+                        send_task(task);
                     }
                 }
             }
