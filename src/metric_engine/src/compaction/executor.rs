@@ -119,9 +119,6 @@ impl Executor {
         self.inner
             .inused_memory
             .fetch_sub(task_size, Ordering::Relaxed);
-        if let Err(e) = self.inner.trigger_tx.try_send(()) {
-            debug!("send pick task trigger signal failed, err{e:?}");
-        }
     }
 
     pub fn on_failure(&self, task: &Task) {
@@ -148,10 +145,17 @@ impl Executor {
         runnable.spawn()
     }
 
+    fn trigger_more_task(&self) {
+        if let Err(e) = self.inner.trigger_tx.try_send(()) {
+            debug!("Send pick task trigger signal failed, err{e:?}");
+        }
+    }
+
     // TODO: Merge input sst files into one new sst file
     // and delete the expired sst files
     pub async fn do_compaction(&self, task: &Task) -> Result<()> {
         self.pre_check(task)?;
+        self.trigger_more_task();
 
         debug!(input_len = task.inputs.len(), "Start do compaction");
         let mut time_range = task.inputs[0].meta().time_range.clone();

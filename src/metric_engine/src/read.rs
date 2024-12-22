@@ -426,7 +426,7 @@ impl ParquetReader {
             })
             .collect::<Vec<_>>();
         let scan_config = FileScanConfig::new(dummy_url, self.schema.arrow_schema.clone())
-            .with_output_ordering(vec![sort_exprs.clone()])
+            .with_output_ordering(vec![sort_exprs.clone(); file_groups.len()])
             .with_file_groups(file_groups)
             .with_projection(projections);
 
@@ -569,7 +569,7 @@ mod tests {
                 .indent(true);
         assert_eq!(
             r#"MergeExec: [primary_keys: 1, seq_idx: 2]
-  SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC], fetch=1024
+  SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC]
     ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]]
 "#,
             format!("{display_plan}")
