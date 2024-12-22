@@ -16,6 +16,7 @@
 // under the License.
 
 use std::{
+    fmt,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, LazyLock,
@@ -46,9 +47,19 @@ static NEXT_ID: LazyLock<AtomicU64> = LazyLock::new(|| {
 
 pub type FileId = u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SstFile {
     inner: Arc<Inner>,
+}
+
+impl fmt::Debug for SstFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SstFile")
+            .field("id", &self.id())
+            .field("meta", &self.meta())
+            .field("in_compaction", &self.is_compaction())
+            .finish()
+    }
 }
 
 #[derive(Debug)]

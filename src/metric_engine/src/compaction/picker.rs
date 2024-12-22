@@ -49,6 +49,9 @@ impl Picker {
         }
     }
 
+    /// This function picks a candidate for compaction.
+    /// Note: It can only execute sequentially, otherwise a SST may be picked by
+    /// multiple threads.
     pub async fn pick_candidate(&self) -> Option<Task> {
         let ssts = self.manifest.all_ssts().await;
         let expire_time = self.ttl.map(|ttl| (now() - ttl.as_micros() as i64).into());
@@ -154,13 +157,14 @@ impl TimeWindowCompactionStrategy {
         files_by_segment: BTreeMap<Timestamp, Vec<SstFile>>,
     ) -> Option<Vec<SstFile>> {
         for (segment, mut files) in files_by_segment.into_iter().rev() {
-            trace!(segment = ?segment, files = ?files, "Loop segment for pick files");
+            trace!(segment = ?segment, files = ?files.len(), "Loop segment for pick files");
             if files.len() < self.input_sst_min_num {
                 continue;
             }
 
             // Prefer to compact smaller files first.
             files.sort_unstable_by_key(SstFile::size);
+            trace!(sorted_files = ?files, "Sort files by size");
 
             let mut input_size = 0;
             // Suppose the comaction will reduce the size of files by 10%.

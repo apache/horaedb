@@ -16,6 +16,7 @@
 // under the License.
 
 use std::{
+    fmt,
     ops::{Add, Deref, Range},
     sync::Arc,
     time::Duration,
@@ -76,8 +77,14 @@ impl Timestamp {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TimeRange(Range<Timestamp>);
+
+impl fmt::Debug for TimeRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[{}, {})", self.0.start.0, self.0.end.0)
+    }
+}
 
 impl From<Range<Timestamp>> for TimeRange {
     fn from(value: Range<Timestamp>) -> Self {

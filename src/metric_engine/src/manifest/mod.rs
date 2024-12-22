@@ -91,7 +91,11 @@ impl Manifest {
         .await?;
         let snapshot = read_snapshot(&store, &snapshot_path).await?;
         let ssts = snapshot.into_ssts();
-        debug!(sst_len = ssts.len(), "Load manifest snapshot when startup");
+        debug!(
+            sst_len = ssts.len(),
+            first_100 = ?ssts.iter().take(100),
+            "Load manifest snapshot when startup"
+        );
         {
             let merger = merger.clone();
             // Start merger in background
