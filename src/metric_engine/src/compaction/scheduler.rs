@@ -63,6 +63,7 @@ impl Scheduler {
             let store = store.clone();
             let manifest = manifest.clone();
             let write_props = config.write_props.clone();
+            let trigger_tx = trigger_tx.clone();
             let executor = Executor::new(
                 runtime.clone(),
                 store,
@@ -72,6 +73,7 @@ impl Scheduler {
                 parquet_reader,
                 write_props,
                 config.memory_limit,
+                trigger_tx.clone(),
             );
 
             runtime.spawn(async move {
@@ -86,6 +88,7 @@ impl Scheduler {
                     segment_duration,
                     config.new_sst_max_size,
                     config.input_sst_max_num,
+                    config.input_sst_min_num,
                 );
                 Self::generate_task_loop(task_tx, trigger_rx, picker, config.schedule_interval)
                     .await;

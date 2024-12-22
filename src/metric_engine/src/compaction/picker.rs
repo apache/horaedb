@@ -35,6 +35,7 @@ impl Picker {
         segment_duration: Duration,
         new_sst_max_size: u64,
         input_sst_max_num: usize,
+        input_sst_min_num: usize,
     ) -> Self {
         Self {
             manifest,
@@ -43,6 +44,7 @@ impl Picker {
                 segment_duration,
                 new_sst_max_size,
                 input_sst_max_num,
+                input_sst_min_num,
             ),
         }
     }
@@ -58,6 +60,7 @@ pub struct TimeWindowCompactionStrategy {
     segment_duration: Duration,
     new_sst_max_size: u64,
     input_sst_max_num: usize,
+    input_sst_min_num: usize,
 }
 
 impl TimeWindowCompactionStrategy {
@@ -65,11 +68,13 @@ impl TimeWindowCompactionStrategy {
         segment_duration: Duration,
         new_sst_max_size: u64,
         input_sst_max_num: usize,
+        input_sst_min_num: usize,
     ) -> Self {
         Self {
             segment_duration,
             new_sst_max_size,
             input_sst_max_num,
+            input_sst_min_num,
         }
     }
 
@@ -150,7 +155,7 @@ impl TimeWindowCompactionStrategy {
     ) -> Option<Vec<SstFile>> {
         for (segment, mut files) in files_by_segment.into_iter().rev() {
             trace!(segment = ?segment, files = ?files, "Loop segment for pick files");
-            if files.len() < 2 {
+            if files.len() < self.input_sst_min_num {
                 continue;
             }
 
@@ -170,7 +175,7 @@ impl TimeWindowCompactionStrategy {
                 })
                 .collect::<Vec<_>>();
 
-            if compaction_files.len() >= 2 {
+            if compaction_files.len() >= self.input_sst_min_num {
                 return Some(compaction_files);
             }
         }
@@ -192,7 +197,7 @@ mod tests {
     #[test]
     fn test_pick_candidate() {
         let segment_duration = Duration::from_millis(20);
-        let strategy = TimeWindowCompactionStrategy::new(segment_duration, 9999, 10);
+        let strategy = TimeWindowCompactionStrategy::new(segment_duration, 9999, 10, 2);
 
         let ssts = (0_i64..5_i64)
             .map(|i| {

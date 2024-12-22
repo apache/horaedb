@@ -426,7 +426,7 @@ impl ParquetReader {
             })
             .collect::<Vec<_>>();
         let scan_config = FileScanConfig::new(dummy_url, self.schema.arrow_schema.clone())
-            .with_output_ordering(vec![sort_exprs.clone(); file_groups.len()])
+            .with_output_ordering(vec![sort_exprs.clone()])
             .with_file_groups(file_groups)
             .with_projection(projections);
 
@@ -443,8 +443,6 @@ impl ParquetReader {
         // when convert between arrow and parquet.
         let parquet_exec = builder.build();
         let sort_exec = SortPreservingMergeExec::new(sort_exprs, Arc::new(parquet_exec))
-            // TODO: make fetch size configurable.
-            .with_fetch(Some(1024))
             .with_round_robin_repartition(true);
 
         let merge_exec = MergeExec::new(

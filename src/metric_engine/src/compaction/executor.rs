@@ -30,6 +30,7 @@ use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::WriterProperties,
 };
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, trace};
 
 use crate::{
@@ -57,6 +58,7 @@ struct Inner {
     write_props: WriterProperties,
     inused_memory: AtomicU64,
     mem_limit: u64,
+    trigger_tx: Sender<()>,
 }
 
 impl Executor {
@@ -70,6 +72,7 @@ impl Executor {
         parquet_reader: Arc<ParquetReader>,
         write_props: WriterProperties,
         mem_limit: u64,
+        trigger_tx: Sender<()>,
     ) -> Self {
         let inner = Inner {
             runtime,
@@ -81,6 +84,7 @@ impl Executor {
             write_props,
             mem_limit,
             inused_memory: AtomicU64::new(0),
+            trigger_tx,
         };
         Self {
             inner: Arc::new(inner),
@@ -115,6 +119,9 @@ impl Executor {
         self.inner
             .inused_memory
             .fetch_sub(task_size, Ordering::Relaxed);
+        if let Err(e) = self.inner.trigger_tx.try_send(()) {
+            debug!("send pick task trigger signal failed, err{e:?}");
+        }
     }
 
     pub fn on_failure(&self, task: &Task) {

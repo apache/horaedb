@@ -35,6 +35,7 @@ pub struct SchedulerConfig {
     pub ttl: Option<Duration>,
     pub new_sst_max_size: u64,
     pub input_sst_max_num: usize,
+    pub input_sst_min_num: usize,
 }
 
 impl Default for SchedulerConfig {
@@ -47,6 +48,7 @@ impl Default for SchedulerConfig {
             ttl: None,
             new_sst_max_size: bytesize::gb(1_u64),
             input_sst_max_num: 30,
+            input_sst_min_num: 5,
         }
     }
 }
