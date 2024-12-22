@@ -17,7 +17,15 @@
 
 #![feature(duration_constructors)]
 mod config;
-use std::{fs, iter::repeat_with, sync::Arc, time::Duration};
+use std::{
+    fs,
+    iter::repeat_with,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use actix_web::{
     get,
@@ -54,6 +62,16 @@ async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
 }
 
+#[get("/toggle")]
+async fn toggle(data: web::Data<AppState>) -> impl Responder {
+    let prev = data.keep_writing.fetch_not(Ordering::Relaxed);
+    if prev {
+        HttpResponse::Ok().body("Stop!")
+    } else {
+        HttpResponse::Ok().body("Start write again!")
+    }
+}
+
 #[get("/compact")]
 async fn compact(data: web::Data<AppState>) -> impl Responder {
     if let Err(e) = data.storage.compact(CompactRequest::default()).await {
@@ -64,6 +82,7 @@ async fn compact(data: web::Data<AppState>) -> impl Responder {
 
 struct AppState {
     storage: TimeMergeStorageRef,
+    keep_writing: Arc<AtomicBool>,
 }
 
 pub fn main() {
@@ -100,6 +119,7 @@ pub fn main() {
     let segment_duration = config.test.segment_duration.0;
     let enable_write = config.test.enable_write;
     let write_rt = build_multi_runtime("write", write_worker_num);
+    let keep_writing = Arc::new(AtomicBool::new(true));
     let _ = rt.block_on(async move {
         let store = Arc::new(LocalFileSystem::new());
         let storage = Arc::new(
@@ -122,16 +142,21 @@ pub fn main() {
                 write_rt.clone(),
                 write_worker_num,
                 write_interval,
+                keep_writing.clone(),
             );
         }
 
-        let app_state = Data::new(AppState { storage });
+        let app_state = Data::new(AppState {
+            storage,
+            keep_writing,
+        });
         info!(port, "Start HoraeDB http server...");
         HttpServer::new(move || {
             App::new()
                 .app_data(app_state.clone())
                 .service(hello)
                 .service(compact)
+                .service(toggle)
         })
         .workers(4)
         .bind(("127.0.0.1", port))
@@ -161,7 +186,13 @@ fn build_schema() -> SchemaRef {
     ]))
 }
 
-fn bench_write(storage: TimeMergeStorageRef, rt: RuntimeRef, workers: usize, interval: Duration) {
+fn bench_write(
+    storage: TimeMergeStorageRef,
+    rt: RuntimeRef,
+    workers: usize,
+    interval: Duration,
+    keep_writing: Arc<AtomicBool>,
+) {
     let schema = Arc::new(Schema::new(vec![
         Field::new("pk1", DataType::Int64, true),
         Field::new("pk2", DataType::Int64, true),
@@ -171,8 +202,13 @@ fn bench_write(storage: TimeMergeStorageRef, rt: RuntimeRef, workers: usize, int
     for _ in 0..workers {
         let storage = storage.clone();
         let schema = schema.clone();
+        let keep_writing = keep_writing.clone();
         rt.spawn(async move {
             loop {
+                tokio::time::sleep(interval).await;
+                if !keep_writing.load(Ordering::Relaxed) {
+                    continue;
+                }
                 let pk1: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
                 let pk2: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
                 let pk3: Int64Array = repeat_with(rand::random::<i64>).take(1000).collect();
@@ -193,7 +229,6 @@ fn bench_write(storage: TimeMergeStorageRef, rt: RuntimeRef, workers: usize, int
                 {
                     error!("write failed, err:{}", e);
                 }
-                tokio::time::sleep(interval).await;
             }
         });
     }
