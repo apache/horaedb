@@ -326,7 +326,7 @@ impl Snapshot {
     }
 
     pub fn into_bytes(self) -> Result<Bytes> {
-        let buf = Vec::with_capacity(self.header.length as usize * SnapshotHeader::LENGTH);
+        let buf = Vec::with_capacity(self.header.length as usize + SnapshotHeader::LENGTH);
         let mut cursor = Cursor::new(buf);
 
         self.header.write_to(&mut cursor)?;
