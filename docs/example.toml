@@ -22,9 +22,10 @@ enable_write = true
 write_worker_num = 1
 write_interval = "500ms"
 
-[metric_engine.storage]
+[metric_engine.threads]
+sst_thread_num = 2
+manifest_thread_num = 2
+
+[metric_engine.storage.object_store]
 type = "Local"
 data_dir = "/tmp/horaedb-storage"
-
-[metric_engine.sst]
-background_thread_num = 2

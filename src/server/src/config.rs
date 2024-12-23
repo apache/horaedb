@@ -66,14 +66,8 @@ pub struct MetricEngineConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ThreadConfig {
-    #[serde(default = "default_thread_num")]
     pub manifest_thread_num: usize,
-    #[serde(default = "default_thread_num")]
     pub sst_thread_num: usize,
-}
-
-fn default_thread_num() -> usize {
-    2
 }
 
 impl Default for ThreadConfig {
