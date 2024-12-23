@@ -28,7 +28,7 @@ members = [
     "src/common",
     "src/metric_engine",
     "src/pb_types",
-    "src/server",
+    "src/server"
 ]
 
 [workspace.dependencies]
