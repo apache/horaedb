@@ -41,7 +41,6 @@ bytes = { workspace = true }
 bytesize = { workspace = true }
 common = { workspace = true }
 datafusion = { workspace = true }
-datafusion-expr = { workspace = true }
 futures = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }

@@ -404,7 +404,7 @@ impl TimeMergeStorage for CloudObjectStorage {
 
 #[cfg(test)]
 mod tests {
-    use datafusion_expr::{col, lit};
+    use datafusion::logical_expr::{col, lit};
     use object_store::local::LocalFileSystem;
     use test_log::test;
 

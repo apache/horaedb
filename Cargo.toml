@@ -28,7 +28,7 @@ members = [
     "src/common",
     "src/metric_engine",
     "src/pb_types",
-    "src/server"
+    "src/server",
 ]
 
 [workspace.dependencies]
@@ -39,7 +39,6 @@ thiserror = "1"
 bytes = "1"
 byteorder = "1"
 datafusion = "43"
-datafusion-expr = "43"
 parquet = { version = "53" }
 object_store = { version = "0.11" }
 pb_types = { path = "src/pb_types" }

@@ -431,7 +431,7 @@ impl ParquetReader {
         let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
             Arc::new(DefaultParquetFileReaderFactory::new(self.store.clone())),
         );
-        let plan: Arc<dyn ExecutionPlan> = match conjunction(predicates) {
+        let base_plan: Arc<dyn ExecutionPlan> = match conjunction(predicates) {
             Some(expr) => {
                 let filters = create_physical_expr(&expr, &df_schema, &ExecutionProps::new())
                     .context("create physical expr")?;
@@ -452,7 +452,7 @@ impl ParquetReader {
         // TODO: fetch using multiple threads since read from parquet will incur CPU
         // when convert between arrow and parquet.
         let sort_exec =
-            SortPreservingMergeExec::new(sort_exprs, plan).with_round_robin_repartition(true);
+            SortPreservingMergeExec::new(sort_exprs, base_plan).with_round_robin_repartition(true);
 
         let merge_exec = MergeExec::new(
             Arc::new(sort_exec),
@@ -471,6 +471,7 @@ impl ParquetReader {
 
 #[cfg(test)]
 mod tests {
+    use datafusion::logical_expr::{col, lit};
     use object_store::local::LocalFileSystem;
     use test_log::test;
 
@@ -554,6 +555,8 @@ mod tests {
             },
             Arc::new(SstPathGenerator::new("mock".to_string())),
         );
+
+        let expr = col("pk1").eq(lit(0_u8));
         let plan = reader
             .build_df_plan(
                 (100..103)
@@ -570,7 +573,7 @@ mod tests {
                     })
                     .collect(),
                 None,
-                vec![],
+                vec![expr],
             )
             .unwrap();
         let display_plan =
@@ -579,7 +582,8 @@ mod tests {
         assert_eq!(
             r#"MergeExec: [primary_keys: 1, seq_idx: 2]
   SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC]
-    ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]]
+    FilterExec: pk1@0 = 0
+      ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]], predicate=pk1@0 = 0, pruning_predicate=CASE WHEN pk1_null_count@2 = pk1_row_count@3 THEN false ELSE pk1_min@0 <= 0 AND 0 <= pk1_max@1 END, required_guarantees=[pk1 in (0)]
 "#,
             format!("{display_plan}")
         );
