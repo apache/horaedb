@@ -18,7 +18,7 @@
 use common::ReadableDuration;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub port: u16,
@@ -56,51 +56,51 @@ impl Default for TestConfig {
     }
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
+#[derive(Default, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MetricEngineConfig {
-    pub manifest: ManifestConfig,
-    pub sst: SstConfig,
+    pub threads: ThreadConfig,
     pub storage: StorageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct ManifestConfig {
-    pub background_thread_num: usize,
+pub struct ThreadConfig {
+    #[serde(default = "default_thread_num")]
+    pub manifest_thread_num: usize,
+    #[serde(default = "default_thread_num")]
+    pub sst_thread_num: usize,
 }
 
-impl Default for ManifestConfig {
+fn default_thread_num() -> usize {
+    2
+}
+
+impl Default for ThreadConfig {
     fn default() -> Self {
         Self {
-            background_thread_num: 2,
+            manifest_thread_num: 2,
+            sst_thread_num: 2,
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct SstConfig {
-    pub background_thread_num: usize,
-}
-
-impl Default for SstConfig {
-    fn default() -> Self {
-        Self {
-            background_thread_num: 2,
-        }
-    }
+pub struct StorageConfig {
+    pub object_store: ObjectStorageConfig,
+    pub time_merge_storage: metric_engine::config::StorageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
-pub enum StorageConfig {
+pub enum ObjectStorageConfig {
     Local(LocalStorageConfig),
     S3Like(S3LikeStorageConfig),
 }
 
-impl Default for StorageConfig {
+impl Default for ObjectStorageConfig {
     fn default() -> Self {
         Self::Local(LocalStorageConfig::default())
     }

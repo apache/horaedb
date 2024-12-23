@@ -51,8 +51,8 @@ impl Picker {
 
     /// This function picks a candidate for compaction.
     /// Note: It can only execute sequentially, otherwise a SST may be picked by
-    /// multiple threads.
-    pub async fn pick_candidate(&self) -> Option<Task> {
+    /// multiple threads(that's why it take a mutable self).
+    pub async fn pick_candidate(&mut self) -> Option<Task> {
         let ssts = self.manifest.all_ssts().await;
         let expire_time = self.ttl.map(|ttl| (now() - ttl.as_micros() as i64).into());
         self.strategy.pick_candidate(ssts, expire_time)

@@ -54,9 +54,10 @@ use parquet::arrow::async_reader::ParquetObjectReader;
 
 use crate::{
     compare_primitive_columns,
+    config::UpdateMode,
     operator::{BytesMergeOperator, LastValueOperator, MergeOperator, MergeOperatorRef},
     sst::{SstFile, SstPathGenerator},
-    types::{ObjectStoreRef, StorageSchema, UpdateMode, SEQ_COLUMN_NAME},
+    types::{ObjectStoreRef, StorageSchema, SEQ_COLUMN_NAME},
     Result,
 };
 

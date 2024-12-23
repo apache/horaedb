@@ -26,7 +26,7 @@ use arrow_schema::SchemaRef;
 use object_store::ObjectStore;
 use tokio::runtime::Runtime;
 
-use crate::sst::FileId;
+use crate::{config::UpdateMode, sst::FileId};
 
 // Seq column is a builtin column, and it will be appended to the end of
 // user-defined schema.
@@ -130,13 +130,6 @@ pub struct WriteResult {
     pub id: FileId,
     pub seq: u64,
     pub size: usize,
-}
-
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum UpdateMode {
-    #[default]
-    Overwrite,
-    Append,
 }
 
 #[derive(Debug, Clone)]

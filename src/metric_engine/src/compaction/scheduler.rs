@@ -18,6 +18,7 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Context;
+use parquet::file::properties::WriterProperties;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
@@ -56,13 +57,13 @@ impl Scheduler {
         sst_path_gen: Arc<SstPathGenerator>,
         parquet_reader: Arc<ParquetReader>,
         config: SchedulerConfig,
+        write_props: WriterProperties,
     ) -> Self {
         let (task_tx, task_rx) = mpsc::channel(config.max_pending_compaction_tasks);
         let (trigger_tx, trigger_rx) = mpsc::channel::<()>(1);
         let task_handle = {
             let store = store.clone();
             let manifest = manifest.clone();
-            let write_props = config.write_props.clone();
             let trigger_tx = trigger_tx.clone();
             let executor = Executor::new(
                 runtime.clone(),
@@ -121,7 +122,7 @@ impl Scheduler {
     async fn generate_task_loop(
         task_tx: Sender<Task>,
         mut trigger_rx: Receiver<()>,
-        picker: Picker,
+        mut picker: Picker,
         schedule_interval: Duration,
     ) {
         info!(
@@ -130,7 +131,7 @@ impl Scheduler {
         );
         let send_task = |task| {
             if let Err(e) = task_tx.try_send(task) {
-                warn!("Send task failed, err:{e}");
+                warn!("Send task failed, err:{e:?}");
             }
         };
 

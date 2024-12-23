@@ -37,9 +37,8 @@ use arrow::{
     datatypes::{DataType, Field, Schema, SchemaRef},
 };
 use clap::Parser;
-use config::{Config, StorageConfig};
+use config::{Config, ObjectStorageConfig};
 use metric_engine::{
-    config::StorageOptions,
     storage::{
         CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
     },
@@ -97,23 +96,22 @@ pub fn main() {
     let args = Args::parse();
     let config_body = fs::read_to_string(args.config).expect("read config file failed");
     let config: Config = toml::from_str(&config_body).unwrap();
-    info!(config = ?config, "Config loaded");
+    info!("Config loaded: \n{:#?}", config);
 
     let port = config.port;
     let rt = build_multi_runtime("main", 1);
     let manifest_compact_runtime = build_multi_runtime(
         "manifest-compact",
-        config.metric_engine.manifest.background_thread_num,
+        config.metric_engine.threads.manifest_thread_num,
     );
-    let sst_compact_runtime = build_multi_runtime(
-        "sst-compact",
-        config.metric_engine.sst.background_thread_num,
-    );
+    let sst_compact_runtime =
+        build_multi_runtime("sst-compact", config.metric_engine.threads.sst_thread_num);
     let runtimes = StorageRuntimes::new(manifest_compact_runtime, sst_compact_runtime);
-    let storage_config = match config.metric_engine.storage {
-        StorageConfig::Local(v) => v,
-        StorageConfig::S3Like(_) => panic!("S3 not support yet"),
+    let object_store_config = match config.metric_engine.storage.object_store {
+        ObjectStorageConfig::Local(v) => v,
+        ObjectStorageConfig::S3Like(_) => panic!("S3 not support yet"),
     };
+    let time_merge_storage_config = config.metric_engine.storage.time_merge_storage;
     let write_worker_num = config.test.write_worker_num;
     let write_interval = config.test.write_interval.0;
     let segment_duration = config.test.segment_duration.0;
@@ -124,12 +122,12 @@ pub fn main() {
         let store = Arc::new(LocalFileSystem::new());
         let storage = Arc::new(
             CloudObjectStorage::try_new(
-                storage_config.data_dir,
+                object_store_config.data_dir,
                 segment_duration,
                 store,
                 build_schema(),
                 3,
-                StorageOptions::default(),
+                time_merge_storage_config,
                 runtimes,
             )
             .await

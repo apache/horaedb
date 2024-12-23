@@ -17,20 +17,16 @@
 
 use std::{collections::HashMap, time::Duration};
 
-use parquet::{
-    basic::{Compression, Encoding, ZstdLevel},
-    file::properties::WriterProperties,
-};
+use parquet::basic::{Compression, Encoding, ZstdLevel};
+use serde::{Deserialize, Serialize};
 
-use crate::types::UpdateMode;
-
-#[derive(Clone)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct SchedulerConfig {
     pub schedule_interval: Duration,
     pub max_pending_compaction_tasks: usize,
     // Runner config
     pub memory_limit: u64,
-    pub write_props: WriterProperties,
     // Picker config
     pub ttl: Option<Duration>,
     pub new_sst_max_size: u64,
@@ -43,8 +39,7 @@ impl Default for SchedulerConfig {
         Self {
             schedule_interval: Duration::from_secs(10),
             max_pending_compaction_tasks: 10,
-            memory_limit: bytesize::gb(3_u64),
-            write_props: WriterProperties::default(),
+            memory_limit: bytesize::gb(20_u64),
             ttl: None,
             new_sst_max_size: bytesize::gb(1_u64),
             input_sst_max_num: 30,
@@ -53,29 +48,75 @@ impl Default for SchedulerConfig {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub enum ParquetEncoding {
+    #[default]
+    Plain,
+    Rle,
+    DeltaBinaryPacked,
+    DeltaLengthByteArray,
+    DeltaByteArray,
+    RleDictionary,
+}
+
+impl From<ParquetEncoding> for Encoding {
+    fn from(value: ParquetEncoding) -> Self {
+        match value {
+            ParquetEncoding::Plain => Encoding::PLAIN,
+            ParquetEncoding::Rle => Encoding::RLE,
+            ParquetEncoding::DeltaBinaryPacked => Encoding::DELTA_BINARY_PACKED,
+            ParquetEncoding::DeltaLengthByteArray => Encoding::DELTA_LENGTH_BYTE_ARRAY,
+            ParquetEncoding::DeltaByteArray => Encoding::DELTA_BYTE_ARRAY,
+            ParquetEncoding::RleDictionary => Encoding::RLE_DICTIONARY,
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub enum ParquetCompression {
+    #[default]
+    Uncompressed,
+    Snappy,
+    Zstd,
+}
+
+impl From<ParquetCompression> for Compression {
+    fn from(value: ParquetCompression) -> Self {
+        match value {
+            ParquetCompression::Uncompressed => Compression::UNCOMPRESSED,
+            ParquetCompression::Snappy => Compression::SNAPPY,
+            ParquetCompression::Zstd => Compression::ZSTD(ZstdLevel::default()),
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct ColumnOptions {
     pub enable_dict: Option<bool>,
     pub enable_bloom_filter: Option<bool>,
-    pub encoding: Option<Encoding>,
-    pub compression: Option<Compression>,
+    pub encoding: Option<ParquetEncoding>,
+    pub compression: Option<ParquetCompression>,
 }
 
-#[derive(Debug)]
-pub struct WriteOptions {
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct WriteConfig {
     pub max_row_group_size: usize,
     pub write_bacth_size: usize,
     pub enable_sorting_columns: bool,
     // use to set column props with default value
     pub enable_dict: bool,
     pub enable_bloom_filter: bool,
-    pub encoding: Encoding,
-    pub compression: Compression,
+    pub encoding: ParquetEncoding,
+    pub compression: ParquetCompression,
     // use to set column props with column name
     pub column_options: Option<HashMap<String, ColumnOptions>>,
 }
 
-impl Default for WriteOptions {
+impl Default for WriteConfig {
     fn default() -> Self {
         Self {
             max_row_group_size: 8192,
@@ -83,15 +124,16 @@ impl Default for WriteOptions {
             enable_sorting_columns: true,
             enable_dict: false,
             enable_bloom_filter: false,
-            encoding: Encoding::PLAIN,
-            compression: Compression::ZSTD(ZstdLevel::default()),
+            encoding: ParquetEncoding::Plain,
+            compression: ParquetCompression::Snappy,
             column_options: None,
         }
     }
 }
 
-#[derive(Debug)]
-pub struct ManifestMergeOptions {
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ManifestConfig {
     pub channel_size: usize,
     pub merge_interval_seconds: usize,
     pub min_merge_threshold: usize,
@@ -99,7 +141,7 @@ pub struct ManifestMergeOptions {
     pub soft_merge_threshold: usize,
 }
 
-impl Default for ManifestMergeOptions {
+impl Default for ManifestConfig {
     fn default() -> Self {
         Self {
             channel_size: 3,
@@ -111,9 +153,19 @@ impl Default for ManifestMergeOptions {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct StorageOptions {
-    pub write_opts: WriteOptions,
-    pub manifest_merge_opts: ManifestMergeOptions,
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StorageConfig {
+    pub write: WriteConfig,
+    pub manifest: ManifestConfig,
+    pub scheduler: SchedulerConfig,
     pub update_mode: UpdateMode,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub enum UpdateMode {
+    #[default]
+    Overwrite,
+    Append,
 }

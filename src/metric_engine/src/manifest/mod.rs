@@ -39,7 +39,7 @@ use tokio::sync::{
 use tracing::{debug, error, info, trace};
 
 use crate::{
-    config::ManifestMergeOptions,
+    config::ManifestConfig,
     sst::{FileId, FileMeta, SstFile},
     types::{ObjectStoreRef, RuntimeRef, TimeRange},
     AnyhowError, Result,
@@ -77,7 +77,7 @@ impl Manifest {
         root_dir: String,
         store: ObjectStoreRef,
         runtime: RuntimeRef,
-        merge_options: ManifestMergeOptions,
+        merge_options: ManifestConfig,
     ) -> Result<Self> {
         let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
         let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
@@ -188,7 +188,7 @@ struct ManifestMerger {
     sender: Sender<MergeType>,
     receiver: RwLock<Receiver<MergeType>>,
     deltas_num: AtomicUsize,
-    merge_options: ManifestMergeOptions,
+    merge_options: ManifestConfig,
 }
 
 impl ManifestMerger {
@@ -196,7 +196,7 @@ impl ManifestMerger {
         snapshot_path: Path,
         delta_dir: Path,
         store: ObjectStoreRef,
-        merge_options: ManifestMergeOptions,
+        merge_options: ManifestConfig,
     ) -> Result<Arc<Self>> {
         let (tx, rx) = mpsc::channel(merge_options.channel_size);
         let merger = Self {
@@ -414,7 +414,7 @@ mod tests {
                 root_dir.path().to_string_lossy().to_string(),
                 store,
                 runtime.clone(),
-                ManifestMergeOptions::default(),
+                ManifestConfig::default(),
             )
             .await
             .unwrap();
@@ -471,7 +471,7 @@ mod tests {
                 root_dir,
                 store.clone(),
                 runtime.clone(),
-                ManifestMergeOptions {
+                ManifestConfig {
                     merge_interval_seconds: 1,
                     ..Default::default()
                 },

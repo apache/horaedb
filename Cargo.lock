@@ -2174,6 +2174,7 @@ dependencies = [
  "parquet",
  "pb_types",
  "prost",
+ "serde",
  "temp-dir",
  "test-log",
  "thiserror",
