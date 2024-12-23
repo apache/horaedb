@@ -19,7 +19,7 @@ mod executor;
 mod picker;
 mod scheduler;
 
-pub use scheduler::{Scheduler as CompactionScheduler, SchedulerConfig};
+pub use scheduler::Scheduler as CompactionScheduler;
 
 use crate::sst::SstFile;
 

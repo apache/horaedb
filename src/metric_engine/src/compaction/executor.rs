@@ -30,14 +30,15 @@ use parquet::{
     arrow::{async_writer::ParquetObjectWriter, AsyncArrowWriter},
     file::properties::WriterProperties,
 };
-use tracing::error;
+use tokio::sync::mpsc::Sender;
+use tracing::{debug, error, trace};
 
 use crate::{
     compaction::Task,
     ensure,
     manifest::{ManifestRef, ManifestUpdate},
     read::ParquetReader,
-    sst::{allocate_id, FileMeta, SstFile, SstPathGenerator},
+    sst::{FileMeta, SstFile, SstPathGenerator},
     types::{ObjectStoreRef, RuntimeRef, StorageSchema},
     Result,
 };
@@ -57,6 +58,7 @@ struct Inner {
     write_props: WriterProperties,
     inused_memory: AtomicU64,
     mem_limit: u64,
+    trigger_tx: Sender<()>,
 }
 
 impl Executor {
@@ -70,6 +72,7 @@ impl Executor {
         parquet_reader: Arc<ParquetReader>,
         write_props: WriterProperties,
         mem_limit: u64,
+        trigger_tx: Sender<()>,
     ) -> Self {
         let inner = Inner {
             runtime,
@@ -81,6 +84,7 @@ impl Executor {
             write_props,
             mem_limit,
             inused_memory: AtomicU64::new(0),
+            trigger_tx,
         };
         Self {
             inner: Arc::new(inner),
@@ -141,11 +145,19 @@ impl Executor {
         runnable.spawn()
     }
 
+    fn trigger_more_task(&self) {
+        if let Err(e) = self.inner.trigger_tx.try_send(()) {
+            debug!("Send pick task trigger signal failed, err{e:?}");
+        }
+    }
+
     // TODO: Merge input sst files into one new sst file
     // and delete the expired sst files
     pub async fn do_compaction(&self, task: &Task) -> Result<()> {
         self.pre_check(task)?;
+        self.trigger_more_task();
 
+        debug!(input_len = task.inputs.len(), "Start do compaction");
         let mut time_range = task.inputs[0].meta().time_range.clone();
         for f in &task.inputs[1..] {
             time_range.merge(&f.meta().time_range);
@@ -157,7 +169,7 @@ impl Executor {
         let mut stream = execute_stream(plan, Arc::new(TaskContext::default()))
             .context("execute datafusion plan")?;
 
-        let file_id = allocate_id();
+        let file_id = SstFile::allocate_id();
         let file_path = self.inner.sst_path_gen.generate(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer =
@@ -197,6 +209,7 @@ impl Executor {
             size: object_meta.size as u32,
             time_range: time_range.clone(),
         };
+        debug!(file_meta = ?file_meta, "Compact output new sst");
         // First add new sst to manifest, then delete expired/old sst
         let to_adds = vec![SstFile::new(file_id, file_meta)];
         let to_deletes = task
@@ -204,28 +217,19 @@ impl Executor {
             .iter()
             .map(|f| f.id())
             .chain(task.inputs.iter().map(|f| f.id()))
-            .collect();
+            .collect::<Vec<_>>();
         self.inner
             .manifest
-            .update(ManifestUpdate::new(to_adds, to_deletes))
+            .update(ManifestUpdate::new(to_adds, to_deletes.clone()))
             .await?;
 
         // From now on, no error should be returned!
         // Because we have already updated manifest.
 
         let (_, results) = TokioScope::scope_and_block(|scope| {
-            for file in &task.expireds {
-                let path = Path::from(self.inner.sst_path_gen.generate(file.id()));
-                scope.spawn(async move {
-                    self.inner
-                        .store
-                        .delete(&path)
-                        .await
-                        .with_context(|| format!("failed to delete file, path:{path}"))
-                });
-            }
-            for file in &task.inputs {
-                let path = Path::from(self.inner.sst_path_gen.generate(file.id()));
+            for id in to_deletes {
+                let path = Path::from(self.inner.sst_path_gen.generate(id));
+                trace!(id, "Delete sst file");
                 scope.spawn(async move {
                     self.inner
                         .store
@@ -262,7 +266,7 @@ impl Runnable {
         let rt = self.executor.inner.runtime.clone();
         rt.spawn(async move {
             if let Err(e) = self.executor.do_compaction(&self.task).await {
-                error!("Do compaction failed, err:{e}");
+                error!("Do compaction failed, err:{e:?}");
                 self.executor.on_failure(&self.task);
             } else {
                 self.executor.on_success(&self.task);

@@ -51,13 +51,13 @@ use datafusion::{
 use futures::{Stream, StreamExt};
 use itertools::Itertools;
 use parquet::arrow::async_reader::ParquetObjectReader;
-use tracing::debug;
 
 use crate::{
     compare_primitive_columns,
+    config::UpdateMode,
     operator::{BytesMergeOperator, LastValueOperator, MergeOperator, MergeOperatorRef},
     sst::{SstFile, SstPathGenerator},
-    types::{ObjectStoreRef, StorageSchema, UpdateMode, SEQ_COLUMN_NAME},
+    types::{ObjectStoreRef, StorageSchema, SEQ_COLUMN_NAME},
     Result,
 };
 
@@ -266,8 +266,6 @@ impl MergeStream {
             return Ok(None);
         }
 
-        debug!(pending_batch = ?self.pending_batch, "Merge batch");
-
         // Group rows with the same primary keys
         let mut groupby_pk_batches = Vec::new();
         let mut start_idx = 0;
@@ -280,7 +278,6 @@ impl MergeStream {
             }
             groupby_pk_batches.push(batch.slice(start_idx, end_idx - start_idx));
             start_idx = end_idx;
-            debug!(end_idx = end_idx, "Group rows with the same primary keys");
         }
 
         let rows_with_same_primary_keys = &groupby_pk_batches[0];
@@ -443,8 +440,6 @@ impl ParquetReader {
         // when convert between arrow and parquet.
         let parquet_exec = builder.build();
         let sort_exec = SortPreservingMergeExec::new(sort_exprs, Arc::new(parquet_exec))
-            // TODO: make fetch size configurable.
-            .with_fetch(Some(1024))
             .with_round_robin_repartition(true);
 
         let merge_exec = MergeExec::new(
@@ -571,7 +566,7 @@ mod tests {
                 .indent(true);
         assert_eq!(
             r#"MergeExec: [primary_keys: 1, seq_idx: 2]
-  SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC], fetch=1024
+  SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC]
     ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]]
 "#,
             format!("{display_plan}")

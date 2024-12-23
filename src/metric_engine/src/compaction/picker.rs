@@ -18,7 +18,7 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use common::now;
-use tracing::debug;
+use tracing::trace;
 
 use crate::{compaction::Task, manifest::ManifestRef, sst::SstFile, types::Timestamp};
 
@@ -35,6 +35,7 @@ impl Picker {
         segment_duration: Duration,
         new_sst_max_size: u64,
         input_sst_max_num: usize,
+        input_sst_min_num: usize,
     ) -> Self {
         Self {
             manifest,
@@ -43,11 +44,15 @@ impl Picker {
                 segment_duration,
                 new_sst_max_size,
                 input_sst_max_num,
+                input_sst_min_num,
             ),
         }
     }
 
-    pub async fn pick_candidate(&self) -> Option<Task> {
+    /// This function picks a candidate for compaction.
+    /// Note: It can only execute sequentially, otherwise a SST may be picked by
+    /// multiple threads(that's why it take a mutable self).
+    pub async fn pick_candidate(&mut self) -> Option<Task> {
         let ssts = self.manifest.all_ssts().await;
         let expire_time = self.ttl.map(|ttl| (now() - ttl.as_micros() as i64).into());
         self.strategy.pick_candidate(ssts, expire_time)
@@ -58,6 +63,7 @@ pub struct TimeWindowCompactionStrategy {
     segment_duration: Duration,
     new_sst_max_size: u64,
     input_sst_max_num: usize,
+    input_sst_min_num: usize,
 }
 
 impl TimeWindowCompactionStrategy {
@@ -65,11 +71,13 @@ impl TimeWindowCompactionStrategy {
         segment_duration: Duration,
         new_sst_max_size: u64,
         input_sst_max_num: usize,
+        input_sst_min_num: usize,
     ) -> Self {
         Self {
             segment_duration,
             new_sst_max_size,
             input_sst_max_num,
+            input_sst_min_num,
         }
     }
 
@@ -80,7 +88,7 @@ impl TimeWindowCompactionStrategy {
     ) -> Option<Task> {
         let (uncompacted_files, expired_files) =
             Self::find_uncompacted_and_expired_files(ssts, expire_time);
-        debug!(uncompacted_files = ?uncompacted_files, expired_files = ?expired_files, "Begin pick candidate");
+        trace!(uncompacted_files = ?uncompacted_files, expired_files = ?expired_files, "Begin pick candidate");
 
         let files_by_segment = self.files_by_segment(uncompacted_files);
         let compaction_files = self.pick_compaction_files(files_by_segment)?;
@@ -101,7 +109,7 @@ impl TimeWindowCompactionStrategy {
             expireds: expired_files,
         };
 
-        debug!(task = ?task, "End pick candidate");
+        trace!(task = ?task, "End pick candidate");
 
         Some(task)
     }
@@ -130,14 +138,14 @@ impl TimeWindowCompactionStrategy {
         let segment_duration = self.segment_duration;
         for file in files {
             let segment = file.meta().time_range.start.truncate_by(segment_duration);
-            debug!(segment = ?segment, file = ?file);
+            trace!(segment = ?segment, file = ?file);
             files_by_segment
                 .entry(segment)
                 .or_insert_with(Vec::new)
                 .push(file);
         }
 
-        debug!(
+        trace!(
             files = ?files_by_segment,
             "Group files of similar timestamp into segment"
         );
@@ -149,13 +157,14 @@ impl TimeWindowCompactionStrategy {
         files_by_segment: BTreeMap<Timestamp, Vec<SstFile>>,
     ) -> Option<Vec<SstFile>> {
         for (segment, mut files) in files_by_segment.into_iter().rev() {
-            debug!(segment = ?segment, files = ?files, "Loop segment for pick files");
-            if files.len() < 2 {
+            trace!(segment = ?segment, files = ?files.len(), "Loop segment for pick files");
+            if files.len() < self.input_sst_min_num {
                 continue;
             }
 
             // Prefer to compact smaller files first.
             files.sort_unstable_by_key(SstFile::size);
+            trace!(sorted_files = ?files, "Sort files by size");
 
             let mut input_size = 0;
             // Suppose the comaction will reduce the size of files by 10%.
@@ -170,7 +179,7 @@ impl TimeWindowCompactionStrategy {
                 })
                 .collect::<Vec<_>>();
 
-            if compaction_files.len() >= 2 {
+            if compaction_files.len() >= self.input_sst_min_num {
                 return Some(compaction_files);
             }
         }
@@ -192,7 +201,7 @@ mod tests {
     #[test]
     fn test_pick_candidate() {
         let segment_duration = Duration::from_millis(20);
-        let strategy = TimeWindowCompactionStrategy::new(segment_duration, 9999, 10);
+        let strategy = TimeWindowCompactionStrategy::new(segment_duration, 9999, 10, 2);
 
         let ssts = (0_i64..5_i64)
             .map(|i| {

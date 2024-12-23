@@ -48,6 +48,7 @@ object_store = { workspace = true }
 parquet = { workspace = true, features = ["object_store"] }
 pb_types = { workspace = true }
 prost = { workspace = true }
+serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

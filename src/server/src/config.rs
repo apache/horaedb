@@ -18,11 +18,11 @@
 use common::ReadableDuration;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub port: u16,
-    pub write_worker_num: usize, // for test
+    pub test: TestConfig, // for test
     pub metric_engine: MetricEngineConfig,
 }
 
@@ -30,57 +30,71 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             port: 5000,
-            write_worker_num: 4,
+            test: TestConfig::default(),
             metric_engine: MetricEngineConfig::default(),
         }
     }
 }
 
-#[derive(Default, Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TestConfig {
+    pub enable_write: bool,
+    pub write_worker_num: usize,
+    pub segment_duration: ReadableDuration,
+    pub write_interval: ReadableDuration,
+}
+
+impl Default for TestConfig {
+    fn default() -> Self {
+        Self {
+            enable_write: true,
+            write_worker_num: 1,
+            segment_duration: ReadableDuration::hours(12),
+            write_interval: ReadableDuration::millis(500),
+        }
+    }
+}
+
+#[derive(Default, Debug, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct MetricEngineConfig {
-    pub manifest: ManifestConfig,
-    pub sst: SstConfig,
+    pub threads: ThreadConfig,
     pub storage: StorageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
-pub struct ManifestConfig {
-    pub background_thread_num: usize,
+#[serde(default, deny_unknown_fields)]
+pub struct ThreadConfig {
+    pub manifest_thread_num: usize,
+    pub sst_thread_num: usize,
 }
 
-impl Default for ManifestConfig {
+impl Default for ThreadConfig {
     fn default() -> Self {
         Self {
-            background_thread_num: 2,
+            manifest_thread_num: 2,
+            sst_thread_num: 2,
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
-pub struct SstConfig {
-    pub background_thread_num: usize,
-}
-
-impl Default for SstConfig {
-    fn default() -> Self {
-        Self {
-            background_thread_num: 2,
-        }
-    }
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct StorageConfig {
+    pub object_store: ObjectStorageConfig,
+    pub time_merge_storage: metric_engine::config::StorageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(tag = "type")]
+#[serde(tag = "type", deny_unknown_fields)]
 #[allow(clippy::large_enum_variant)]
-pub enum StorageConfig {
+pub enum ObjectStorageConfig {
     Local(LocalStorageConfig),
     S3Like(S3LikeStorageConfig),
 }
 
-impl Default for StorageConfig {
+impl Default for ObjectStorageConfig {
     fn default() -> Self {
         Self::Local(LocalStorageConfig::default())
     }
@@ -100,6 +114,7 @@ impl Default for LocalStorageConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct S3LikeStorageConfig {
     pub region: String,
     pub key_id: String,
@@ -116,6 +131,7 @@ pub struct S3LikeStorageConfig {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct HttpOptions {
     pub pool_max_idle_per_host: usize,
     pub timeout: ReadableDuration,

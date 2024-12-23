@@ -49,15 +49,13 @@ use parquet::{
 use tokio::runtime::Runtime;
 
 use crate::{
-    compaction::{CompactionScheduler, SchedulerConfig},
+    compaction::CompactionScheduler,
+    config::{StorageConfig, WriteConfig},
     ensure,
     manifest::{Manifest, ManifestRef},
     read::ParquetReader,
-    sst::{allocate_id, FileMeta, SstPathGenerator},
-    types::{
-        ObjectStoreRef, StorageOptions, StorageSchema, TimeRange, WriteOptions, WriteResult,
-        SEQ_COLUMN_NAME,
-    },
+    sst::{FileMeta, SstFile, SstPathGenerator},
+    types::{ObjectStoreRef, StorageSchema, TimeRange, WriteResult, SEQ_COLUMN_NAME},
     Result,
 };
 
@@ -146,7 +144,7 @@ impl CloudObjectStorage {
         store: ObjectStoreRef,
         arrow_schema: SchemaRef,
         num_primary_keys: usize,
-        storage_opts: StorageOptions,
+        storage_opts: StorageConfig,
         runtimes: StorageRuntimes,
     ) -> Result<Self> {
         let schema = {
@@ -177,18 +175,17 @@ impl CloudObjectStorage {
             path.clone(),
             store.clone(),
             runtimes.manifest_compact_runtime.clone(),
-            storage_opts.manifest_merge_opts,
+            storage_opts.manifest,
         )
         .await?;
         let manifest = Arc::new(manifest);
-        let write_props = Self::build_write_props(storage_opts.write_opts, num_primary_keys);
+        let write_props = Self::build_write_props(storage_opts.write, num_primary_keys);
         let sst_path_gen = Arc::new(SstPathGenerator::new(path.clone()));
         let parquet_reader = Arc::new(ParquetReader::new(
             store.clone(),
             schema.clone(),
             sst_path_gen.clone(),
         ));
-
         let compact_scheduler = CompactionScheduler::new(
             runtimes.sst_compact_runtime.clone(),
             manifest.clone(),
@@ -197,10 +194,8 @@ impl CloudObjectStorage {
             segment_duration,
             sst_path_gen.clone(),
             parquet_reader.clone(),
-            SchedulerConfig {
-                write_props: write_props.clone(),
-                ..Default::default()
-            },
+            storage_opts.scheduler,
+            write_props.clone(),
         );
         Ok(Self {
             path,
@@ -217,7 +212,7 @@ impl CloudObjectStorage {
     }
 
     async fn write_batch(&self, batch: RecordBatch) -> Result<WriteResult> {
-        let file_id = allocate_id();
+        let file_id = SstFile::allocate_id();
         let file_path = self.sst_path_gen.generate(file_id);
         let file_path = Path::from(file_path);
         let object_store_writer = ParquetObjectWriter::new(self.store.clone(), file_path.clone());
@@ -290,7 +285,7 @@ impl CloudObjectStorage {
         Ok(res)
     }
 
-    fn build_write_props(write_options: WriteOptions, num_primary_key: usize) -> WriterProperties {
+    fn build_write_props(write_options: WriteConfig, num_primary_key: usize) -> WriterProperties {
         let sorting_columns = write_options.enable_sorting_columns.then(|| {
             (0..num_primary_key)
                 .map(|i| {
@@ -305,8 +300,8 @@ impl CloudObjectStorage {
             .set_sorting_columns(sorting_columns)
             .set_dictionary_enabled(write_options.enable_dict)
             .set_bloom_filter_enabled(write_options.enable_bloom_filter)
-            .set_encoding(write_options.encoding)
-            .set_compression(write_options.compression);
+            .set_encoding(write_options.encoding.into())
+            .set_compression(write_options.compression.into());
 
         if write_options.column_options.is_none() {
             return builder.build();
@@ -322,10 +317,10 @@ impl CloudObjectStorage {
                     builder.set_column_bloom_filter_enabled(col_path.clone(), enable_bloom_filter);
             }
             if let Some(encoding) = col_opt.encoding {
-                builder = builder.set_column_encoding(col_path.clone(), encoding);
+                builder = builder.set_column_encoding(col_path.clone(), encoding.into());
             }
             if let Some(compression) = col_opt.compression {
-                builder = builder.set_column_compression(col_path, compression);
+                builder = builder.set_column_compression(col_path, compression.into());
             }
         }
 
@@ -433,7 +428,7 @@ mod tests {
                 store,
                 schema.clone(),
                 2, // num_primary_keys
-                StorageOptions::default(),
+                StorageConfig::default(),
                 runtimes,
             )
             .await
@@ -509,7 +504,7 @@ mod tests {
                 store,
                 schema.clone(),
                 1,
-                StorageOptions::default(),
+                StorageConfig::default(),
                 runtimes,
             )
             .await

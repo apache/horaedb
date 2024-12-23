@@ -29,6 +29,7 @@ use tracing::{info, warn};
 use super::{executor::Executor, picker::Picker};
 use crate::{
     compaction::Task,
+    config::SchedulerConfig,
     manifest::ManifestRef,
     read::ParquetReader,
     sst::SstPathGenerator,
@@ -56,13 +57,14 @@ impl Scheduler {
         sst_path_gen: Arc<SstPathGenerator>,
         parquet_reader: Arc<ParquetReader>,
         config: SchedulerConfig,
+        write_props: WriterProperties,
     ) -> Self {
         let (task_tx, task_rx) = mpsc::channel(config.max_pending_compaction_tasks);
         let (trigger_tx, trigger_rx) = mpsc::channel::<()>(1);
         let task_handle = {
             let store = store.clone();
             let manifest = manifest.clone();
-            let write_props = config.write_props.clone();
+            let trigger_tx = trigger_tx.clone();
             let executor = Executor::new(
                 runtime.clone(),
                 store,
@@ -72,6 +74,7 @@ impl Scheduler {
                 parquet_reader,
                 write_props,
                 config.memory_limit,
+                trigger_tx.clone(),
             );
 
             runtime.spawn(async move {
@@ -86,6 +89,7 @@ impl Scheduler {
                     segment_duration,
                     config.new_sst_max_size,
                     config.input_sst_max_num,
+                    config.input_sst_min_num,
                 );
                 Self::generate_task_loop(task_tx, trigger_rx, picker, config.schedule_interval)
                     .await;
@@ -109,6 +113,7 @@ impl Scheduler {
     }
 
     async fn recv_task_loop(mut task_rx: Receiver<Task>, executor: Executor) {
+        info!("Scheduler receive task started");
         while let Some(task) = task_rx.recv().await {
             executor.submit(task);
         }
@@ -117,61 +122,40 @@ impl Scheduler {
     async fn generate_task_loop(
         task_tx: Sender<Task>,
         mut trigger_rx: Receiver<()>,
-        picker: Picker,
+        mut picker: Picker,
         schedule_interval: Duration,
     ) {
         info!(
             schedule_interval = ?schedule_interval,
-            "Scheduler generate task started"
+            "Scheduler generate task loop started"
         );
+        let send_task = |task| {
+            if let Err(e) = task_tx.try_send(task) {
+                warn!("Send task failed, err:{e:?}");
+            }
+        };
+
+        // Generate one task immediately
+        if let Some(task) = picker.pick_candidate().await {
+            send_task(task);
+        }
         loop {
             tokio::select! {
                 _ = sleep(schedule_interval) => {
                     if let Some(task) = picker.pick_candidate().await {
-                        if let Err(e) = task_tx.try_send(task) {
-                            warn!("Send task failed, err:{e}");
-                        }
+                        send_task(task);
                     }
                 }
                 signal = trigger_rx.recv() => {
                     if signal.is_none() {
-                        info!("Scheduler generate task stopped");
-                        break;
+                        info!("Scheduler generate task loop stopped");
+                        return;
                     }
                     if let Some(task) = picker.pick_candidate().await {
-                        if let Err(e) = task_tx.try_send(task) {
-                            warn!("Send task failed, err:{e}");
-                        }
+                        send_task(task);
                     }
                 }
             }
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct SchedulerConfig {
-    pub schedule_interval: Duration,
-    pub max_pending_compaction_tasks: usize,
-    // Runner config
-    pub memory_limit: u64,
-    pub write_props: WriterProperties,
-    // Picker config
-    pub ttl: Option<Duration>,
-    pub new_sst_max_size: u64,
-    pub input_sst_max_num: usize,
-}
-
-impl Default for SchedulerConfig {
-    fn default() -> Self {
-        Self {
-            schedule_interval: Duration::from_secs(30),
-            max_pending_compaction_tasks: 10,
-            memory_limit: bytesize::gb(3_u64),
-            write_props: WriterProperties::default(),
-            ttl: None,
-            new_sst_max_size: bytesize::gb(1_u64),
-            input_sst_max_num: 10,
         }
     }
 }

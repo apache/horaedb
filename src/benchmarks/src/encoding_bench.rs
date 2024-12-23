@@ -19,7 +19,7 @@
 
 use bytes::Bytes;
 use metric_engine::{
-    manifest::{ManifestUpdate, Snapshot},
+    manifest::Snapshot,
     sst::{FileMeta, SstFile},
 };
 
@@ -43,11 +43,7 @@ impl EncodingBench {
         );
         let sstfiles = vec![sstfile.clone(); config.record_count];
         let mut snapshot = Snapshot::try_from(Bytes::new()).unwrap();
-        let update = ManifestUpdate {
-            to_adds: sstfiles,
-            to_deletes: vec![],
-        };
-        let _ = snapshot.merge_update(update);
+        snapshot.add_records(sstfiles);
 
         EncodingBench {
             raw_bytes: snapshot.into_bytes().unwrap(),
@@ -60,11 +56,7 @@ impl EncodingBench {
         // first decode snapshot and then append with delta sstfiles, serialize to bytes
         // at last
         let mut snapshot = Snapshot::try_from(self.raw_bytes.clone()).unwrap();
-        let update = ManifestUpdate {
-            to_adds: self.to_append.clone(),
-            to_deletes: vec![],
-        };
-        let _ = snapshot.merge_update(update);
+        snapshot.add_records(self.to_append.clone());
         let _ = snapshot.into_bytes();
     }
 }

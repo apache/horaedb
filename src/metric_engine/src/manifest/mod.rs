@@ -18,10 +18,10 @@
 mod encoding;
 use std::{
     sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
+        atomic::{AtomicU64, AtomicUsize, Ordering},
+        Arc, LazyLock,
     },
-    time::Duration,
+    time::{Duration, SystemTime},
 };
 
 use anyhow::Context;
@@ -29,24 +29,38 @@ use async_scoped::TokioScope;
 use bytes::Bytes;
 pub use encoding::{ManifestUpdate, Snapshot};
 use futures::{StreamExt, TryStreamExt};
+use itertools::Itertools;
 use object_store::{path::Path, PutPayload};
 use prost::Message;
 use tokio::sync::{
     mpsc::{self, Receiver, Sender},
     RwLock,
 };
-use tracing::error;
-use uuid::Uuid;
+use tracing::{debug, error, info, trace};
 
 use crate::{
+    config::ManifestConfig,
     sst::{FileId, FileMeta, SstFile},
-    types::{ManifestMergeOptions, ObjectStoreRef, RuntimeRef, TimeRange},
+    types::{ObjectStoreRef, RuntimeRef, TimeRange},
     AnyhowError, Result,
 };
 
 pub const PREFIX_PATH: &str = "manifest";
 pub const SNAPSHOT_FILENAME: &str = "snapshot";
 pub const DELTA_PREFIX: &str = "delta";
+
+// Used for manifest delta filename
+// This number mustn't go backwards on restarts, otherwise file id
+// collisions are possible. So don't change time on the server
+// between server restarts.
+static NEXT_ID: LazyLock<AtomicU64> = LazyLock::new(|| {
+    AtomicU64::new(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64,
+    )
+});
 
 pub type ManifestRef = Arc<Manifest>;
 
@@ -63,7 +77,7 @@ impl Manifest {
         root_dir: String,
         store: ObjectStoreRef,
         runtime: RuntimeRef,
-        merge_options: ManifestMergeOptions,
+        merge_options: ManifestConfig,
     ) -> Result<Self> {
         let snapshot_path = Path::from(format!("{root_dir}/{PREFIX_PATH}/{SNAPSHOT_FILENAME}"));
         let delta_dir = Path::from(format!("{root_dir}/{PREFIX_PATH}/{DELTA_PREFIX}"));
@@ -75,7 +89,13 @@ impl Manifest {
             merge_options,
         )
         .await?;
-
+        let snapshot = read_snapshot(&store, &snapshot_path).await?;
+        let ssts = snapshot.into_ssts();
+        debug!(
+            sst_len = ssts.len(),
+            first_100 = ?ssts.iter().take(100),
+            "Load manifest snapshot when startup"
+        );
         {
             let merger = merger.clone();
             // Start merger in background
@@ -83,9 +103,6 @@ impl Manifest {
                 merger.run().await;
             });
         }
-
-        let snapshot = read_snapshot(&store, &snapshot_path).await?;
-        let ssts = snapshot.into_ssts();
 
         Ok(Self {
             delta_dir,
@@ -102,7 +119,17 @@ impl Manifest {
 
     pub async fn update(&self, update: ManifestUpdate) -> Result<()> {
         self.merger.maybe_schedule_merge().await?;
-        let path = Path::from(format!("{}/{}", self.delta_dir, Uuid::new_v4()));
+        self.merger.inc_delta_num();
+        let res = self.update_inner(update).await;
+        if res.is_err() {
+            self.merger.dec_delta_num();
+        }
+
+        res
+    }
+
+    pub async fn update_inner(&self, update: ManifestUpdate) -> Result<()> {
+        let path = Path::from(format!("{}/{}", self.delta_dir, Self::allocate_id()));
         let pb_update = pb_types::ManifestUpdate::from(update.clone());
         let mut buf: Vec<u8> = Vec::with_capacity(pb_update.encoded_len());
         pb_update
@@ -126,9 +153,6 @@ impl Manifest {
             ssts.retain(|file| !update.to_deletes.contains(&file.id()));
         }
 
-        // 3. Update delta files num
-        self.merger.add_delta_num();
-
         Ok(())
     }
 
@@ -146,6 +170,10 @@ impl Manifest {
             .cloned()
             .collect()
     }
+
+    fn allocate_id() -> u64 {
+        NEXT_ID.fetch_add(1, Ordering::SeqCst)
+    }
 }
 
 enum MergeType {
@@ -160,7 +188,7 @@ struct ManifestMerger {
     sender: Sender<MergeType>,
     receiver: RwLock<Receiver<MergeType>>,
     deltas_num: AtomicUsize,
-    merge_options: ManifestMergeOptions,
+    merge_options: ManifestConfig,
 }
 
 impl ManifestMerger {
@@ -168,7 +196,7 @@ impl ManifestMerger {
         snapshot_path: Path,
         delta_dir: Path,
         store: ObjectStoreRef,
-        merge_options: ManifestMergeOptions,
+        merge_options: ManifestConfig,
     ) -> Result<Arc<Self>> {
         let (tx, rx) = mpsc::channel(merge_options.channel_size);
         let merger = Self {
@@ -177,11 +205,12 @@ impl ManifestMerger {
             store,
             sender: tx,
             receiver: RwLock::new(rx),
+            // Init this to 0, because we will merge all delta files when startup.
             deltas_num: AtomicUsize::new(0),
             merge_options,
         };
         // Merge all delta files when startup
-        merger.do_merge().await?;
+        merger.do_merge(true /* first_run */).await?;
 
         Ok(Arc::new(merger))
     }
@@ -189,18 +218,19 @@ impl ManifestMerger {
     async fn run(&self) {
         let merge_interval = Duration::from_secs(self.merge_options.merge_interval_seconds as u64);
         let mut receiver = self.receiver.write().await;
+        info!(merge_interval = ?merge_interval, "Start manifest merge background job");
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(merge_interval) => {
                     if self.deltas_num.load(Ordering::Relaxed) > self.merge_options.min_merge_threshold {
-                        if let Err(err) = self.do_merge().await {
+                        if let Err(err) = self.do_merge(false /*first_run*/).await {
                             error!("Failed to merge delta, err:{err}");
                         }
                     }
                 }
                 _merge_type = receiver.recv() => {
                     if self.deltas_num.load(Ordering::Relaxed) > self.merge_options.min_merge_threshold {
-                        if let Err(err) = self.do_merge().await {
+                        if let Err(err) = self.do_merge(false /*first_run*/).await {
                             error!("Failed to merge delta, err:{err}");
                         }
                     }
@@ -211,17 +241,17 @@ impl ManifestMerger {
 
     fn schedule_merge(&self, task: MergeType) {
         if let Err(err) = self.sender.try_send(task) {
-            error!("Failed to send merge task, err:{err}");
+            trace!("Failed to send merge task, err:{err}");
         }
     }
 
     async fn maybe_schedule_merge(&self) -> Result<()> {
         let current_num = self.deltas_num.load(Ordering::Relaxed);
-
-        if current_num > self.merge_options.hard_merge_threshold {
+        let hard_limit = self.merge_options.hard_merge_threshold;
+        if current_num > hard_limit {
             self.schedule_merge(MergeType::Hard);
             return Err(AnyhowError::msg(format!(
-                "Manifest has too many delta files, value:{current_num}"
+                "Manifest has too many delta files, value:{current_num}, hard_limit:{hard_limit}"
             ))
             .into());
         } else if current_num > self.merge_options.soft_merge_threshold {
@@ -231,14 +261,23 @@ impl ManifestMerger {
         Ok(())
     }
 
-    fn add_delta_num(&self) {
-        self.deltas_num.fetch_add(1, Ordering::Relaxed);
+    fn inc_delta_num(&self) {
+        let prev = self.deltas_num.fetch_add(1, Ordering::Relaxed);
+        trace!(prev, "inc delta num");
     }
 
-    async fn do_merge(&self) -> Result<()> {
+    fn dec_delta_num(&self) {
+        let prev = self.deltas_num.fetch_sub(1, Ordering::Relaxed);
+        trace!(prev, "dec delta num");
+    }
+
+    async fn do_merge(&self, first_run: bool) -> Result<()> {
         let paths = list_delta_paths(&self.store, &self.delta_dir).await?;
         if paths.is_empty() {
             return Ok(());
+        }
+        if first_run {
+            self.deltas_num.store(paths.len(), Ordering::Relaxed);
         }
 
         let (_, results) = TokioScope::scope_and_block(|scope| {
@@ -248,10 +287,17 @@ impl ManifestMerger {
         });
 
         let mut snapshot = read_snapshot(&self.store, &self.snapshot_path).await?;
+        trace!(sst_ids = ?snapshot.records.iter().map(|r| r.id()).collect_vec(), "Before snapshot merge deltas");
+        // Since the deltas is unsorted, so we have to first add all new files, then
+        // delete old files.
+        let mut to_deletes = Vec::new();
         for res in results {
             let manifest_update = res.context("Failed to join read delta files task")??;
-            snapshot.merge_update(manifest_update)?;
+            snapshot.add_records(manifest_update.to_adds);
+            to_deletes.extend(manifest_update.to_deletes);
         }
+        snapshot.delete_records(to_deletes);
+        trace!(sst_ids = ?snapshot.records.iter().map(|r| r.id()).collect_vec(), "After snapshot merge deltas");
         let snapshot_bytes = snapshot.into_bytes()?;
         let put_payload = PutPayload::from_bytes(snapshot_bytes);
         // 1. Persist the snapshot
@@ -263,6 +309,7 @@ impl ManifestMerger {
         // 2. Delete the merged manifest files
         let (_, results) = TokioScope::scope_and_block(|scope| {
             for path in &paths {
+                trace!(path = ?path, "delete delta file");
                 scope.spawn(async { delete_delta_file(&self.store, path).await });
             }
         });
@@ -276,7 +323,7 @@ impl ManifestMerger {
                     if let Err(e) = v {
                         error!("Failed to delete delta, err:{e}")
                     } else {
-                        self.deltas_num.fetch_sub(1, Ordering::Relaxed);
+                        self.dec_delta_num();
                     }
                 }
             }
@@ -367,7 +414,7 @@ mod tests {
                 root_dir.path().to_string_lossy().to_string(),
                 store,
                 runtime.clone(),
-                ManifestMergeOptions::default(),
+                ManifestConfig::default(),
             )
             .await
             .unwrap();
@@ -424,7 +471,7 @@ mod tests {
                 root_dir,
                 store.clone(),
                 runtime.clone(),
-                ManifestMergeOptions {
+                ManifestConfig {
                     merge_interval_seconds: 1,
                     ..Default::default()
                 },

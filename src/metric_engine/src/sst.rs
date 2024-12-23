@@ -16,6 +16,7 @@
 // under the License.
 
 use std::{
+    fmt,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, LazyLock,
@@ -31,11 +32,34 @@ use crate::{
 
 const PREFIX_PATH: &str = "data";
 
+// Used for sst file id allocation.
+// This number mustn't go backwards on restarts, otherwise file id
+// collisions are possible. So don't change time on the server
+// between server restarts.
+static NEXT_ID: LazyLock<AtomicU64> = LazyLock::new(|| {
+    AtomicU64::new(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64,
+    )
+});
+
 pub type FileId = u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SstFile {
     inner: Arc<Inner>,
+}
+
+impl fmt::Debug for SstFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SstFile")
+            .field("id", &self.id())
+            .field("meta", &self.meta())
+            .field("in_compaction", &self.is_compaction())
+            .finish()
+    }
 }
 
 #[derive(Debug)]
@@ -91,6 +115,10 @@ impl SstFile {
 
     pub fn size(&self) -> u32 {
         self.meta().size
+    }
+
+    pub fn allocate_id() -> FileId {
+        NEXT_ID.fetch_add(1, Ordering::SeqCst)
     }
 }
 
@@ -159,23 +187,6 @@ impl From<FileMeta> for pb_types::SstMeta {
             }),
         }
     }
-}
-
-// Used for sst file id allocation.
-// This number mustn't go backwards on restarts, otherwise file id
-// collisions are possible. So don't change time on the server
-// between server restarts.
-static NEXT_ID: LazyLock<AtomicU64> = LazyLock::new(|| {
-    AtomicU64::new(
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos() as u64,
-    )
-});
-
-pub fn allocate_id() -> u64 {
-    NEXT_ID.fetch_add(1, Ordering::SeqCst)
 }
 
 #[derive(Debug, Clone)]
