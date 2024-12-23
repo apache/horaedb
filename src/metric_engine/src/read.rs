@@ -42,8 +42,9 @@ use datafusion::{
     parquet::arrow::async_reader::AsyncFileReader,
     physical_expr::{create_physical_expr, LexOrdering},
     physical_plan::{
-        metrics::ExecutionPlanMetricsSet, sorts::sort_preserving_merge::SortPreservingMergeExec,
-        DisplayAs, Distribution, ExecutionPlan, PlanProperties,
+        filter::FilterExec, metrics::ExecutionPlanMetricsSet,
+        sorts::sort_preserving_merge::SortPreservingMergeExec, DisplayAs, Distribution,
+        ExecutionPlan, PlanProperties,
     },
     physical_planner::create_physical_sort_exprs,
     prelude::{ident, Expr},
@@ -430,17 +431,28 @@ impl ParquetReader {
         let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
             Arc::new(DefaultParquetFileReaderFactory::new(self.store.clone())),
         );
-        if let Some(expr) = conjunction(predicates) {
-            let filters = create_physical_expr(&expr, &df_schema, &ExecutionProps::new())
-                .context("create physical expr")?;
-            builder = builder.with_predicate(filters);
-        }
+        let plan: Arc<dyn ExecutionPlan> = match conjunction(predicates) {
+            Some(expr) => {
+                let filters = create_physical_expr(&expr, &df_schema, &ExecutionProps::new())
+                    .context("create physical expr")?;
+
+                builder = builder.with_predicate(filters.clone());
+                let parquet_exec = builder.build();
+
+                let filter_exec = FilterExec::try_new(filters, Arc::new(parquet_exec))
+                    .context("create filter exec")?;
+                Arc::new(filter_exec)
+            }
+            None => {
+                let parquet_exec = builder.build();
+                Arc::new(parquet_exec)
+            }
+        };
 
         // TODO: fetch using multiple threads since read from parquet will incur CPU
         // when convert between arrow and parquet.
-        let parquet_exec = builder.build();
-        let sort_exec = SortPreservingMergeExec::new(sort_exprs, Arc::new(parquet_exec))
-            .with_round_robin_repartition(true);
+        let sort_exec =
+            SortPreservingMergeExec::new(sort_exprs, plan).with_round_robin_repartition(true);
 
         let merge_exec = MergeExec::new(
             Arc::new(sort_exec),
