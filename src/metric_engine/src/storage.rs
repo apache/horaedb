@@ -491,7 +491,7 @@ mod tests {
             check_stream(result_stream, expected_batch).await;
 
             // test with predicate
-            let expr = col("pk1").eq(lit(11 as u8));
+            let expr = col("pk1").eq(lit(11_u8));
             let result_stream = storage
                 .scan(ScanRequest {
                     range: TimeRange::new(Timestamp(0), Timestamp::MAX),
