@@ -20,6 +20,9 @@ version = "2.2.0-alpha"
 authors = ["HoraeDB Authors"]
 edition = "2021"
 license = "Apache-2.0"
+repository = "https://github.com/apache/horaedb"
+homepage = "https://horaedb.apache.org/"
+description = "A high-performance, distributed, cloud native time-series database."
 
 [workspace]
 resolver = "2"
