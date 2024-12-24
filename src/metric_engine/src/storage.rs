@@ -380,6 +380,7 @@ impl TimeMergeStorage for CloudObjectStorage {
                 ssts,
                 req.projections.clone(),
                 req.predicate.clone(),
+                false, // keep_sequence
             )?;
 
             plan_for_all_segments.push(plan);

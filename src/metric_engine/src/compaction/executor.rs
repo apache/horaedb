@@ -21,7 +21,6 @@ use std::sync::{
 };
 
 use anyhow::Context;
-use arrow::array::{RecordBatch, UInt64Array};
 use async_scoped::TokioScope;
 use datafusion::{execution::TaskContext, physical_plan::execute_stream};
 use futures::StreamExt;
@@ -38,7 +37,7 @@ use crate::{
     ensure,
     manifest::{ManifestRef, ManifestUpdate},
     read::ParquetReader,
-    sst::{FileMeta, SstFile, SstPathGenerator},
+    sst::{FileId, FileMeta, SstFile, SstPathGenerator},
     types::{ObjectStoreRef, RuntimeRef, StorageSchema},
     Result,
 };
@@ -162,10 +161,12 @@ impl Executor {
         for f in &task.inputs[1..] {
             time_range.merge(&f.meta().time_range);
         }
-        let plan =
-            self.inner
-                .parquet_reader
-                .build_df_plan(task.inputs.clone(), None, Vec::new())?;
+        let plan = self.inner.parquet_reader.build_df_plan(
+            task.inputs.clone(),
+            None,       // projection
+            Vec::new(), // predicate
+            true,       // keep_sequence
+        )?;
         let mut stream = execute_stream(plan, Arc::new(TaskContext::default()))
             .context("execute datafusion plan")?;
 
@@ -185,16 +186,7 @@ impl Executor {
         while let Some(batch) = stream.next().await {
             let batch = batch.context("execute plan")?;
             num_rows += batch.num_rows();
-            let batch_with_seq = {
-                let mut new_cols = batch.columns().to_vec();
-                // Since file_id in increasing order, we can use it as sequence.
-                let seq_column = Arc::new(UInt64Array::from(vec![file_id; batch.num_rows()]));
-                new_cols.push(seq_column);
-                RecordBatch::try_new(self.inner.schema.arrow_schema.clone(), new_cols)
-                    .context("construct record batch with seq column")?
-            };
-
-            writer.write(&batch_with_seq).await.context("write batch")?;
+            writer.write(&batch).await.context("write batch")?;
         }
         writer.close().await.context("close writer")?;
         let object_meta = self
@@ -225,9 +217,16 @@ impl Executor {
 
         // From now on, no error should be returned!
         // Because we have already updated manifest.
+        self.delete_ssts(to_deletes.into_iter());
+        Ok(())
+    }
 
+    fn delete_ssts<I>(&self, ids: I)
+    where
+        I: Iterator<Item = FileId>,
+    {
         let (_, results) = TokioScope::scope_and_block(|scope| {
-            for id in to_deletes {
+            for id in ids {
                 let path = Path::from(self.inner.sst_path_gen.generate(id));
                 trace!(id, "Delete sst file");
                 scope.spawn(async move {
@@ -251,8 +250,6 @@ impl Executor {
                 }
             }
         }
-
-        Ok(())
     }
 }
 

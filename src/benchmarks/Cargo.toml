@@ -17,18 +17,13 @@
 
 [package]
 name = "benchmarks"
-
-[package.license]
-workspace = true
-
-[package.version]
-workspace = true
-
-[package.authors]
-workspace = true
-
-[package.edition]
-workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description.workspace = true
 
 [dependencies]
 bytes = { workspace = true }

@@ -105,6 +105,8 @@ pub(crate) struct MergeExec {
     seq_idx: usize,
     /// Operator to merge values when primary keys are the same
     value_operator: Arc<dyn MergeOperator>,
+    /// Whether to keep the sequence column in the output
+    keep_sequence: bool,
 }
 
 impl MergeExec {
@@ -113,12 +115,14 @@ impl MergeExec {
         num_primary_keys: usize,
         seq_idx: usize,
         value_operator: Arc<dyn MergeOperator>,
+        keep_sequence: bool,
     ) -> Self {
         Self {
             input,
             num_primary_keys,
             seq_idx,
             value_operator,
+            keep_sequence,
         }
     }
 }
@@ -130,8 +134,8 @@ impl DisplayAs for MergeExec {
     ) -> std::fmt::Result {
         write!(
             f,
-            "MergeExec: [primary_keys: {}, seq_idx: {}]",
-            self.num_primary_keys, self.seq_idx
+            "MergeExec: [primary_keys: {}, seq_idx: {}, keep_sequence: {}]",
+            self.num_primary_keys, self.seq_idx, self.keep_sequence
         )?;
         Ok(())
     }
@@ -171,6 +175,7 @@ impl ExecutionPlan for MergeExec {
             self.num_primary_keys,
             self.seq_idx,
             self.value_operator.clone(),
+            self.keep_sequence,
         )))
     }
 
@@ -188,6 +193,7 @@ impl ExecutionPlan for MergeExec {
             self.num_primary_keys,
             self.seq_idx,
             self.value_operator.clone(),
+            self.keep_sequence,
         )))
     }
 }
@@ -197,6 +203,7 @@ struct MergeStream {
     num_primary_keys: usize,
     seq_idx: usize,
     value_operator: MergeOperatorRef,
+    keep_sequence: bool,
 
     pending_batch: Option<RecordBatch>,
     arrow_schema: SchemaRef,
@@ -208,28 +215,37 @@ impl MergeStream {
         num_primary_keys: usize,
         seq_idx: usize,
         value_operator: MergeOperatorRef,
+        keep_sequence: bool,
     ) -> Self {
-        let fields = stream
-            .schema()
-            .fields()
-            .into_iter()
-            .filter_map(|f| {
-                if f.name() == SEQ_COLUMN_NAME {
-                    None
-                } else {
-                    Some(f.clone())
-                }
-            })
-            .collect_vec();
-        let arrow_schema = Arc::new(Schema::new_with_metadata(
-            fields,
-            stream.schema().metadata.clone(),
-        ));
+        let arrow_schema = if keep_sequence {
+            let schema = stream.schema();
+            let found_seq = schema.fields().iter().any(|f| f.name() == SEQ_COLUMN_NAME);
+            assert!(found_seq, "Sequence column not found");
+            schema
+        } else {
+            let fields = stream
+                .schema()
+                .fields()
+                .into_iter()
+                .filter_map(|f| {
+                    if f.name() == SEQ_COLUMN_NAME {
+                        None
+                    } else {
+                        Some(f.clone())
+                    }
+                })
+                .collect_vec();
+            Arc::new(Schema::new_with_metadata(
+                fields,
+                stream.schema().metadata.clone(),
+            ))
+        };
         Self {
             stream,
             num_primary_keys,
             seq_idx,
             value_operator,
+            keep_sequence,
             pending_batch: None,
             arrow_schema,
         }
@@ -313,6 +329,10 @@ impl MergeStream {
 
         let mut output_batches =
             concat_batches(&self.stream.schema(), output_batches.iter()).context("concat batch")?;
+        if self.keep_sequence {
+            return Ok(Some(output_batches));
+        }
+
         // Remove seq column
         output_batches.remove_column(self.seq_idx);
         Ok(Some(output_batches))
@@ -331,7 +351,9 @@ impl Stream for MergeStream {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(None) => {
                     let value = if let Some(mut pending) = self.pending_batch.take() {
-                        pending.remove_column(self.seq_idx);
+                        if !self.keep_sequence {
+                            pending.remove_column(self.seq_idx);
+                        }
                         let res = self
                             .value_operator
                             .merge(pending)
@@ -407,6 +429,7 @@ impl ParquetReader {
         ssts: Vec<SstFile>,
         projections: Option<Vec<usize>>,
         predicates: Vec<Expr>,
+        keep_sequence: bool,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         // we won't use url for selecting object_store.
         let dummy_url = ObjectStoreUrl::parse("empty://").unwrap();
@@ -464,6 +487,7 @@ impl ParquetReader {
                     Arc::new(BytesMergeOperator::new(self.schema.value_idxes.clone()))
                 }
             },
+            keep_sequence,
         );
         Ok(Arc::new(merge_exec))
     }
@@ -536,7 +560,9 @@ mod tests {
             .unwrap(),
         ]);
 
-        let stream = MergeStream::new(stream, 1, 2, merge_op);
+        let stream = MergeStream::new(
+            stream, 1, 2, merge_op, false, // keep_sequence
+        );
         check_stream(Box::pin(stream), expected).await;
     }
 
@@ -574,13 +600,14 @@ mod tests {
                     .collect(),
                 None,
                 vec![expr],
+                false, // keep_sequence
             )
             .unwrap();
         let display_plan =
             datafusion::physical_plan::display::DisplayableExecutionPlan::new(plan.as_ref())
                 .indent(true);
         assert_eq!(
-            r#"MergeExec: [primary_keys: 1, seq_idx: 2]
+            r#"MergeExec: [primary_keys: 1, seq_idx: 2, keep_sequence: false]
   SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC]
     FilterExec: pk1@0 = 0
       ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]], predicate=pk1@0 = 0, pruning_predicate=CASE WHEN pk1_null_count@2 = pk1_row_count@3 THEN false ELSE pk1_min@0 <= 0 AND 0 <= pk1_max@1 END, required_guarantees=[pk1 in (0)]
