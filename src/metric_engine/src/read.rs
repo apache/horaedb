@@ -217,6 +217,11 @@ impl MergeStream {
         keep_sequence: bool,
     ) -> Self {
         let arrow_schema = if keep_sequence {
+            let schema = stream.schema();
+            let found_seq = schema.fields().iter().any(|f| f.name() == SEQ_COLUMN_NAME);
+            assert!(found_seq, "Sequence column not found");
+            schema
+        } else {
             let fields = stream
                 .schema()
                 .fields()
@@ -233,8 +238,6 @@ impl MergeStream {
                 fields,
                 stream.schema().metadata.clone(),
             ))
-        } else {
-            stream.schema()
         };
         Self {
             stream,
