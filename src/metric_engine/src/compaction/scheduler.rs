@@ -64,7 +64,6 @@ impl Scheduler {
         let task_handle = {
             let store = store.clone();
             let manifest = manifest.clone();
-            let trigger_tx = trigger_tx.clone();
             let executor = Executor::new(
                 runtime.clone(),
                 store,

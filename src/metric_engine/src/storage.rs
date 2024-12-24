@@ -405,6 +405,7 @@ impl TimeMergeStorage for CloudObjectStorage {
 
 #[cfg(test)]
 mod tests {
+    use datafusion::logical_expr::{col, lit};
     use object_store::local::LocalFileSystem;
     use test_log::test;
 
@@ -488,6 +489,32 @@ mod tests {
                 .unwrap(),
             ];
 
+            check_stream(result_stream, expected_batch).await;
+
+            // test with predicate
+            let expr = col("pk1").eq(lit(11_u8));
+            let result_stream = storage
+                .scan(ScanRequest {
+                    range: TimeRange::new(Timestamp(0), Timestamp::MAX),
+                    predicate: vec![expr],
+                    projections: None,
+                })
+                .await
+                .unwrap();
+            let expected_batch = [
+                record_batch!(
+                    ("pk1", UInt8, vec![11]),
+                    ("pk2", UInt8, vec![99]),
+                    ("value", Int64, vec![77])
+                )
+                .unwrap(),
+                record_batch!(
+                    ("pk1", UInt8, vec![11]),
+                    ("pk2", UInt8, vec![100]),
+                    ("value", Int64, vec![22])
+                )
+                .unwrap(),
+            ];
             check_stream(result_stream, expected_batch).await;
         });
     }

@@ -42,8 +42,9 @@ use datafusion::{
     parquet::arrow::async_reader::AsyncFileReader,
     physical_expr::{create_physical_expr, LexOrdering},
     physical_plan::{
-        metrics::ExecutionPlanMetricsSet, sorts::sort_preserving_merge::SortPreservingMergeExec,
-        DisplayAs, Distribution, ExecutionPlan, PlanProperties,
+        filter::FilterExec, metrics::ExecutionPlanMetricsSet,
+        sorts::sort_preserving_merge::SortPreservingMergeExec, DisplayAs, Distribution,
+        ExecutionPlan, PlanProperties,
     },
     physical_planner::create_physical_sort_exprs,
     prelude::{ident, Expr},
@@ -453,17 +454,28 @@ impl ParquetReader {
         let mut builder = ParquetExec::builder(scan_config).with_parquet_file_reader_factory(
             Arc::new(DefaultParquetFileReaderFactory::new(self.store.clone())),
         );
-        if let Some(expr) = conjunction(predicates) {
-            let filters = create_physical_expr(&expr, &df_schema, &ExecutionProps::new())
-                .context("create physical expr")?;
-            builder = builder.with_predicate(filters);
-        }
+        let base_plan: Arc<dyn ExecutionPlan> = match conjunction(predicates) {
+            Some(expr) => {
+                let filters = create_physical_expr(&expr, &df_schema, &ExecutionProps::new())
+                    .context("create physical expr")?;
+
+                builder = builder.with_predicate(filters.clone());
+                let parquet_exec = builder.build();
+
+                let filter_exec = FilterExec::try_new(filters, Arc::new(parquet_exec))
+                    .context("create filter exec")?;
+                Arc::new(filter_exec)
+            }
+            None => {
+                let parquet_exec = builder.build();
+                Arc::new(parquet_exec)
+            }
+        };
 
         // TODO: fetch using multiple threads since read from parquet will incur CPU
         // when convert between arrow and parquet.
-        let parquet_exec = builder.build();
-        let sort_exec = SortPreservingMergeExec::new(sort_exprs, Arc::new(parquet_exec))
-            .with_round_robin_repartition(true);
+        let sort_exec =
+            SortPreservingMergeExec::new(sort_exprs, base_plan).with_round_robin_repartition(true);
 
         let merge_exec = MergeExec::new(
             Arc::new(sort_exec),
@@ -483,6 +495,7 @@ impl ParquetReader {
 
 #[cfg(test)]
 mod tests {
+    use datafusion::logical_expr::{col, lit};
     use object_store::local::LocalFileSystem;
     use test_log::test;
 
@@ -568,6 +581,8 @@ mod tests {
             },
             Arc::new(SstPathGenerator::new("mock".to_string())),
         );
+
+        let expr = col("pk1").eq(lit(0_u8));
         let plan = reader
             .build_df_plan(
                 (100..103)
@@ -584,7 +599,7 @@ mod tests {
                     })
                     .collect(),
                 None,
-                vec![],
+                vec![expr],
                 false, // keep_sequence
             )
             .unwrap();
@@ -594,7 +609,8 @@ mod tests {
         assert_eq!(
             r#"MergeExec: [primary_keys: 1, seq_idx: 2, keep_sequence: false]
   SortPreservingMergeExec: [pk1@0 ASC, __seq__@2 ASC]
-    ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]]
+    FilterExec: pk1@0 = 0
+      ParquetExec: file_groups={3 groups: [[mock/data/100.sst], [mock/data/101.sst], [mock/data/102.sst]]}, projection=[pk1, value, __seq__], output_orderings=[[pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC], [pk1@0 ASC, __seq__@2 ASC]], predicate=pk1@0 = 0, pruning_predicate=CASE WHEN pk1_null_count@2 = pk1_row_count@3 THEN false ELSE pk1_min@0 <= 0 AND 0 <= pk1_max@1 END, required_guarantees=[pk1 in (0)]
 "#,
             format!("{display_plan}")
         );
