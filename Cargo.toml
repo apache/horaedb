@@ -17,7 +17,7 @@
 
 [workspace.package]
 version = "2.2.0-alpha"
-authors = ["HoraeDB Authors"]
+authors = ["Apache HoraeDB(incubating) <dev@horaedb.apache.org>"]
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/apache/horaedb"
