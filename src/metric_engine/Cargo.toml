@@ -25,7 +25,6 @@ repository.workspace = true
 homepage.workspace = true
 description.workspace = true
 
-
 [dependencies]
 anyhow = { workspace = true }
 arrow = { workspace = true }
