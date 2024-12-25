@@ -20,7 +20,7 @@ use std::{collections::HashMap, time::Duration};
 use parquet::basic::{Compression, Encoding, ZstdLevel};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct SchedulerConfig {
     pub schedule_interval: Duration,
@@ -48,7 +48,7 @@ impl Default for SchedulerConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum ParquetEncoding {
     #[default]
@@ -73,7 +73,7 @@ impl From<ParquetEncoding> for Encoding {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum ParquetCompression {
     #[default]
@@ -92,7 +92,7 @@ impl From<ParquetCompression> for Compression {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct ColumnOptions {
     pub enable_dict: Option<bool>,
@@ -101,7 +101,7 @@ pub struct ColumnOptions {
     pub compression: Option<ParquetCompression>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WriteConfig {
     pub max_row_group_size: usize,
@@ -131,7 +131,7 @@ impl Default for WriteConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct ManifestConfig {
     pub channel_size: usize,
@@ -153,7 +153,7 @@ impl Default for ManifestConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct StorageConfig {
     pub write: WriteConfig,
@@ -162,7 +162,7 @@ pub struct StorageConfig {
     pub update_mode: UpdateMode,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum UpdateMode {
     #[default]
