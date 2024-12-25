@@ -15,21 +15,22 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
+use common::{ReadableDuration, ReadableSize};
 use parquet::basic::{Compression, Encoding, ZstdLevel};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct SchedulerConfig {
-    pub schedule_interval: Duration,
+    pub schedule_interval: ReadableDuration,
     pub max_pending_compaction_tasks: usize,
     // Runner config
-    pub memory_limit: u64,
+    pub memory_limit: ReadableSize,
     // Picker config
-    pub ttl: Option<Duration>,
-    pub new_sst_max_size: u64,
+    pub ttl: Option<ReadableDuration>,
+    pub new_sst_max_size: ReadableSize,
     pub input_sst_max_num: usize,
     pub input_sst_min_num: usize,
 }
@@ -37,18 +38,18 @@ pub struct SchedulerConfig {
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
-            schedule_interval: Duration::from_secs(10),
+            schedule_interval: ReadableDuration::secs(10),
             max_pending_compaction_tasks: 10,
-            memory_limit: bytesize::gb(20_u64),
+            memory_limit: ReadableSize::gb(2_u64),
             ttl: None,
-            new_sst_max_size: bytesize::gb(1_u64),
+            new_sst_max_size: ReadableSize::gb(1_u64),
             input_sst_max_num: 30,
             input_sst_min_num: 5,
         }
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum ParquetEncoding {
     #[default]
@@ -73,7 +74,7 @@ impl From<ParquetEncoding> for Encoding {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum ParquetCompression {
     #[default]
@@ -92,7 +93,7 @@ impl From<ParquetCompression> for Compression {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct ColumnOptions {
     pub enable_dict: Option<bool>,
@@ -101,7 +102,7 @@ pub struct ColumnOptions {
     pub compression: Option<ParquetCompression>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct WriteConfig {
     pub max_row_group_size: usize,
@@ -131,7 +132,7 @@ impl Default for WriteConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct ManifestConfig {
     pub channel_size: usize,
@@ -153,7 +154,7 @@ impl Default for ManifestConfig {
     }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct StorageConfig {
     pub write: WriteConfig,
@@ -162,7 +163,7 @@ pub struct StorageConfig {
     pub update_mode: UpdateMode,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub enum UpdateMode {
     #[default]
