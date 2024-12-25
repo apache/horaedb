@@ -72,7 +72,7 @@ impl Scheduler {
                 sst_path_gen,
                 parquet_reader,
                 write_props,
-                config.memory_limit,
+                config.memory_limit.0,
                 trigger_tx.clone(),
             );
 
@@ -84,13 +84,13 @@ impl Scheduler {
             runtime.spawn(async move {
                 let picker = Picker::new(
                     manifest,
-                    config.ttl,
+                    config.ttl.map(|v| v.0),
                     segment_duration,
-                    config.new_sst_max_size,
+                    config.new_sst_max_size.0,
                     config.input_sst_max_num,
                     config.input_sst_min_num,
                 );
-                Self::generate_task_loop(task_tx, trigger_rx, picker, config.schedule_interval)
+                Self::generate_task_loop(task_tx, trigger_rx, picker, config.schedule_interval.0)
                     .await;
             })
         };
