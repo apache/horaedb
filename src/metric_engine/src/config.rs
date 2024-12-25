@@ -40,7 +40,7 @@ impl Default for SchedulerConfig {
         Self {
             schedule_interval: ReadableDuration::secs(10),
             max_pending_compaction_tasks: 10,
-            memory_limit: ReadableSize::gb(20_u64),
+            memory_limit: ReadableSize::gb(2_u64),
             ttl: None,
             new_sst_max_size: ReadableSize::gb(1_u64),
             input_sst_max_num: 30,
