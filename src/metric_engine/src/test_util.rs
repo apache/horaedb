@@ -21,8 +21,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use arrow::array::RecordBatch;
-use arrow_schema::SchemaRef;
+use arrow::{array::RecordBatch, datatypes::SchemaRef};
 use datafusion::{
     error::Result as DfResult,
     execution::{RecordBatchStream, SendableRecordBatchStream},
@@ -102,9 +101,9 @@ macro_rules! create_array {
 macro_rules! record_batch {
     ($(($name: expr, $type: ident, $values: expr)),*) => {
         {
-            let schema = std::sync::Arc::new(arrow_schema::Schema::new(vec![
+            let schema = std::sync::Arc::new(arrow::datatypes::Schema::new(vec![
                 $(
-                    arrow_schema::Field::new($name, arrow_schema::DataType::$type, true),
+                    arrow::datatypes::Field::new($name, arrow::datatypes::DataType::$type, true),
                 )*
             ]));
 

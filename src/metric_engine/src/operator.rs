@@ -21,8 +21,8 @@ use anyhow::Context;
 use arrow::{
     array::{Array, BinaryArray, RecordBatch},
     buffer::OffsetBuffer,
+    datatypes::DataType,
 };
-use arrow_schema::DataType;
 use tracing::debug;
 
 use crate::{ensure, Result};

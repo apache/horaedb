@@ -18,11 +18,7 @@
 use std::{sync::Arc, time::Duration, vec};
 
 use anyhow::Context;
-use arrow::{
-    array::{RecordBatch, UInt64Array},
-    datatypes::SchemaRef,
-};
-use arrow_schema::{DataType, Field, Schema};
+use arrow::{array::RecordBatch, datatypes::SchemaRef};
 use async_trait::async_trait;
 use datafusion::{
     self,
@@ -147,30 +143,8 @@ impl CloudObjectStorage {
         storage_opts: StorageConfig,
         runtimes: StorageRuntimes,
     ) -> Result<Self> {
-        let schema = {
-            let value_idxes = (num_primary_keys..arrow_schema.fields.len()).collect::<Vec<_>>();
-            ensure!(!value_idxes.is_empty(), "no value column found");
-
-            let mut new_fields = arrow_schema.fields.clone().to_vec();
-            new_fields.push(Arc::new(Field::new(
-                SEQ_COLUMN_NAME,
-                DataType::UInt64,
-                true,
-            )));
-            let seq_idx = new_fields.len() - 1;
-            let arrow_schema = Arc::new(Schema::new_with_metadata(
-                new_fields,
-                arrow_schema.metadata.clone(),
-            ));
-            let update_mode = storage_opts.update_mode;
-            StorageSchema {
-                arrow_schema,
-                num_primary_keys,
-                seq_idx,
-                value_idxes,
-                update_mode,
-            }
-        };
+        let schema =
+            StorageSchema::try_new(arrow_schema, num_primary_keys, storage_opts.update_mode)?;
         let manifest = Manifest::try_new(
             path.clone(),
             store.clone(),
@@ -227,14 +201,9 @@ impl CloudObjectStorage {
         let mut batches = self.sort_batch(batch).await?;
         while let Some(batch) = batches.next().await {
             let batch = batch.context("get sorted batch")?;
-            let batch_with_seq = {
-                let mut new_cols = batch.columns().to_vec();
-                // Since file_id in increasing order, we can use it as sequence.
-                let seq_column = Arc::new(UInt64Array::from(vec![file_id; batch.num_rows()]));
-                new_cols.push(seq_column);
-                RecordBatch::try_new(self.schema.arrow_schema.clone(), new_cols)
-                    .context("construct record batch with seq column")?
-            };
+            // Since file_id is increasing order, we can use it as sequence.
+            let sequence = file_id;
+            let batch_with_seq = self.schema.fill_builtin_columns(batch, sequence)?;
             writer
                 .write(&batch_with_seq)
                 .await
@@ -362,7 +331,7 @@ impl TimeMergeStorage for CloudObjectStorage {
         Ok(())
     }
 
-    async fn scan(&self, req: ScanRequest) -> Result<SendableRecordBatchStream> {
+    async fn scan(&self, mut req: ScanRequest) -> Result<SendableRecordBatchStream> {
         let total_ssts = self.manifest.find_ssts(&req.range).await;
         if total_ssts.is_empty() {
             return Ok(Box::pin(EmptyRecordBatchStream::new(
@@ -375,12 +344,13 @@ impl TimeMergeStorage for CloudObjectStorage {
         });
 
         let mut plan_for_all_segments = Vec::new();
+        self.schema.fill_builtin_projections(&mut req.projections);
         for (_, ssts) in ssts_by_segment.sorted_by(|a, b| a.0.cmp(&b.0)) {
             let plan = self.parquet_reader.build_df_plan(
                 ssts,
                 req.projections.clone(),
                 req.predicate.clone(),
-                false, // keep_sequence
+                false, // keep_builtin
             )?;
 
             plan_for_all_segments.push(plan);
