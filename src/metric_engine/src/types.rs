@@ -288,7 +288,7 @@ mod tests {
         .unwrap();
         assert_eq!(new_batch, expected_batch);
 
-        let mut testcases = vec![
+        let mut testcases = [
             (None, None),
             (Some(vec![]), Some(vec![0, 1, 3, 4])),
             (Some(vec![1]), Some(vec![1, 0, 3, 4])),

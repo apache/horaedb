@@ -51,7 +51,6 @@ use datafusion::{
 use futures::{Stream, StreamExt};
 use itertools::Itertools;
 use parquet::arrow::async_reader::ParquetObjectReader;
-use tracing::debug;
 
 use crate::{
     compare_primitive_columns,
@@ -250,11 +249,11 @@ impl MergeStream {
     }
 
     fn maybe_remove_builtin_columns(&self, batch: &mut RecordBatch) {
-        debug!(batch = ?batch, keep=self.keep_builtin, "maybe_remove_builtin_columns");
         if self.keep_builtin {
             return;
         }
 
+        // builtin columns are always at the end.
         for _ in 0..BUILTIN_COLUMN_NUM {
             batch.remove_column(batch.num_columns() - 1);
         }
