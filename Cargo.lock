@@ -2159,7 +2159,6 @@ version = "2.2.0-alpha"
 dependencies = [
  "anyhow",
  "arrow",
- "arrow-schema",
  "async-scoped",
  "async-trait",
  "byteorder",

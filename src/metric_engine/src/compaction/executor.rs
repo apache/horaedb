@@ -165,7 +165,7 @@ impl Executor {
             task.inputs.clone(),
             None,       // projection
             Vec::new(), // predicate
-            true,       // keep_sequence
+            true,       // keep_builtin
         )?;
         let mut stream = execute_stream(plan, Arc::new(TaskContext::default()))
             .context("execute datafusion plan")?;
