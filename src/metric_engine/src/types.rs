@@ -199,22 +199,23 @@ impl StorageSchema {
         f.name() == SEQ_COLUMN_NAME || f.name() == RESERVED_COLUMN_NAME
     }
 
-    pub fn fill_builtin_projections(&self, projection: &mut Option<Vec<usize>>) {
+    /// Primary keys and builtin columns are required when query.
+    pub fn fill_required_projections(&self, projection: &mut Option<Vec<usize>>) {
         if let Some(proj) = projection.as_mut() {
             for i in 0..self.num_primary_keys {
                 if !proj.contains(&i) {
                     proj.push(i);
                 }
             }
+            // For builtin columns, reserved column is not used for now,
+            // so only add seq column.
             if !proj.contains(&self.seq_idx) {
                 proj.push(self.seq_idx);
-            }
-            if !proj.contains(&self.reserved_idx) {
-                proj.push(self.reserved_idx);
             }
         }
     }
 
+    /// Builtin columns are always appended to the end of the schema.
     pub fn fill_builtin_columns(
         &self,
         record_batch: RecordBatch,
@@ -290,12 +291,12 @@ mod tests {
 
         let mut testcases = [
             (None, None),
-            (Some(vec![]), Some(vec![0, 1, 3, 4])),
-            (Some(vec![1]), Some(vec![1, 0, 3, 4])),
-            (Some(vec![4]), Some(vec![4, 0, 1, 3])),
+            (Some(vec![]), Some(vec![0, 1, 3])),
+            (Some(vec![1]), Some(vec![1, 0, 3])),
+            (Some(vec![2]), Some(vec![2, 0, 1, 3])),
         ];
         for (input, expected) in testcases.iter_mut() {
-            schema.fill_builtin_projections(input);
+            schema.fill_required_projections(input);
             assert_eq!(input, expected);
         }
     }

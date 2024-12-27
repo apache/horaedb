@@ -344,7 +344,7 @@ impl TimeMergeStorage for CloudObjectStorage {
         });
 
         let mut plan_for_all_segments = Vec::new();
-        self.schema.fill_builtin_projections(&mut req.projections);
+        self.schema.fill_required_projections(&mut req.projections);
         for (_, ssts) in ssts_by_segment.sorted_by(|a, b| a.0.cmp(&b.0)) {
             let plan = self.parquet_reader.build_df_plan(
                 ssts,
