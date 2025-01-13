@@ -18,7 +18,7 @@
 //! encoding bench.
 
 use bytes::Bytes;
-use metric_engine::{
+use horaedb_storage::{
     manifest::Snapshot,
     sst::{FileMeta, SstFile},
 };

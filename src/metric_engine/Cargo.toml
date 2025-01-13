@@ -27,6 +27,7 @@ description.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+common = { workspace = true }
 horaedb_storage = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

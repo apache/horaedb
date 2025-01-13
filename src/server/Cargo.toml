@@ -31,7 +31,7 @@ arrow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 common = { workspace = true }
 futures = { workspace = true }
-metric_engine = { workspace = true }
+horaedb_storage = { workspace = true }
 object_store = { workspace = true }
 rand = "0.8"
 serde = { workspace = true }

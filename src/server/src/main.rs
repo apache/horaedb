@@ -38,7 +38,7 @@ use arrow::{
 };
 use clap::Parser;
 use config::{Config, ObjectStorageConfig};
-use metric_engine::{
+use horaedb_storage::{
     storage::{
         CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
     },

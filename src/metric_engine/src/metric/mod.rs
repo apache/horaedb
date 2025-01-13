@@ -15,10 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use horaedb_storage::storage::TimeMergeStorageRef;
-use types::GetRequest;
+use std::sync::Arc;
 
-use crate::types::Sample;
+use horaedb_storage::storage::TimeMergeStorageRef;
+
+use crate::{types::Sample, Result};
 
 pub struct MetricManager {
     inner: Arc<Inner>,
