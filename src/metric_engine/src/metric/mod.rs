@@ -26,9 +26,15 @@ pub struct MetricManager {
 }
 
 impl MetricManager {
+    pub fn new(storage: TimeMergeStorageRef) -> Self {
+        Self {
+            inner: Arc::new(Inner { storage }),
+        }
+    }
+
     /// Populate metric ids from names.
     /// If a name does not exist, it will be created on demand.
-    pub async fn populateMetricIds(&self, samples: &mut [Sample]) -> Result<()> {
+    pub async fn populate_metric_ids(&self, _samples: &mut [Sample]) -> Result<()> {
         todo!()
     }
 }

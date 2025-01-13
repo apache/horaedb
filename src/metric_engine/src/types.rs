@@ -28,10 +28,10 @@ pub struct Label {
 pub struct Sample {
     pub name: Vec<u8>,
     pub lables: Vec<Label>,
-    pub timestamp: u64,
+    pub timestamp: i64,
     pub value: f64,
     /// hash of name
     pub name_id: Option<MetricId>,
     /// hash of labels(sorted)
-    pub series_id: Option<MetricId>,
+    pub series_id: Option<SeriesId>,
 }
