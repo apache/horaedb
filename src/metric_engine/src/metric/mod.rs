@@ -15,23 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub struct MetricId(u64);
-pub struct SeriesId(u64);
+use horaedb_storage::storage::TimeMergeStorageRef;
+use types::GetRequest;
 
-pub struct Label {
-    pub name: Vec<u8>,
-    pub value: Vec<u8>,
+use crate::types::Sample;
+
+pub struct MetricManager {
+    inner: Arc<Inner>,
 }
 
-/// This is the main struct used for write, optional values will be filled in
-/// different modules.
-pub struct Sample {
-    pub name: Vec<u8>,
-    pub lables: Vec<Label>,
-    pub timestamp: u64,
-    pub value: f64,
-    /// hash of name
-    pub name_id: Option<MetricId>,
-    /// hash of labels(sorted)
-    pub series_id: Option<MetricId>,
+impl MetricManager {
+    /// Populate metric ids from names.
+    /// If a name does not exist, it will be created on demand.
+    pub async fn populateMetricIds(&self, samples: &mut [Sample]) -> Result<()> {
+        todo!()
+    }
+}
+
+struct Inner {
+    storage: TimeMergeStorageRef,
 }

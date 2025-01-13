@@ -15,8 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
+mod error;
 mod size_ext;
 mod time_ext;
 
+pub use error::{AnyhowError, Error, Result};
 pub use size_ext::ReadableSize;
 pub use time_ext::{now, ReadableDuration};

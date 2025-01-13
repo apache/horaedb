@@ -15,23 +15,22 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub struct MetricId(u64);
-pub struct SeriesId(u64);
+//! Storage Engine for metrics.
 
-pub struct Label {
-    pub name: Vec<u8>,
-    pub value: Vec<u8>,
-}
+#![feature(duration_constructors)]
+mod compaction;
+pub mod config;
+mod macros;
+pub mod manifest;
+pub mod operator;
+mod read;
+pub mod sst;
+pub mod storage;
+#[cfg(test)]
+mod test_util;
+pub mod types;
 
-/// This is the main struct used for write, optional values will be filled in
-/// different modules.
-pub struct Sample {
-    pub name: Vec<u8>,
-    pub lables: Vec<Label>,
-    pub timestamp: u64,
-    pub value: f64,
-    /// hash of name
-    pub name_id: Option<MetricId>,
-    /// hash of labels(sorted)
-    pub series_id: Option<MetricId>,
-}
+// Re-export error types.
+pub type AnyhowError = common::AnyhowError;
+pub type Error = common::Error;
+pub type Result<T> = common::Result<T>;
