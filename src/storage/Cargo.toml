@@ -16,7 +16,7 @@
 # under the License.
 
 [package]
-name = "benchmarks"
+name = "storage"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
@@ -26,19 +26,25 @@ homepage.workspace = true
 description.workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
+arrow = { workspace = true }
+async-scoped = { workspace = true }
+async-trait = { workspace = true }
+byteorder = { workspace = true }
 bytes = { workspace = true }
 common = { workspace = true }
-horaedb_storage = { workspace = true }
+datafusion = { workspace = true }
+futures = { workspace = true }
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+object_store = { workspace = true }
+parquet = { workspace = true, features = ["object_store"] }
 pb_types = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }
-toml = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
-criterion = { workspace = true }
-
-[[bench]]
-name = "bench"
-harness = false
+temp-dir = { workspace = true }
+test-log = { workspace = true, features = ["trace"] }

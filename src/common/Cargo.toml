@@ -26,5 +26,7 @@ homepage.workspace = true
 description.workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 toml = { workspace = true }

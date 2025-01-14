@@ -31,12 +31,14 @@ members = [
     "src/common",
     "src/metric_engine",
     "src/pb_types",
-    "src/server"
+    "src/server",
+    "src/storage"
 ]
 
 [workspace.dependencies]
 anyhow = { version = "1.0" }
 metric_engine = { path = "src/metric_engine" }
+horaedb_storage = { package = "storage", path = "src/storage" }
 common = { path = "src/common" }
 thiserror = "1"
 bytes = "1"

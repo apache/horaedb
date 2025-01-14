@@ -632,10 +632,10 @@ dependencies = [
  "bytes",
  "common",
  "criterion",
- "metric_engine",
  "pb_types",
  "prost",
  "serde",
+ "storage",
  "toml",
  "tracing",
  "tracing-subscriber",
@@ -733,12 +733,6 @@ name = "bytes"
 version = "1.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8318a53db07bb3f8dca91a600466bdb3f2eaadeedfdbcf02e1accbad9271ba50"
-
-[[package]]
-name = "bytesize"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3e368af43e418a04d52505cf3dbc23dda4e3407ae2fa99fd0e4f308ce546acc"
 
 [[package]]
 name = "bytestring"
@@ -914,7 +908,9 @@ dependencies = [
 name = "common"
 version = "2.2.0-alpha"
 dependencies = [
+ "anyhow",
  "serde",
+ "thiserror",
  "toml",
 ]
 
@@ -2158,28 +2154,13 @@ name = "metric_engine"
 version = "2.2.0-alpha"
 dependencies = [
  "anyhow",
- "arrow",
- "async-scoped",
- "async-trait",
- "byteorder",
- "bytes",
- "bytesize",
  "common",
- "datafusion",
- "futures",
- "itertools 0.3.25",
- "lazy_static",
- "object_store",
- "parquet",
- "pb_types",
- "prost",
- "serde",
+ "storage",
  "temp-dir",
  "test-log",
  "thiserror",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2918,10 +2899,10 @@ dependencies = [
  "clap",
  "common",
  "futures",
- "metric_engine",
  "object_store",
  "rand",
  "serde",
+ "storage",
  "tokio",
  "toml",
  "tracing",
@@ -3058,6 +3039,32 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "storage"
+version = "2.2.0-alpha"
+dependencies = [
+ "anyhow",
+ "arrow",
+ "async-scoped",
+ "async-trait",
+ "byteorder",
+ "bytes",
+ "common",
+ "datafusion",
+ "futures",
+ "itertools 0.3.25",
+ "lazy_static",
+ "object_store",
+ "parquet",
+ "pb_types",
+ "prost",
+ "serde",
+ "temp-dir",
+ "test-log",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "strsim"
@@ -3465,19 +3472,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81dfa00651efa65069b0b6b651f4aaa31ba9e3c3ce0137aaad053604ee7e0314"
 dependencies = [
  "getrandom",
- "rand",
- "uuid-macro-internal",
-]
-
-[[package]]
-name = "uuid-macro-internal"
-version = "1.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b91f57fe13a38d0ce9e28a03463d8d3c2468ed03d75375110ec71d93b449a08"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

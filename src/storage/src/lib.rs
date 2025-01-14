@@ -15,10 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Metric Engine entry point.
+//! Storage Engine for metrics.
 
-mod metric;
-mod types;
+#![feature(duration_constructors)]
+mod compaction;
+pub mod config;
+mod macros;
+pub mod manifest;
+pub mod operator;
+mod read;
+pub mod sst;
+pub mod storage;
+#[cfg(test)]
+mod test_util;
+pub mod types;
 
 // Re-export error types.
 pub type AnyhowError = common::AnyhowError;

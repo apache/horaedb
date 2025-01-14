@@ -27,26 +27,11 @@ description.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
-arrow = { workspace = true }
-async-scoped = { workspace = true }
-async-trait = { workspace = true }
-byteorder = { workspace = true }
-bytes = { workspace = true }
-bytesize = { workspace = true }
 common = { workspace = true }
-datafusion = { workspace = true }
-futures = { workspace = true }
-itertools = { workspace = true }
-lazy_static = { workspace = true }
-object_store = { workspace = true }
-parquet = { workspace = true, features = ["object_store"] }
-pb_types = { workspace = true }
-prost = { workspace = true }
-serde = { workspace = true }
+horaedb_storage = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
-uuid = { workspace = true, features = ["v4", "fast-rng", "macro-diagnostics"] }
 
 [dev-dependencies]
 temp-dir = { workspace = true }

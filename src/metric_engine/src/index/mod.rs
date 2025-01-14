@@ -15,12 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Metric Engine entry point.
+use std::sync::Arc;
 
-mod metric;
-mod types;
+use horaedb_storage::storage::TimeMergeStorageRef;
 
-// Re-export error types.
-pub type AnyhowError = common::AnyhowError;
-pub type Error = common::Error;
-pub type Result<T> = common::Result<T>;
+use crate::{types::Sample, Result};
+
+pub struct IndexManager {
+    inner: Arc<Inner>,
+}
+
+impl IndexManager {
+    pub fn new(storage: TimeMergeStorageRef) -> Self {
+        Self {
+            inner: Arc::new(Inner { storage }),
+        }
+    }
+
+    /// Populate series ids from labels.
+    /// It will also build inverted index for labels.
+    pub async fn populate_series_ids(&self, _samples: &mut [Sample]) -> Result<()> {
+        todo!()
+    }
+}
+
+struct Inner {
+    storage: TimeMergeStorageRef,
+}
