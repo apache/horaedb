@@ -37,6 +37,7 @@ members = [
 
 [workspace.dependencies]
 anyhow = { version = "1.0" }
+seahash = { version = "4" }
 metric_engine = { path = "src/metric_engine" }
 horaedb_storage = { package = "storage", path = "src/storage" }
 common = { path = "src/common" }
