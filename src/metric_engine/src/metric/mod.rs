@@ -42,3 +42,9 @@ impl MetricManager {
 struct Inner {
     storage: TimeMergeStorageRef,
 }
+
+impl Inner {
+    async fn populate_metric_ids(&self, _samples: &mut [Sample]) -> Result<()> {
+        todo!()
+    }
+}

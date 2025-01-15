@@ -29,6 +29,7 @@ description.workspace = true
 anyhow = { workspace = true }
 common = { workspace = true }
 horaedb_storage = { workspace = true }
+seahash = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

@@ -35,3 +35,7 @@ pub struct Sample {
     /// hash of labels(sorted)
     pub series_id: Option<SeriesId>,
 }
+
+pub fn hash(buf: &[u8]) -> u64 {
+    seahash::hash(buf)
+}
