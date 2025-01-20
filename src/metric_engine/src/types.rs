@@ -14,10 +14,20 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+use std::{collections::BTreeSet, io::Write, time::Duration};
 
-pub struct MetricId(u64);
-pub struct SeriesId(u64);
+#[derive(Copy, Clone)]
+pub struct MetricId(pub u64);
+#[derive(Copy, Clone)]
+pub struct SeriesId(pub u64);
+pub type SegmentDuration = Duration;
+pub type MetricName = Vec<u8>;
+pub type FieldName = Vec<u8>;
+pub type FieldType = usize;
+pub type TagName = Vec<u8>;
+pub type TagValue = Vec<u8>;
 
+#[derive(PartialEq, PartialOrd, Eq, Ord, Clone)]
 pub struct Label {
     pub name: Vec<u8>,
     pub value: Vec<u8>,
@@ -34,6 +44,36 @@ pub struct Sample {
     pub name_id: Option<MetricId>,
     /// hash of labels(sorted)
     pub series_id: Option<SeriesId>,
+}
+
+pub struct SeriesKey(Vec<Label>);
+
+impl SeriesKey {
+    pub fn new(metric_name: &[u8], lables: &[Label]) -> Self {
+        let mut set: BTreeSet<Label> = BTreeSet::new();
+        lables.iter().for_each(|item| {
+            set.insert(item.clone());
+        });
+        set.insert(Label {
+            name: String::from("__name__").into(),
+            value: metric_name.to_vec(),
+        });
+
+        Self(set.into_iter().collect::<Vec<Label>>())
+    }
+
+    pub fn make_bytes(&self) -> Vec<u8> {
+        let mut series_bytes: Vec<u8> = Vec::new();
+        self.0.iter().for_each(|item| {
+            series_bytes
+                .write_all(item.name.as_slice())
+                .expect("can write");
+            series_bytes
+                .write_all(item.value.as_slice())
+                .expect("can write");
+        });
+        series_bytes
+    }
 }
 
 pub fn hash(buf: &[u8]) -> u64 {

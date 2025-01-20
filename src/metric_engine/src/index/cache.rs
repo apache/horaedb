@@ -15,31 +15,35 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
 
-use horaedb_storage::storage::TimeMergeStorageRef;
+use crate::types::{
+    FieldName, FieldType, MetricId, MetricName, SegmentDuration, SeriesId, SeriesKey, TagName,
+    TagValue,
+};
 
-use crate::{types::Sample, Result};
+type MetricsCache = HashMap<SegmentDuration, HashMap<MetricName, (FieldName, FieldType)>>;
+type SeriesCache = HashMap<SegmentDuration, HashMap<SeriesId, SeriesKey>>;
+type TagIndexCache =
+    HashMap<SegmentDuration, HashMap<TagName, HashMap<TagValue, HashSet<(SeriesId, MetricId)>>>>;
 
-pub struct SampleManager {
-    inner: Arc<Inner>,
+#[derive(Default)]
+pub struct CacheManager {
+    metrics: MetricsCache,
+    series: SeriesCache,
+    tag_index: TagIndexCache,
 }
 
-impl SampleManager {
-    pub fn new(storage: TimeMergeStorageRef) -> Self {
-        Self {
-            inner: Arc::new(Inner { storage }),
-        }
-    }
-
-    /// Populate series ids from labels.
-    /// It will also build inverted index for labels.
-    pub async fn persist(&self, _samples: Vec<Sample>) -> Result<()> {
-        // 1. just write to TM storage directly
+impl CacheManager {
+    pub fn update_metric() -> Option<()> {
         todo!()
     }
-}
 
-struct Inner {
-    storage: TimeMergeStorageRef,
+    pub fn update_series() -> Option<()> {
+        todo!()
+    }
+
+    pub fn update_tag_index() -> Option<()> {
+        todo!()
+    }
 }
