@@ -44,6 +44,7 @@ common = { path = "src/common" }
 thiserror = "1"
 bytes = "1"
 byteorder = "1"
+dashmap = { version = "6.1.0" }
 datafusion = "43"
 parquet = { version = "53" }
 object_store = { version = "0.11" }

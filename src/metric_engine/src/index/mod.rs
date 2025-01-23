@@ -19,7 +19,9 @@ mod cache;
 use std::sync::Arc;
 
 use cache::CacheManager;
-use horaedb_storage::storage::TimeMergeStorageRef;
+use horaedb_storage::storage::{StorageRuntimes, TimeMergeStorageRef};
+use object_store::local::LocalFileSystem;
+use tokio::runtime::Runtime;
 
 use crate::{
     types::{
@@ -34,11 +36,16 @@ pub struct IndexManager {
 }
 
 impl IndexManager {
-    pub fn new(storage: TimeMergeStorageRef) -> Self {
+    pub async fn new() -> Self {
+        // TODO: maybe inialize runtime and store by config?
+        let rt = Arc::new(Runtime::new().unwrap());
+        let runtimes = StorageRuntimes::new(rt.clone(), rt);
+        let store = Arc::new(LocalFileSystem::new());
+        let root_dir = "/tmp/horaedb".to_string();
+
         Self {
             inner: Arc::new(Inner {
-                storage,
-                cache: CacheManager::default(),
+                cache: CacheManager::new(runtimes, store, root_dir.as_str()).await,
             }),
         }
     }
@@ -54,7 +61,7 @@ impl IndexManager {
 
         let series_keys = samples
             .iter()
-            .map(|s| SeriesKey::new(s.name.as_slice(), s.lables.as_slice()))
+            .map(|s| SeriesKey::new(Some(s.name.as_slice()), s.lables.as_slice()))
             .collect::<Vec<_>>();
         let series_ids = series_keys
             .iter()
@@ -86,13 +93,11 @@ impl IndexManager {
                     .create_tag_index(series_id, series_key, metric_id)
             });
 
-        // 5. write all
-        todo!()
+        Ok(())
     }
 }
 
 struct Inner {
-    storage: TimeMergeStorageRef,
     cache: CacheManager,
 }
 

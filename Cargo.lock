@@ -2154,7 +2154,11 @@ name = "metric_engine"
 version = "2.2.0-alpha"
 dependencies = [
  "anyhow",
+ "arrow",
  "common",
+ "dashmap",
+ "futures",
+ "object_store",
  "seahash",
  "storage",
  "temp-dir",

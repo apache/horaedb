@@ -14,23 +14,72 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-use std::{collections::BTreeSet, io::Write, time::Duration};
+use std::{
+    collections::BTreeSet,
+    io::Write,
+    time::{Duration, SystemTime},
+};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MetricId(pub u64);
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SeriesId(pub u64);
-pub type SegmentDuration = Duration;
 pub type MetricName = Vec<u8>;
 pub type FieldName = Vec<u8>;
-pub type FieldType = usize;
+pub type FieldType = u8;
 pub type TagName = Vec<u8>;
 pub type TagValue = Vec<u8>;
+pub type TagNames = Vec<Vec<u8>>;
+pub type TagValues = Vec<Vec<u8>>;
 
+#[inline]
+pub fn default_field_name() -> Vec<u8> {
+    b"value".to_vec()
+}
+
+#[inline]
+pub fn default_field_type() -> u8 {
+    0
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub struct SegmentDuration(Duration);
+
+impl SegmentDuration {
+    const ONE_DAY: Duration = Duration::from_secs(24 * 60 * 60);
+
+    pub fn current() -> Self {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        Self(Duration::from_secs(
+            now / SegmentDuration::ONE_DAY.as_secs() * SegmentDuration::ONE_DAY.as_secs(),
+        ))
+    }
+
+    pub fn from(some: Duration) -> Self {
+        Self(Duration::from_secs(
+            some.as_secs() / SegmentDuration::ONE_DAY.as_secs()
+                * SegmentDuration::ONE_DAY.as_secs(),
+        ))
+    }
+}
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone)]
 pub struct Label {
     pub name: Vec<u8>,
     pub value: Vec<u8>,
+}
+
+impl std::fmt::Debug for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Label {{ name: {:?}, value: {:?} }}",
+            String::from_utf8(self.name.clone()).unwrap(),
+            String::from_utf8(self.value.clone()).unwrap(),
+        )
+    }
 }
 
 /// This is the main struct used for write, optional values will be filled in
@@ -46,32 +95,40 @@ pub struct Sample {
     pub series_id: Option<SeriesId>,
 }
 
-pub struct SeriesKey(Vec<Label>);
+#[derive(Clone, Debug)]
+pub struct SeriesKey {
+    pub names: TagNames,
+    pub values: TagValues,
+}
 
 impl SeriesKey {
-    pub fn new(metric_name: &[u8], lables: &[Label]) -> Self {
+    pub fn new(metric_name: Option<&[u8]>, lables: &[Label]) -> Self {
         let mut set: BTreeSet<Label> = BTreeSet::new();
         lables.iter().for_each(|item| {
             set.insert(item.clone());
         });
-        set.insert(Label {
-            name: String::from("__name__").into(),
-            value: metric_name.to_vec(),
-        });
 
-        Self(set.into_iter().collect::<Vec<Label>>())
+        let mut names = set.iter().map(|item| item.name.clone()).collect::<Vec<_>>();
+        let mut values = set
+            .iter()
+            .map(|item| item.value.clone())
+            .collect::<Vec<_>>();
+        if let Some(metric_name) = metric_name {
+            names.insert(0, String::from("__name__").into());
+            values.insert(0, metric_name.to_vec());
+        }
+        Self { names, values }
     }
 
     pub fn make_bytes(&self) -> Vec<u8> {
         let mut series_bytes: Vec<u8> = Vec::new();
-        self.0.iter().for_each(|item| {
-            series_bytes
-                .write_all(item.name.as_slice())
-                .expect("can write");
-            series_bytes
-                .write_all(item.value.as_slice())
-                .expect("can write");
-        });
+        self.names
+            .iter()
+            .zip(self.values.iter())
+            .for_each(|(name, value)| {
+                series_bytes.write_all(name.as_slice()).expect("can write");
+                series_bytes.write_all(value.as_slice()).expect("can write");
+            });
         series_bytes
     }
 }

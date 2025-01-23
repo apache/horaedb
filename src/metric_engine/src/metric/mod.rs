@@ -26,11 +26,11 @@ pub struct MetricManager {
 }
 
 impl MetricManager {
-    pub fn new(storage: TimeMergeStorageRef) -> Self {
+    pub async fn new(storage: TimeMergeStorageRef) -> Self {
         Self {
             inner: Arc::new(Inner {
                 storage: storage.clone(),
-                index: IndexManager::new(storage),
+                index: IndexManager::new().await,
             }),
         }
     }
