@@ -82,7 +82,7 @@ struct SegmentSeries {
 
 struct TagIndexCache {
     cache: DashMap<SegmentDuration, ConcurrentTagKVMap>,
-    series_records: RwLock<HashSet<SegmentSeries>>, // used for
+    series_records: RwLock<HashSet<SegmentSeries>>,
     storage: TimeMergeStorageRef,
     sender: Sender<Task>,
 }
@@ -121,7 +121,6 @@ impl MetricsCache {
             .unwrap()
             .value(index);
 
-        // TODO: why not put in cache?
         let filed_id = batch
             .column_by_name(COLUMN_FIELD_ID)
             .unwrap()
@@ -130,7 +129,6 @@ impl MetricsCache {
             .unwrap()
             .value(index);
 
-        // TODO: why not put in cache?
         let metric_id = batch
             .column_by_name(COLUMN_METRIC_ID)
             .unwrap()
@@ -533,7 +531,7 @@ async fn make_storage(
             Duration::from_secs(3600 * 24), // 1 day
             store.clone(),
             schema,
-            num_primary_keys, // num_primary_keys
+            num_primary_keys,
             StorageConfig::default(),
             runtimes.clone(),
         )
@@ -980,5 +978,3 @@ mod tests {
         }
     }
 }
-
-// write a test for me
