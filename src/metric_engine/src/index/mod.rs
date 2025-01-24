@@ -19,15 +19,12 @@ mod cache;
 use std::sync::Arc;
 
 use cache::CacheManager;
-use horaedb_storage::storage::{StorageRuntimes, TimeMergeStorageRef};
+use horaedb_storage::storage::StorageRuntimes;
 use object_store::local::LocalFileSystem;
 use tokio::runtime::Runtime;
 
 use crate::{
-    types::{
-        hash, FieldName, FieldType, MetricId, MetricName, Sample, SegmentDuration, SeriesId,
-        SeriesKey, TagName, TagValue,
-    },
+    types::{hash, MetricId, Sample, SeriesId, SeriesKey},
     Result,
 };
 
@@ -37,7 +34,8 @@ pub struct IndexManager {
 
 impl IndexManager {
     pub async fn new() -> Self {
-        // TODO: maybe inialize runtime and store by config?
+        // TODO: maybe initialize runtime and store by config, now just make it
+        // compilable
         let rt = Arc::new(Runtime::new().unwrap());
         let runtimes = StorageRuntimes::new(rt.clone(), rt);
         let store = Arc::new(LocalFileSystem::new());
@@ -53,7 +51,7 @@ impl IndexManager {
     /// Populate series ids from labels.
     /// It will also build inverted index for labels.
     pub async fn populate_series_ids(&self, samples: &mut [Sample]) -> Result<()> {
-        // 1. create metric id and series id
+        // 1.1 create metric id and series id
         let metric_ids = samples
             .iter()
             .map(|s| MetricId(hash(s.name.as_slice())))
@@ -68,30 +66,41 @@ impl IndexManager {
             .map(|e| SeriesId(hash(e.make_bytes().as_slice())))
             .collect::<Vec<_>>();
 
+        // 1.2 populate metric id and series id
         samples.iter_mut().enumerate().for_each(|(i, sample)| {
             sample.name_id = Some(metric_ids[i]);
             sample.series_id = Some(series_ids[i]);
         });
-        // 2. cache metrics
-        samples
-            .iter()
-            .for_each(|s| self.inner.create_metrics(s.name.as_slice()));
 
-        // 3. cache series
-        series_ids
-            .iter()
-            .zip(series_keys.iter())
-            .for_each(|(id, key)| self.inner.create_series(id, key));
+        // 2.1 update cache metrics
+        futures::future::join_all(
+            samples
+                .iter()
+                .map(|s| self.inner.update_metrics(s.name.as_slice())),
+        )
+        .await;
 
-        // 4. cache tag index
-        series_ids
-            .iter()
-            .zip(series_keys.iter())
-            .zip(metric_ids.iter())
-            .for_each(|((series_id, series_key), metric_id)| {
-                self.inner
-                    .create_tag_index(series_id, series_key, metric_id)
-            });
+        // 2.2 update cache series
+        futures::future::join_all(
+            series_ids
+                .iter()
+                .zip(series_keys.iter().zip(metric_ids.iter()))
+                .map(|(id, (key, metric_id))| self.inner.update_series(id, key, metric_id)),
+        )
+        .await;
+
+        // 2.3 update cache tag index
+        futures::future::join_all(
+            series_ids
+                .iter()
+                .zip(series_keys.iter())
+                .zip(metric_ids.iter())
+                .map(|((series_id, series_key), metric_id)| {
+                    self.inner
+                        .update_tag_index(series_id, series_key, metric_id)
+                }),
+        )
+        .await;
 
         Ok(())
     }
@@ -102,20 +111,22 @@ struct Inner {
 }
 
 impl Inner {
-    pub fn create_metrics(&self, name: &[u8]) {
-        todo!()
+    pub async fn update_metrics(&self, name: &[u8]) {
+        self.cache.update_metric(name).await
     }
 
-    pub fn create_series(&self, id: &SeriesId, key: &SeriesKey) {
-        todo!()
+    pub async fn update_series(&self, id: &SeriesId, key: &SeriesKey, metric_id: &MetricId) {
+        self.cache.update_series(id, key, metric_id).await;
     }
 
-    pub fn create_tag_index(
+    pub async fn update_tag_index(
         &self,
         series_id: &SeriesId,
         series_key: &SeriesKey,
         metric_id: &MetricId,
     ) {
-        todo!()
+        self.cache
+            .update_tag_index(series_id, series_key, metric_id)
+            .await;
     }
 }

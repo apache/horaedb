@@ -32,15 +32,9 @@ pub type TagValue = Vec<u8>;
 pub type TagNames = Vec<Vec<u8>>;
 pub type TagValues = Vec<Vec<u8>>;
 
-#[inline]
-pub fn default_field_name() -> Vec<u8> {
-    b"value".to_vec()
-}
-
-#[inline]
-pub fn default_field_type() -> u8 {
-    0
-}
+pub const METRIC_NAME: &str = "__name__";
+pub const DEFAULT_FIELD_NAME: &str = "value";
+pub const DEFAULT_FIELD_TYPE: u8 = 0;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct SegmentDuration(Duration);
@@ -48,20 +42,13 @@ pub struct SegmentDuration(Duration);
 impl SegmentDuration {
     const ONE_DAY: Duration = Duration::from_secs(24 * 60 * 60);
 
-    pub fn current() -> Self {
+    pub fn current_date() -> Self {
         let now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
         Self(Duration::from_secs(
             now / SegmentDuration::ONE_DAY.as_secs() * SegmentDuration::ONE_DAY.as_secs(),
-        ))
-    }
-
-    pub fn from(some: Duration) -> Self {
-        Self(Duration::from_secs(
-            some.as_secs() / SegmentDuration::ONE_DAY.as_secs()
-                * SegmentDuration::ONE_DAY.as_secs(),
         ))
     }
 }
@@ -103,18 +90,21 @@ pub struct SeriesKey {
 
 impl SeriesKey {
     pub fn new(metric_name: Option<&[u8]>, lables: &[Label]) -> Self {
-        let mut set: BTreeSet<Label> = BTreeSet::new();
+        let mut sorted_key: BTreeSet<&Label> = BTreeSet::new();
         lables.iter().for_each(|item| {
-            set.insert(item.clone());
+            sorted_key.insert(item);
         });
 
-        let mut names = set.iter().map(|item| item.name.clone()).collect::<Vec<_>>();
-        let mut values = set
+        let mut names = sorted_key
+            .iter()
+            .map(|item| item.name.clone())
+            .collect::<Vec<_>>();
+        let mut values = sorted_key
             .iter()
             .map(|item| item.value.clone())
             .collect::<Vec<_>>();
         if let Some(metric_name) = metric_name {
-            names.insert(0, String::from("__name__").into());
+            names.insert(0, METRIC_NAME.as_bytes().to_vec());
             values.insert(0, metric_name.to_vec());
         }
         Self { names, values }
@@ -126,8 +116,12 @@ impl SeriesKey {
             .iter()
             .zip(self.values.iter())
             .for_each(|(name, value)| {
-                series_bytes.write_all(name.as_slice()).expect("can write");
-                series_bytes.write_all(value.as_slice()).expect("can write");
+                series_bytes
+                    .write_all(name.as_slice())
+                    .expect("could write");
+                series_bytes
+                    .write_all(value.as_slice())
+                    .expect("could write");
             });
         series_bytes
     }

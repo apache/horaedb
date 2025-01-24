@@ -37,11 +37,8 @@ impl MetricManager {
 
     /// Populate metric ids from names.
     /// If a name does not exist, it will be created on demand.
-    pub async fn populate_metric_ids(&self, _samples: &mut [Sample]) -> Result<()> {
-        // 1. call index manager to create index
-
-        // 2. call data manager to write samples
-        todo!()
+    pub async fn populate_metric_ids(&self, samples: &mut [Sample]) -> Result<()> {
+        self.inner.populate_metric_ids(samples).await
     }
 }
 

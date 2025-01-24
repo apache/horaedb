@@ -1,4 +1,3 @@
-use core::num;
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -24,40 +23,53 @@ use std::{
 
 use arrow::{
     array::{
-        Array, ArrayRef, BinaryArray, BinaryBuilder, Int32BufferBuilder, ListArray, ListBuilder,
-        UInt64Array, UInt64Builder, UInt8Array,
+        Array, ArrayRef, BinaryArray, BinaryBuilder, ListArray, UInt64Array, UInt64Builder,
+        UInt8Array,
     },
     buffer::OffsetBuffer,
-    datatypes::{BinaryType, DataType, Field, Schema, ToByteSlice},
+    datatypes::{DataType, Field, Schema, ToByteSlice},
     record_batch::RecordBatch,
 };
 use dashmap::DashMap;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use horaedb_storage::{
     config::StorageConfig,
     storage::{
-        CloudObjectStorage, ScanRequest, StorageRuntimes, TimeMergeStorage, TimeMergeStorageRef,
-        WriteRequest,
+        CloudObjectStorage, ScanRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
     },
     types::{ObjectStoreRef, TimeRange, Timestamp},
 };
-use tokio::{
-    runtime::Runtime,
-    sync::mpsc::{self, Receiver, Sender},
-};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use crate::types::{
-    default_field_name, default_field_type, hash, FieldName, FieldType, Label, MetricId,
-    MetricName, SegmentDuration, SeriesId, SeriesKey, TagName, TagNames, TagValue, TagValues,
+    hash, FieldName, FieldType, Label, MetricId, MetricName, SegmentDuration, SeriesId, SeriesKey,
+    TagName, TagNames, TagValue, TagValues, DEFAULT_FIELD_NAME, DEFAULT_FIELD_TYPE,
 };
 
+const COLUMN_METRIC_NAME: &str = "metric_name";
+const COLUMN_METRIC_ID: &str = "metric_id";
+const COLUMN_SERIES_ID: &str = "series_id";
+const COLUMN_FIELD_ID: &str = "field_id";
+const COLUMN_FIELD_NAME: &str = "field_name";
+const COLUMN_FIELD_TYPE: &str = "field_type";
+const COLUMN_TAG_NAMES: &str = "tag_names";
+const COLUMN_TAG_VALUES: &str = "tag_values";
+const COLUMN_TAG_NAME: &str = "tag_name";
+const COLUMN_TAG_VALUE: &str = "tag_value";
+const COLUMN_TAG_ITEM: &str = "item";
+
+type ConcurrentMetricMap = RwLock<HashMap<MetricName, (FieldName, FieldType)>>;
+type ConcurrentSeriesMap = RwLock<HashMap<SeriesId, SeriesKey>>;
+type ConcurrentTagKVMap =
+    RwLock<HashMap<TagName, HashMap<TagValue, HashMap<MetricId, HashSet<SeriesId>>>>>;
+
 struct MetricsCache {
-    cache: DashMap<SegmentDuration, RwLock<HashMap<MetricName, (FieldName, FieldType)>>>,
+    cache: DashMap<SegmentDuration, ConcurrentMetricMap>,
     pub storage: TimeMergeStorageRef,
     sender: Sender<Task>,
 }
 struct SeriesCache {
-    cache: DashMap<SegmentDuration, RwLock<HashMap<SeriesId, SeriesKey>>>,
+    cache: DashMap<SegmentDuration, ConcurrentSeriesMap>,
     pub storage: TimeMergeStorageRef,
     sender: Sender<Task>,
 }
@@ -69,12 +81,9 @@ struct SegmentSeries {
 }
 
 struct TagIndexCache {
-    cache: DashMap<
-        SegmentDuration,
-        RwLock<HashMap<TagName, HashMap<TagValue, HashMap<MetricId, HashSet<SeriesId>>>>>,
-    >,
-    write_guard: RwLock<HashSet<SegmentSeries>>,
-    pub storage: TimeMergeStorageRef,
+    cache: DashMap<SegmentDuration, ConcurrentTagKVMap>,
+    series_records: RwLock<HashSet<SegmentSeries>>, // used for
+    storage: TimeMergeStorageRef,
     sender: Sender<Task>,
 }
 
@@ -87,6 +96,52 @@ impl MetricsCache {
         }
     }
 
+    fn parse_record_batch(batch: &RecordBatch, index: usize) -> (&[u8], &[u8], u8, u64, u64) {
+        let metric_name = batch
+            .column_by_name(COLUMN_METRIC_NAME)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap()
+            .value(index);
+
+        let field_name = batch
+            .column_by_name(COLUMN_FIELD_NAME)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap()
+            .value(index);
+
+        let field_type = batch
+            .column_by_name(COLUMN_FIELD_TYPE)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<UInt8Array>()
+            .unwrap()
+            .value(index);
+
+        // TODO: why not put in cache?
+        let filed_id = batch
+            .column_by_name(COLUMN_FIELD_ID)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap()
+            .value(index);
+
+        // TODO: why not put in cache?
+        let metric_id = batch
+            .column_by_name(COLUMN_METRIC_ID)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap()
+            .value(index);
+
+        (metric_name, field_name, field_type, filed_id, metric_id)
+    }
+
     async fn load_from_storage(&mut self) {
         let mut result_stream = self
             .storage
@@ -100,66 +155,26 @@ impl MetricsCache {
         while let Some(item) = result_stream.next().await {
             let batch = item.unwrap();
             for index in 0..batch.num_rows() {
-                let metric_name = batch
-                    .column_by_name("metric_name")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<BinaryArray>()
-                    .unwrap()
-                    .value(index);
-
-                let field_name = batch
-                    .column_by_name("field_name")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<BinaryArray>()
-                    .unwrap()
-                    .value(index);
-
-                let field_type = batch
-                    .column_by_name("field_type")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<UInt8Array>()
-                    .unwrap()
-                    .value(index);
-
-                // TODO: why not put in cache?
-                let _filed_id = batch
-                    .column_by_name("field_id")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<UInt64Array>()
-                    .unwrap()
-                    .value(index);
-
-                // TODO: why not put in cache?
-                let _metric_id = batch
-                    .column_by_name("metric_id")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<UInt64Array>()
-                    .unwrap()
-                    .value(index);
-
-                self.update(metric_name, field_name, field_type, None).await;
+                let (metric_name, field_name, field_type, _, _) =
+                    MetricsCache::parse_record_batch(&batch, index);
+                self.update(metric_name, field_name, field_type);
             }
         }
     }
 
     fn schema() -> Arc<Schema> {
         Arc::new(Schema::new(vec![
-            Field::new("metric_name", DataType::Binary, true),
-            Field::new("metric_id", DataType::UInt64, true),
-            Field::new("field_name", DataType::Binary, true),
-            Field::new("field_id", DataType::UInt64, true),
-            Field::new("field_type", DataType::UInt8, true),
+            Field::new(COLUMN_METRIC_NAME, DataType::Binary, true),
+            Field::new(COLUMN_METRIC_ID, DataType::UInt64, true),
+            Field::new(COLUMN_FIELD_NAME, DataType::Binary, true),
+            Field::new(COLUMN_FIELD_ID, DataType::UInt64, true),
+            Field::new(COLUMN_FIELD_TYPE, DataType::UInt8, true),
         ]))
     }
 
-    async fn update(&self, name: &[u8], field_name: &[u8], field_type: u8, notify: Option<()>) {
-        let current = SegmentDuration::current();
-        let task = if self.cache.contains_key(&current)
+    fn update(&self, name: &[u8], field_name: &[u8], field_type: u8) -> bool {
+        let current = SegmentDuration::current_date();
+        if self.cache.contains_key(&current)
             && self
                 .cache
                 .get(&current)
@@ -168,7 +183,7 @@ impl MetricsCache {
                 .unwrap()
                 .contains_key(name)
         {
-            None
+            false
         } else {
             let result = self
                 .cache
@@ -178,15 +193,15 @@ impl MetricsCache {
                 .unwrap()
                 .insert(name.to_vec(), (field_name.to_vec(), field_type));
 
-            match result {
-                Some(_) => None,
-                None => Some(Task::Metric(name.to_vec())),
-            }
-        };
-
-        if let (Some(task), Some(_)) = (task, notify) {
-            self.sender.send(task).await.unwrap();
+            result.is_none()
         }
+    }
+
+    async fn notify_write(&self, name: &[u8], field_name: &[u8], field_type: u8) {
+        self.sender
+            .send(Task::Metric(name.to_vec(), field_name.to_vec(), field_type))
+            .await
+            .unwrap();
     }
 }
 
@@ -199,6 +214,53 @@ impl SeriesCache {
         }
     }
 
+    fn parse_record_batch(batch: &RecordBatch, index: usize) -> (u64, Vec<Vec<u8>>, Vec<Vec<u8>>) {
+        let series_id = batch
+            .column_by_name(COLUMN_SERIES_ID)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap()
+            .value(index);
+
+        let tag_names = {
+            let tag_name_array = batch
+                .column_by_name(COLUMN_TAG_NAMES)
+                .unwrap()
+                .as_any()
+                .downcast_ref::<ListArray>()
+                .unwrap()
+                .value(index);
+            let tag_names = tag_name_array
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .expect("List elements should be BinaryArray");
+            tag_names
+                .iter()
+                .map(|item| item.unwrap().to_vec())
+                .collect::<Vec<_>>()
+        };
+
+        let tag_values = {
+            let tag_value_array = batch
+                .column_by_name(COLUMN_TAG_VALUES)
+                .unwrap()
+                .as_any()
+                .downcast_ref::<ListArray>()
+                .unwrap()
+                .value(index);
+            let tag_values = tag_value_array
+                .as_any()
+                .downcast_ref::<BinaryArray>()
+                .expect("List elements should be BinaryArray");
+            tag_values
+                .iter()
+                .map(|item| item.unwrap().to_vec())
+                .collect::<Vec<_>>()
+        };
+        (series_id, tag_names, tag_values)
+    }
+
     async fn load_from_storage(&mut self) {
         let mut result_stream = self
             .storage
@@ -212,94 +274,47 @@ impl SeriesCache {
         while let Some(item) = result_stream.next().await {
             let batch = item.unwrap();
             for index in 0..batch.num_rows() {
-                let metric_id = batch
-                    .column_by_name("metric_id")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<UInt64Array>()
-                    .unwrap()
-                    .value(index);
-
-                let series_id = batch
-                    .column_by_name("series_id")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<UInt64Array>()
-                    .unwrap()
-                    .value(index);
-
-                let tag_name_array = batch
-                    .column_by_name("tag_names")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<ListArray>()
-                    .unwrap()
-                    .value(index);
-                let tag_names = tag_name_array
-                    .as_any()
-                    .downcast_ref::<BinaryArray>()
-                    .expect("List elements should be BinaryArray");
-
-                let names = tag_names
-                    .iter()
-                    .map(|item| item.unwrap().to_vec())
-                    .collect::<Vec<_>>();
-
-                let tag_value_array = batch
-                    .column_by_name("tag_values")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<ListArray>()
-                    .unwrap()
-                    .value(index);
-                let tag_values = tag_value_array
-                    .as_any()
-                    .downcast_ref::<BinaryArray>()
-                    .expect("List elements should be BinaryArray");
-
-                let values = tag_values
-                    .iter()
-                    .map(|item| item.unwrap().to_vec())
-                    .collect::<Vec<_>>();
-
-                let labels = names
+                let (series_id, tag_names, tag_values) =
+                    SeriesCache::parse_record_batch(&batch, index);
+                let labels = tag_names
                     .into_iter()
-                    .zip(values.into_iter())
+                    .zip(tag_values.into_iter())
                     .map(|(name, value)| Label { name, value })
                     .collect::<Vec<_>>();
                 let key = SeriesKey::new(None, labels.as_slice());
-                self.update(&SeriesId(series_id), &key, &MetricId(metric_id), None)
-                    .await;
+                self.update(&SeriesId(series_id), &key);
             }
         }
     }
 
     pub fn schema() -> Arc<Schema> {
         Arc::new(Schema::new(vec![
-            Field::new("metric_id", DataType::UInt64, true),
-            Field::new("series_id", DataType::UInt64, true),
+            Field::new(COLUMN_METRIC_ID, DataType::UInt64, true),
+            Field::new(COLUMN_SERIES_ID, DataType::UInt64, true),
             Field::new(
-                "tag_names",
-                DataType::List(Arc::new(Field::new("item", DataType::Binary, true))),
+                COLUMN_TAG_NAMES,
+                DataType::List(Arc::new(Field::new(
+                    COLUMN_TAG_ITEM,
+                    DataType::Binary,
+                    true,
+                ))),
                 true,
             ),
             Field::new(
-                "tag_values",
-                DataType::List(Arc::new(Field::new("item", DataType::Binary, true))),
+                COLUMN_TAG_VALUES,
+                DataType::List(Arc::new(Field::new(
+                    COLUMN_TAG_ITEM,
+                    DataType::Binary,
+                    true,
+                ))),
                 true,
             ),
         ]))
     }
 
-    async fn update(
-        &self,
-        id: &SeriesId,
-        key: &SeriesKey,
-        metric_id: &MetricId,
-        notify: Option<()>,
-    ) {
-        let current = SegmentDuration::current();
-        let task = if self.cache.contains_key(&current)
+    fn update(&self, id: &SeriesId, key: &SeriesKey) -> bool {
+        let current = SegmentDuration::current_date();
+        if self.cache.contains_key(&current)
             && self
                 .cache
                 .get(&current)
@@ -308,7 +323,7 @@ impl SeriesCache {
                 .unwrap()
                 .contains_key(id)
         {
-            None
+            false
         } else {
             let result = self
                 .cache
@@ -318,14 +333,15 @@ impl SeriesCache {
                 .unwrap()
                 .insert(*id, key.clone());
 
-            match result {
-                Some(_) => None,
-                None => Some(Task::Series(*id, key.clone(), *metric_id)),
-            }
-        };
-        if let (Some(task), Some(_)) = (task, notify) {
-            self.sender.send(task).await.unwrap();
+            result.is_none()
         }
+    }
+
+    async fn notify_write(&self, id: &SeriesId, key: &SeriesKey, metric_id: &MetricId) {
+        self.sender
+            .send(Task::Series(*id, key.clone(), *metric_id))
+            .await
+            .unwrap();
     }
 }
 
@@ -333,10 +349,46 @@ impl TagIndexCache {
     fn new(storage: TimeMergeStorageRef, sender: Sender<Task>) -> Self {
         Self {
             cache: DashMap::new(),
-            write_guard: RwLock::new(HashSet::new()),
+            series_records: RwLock::new(HashSet::new()),
             storage,
             sender,
         }
+    }
+
+    fn parse_record_batch(batch: &RecordBatch, index: usize) -> (u64, &[u8], &[u8], u64) {
+        let metric_id = batch
+            .column_by_name(COLUMN_METRIC_ID)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap()
+            .value(index);
+
+        let tag_name = batch
+            .column_by_name(COLUMN_TAG_NAME)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap()
+            .value(index);
+
+        let tag_value = batch
+            .column_by_name(COLUMN_TAG_VALUE)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<BinaryArray>()
+            .unwrap()
+            .value(index);
+
+        let series_id = batch
+            .column_by_name(COLUMN_SERIES_ID)
+            .unwrap()
+            .as_any()
+            .downcast_ref::<UInt64Array>()
+            .unwrap()
+            .value(index);
+
+        (metric_id, tag_name, tag_value, series_id)
     }
 
     async fn load_from_storage(&mut self) {
@@ -352,90 +404,56 @@ impl TagIndexCache {
         while let Some(item) = result_stream.next().await {
             let batch = item.unwrap();
             for index in 0..batch.num_rows() {
-                let metric_id = batch
-                    .column_by_name("metric_id")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<UInt64Array>()
-                    .unwrap()
-                    .value(index);
-
-                let tag_name = batch
-                    .column_by_name("tag_name")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<BinaryArray>()
-                    .unwrap()
-                    .value(index);
-
-                let tag_value = batch
-                    .column_by_name("tag_value")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<BinaryArray>()
-                    .unwrap()
-                    .value(index);
-
-                let series_id = batch
-                    .column_by_name("series_id")
-                    .unwrap()
-                    .as_any()
-                    .downcast_ref::<UInt64Array>()
-                    .unwrap()
-                    .value(index);
+                let (series_id, tag_name, tag_value, metric_id) =
+                    TagIndexCache::parse_record_batch(&batch, index);
                 self.update(
                     &SeriesId(series_id),
                     &vec![tag_name.to_vec()],
                     &vec![tag_value.to_vec()],
                     &MetricId(metric_id),
-                    None,
-                )
-                .await;
+                );
             }
         }
     }
 
     fn schema() -> Arc<Schema> {
         Arc::new(Schema::new(vec![
-            Field::new("metric_id", DataType::UInt64, true),
-            Field::new("tag_name", DataType::Binary, true),
-            Field::new("tag_value", DataType::Binary, true),
-            Field::new("series_id", DataType::UInt64, true),
+            Field::new(COLUMN_METRIC_ID, DataType::UInt64, true),
+            Field::new(COLUMN_TAG_NAME, DataType::Binary, true),
+            Field::new(COLUMN_TAG_VALUE, DataType::Binary, true),
+            Field::new(COLUMN_SERIES_ID, DataType::UInt64, true),
         ]))
     }
 
-    async fn update(
+    fn update(
         &self,
         series_id: &SeriesId,
         tag_names: &TagNames,
         tag_values: &TagValues,
         metric_id: &MetricId,
-        notify: Option<()>,
-    ) {
-        let current = SegmentDuration::current();
+    ) -> bool {
+        let current = SegmentDuration::current_date();
         let segment_series = SegmentSeries {
             segment: current,
             series_id: *series_id,
         };
-        let task = if self.write_guard.read().unwrap().contains(&segment_series) {
-            None
+        if self
+            .series_records
+            .read()
+            .unwrap()
+            .contains(&segment_series)
+        {
+            false
         } else {
-            let mut write_guard = self.write_guard.write().unwrap();
-            if write_guard.contains(&segment_series) {
-                None
+            let mut series_records = self.series_records.write().unwrap();
+            if series_records.contains(&segment_series) {
+                false
             } else {
-                write_guard.insert(segment_series);
-                let cache_lock = self
-                    .cache
-                    .entry(current)
-                    .or_insert_with(|| RwLock::new(HashMap::new()));
+                series_records.insert(segment_series);
+                let cache_lock = self.cache.entry(current).or_default();
                 let mut cache_guard = cache_lock.write().unwrap();
 
-                // __name__ is always at the first
-                let mut names = tag_names.clone();
-                let mut values = tag_values.clone();
-                names.remove(0);
-                values.remove(0);
+                let (names, values) = remove_default_tag(tag_names.clone(), tag_values.clone());
                 names.iter().zip(values.iter()).for_each(|(name, value)| {
                     cache_guard
                         .entry(name.clone())
@@ -446,12 +464,27 @@ impl TagIndexCache {
                         .or_default()
                         .insert(*series_id);
                 });
-                Some(Task::TagIndex(*series_id, names, values, *metric_id))
+                true
             }
-        };
-        if let (Some(task), Some(_)) = (task, notify) {
-            self.sender.send(task).await.unwrap();
         }
+    }
+
+    async fn notify_write(
+        &self,
+        series_id: &SeriesId,
+        tag_names: &TagNames,
+        tag_values: &TagValues,
+        metric_id: &MetricId,
+    ) {
+        self.sender
+            .send(Task::TagIndex(
+                *series_id,
+                tag_names.clone(),
+                tag_values.clone(),
+                *metric_id,
+            ))
+            .await
+            .unwrap();
     }
 }
 
@@ -462,7 +495,7 @@ pub struct CacheManager {
 }
 
 enum Task {
-    Metric(MetricName),
+    Metric(MetricName, FieldName, FieldType),
     Series(SeriesId, SeriesKey, MetricId),
     TagIndex(SeriesId, TagNames, TagValues, MetricId),
 }
@@ -517,7 +550,7 @@ impl CacheManager {
             let schema = MetricsCache::schema();
             let storage =
                 make_storage(runtimes.clone(), store.clone(), root_dir, 2, schema.clone()).await;
-            let (sender, receiver) = mpsc::channel(32);
+            let (sender, receiver) = mpsc::channel(1024);
             let writer = CacheWriter::new(receiver, storage.clone(), schema.clone());
             tokio::spawn(async move { CacheManager::execute_write(writer).await });
             let mut cache = MetricsCache::new(storage, sender);
@@ -530,7 +563,7 @@ impl CacheManager {
             let schema = SeriesCache::schema();
             let storage =
                 make_storage(runtimes.clone(), store.clone(), root_dir, 2, schema.clone()).await;
-            let (sender, receiver) = mpsc::channel(32);
+            let (sender, receiver) = mpsc::channel(1024);
             let writer = CacheWriter::new(receiver, storage.clone(), schema.clone());
             tokio::spawn(async move { CacheManager::execute_write(writer).await });
             let mut cache = SeriesCache::new(storage, sender);
@@ -543,7 +576,7 @@ impl CacheManager {
             let root_dir = path.to_string_lossy().to_string();
             let schema = TagIndexCache::schema();
             let storage = make_storage(runtimes, store, root_dir, 3, schema.clone()).await;
-            let (sender, receiver) = mpsc::channel(32);
+            let (sender, receiver) = mpsc::channel(1024);
             let writer = CacheWriter::new(receiver, storage.clone(), schema);
             tokio::spawn(async move { CacheManager::execute_write(writer).await });
             let mut cache = TagIndexCache::new(storage, sender);
@@ -559,13 +592,21 @@ impl CacheManager {
     }
 
     pub async fn update_metric(&self, name: &[u8]) {
-        self.metrics
-            .update(name, &default_field_name(), default_field_type(), Some(()))
-            .await;
+        let updated = self
+            .metrics
+            .update(name, DEFAULT_FIELD_NAME.as_bytes(), DEFAULT_FIELD_TYPE);
+        if updated {
+            self.metrics
+                .notify_write(name, DEFAULT_FIELD_NAME.as_bytes(), DEFAULT_FIELD_TYPE)
+                .await;
+        }
     }
 
     pub async fn update_series(&self, id: &SeriesId, key: &SeriesKey, metric_id: &MetricId) {
-        self.series.update(id, key, metric_id, Some(())).await;
+        let updated = self.series.update(id, key);
+        if updated {
+            self.series.notify_write(id, key, metric_id).await;
+        }
     }
 
     pub async fn update_tag_index(
@@ -574,33 +615,29 @@ impl CacheManager {
         series_key: &SeriesKey,
         metric_id: &MetricId,
     ) {
-        self.tag_index
-            .update(
-                series_id,
-                &series_key.names,
-                &series_key.values,
-                metric_id,
-                Some(()),
-            )
-            .await;
+        let updated =
+            self.tag_index
+                .update(series_id, &series_key.names, &series_key.values, metric_id);
+        if updated {
+            self.tag_index
+                .notify_write(series_id, &series_key.names, &series_key.values, metric_id)
+                .await;
+        }
     }
 
     async fn execute_write(mut writer: CacheWriter) {
+        // TODO: use try_recv to accumulated a number of tasks and handle them in one
+        // batch
         while let Some(task) = writer.receiver.recv().await {
             match task {
-                Task::Metric(name) => {
+                Task::Metric(name, field_name, field_type) => {
                     let arrays: Vec<ArrayRef> = vec![
                         Arc::new(BinaryArray::from(vec![name.to_byte_slice()])),
                         Arc::new(UInt64Array::from(vec![hash(&name)])),
-                        Arc::new(BinaryArray::from(
-                            vec![default_field_name().to_byte_slice()],
-                        )),
-                        Arc::new(UInt64Array::from(vec![hash(
-                            default_field_name().to_byte_slice(),
-                        )])),
-                        Arc::new(UInt8Array::from(vec![default_field_type()])),
+                        Arc::new(BinaryArray::from(vec![field_name.to_byte_slice()])),
+                        Arc::new(UInt64Array::from(vec![hash(field_name.to_byte_slice())])),
+                        Arc::new(UInt8Array::from(vec![field_type])),
                     ];
-                    // Step 4: 构造 RecordBatch
                     let batch = RecordBatch::try_new(writer.schema.clone(), arrays).unwrap();
                     writer
                         .storage
@@ -614,39 +651,43 @@ impl CacheManager {
                 }
                 Task::Series(id, key, metric_id) => {
                     let offsets: Vec<i32> = vec![0, key.names.len() as i32];
-                    let name_binary_values = key
-                        .names
-                        .iter()
-                        .map(|item| item.as_slice())
-                        .collect::<Vec<_>>();
-                    let name_binary_array = BinaryArray::from_vec(name_binary_values);
-                    let tag_names = ListArray::try_new(
-                        Arc::new(Field::new("item", DataType::Binary, true)),
-                        OffsetBuffer::new(offsets.clone().into()),
-                        Arc::new(name_binary_array),
-                        None,
-                    )
-                    .unwrap();
+                    let tag_names_array = {
+                        let name_binary_values = key
+                            .names
+                            .iter()
+                            .map(|item| item.as_slice())
+                            .collect::<Vec<_>>();
+                        let name_binary_array = BinaryArray::from_vec(name_binary_values);
+                        ListArray::try_new(
+                            Arc::new(Field::new(COLUMN_TAG_ITEM, DataType::Binary, true)),
+                            OffsetBuffer::new(offsets.clone().into()),
+                            Arc::new(name_binary_array),
+                            None,
+                        )
+                        .unwrap()
+                    };
 
-                    let value_binary_values = key
-                        .names
-                        .iter()
-                        .map(|item| item.as_slice())
-                        .collect::<Vec<_>>();
-                    let value_binary_array = BinaryArray::from_vec(value_binary_values);
-                    let tag_values = ListArray::try_new(
-                        Arc::new(Field::new("item", DataType::Binary, true)),
-                        OffsetBuffer::new(offsets.into()),
-                        Arc::new(value_binary_array),
-                        None,
-                    )
-                    .unwrap();
+                    let tag_values_array = {
+                        let value_binary_values = key
+                            .values
+                            .iter()
+                            .map(|item| item.as_slice())
+                            .collect::<Vec<_>>();
+                        let value_binary_array = BinaryArray::from_vec(value_binary_values);
+                        ListArray::try_new(
+                            Arc::new(Field::new(COLUMN_TAG_ITEM, DataType::Binary, true)),
+                            OffsetBuffer::new(offsets.into()),
+                            Arc::new(value_binary_array),
+                            None,
+                        )
+                        .unwrap()
+                    };
 
                     let arrays: Vec<ArrayRef> = vec![
                         Arc::new(UInt64Array::from(vec![metric_id.0])),
                         Arc::new(UInt64Array::from(vec![id.0])),
-                        Arc::new(tag_names),
-                        Arc::new(tag_values),
+                        Arc::new(tag_names_array),
+                        Arc::new(tag_values_array),
                     ];
                     let batch = RecordBatch::try_new(writer.schema.clone(), arrays).unwrap();
                     writer
@@ -664,6 +705,8 @@ impl CacheManager {
                     let mut series_id_builder = UInt64Builder::new();
                     let mut tag_name_builder = BinaryBuilder::new();
                     let mut tag_value_builder = BinaryBuilder::new();
+
+                    let (names, values) = remove_default_tag(names, values);
 
                     names.iter().zip(values.iter()).for_each(|(name, value)| {
                         metrics_id_builder.append_value(metric_id.0);
@@ -693,6 +736,29 @@ impl CacheManager {
     }
 }
 
+fn remove_default_tag(
+    mut names: Vec<Vec<u8>>,
+    mut values: Vec<Vec<u8>>,
+) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
+    let mut to_remove_index = HashSet::new();
+    let mut index = 0;
+    names.retain(|item| {
+        let keep = !item.starts_with(b"__");
+        if !keep {
+            to_remove_index.insert(index);
+        }
+        index += 1;
+        keep
+    });
+    let mut index = 0;
+    values.retain(|_| {
+        let keep = !to_remove_index.contains(&index);
+        index += 1;
+        keep
+    });
+    (names, values)
+}
+
 #[cfg(test)]
 mod tests {
     use horaedb_storage::{
@@ -700,6 +766,7 @@ mod tests {
         types::{TimeRange, Timestamp},
     };
     use object_store::local::LocalFileSystem;
+    use tokio::runtime::Runtime;
 
     use super::*;
     use crate::types::{hash, Label};
@@ -715,66 +782,63 @@ mod tests {
         {
             // Test update_metric
             let metric_name = "metric_neo".as_bytes();
+            let metric_id = MetricId(hash(metric_name));
             cache_manager.update_metric(metric_name).await;
 
             let series_id = SeriesId(11);
             let lables = vec![
                 Label {
-                    name: b"l1".to_vec(),
+                    name: b"label_a".to_vec(),
                     value: b"111".to_vec(),
                 },
                 Label {
-                    name: b"l2".to_vec(),
+                    name: b"label_b".to_vec(),
                     value: b"222".to_vec(),
                 },
             ];
             let series_key = SeriesKey::new(Some(metric_name), lables.as_slice());
-
             // Test update_series
             cache_manager
-                .update_series(&series_id, &series_key, &MetricId(hash(metric_name)))
+                .update_series(&series_id, &series_key, &metric_id)
                 .await;
-
             // Test update_tag_index
             cache_manager
-                .update_tag_index(&series_id, &series_key, &MetricId(hash(metric_name)))
+                .update_tag_index(&series_id, &series_key, &metric_id)
                 .await;
         }
 
         {
             // Test update_metric
             let metric_name = "metric_neo2".as_bytes();
+            let metric_id = MetricId(hash(metric_name));
             cache_manager.update_metric(metric_name).await;
 
             let series_id = SeriesId(22);
             let lables = vec![
                 Label {
-                    name: b"l1".to_vec(),
+                    name: b"label_a".to_vec(),
                     value: b"111".to_vec(),
                 },
                 Label {
-                    name: b"l2".to_vec(),
-                    value: b"222".to_vec(),
+                    name: b"label_c".to_vec(),
+                    value: b"333".to_vec(),
                 },
             ];
             let series_key = SeriesKey::new(Some(metric_name), lables.as_slice());
-
             // Test update_series
             cache_manager
-                .update_series(&series_id, &series_key, &MetricId(hash(metric_name)))
+                .update_series(&series_id, &series_key, &metric_id)
                 .await;
-
             // Test update_tag_index
             cache_manager
-                .update_tag_index(&series_id, &series_key, &MetricId(hash(metric_name)))
+                .update_tag_index(&series_id, &series_key, &metric_id)
                 .await;
         }
 
-        // sleep 30s
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
+        // scan and test file data
         {
-            println!("metricsssssss.....");
             let mut result_stream = cache_manager
                 .metrics
                 .storage
@@ -785,14 +849,33 @@ mod tests {
                 })
                 .await
                 .unwrap();
-            while let Some(item) = result_stream.next().await {
-                let batch = item.unwrap();
-                println!("=====");
-                println!("batch: {:?}", batch);
+
+            {
+                let item = result_stream.next().await;
+                let batch = item.unwrap().unwrap();
+                let (metric_name, field_name, field_type, filed_id, metric_id) =
+                    MetricsCache::parse_record_batch(&batch, 0);
+                assert_eq!(metric_name, b"metric_neo");
+                assert_eq!(field_name, b"value");
+                assert_eq!(field_type, 0);
+                assert_eq!(filed_id, 17612580310495814266);
+                assert_eq!(metric_id, 12417319948205937109);
+            }
+
+            {
+                let item = result_stream.next().await;
+                let batch = item.unwrap().unwrap();
+                let (metric_name, field_name, field_type, filed_id, metric_id) =
+                    MetricsCache::parse_record_batch(&batch, 0);
+                assert_eq!(metric_name, b"metric_neo2");
+                assert_eq!(field_name, b"value");
+                assert_eq!(field_type, 0);
+                assert_eq!(filed_id, 17612580310495814266);
+                assert_eq!(metric_id, 17578343207158939466);
             }
         }
+
         {
-            println!("series.....");
             let mut result_stream = cache_manager
                 .series
                 .storage
@@ -803,14 +886,46 @@ mod tests {
                 })
                 .await
                 .unwrap();
-            while let Some(item) = result_stream.next().await {
-                let batch = item.unwrap();
-                println!("=====");
-                println!("batch: {:?}", batch);
+            {
+                let item = result_stream.next().await;
+                let batch = item.unwrap().unwrap();
+                let (series_id, tag_names, tag_values) = SeriesCache::parse_record_batch(&batch, 0);
+
+                assert_eq!(series_id, 11);
+                assert_eq!(
+                    tag_names,
+                    vec![
+                        b"__name__".to_vec(),
+                        b"label_a".to_vec(),
+                        b"label_b".to_vec()
+                    ]
+                );
+                assert_eq!(
+                    tag_values,
+                    vec![b"metric_neo".to_vec(), b"111".to_vec(), b"222".to_vec()]
+                );
+            }
+            {
+                let item = result_stream.next().await;
+                let batch = item.unwrap().unwrap();
+                let (series_id, tag_names, tag_values) = SeriesCache::parse_record_batch(&batch, 0);
+
+                assert_eq!(series_id, 22);
+                assert_eq!(
+                    tag_names,
+                    vec![
+                        b"__name__".to_vec(),
+                        b"label_a".to_vec(),
+                        b"label_c".to_vec()
+                    ]
+                );
+                assert_eq!(
+                    tag_values,
+                    vec![b"metric_neo2".to_vec(), b"111".to_vec(), b"333".to_vec()]
+                );
             }
         }
         {
-            println!("tags.....");
             let mut result_stream = cache_manager
                 .tag_index
                 .storage
@@ -821,10 +936,46 @@ mod tests {
                 })
                 .await
                 .unwrap();
-            while let Some(item) = result_stream.next().await {
-                let batch = item.unwrap();
-                println!("=====");
-                println!("batch: {:?}", batch);
+            {
+                let item = result_stream.next().await;
+                let batch = item.unwrap().unwrap();
+                assert_eq!(batch.num_rows(), 3);
+                {
+                    let (metric_id, tag_name, tag_value, series_id) =
+                        TagIndexCache::parse_record_batch(&batch, 0);
+                    assert_eq!(metric_id, 12417319948205937109);
+                    assert_eq!(tag_name, b"label_a");
+                    assert_eq!(tag_value, b"111");
+                    assert_eq!(series_id, 11);
+                }
+                {
+                    let (metric_id, tag_name, tag_value, series_id) =
+                        TagIndexCache::parse_record_batch(&batch, 1);
+                    assert_eq!(metric_id, 12417319948205937109);
+                    assert_eq!(tag_name, b"label_b");
+                    assert_eq!(tag_value, b"222");
+                    assert_eq!(series_id, 11);
+                }
+                {
+                    let (metric_id, tag_name, tag_value, series_id) =
+                        TagIndexCache::parse_record_batch(&batch, 2);
+                    assert_eq!(metric_id, 17578343207158939466);
+                    assert_eq!(tag_name, b"label_a");
+                    assert_eq!(tag_value, b"111");
+                    assert_eq!(series_id, 22);
+                }
+            }
+            {
+                let item = result_stream.next().await;
+                let batch = item.unwrap().unwrap();
+                {
+                    let (metric_id, tag_name, tag_value, series_id) =
+                        TagIndexCache::parse_record_batch(&batch, 0);
+                    assert_eq!(metric_id, 17578343207158939466);
+                    assert_eq!(tag_name, b"label_c");
+                    assert_eq!(tag_value, b"333");
+                    assert_eq!(series_id, 22);
+                }
             }
         }
     }
