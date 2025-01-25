@@ -20,6 +20,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+pub type Result<T> = common::Result<T>;
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct MetricId(pub u64);
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]

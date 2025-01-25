@@ -26,13 +26,13 @@ pub struct MetricManager {
 }
 
 impl MetricManager {
-    pub async fn new(storage: TimeMergeStorageRef) -> Self {
-        Self {
+    pub async fn new(storage: TimeMergeStorageRef) -> Result<Self> {
+        Ok(Self {
             inner: Arc::new(Inner {
                 storage: storage.clone(),
-                index: IndexManager::new().await,
+                index: IndexManager::try_new().await?,
             }),
-        }
+        })
     }
 
     /// Populate metric ids from names.

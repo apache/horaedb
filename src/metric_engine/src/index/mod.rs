@@ -33,7 +33,7 @@ pub struct IndexManager {
 }
 
 impl IndexManager {
-    pub async fn new() -> Self {
+    pub async fn try_new() -> Result<Self> {
         // TODO: maybe initialize runtime and store by config, now just make it
         // compilable
         let rt = Arc::new(Runtime::new().unwrap());
@@ -41,11 +41,11 @@ impl IndexManager {
         let store = Arc::new(LocalFileSystem::new());
         let root_dir = "/tmp/horaedb".to_string();
 
-        Self {
+        Ok(Self {
             inner: Arc::new(Inner {
-                cache: CacheManager::new(runtimes, store, root_dir.as_str()).await,
+                cache: CacheManager::try_new(runtimes, store, root_dir.as_str()).await?,
             }),
-        }
+        })
     }
 
     /// Populate series ids from labels.
@@ -111,12 +111,17 @@ struct Inner {
 }
 
 impl Inner {
-    pub async fn update_metrics(&self, name: &[u8]) {
+    pub async fn update_metrics(&self, name: &[u8]) -> Result<()> {
         self.cache.update_metric(name).await
     }
 
-    pub async fn update_series(&self, id: &SeriesId, key: &SeriesKey, metric_id: &MetricId) {
-        self.cache.update_series(id, key, metric_id).await;
+    pub async fn update_series(
+        &self,
+        id: &SeriesId,
+        key: &SeriesKey,
+        metric_id: &MetricId,
+    ) -> Result<()> {
+        self.cache.update_series(id, key, metric_id).await
     }
 
     pub async fn update_tag_index(
@@ -124,9 +129,9 @@ impl Inner {
         series_id: &SeriesId,
         series_key: &SeriesKey,
         metric_id: &MetricId,
-    ) {
+    ) -> Result<()> {
         self.cache
             .update_tag_index(series_id, series_key, metric_id)
-            .await;
+            .await
     }
 }
