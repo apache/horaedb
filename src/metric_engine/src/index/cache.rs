@@ -854,22 +854,36 @@ async fn batch_write_tag_index(batch_tasks: Vec<Task>, writer: &CacheWriter) {
     let mut tag_name_builder = BinaryBuilder::new();
     let mut tag_value_builder = BinaryBuilder::new();
 
-    batch_tasks.into_iter().for_each(|mut task| {
-        if let Task::TagIndex(duration, series_id, ref mut names, ref mut values, metric_id) = task
-        {
-            remove_default_tag(names, values);
+    let mut start_ts: i64 = 0;
+    let mut end_ts: i64 = 0;
+    let task_len = batch_tasks.len();
 
-            names.iter().zip(values.iter()).for_each(|(name, value)| {
-                metrics_id_builder.append_value(metric_id.0);
-                tag_name_builder.append_value(name.to_byte_slice());
-                tag_value_builder.append_value(value.to_byte_slice());
-                series_id_builder.append_value(series_id.0);
-                field_duration_builder.append_value(duration.as_millis() as u64);
-            });
-        } else {
-            error!("Some task are not tag index.");
-        }
-    });
+    batch_tasks
+        .into_iter()
+        .enumerate()
+        .for_each(|(index, mut task)| {
+            if let Task::TagIndex(duration, series_id, ref mut names, ref mut values, metric_id) =
+                task
+            {
+                if index == 0 {
+                    start_ts = duration.as_millis() as i64;
+                } else if index == task_len - 1 {
+                    end_ts = duration.as_millis() as i64;
+                }
+
+                remove_default_tag(names, values);
+
+                names.iter().zip(values.iter()).for_each(|(name, value)| {
+                    metrics_id_builder.append_value(metric_id.0);
+                    tag_name_builder.append_value(name.to_byte_slice());
+                    tag_value_builder.append_value(value.to_byte_slice());
+                    series_id_builder.append_value(series_id.0);
+                    field_duration_builder.append_value(duration.as_millis() as u64);
+                });
+            } else {
+                error!("Some task are not tag index.");
+            }
+        });
 
     let arrays: Vec<ArrayRef> = vec![
         Arc::new(metrics_id_builder.finish()),
@@ -883,7 +897,7 @@ async fn batch_write_tag_index(batch_tasks: Vec<Task>, writer: &CacheWriter) {
         .storage
         .write(WriteRequest {
             batch,
-            time_range: (0..10).into(),
+            time_range: (Timestamp(start_ts)..Timestamp(end_ts)).into(),
             enable_check: true,
         })
         .await
@@ -900,9 +914,19 @@ async fn batch_write_series(batch_tasks: Vec<Task>, writer: &CacheWriter) {
     let mut name_binary_values: Vec<&[u8]> = Vec::new();
     let mut value_binary_values: Vec<&[u8]> = Vec::new();
 
+    let mut start_ts: i64 = 0;
+    let mut end_ts: i64 = 0;
+    let task_len = batch_tasks.len();
+
     let mut offsets: Vec<i32> = vec![0; batch_tasks.len() + 1];
     batch_tasks.iter().enumerate().for_each(|(index, task)| {
         if let Task::Series(duration, id, key, metric_id) = task {
+            if index == 0 {
+                start_ts = duration.as_millis() as i64;
+            } else if index == task_len - 1 {
+                end_ts = duration.as_millis() as i64;
+            }
+
             metric_id_builder.append_value(metric_id.0);
             series_id_builder.append_value(id.0);
             field_duration_builder.append_value(duration.as_millis() as u64);
@@ -952,7 +976,7 @@ async fn batch_write_series(batch_tasks: Vec<Task>, writer: &CacheWriter) {
         .storage
         .write(WriteRequest {
             batch,
-            time_range: (0..10).into(),
+            time_range: (Timestamp(start_ts)..Timestamp(end_ts)).into(),
             enable_check: true,
         })
         .await
@@ -970,18 +994,31 @@ async fn batch_write_metrics(batch_tasks: Vec<Task>, writer: &CacheWriter) {
         let mut field_type_builder = UInt8Builder::new();
         let mut field_duration_builder = UInt64Builder::new();
 
-        batch_tasks.into_iter().for_each(|task| {
-            if let Task::Metric(current, name, field_name, field_type) = task {
-                metric_id_builder.append_value(hash(&name));
-                metric_name_builder.append_value(name);
-                field_id_builder.append_value(hash(field_name.to_byte_slice()));
-                field_name_builder.append_value(field_name);
-                field_type_builder.append_value(field_type);
-                field_duration_builder.append_value(current.as_millis() as u64);
-            } else {
-                error!("Some task are not metric.");
-            }
-        });
+        let mut start_ts: i64 = 0;
+        let mut end_ts: i64 = 0;
+        let task_len = batch_tasks.len();
+
+        batch_tasks
+            .into_iter()
+            .enumerate()
+            .for_each(|(index, task)| {
+                if let Task::Metric(duration, name, field_name, field_type) = task {
+                    if index == 0 {
+                        start_ts = duration.as_millis() as i64;
+                    } else if index == task_len - 1 {
+                        end_ts = duration.as_millis() as i64;
+                    }
+
+                    metric_id_builder.append_value(hash(&name));
+                    metric_name_builder.append_value(name);
+                    field_id_builder.append_value(hash(field_name.to_byte_slice()));
+                    field_name_builder.append_value(field_name);
+                    field_type_builder.append_value(field_type);
+                    field_duration_builder.append_value(duration.as_millis() as u64);
+                } else {
+                    error!("Some task are not metric.");
+                }
+            });
 
         vec![
             Arc::new(metric_name_builder.finish()),

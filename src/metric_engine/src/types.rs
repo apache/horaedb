@@ -15,7 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{collections::BTreeSet, io::Write, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    io::Write,
+    time::Duration,
+};
 
 pub type Result<T> = common::Result<T>;
 
@@ -131,3 +135,9 @@ impl SeriesKey {
 pub fn hash(buf: &[u8]) -> u64 {
     seahash::hash(buf)
 }
+
+pub type MetricFieldMap = HashMap<MetricName, (FieldName, FieldType)>;
+pub type SeriesKeyMap = HashMap<SeriesId, SeriesKey>;
+pub type MetricSeriesMap = HashMap<MetricId, HashSet<SeriesId>>;
+pub type TagValueMap = HashMap<TagValue, MetricSeriesMap>;
+pub type TagIndexMap = HashMap<TagName, TagValueMap>;
