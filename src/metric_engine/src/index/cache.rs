@@ -539,13 +539,13 @@ impl TagIndexCache {
                 let mut tag_values = tag_values.clone();
                 remove_default_tag(&mut tag_names, &mut tag_values);
                 tag_names
-                    .iter()
-                    .zip(tag_values.iter())
+                    .into_iter()
+                    .zip(tag_values.into_iter())
                     .for_each(|(name, value)| {
                         cache_guard
-                            .entry(name.clone())
+                            .entry(name)
                             .or_default()
-                            .entry(value.clone())
+                            .entry(value)
                             .or_default()
                             .entry(*metric_id)
                             .or_default()
