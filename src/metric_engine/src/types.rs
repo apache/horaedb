@@ -14,11 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-use std::{
-    collections::BTreeSet,
-    io::Write,
-    time::{Duration, SystemTime},
-};
+use std::{collections::BTreeSet, io::Write, time::Duration};
 
 pub type Result<T> = common::Result<T>;
 
@@ -42,16 +38,18 @@ pub const DEFAULT_FIELD_TYPE: u8 = 0;
 pub struct SegmentDuration(Duration);
 
 impl SegmentDuration {
-    const ONE_DAY: Duration = Duration::from_secs(24 * 60 * 60);
+    const ONE_DAY_SECOND: u64 = 24 * 60 * 60;
 
-    pub fn current_date() -> Self {
-        let now = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+    pub fn date(time: Duration) -> Self {
+        let now = time.as_secs();
         Self(Duration::from_secs(
-            now / SegmentDuration::ONE_DAY.as_secs() * SegmentDuration::ONE_DAY.as_secs(),
+            now / SegmentDuration::ONE_DAY_SECOND * SegmentDuration::ONE_DAY_SECOND,
         ))
+    }
+
+    pub fn same_segment(lhs: Duration, rhs: Duration) -> bool {
+        lhs.as_secs() / SegmentDuration::ONE_DAY_SECOND
+            == rhs.as_secs() / SegmentDuration::ONE_DAY_SECOND
     }
 }
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone)]

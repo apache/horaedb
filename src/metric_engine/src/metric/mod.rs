@@ -26,7 +26,7 @@ pub struct MetricManager {
 }
 
 impl MetricManager {
-    pub async fn new(storage: TimeMergeStorageRef) -> Result<Self> {
+    pub async fn try_new(storage: TimeMergeStorageRef) -> Result<Self> {
         Ok(Self {
             inner: Arc::new(Inner {
                 storage: storage.clone(),
