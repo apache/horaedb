@@ -14,6 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
@@ -105,6 +106,7 @@ impl MetricsCache {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn parse_record_batch(
         batch: &RecordBatch,
         index: usize,
