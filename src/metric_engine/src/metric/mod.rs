@@ -19,32 +19,36 @@ use std::sync::Arc;
 
 use horaedb_storage::storage::TimeMergeStorageRef;
 
-use crate::{types::Sample, Result};
+use crate::{index::IndexManager, types::Sample, Result};
 
 pub struct MetricManager {
     inner: Arc<Inner>,
 }
 
 impl MetricManager {
-    pub fn new(storage: TimeMergeStorageRef) -> Self {
-        Self {
-            inner: Arc::new(Inner { storage }),
-        }
+    pub async fn try_new(storage: TimeMergeStorageRef) -> Result<Self> {
+        Ok(Self {
+            inner: Arc::new(Inner {
+                storage: storage.clone(),
+                index: IndexManager::try_new().await?,
+            }),
+        })
     }
 
     /// Populate metric ids from names.
     /// If a name does not exist, it will be created on demand.
-    pub async fn populate_metric_ids(&self, _samples: &mut [Sample]) -> Result<()> {
-        todo!()
+    pub async fn populate_metric_ids(&self, samples: &mut [Sample]) -> Result<()> {
+        self.inner.populate_metric_ids(samples).await
     }
 }
 
 struct Inner {
     storage: TimeMergeStorageRef,
+    index: IndexManager,
 }
 
 impl Inner {
-    async fn populate_metric_ids(&self, _samples: &mut [Sample]) -> Result<()> {
-        todo!()
+    async fn populate_metric_ids(&self, samples: &mut [Sample]) -> Result<()> {
+        self.index.populate_series_ids(samples).await
     }
 }

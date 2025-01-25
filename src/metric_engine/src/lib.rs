@@ -17,6 +17,8 @@
 
 //! Metric Engine entry point.
 
+mod data;
+mod index;
 mod metric;
 mod types;
 

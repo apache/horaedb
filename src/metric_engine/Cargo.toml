@@ -27,8 +27,12 @@ description.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+arrow = { workspace = true }
 common = { workspace = true }
+dashmap = { workspace = true }
+futures = { workspace = true }
 horaedb_storage = { workspace = true }
+object_store = { workspace = true }
 seahash = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }

@@ -35,6 +35,7 @@ impl SampleManager {
     /// Populate series ids from labels.
     /// It will also build inverted index for labels.
     pub async fn persist(&self, _samples: Vec<Sample>) -> Result<()> {
+        // 1. just write to TM storage directly
         todo!()
     }
 }
