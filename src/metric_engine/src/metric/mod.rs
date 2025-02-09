@@ -149,10 +149,8 @@ impl MetricsInner {
         // find the cache
         let now_ts = Utc::now().timestamp();
         let days = SegmentTimeStamp::day_diff(now_ts, timestamp);
-        if days < 0 // The input timestamp is more than one day ahead of the current date, is it possible?
-        || days >= self.local.get_section_count() as i32
-        // Or, input timestamp too old, less than capacity days
-        {
+        // input timestamp is too old to stay in local cache
+        if days >= self.local.get_section_count() as i32 {
             self._update(days, name, self.global.clone()).await
         } else {
             self._update(days, name, self.local.clone()).await
