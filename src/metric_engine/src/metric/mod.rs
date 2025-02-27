@@ -23,7 +23,10 @@ use arrow::{
     datatypes::{DataType, Field, Schema, ToByteSlice},
 };
 use chrono::{Datelike, Timelike, Utc};
-use horaedb_storage::storage::{TimeMergeStorageRef, WriteRequest};
+use horaedb_storage::{
+    storage::{TimeMergeStorageRef, WriteRequest},
+    types::Timestamp,
+};
 use tokio::{
     sync::{
         mpsc::{self, Receiver, Sender},
@@ -246,6 +249,8 @@ impl Inner {
     }
 
     async fn batch_write_metrics(batch_tasks: Vec<Task>, storage: TimeMergeStorageRef) {
+        let mut start_ts: i64 = 0;
+        let mut end_ts: i64 = 0;
         let arrays: Vec<ArrayRef> = {
             let mut metric_name_builder = BinaryBuilder::new();
             let mut metric_id_builder = UInt64Builder::new();
@@ -253,9 +258,6 @@ impl Inner {
             let mut field_id_builder = UInt64Builder::new();
             let mut field_type_builder = UInt8Builder::new();
             let mut field_duration_builder = Int64Builder::new();
-
-            let mut start_ts: i64 = 0;
-            let mut end_ts: i64 = 0;
             let task_len = batch_tasks.len();
 
             batch_tasks
@@ -292,7 +294,7 @@ impl Inner {
         storage
             .write(WriteRequest {
                 batch,
-                time_range: (0..10).into(),
+                time_range: (Timestamp(start_ts)..Timestamp(end_ts)).into(),
                 enable_check: true,
             })
             .await
@@ -345,7 +347,7 @@ impl Inner {
                         debug!("reach max wait time.");
                         break;
                     },
-                    finished = Inner::batching(&mut batch_tasks, &mut receiver, max_batch_size) => {
+                    finished = Self::batching(&mut batch_tasks, &mut receiver, max_batch_size) => {
                         debug!("get one task");
                         if finished {
                             debug!("batching finished.");
