@@ -301,6 +301,11 @@ impl Inner {
             });
     }
 
+    /// Batching the tasks from the receiver
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancellation safe.
     async fn batching(
         batch_tasks: &mut Vec<Task>,
         receiver: &mut Receiver<Task>,
