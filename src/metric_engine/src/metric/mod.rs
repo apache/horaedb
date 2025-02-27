@@ -15,11 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::{
-    collections::HashMap,
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use arrow::{
@@ -33,9 +29,9 @@ use tokio::{
         mpsc::{self, Receiver, Sender},
         RwLock,
     },
-    time::timeout,
+    time::{interval_at, Instant},
 };
-use tracing::{error, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     types::{
@@ -305,58 +301,54 @@ impl Inner {
             });
     }
 
+    async fn batching(
+        batch_tasks: &mut Vec<Task>,
+        receiver: &mut Receiver<Task>,
+        max_batch_size: usize,
+    ) -> bool {
+        match receiver.recv().await {
+            Some(task) => {
+                if batch_tasks.is_empty()
+                    || SegmentTimeStamp::day_diff(batch_tasks[0].timestamp, task.timestamp) == 0
+                {
+                    batch_tasks.push(task);
+                    batch_tasks.len() >= max_batch_size
+                } else {
+                    true
+                }
+            }
+            None => {
+                warn!("Channel closed");
+                true
+            }
+        }
+    }
+
     async fn execute_write(mut receiver: Receiver<Task>, storage: TimeMergeStorageRef) {
-        let mut task_queue: Vec<Task> = Vec::new();
-        let mut batch_tasks: Vec<Task>;
         // TODO: make it configurable
-        let max_wait_time_ms: u64 = 1000;
-        let max_queue_length: usize = 16;
+        let max_wait_time_ms = 1000;
+        let max_batch_size: usize = 16;
 
         loop {
+            let start = Instant::now() + Duration::from_millis(max_wait_time_ms);
+            let mut wait_interval = interval_at(start, Duration::from_millis(max_wait_time_ms));
+            let mut batch_tasks: Vec<Task> = Vec::new();
             loop {
-                let wait_time: Duration = {
-                    if task_queue.is_empty() {
-                        Duration::from_millis(max_wait_time_ms)
-                    } else {
-                        let current = SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap();
-                        let wait_in_ms = std::cmp::min(
-                            max_wait_time_ms
-                                - (current - task_queue[0].create_time).as_millis() as u64,
-                            1,
-                        );
-                        Duration::from_millis(wait_in_ms)
-                    }
-                };
-                match timeout(wait_time, receiver.recv()).await {
-                    Ok(Some(task)) => {
-                        if task_queue.is_empty()
-                            || SegmentTimeStamp::day_diff(task_queue[0].timestamp, task.timestamp)
-                                == 0
-                        {
-                            task_queue.push(task);
-                            if task_queue.len() >= max_queue_length {
-                                batch_tasks = std::mem::take(&mut task_queue);
-                                break;
-                            }
-                        } else {
-                            batch_tasks = std::mem::take(&mut task_queue);
-                            task_queue.push(task);
+                // loop until a batch is ready
+                tokio::select! {
+                    _ = wait_interval.tick() => {
+                        debug!("reach max wait time.");
+                        break;
+                    },
+                    finished = Inner::batching(&mut batch_tasks, &mut receiver, max_batch_size) => {
+                        debug!("get one task");
+                        if finished {
+                            debug!("batching finished.");
                             break;
                         }
                     }
-                    Ok(None) => {
-                        warn!("Channel closed");
-                        return;
-                    }
-                    Err(_) => {
-                        batch_tasks = std::mem::take(&mut task_queue);
-                        break;
-                    }
                 }
             }
-
             if batch_tasks.is_empty() {
                 continue;
             }
