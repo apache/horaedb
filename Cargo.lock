@@ -630,12 +630,12 @@ name = "benchmarks"
 version = "2.2.0-alpha"
 dependencies = [
  "bytes",
+ "columnar_storage",
  "common",
  "criterion",
  "pb_types",
  "prost",
  "serde",
- "storage",
  "toml",
  "tracing",
  "tracing-subscriber",
@@ -892,6 +892,32 @@ name = "colorchoice"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
+
+[[package]]
+name = "columnar_storage"
+version = "2.2.0-alpha"
+dependencies = [
+ "anyhow",
+ "arrow",
+ "async-scoped",
+ "async-trait",
+ "byteorder",
+ "bytes",
+ "common",
+ "datafusion",
+ "futures",
+ "itertools 0.3.25",
+ "lazy_static",
+ "object_store",
+ "parquet",
+ "pb_types",
+ "prost",
+ "serde",
+ "temp-dir",
+ "test-log",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "comfy-table"
@@ -2154,9 +2180,9 @@ name = "metric_engine"
 version = "2.2.0-alpha"
 dependencies = [
  "anyhow",
+ "columnar_storage",
  "common",
  "seahash",
- "storage",
  "temp-dir",
  "test-log",
  "thiserror",
@@ -2904,12 +2930,12 @@ dependencies = [
  "actix-web",
  "arrow",
  "clap",
+ "columnar_storage",
  "common",
  "futures",
  "object_store",
  "rand",
  "serde",
- "storage",
  "tokio",
  "toml",
  "tracing",
@@ -3046,32 +3072,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "storage"
-version = "2.2.0-alpha"
-dependencies = [
- "anyhow",
- "arrow",
- "async-scoped",
- "async-trait",
- "byteorder",
- "bytes",
- "common",
- "datafusion",
- "futures",
- "itertools 0.3.25",
- "lazy_static",
- "object_store",
- "parquet",
- "pb_types",
- "prost",
- "serde",
- "temp-dir",
- "test-log",
- "tokio",
- "tracing",
-]
 
 [[package]]
 name = "strsim"

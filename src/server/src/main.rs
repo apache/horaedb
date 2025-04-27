@@ -37,13 +37,13 @@ use arrow::{
     datatypes::{DataType, Field, Schema, SchemaRef},
 };
 use clap::Parser;
-use config::{Config, ObjectStorageConfig};
-use horaedb_storage::{
+use columnar_storage::{
     storage::{
         CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
     },
     types::RuntimeRef,
 };
+use config::{Config, ObjectStorageConfig};
 use object_store::local::LocalFileSystem;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;

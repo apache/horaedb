@@ -28,7 +28,7 @@ description.workspace = true
 [dependencies]
 bytes = { workspace = true }
 common = { workspace = true }
-horaedb_storage = { workspace = true }
+columnar_storage = { workspace = true }
 pb_types = { workspace = true }
 prost = { workspace = true }
 serde = { workspace = true }

@@ -16,7 +16,7 @@
 # under the License.
 
 [package]
-name = "storage"
+name = "columnar_storage"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
