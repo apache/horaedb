@@ -74,7 +74,7 @@ pub struct CompactRequest {}
 
 /// Time-aware merge storage interface.
 #[async_trait]
-pub trait TimeMergeStorage {
+pub trait ColumnarStorage {
     fn schema(&self) -> &SchemaRef;
 
     async fn write(&self, req: WriteRequest) -> Result<()>;
@@ -86,7 +86,7 @@ pub trait TimeMergeStorage {
     async fn compact(&self, req: CompactRequest) -> Result<()>;
 }
 
-pub type TimeMergeStorageRef = Arc<(dyn TimeMergeStorage + Send + Sync)>;
+pub type ColumnarStorageRef = Arc<(dyn ColumnarStorage + Send + Sync)>;
 
 #[derive(Clone)]
 pub struct StorageRuntimes {
@@ -103,13 +103,14 @@ impl StorageRuntimes {
     }
 }
 
-/// `TimeMergeStorage` implementation using cloud object storage, it will split
-/// data into different segments(aka `segment_duration`) based time range.
+/// `ObjectBasedStorage` implements `ColumnarStorage` utilizing cloud object
+/// storage (e.g., S3), dividing data into distinct segments based on time
+/// ranges(often referred to as `segment_duration`) .
 ///
-/// Compaction will be done by merging segments within a segment, and segment
-/// will make it easy to support expiration.
+/// Compaction is facilitated through the merging of SST files within a single
+/// segment, making it simple to support expiration.
 #[allow(dead_code)]
-pub struct CloudObjectStorage {
+pub struct ObjectBasedStorage {
     segment_duration: Duration,
     path: String,
     store: ObjectStoreRef,
@@ -133,7 +134,7 @@ pub struct CloudObjectStorage {
 /// {root_path}/data/...
 /// ```
 /// `root_path` is composed of `path` and `segment_duration`.
-impl CloudObjectStorage {
+impl ObjectBasedStorage {
     pub async fn try_new(
         path: String,
         segment_duration: Duration,
@@ -298,7 +299,7 @@ impl CloudObjectStorage {
 }
 
 #[async_trait]
-impl TimeMergeStorage for CloudObjectStorage {
+impl ColumnarStorage for ObjectBasedStorage {
     fn schema(&self) -> &SchemaRef {
         &self.schema.arrow_schema
     }
@@ -394,7 +395,7 @@ mod tests {
         let store = Arc::new(LocalFileSystem::new());
         let runtimes = build_runtimes();
         runtimes.sst_compact_runtime.clone().block_on(async move {
-            let storage = CloudObjectStorage::try_new(
+            let storage = ObjectBasedStorage::try_new(
                 root_dir.path().to_string_lossy().to_string(),
                 Duration::from_hours(2),
                 store,
@@ -496,7 +497,7 @@ mod tests {
         let store = Arc::new(LocalFileSystem::new());
         let runtimes = build_runtimes();
         runtimes.sst_compact_runtime.clone().block_on(async move {
-            let storage = CloudObjectStorage::try_new(
+            let storage = ObjectBasedStorage::try_new(
                 root_dir.path().to_string_lossy().to_string(),
                 Duration::from_hours(2),
                 store,

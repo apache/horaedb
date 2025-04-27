@@ -83,7 +83,7 @@ impl Default for ThreadConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct StorageConfig {
     pub object_store: ObjectStorageConfig,
-    pub time_merge_storage: horaedb_storage::config::StorageConfig,
+    pub time_merge_storage: columnar_storage::config::StorageConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

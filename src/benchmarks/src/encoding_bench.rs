@@ -18,7 +18,7 @@
 //! encoding bench.
 
 use bytes::Bytes;
-use horaedb_storage::{
+use columnar_storage::{
     manifest::Snapshot,
     sst::{FileMeta, SstFile},
 };

@@ -28,18 +28,19 @@ description = "A high-performance, distributed, cloud native time-series databas
 resolver = "2"
 members = [
     "src/benchmarks",
+    "src/columnar_storage"
+,
     "src/common",
     "src/metric_engine",
     "src/pb_types",
-    "src/server",
-    "src/storage"
+    "src/server"
 ]
 
 [workspace.dependencies]
 anyhow = { version = "1.0" }
 seahash = { version = "4" }
 metric_engine = { path = "src/metric_engine" }
-horaedb_storage = { package = "storage", path = "src/storage" }
+columnar_storage = { path = "src/columnar_storage" }
 common = { path = "src/common" }
 thiserror = "1"
 bytes = "1"

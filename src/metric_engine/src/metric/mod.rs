@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use horaedb_storage::storage::TimeMergeStorageRef;
+use columnar_storage::storage::ColumnarStorageRef;
 
 use crate::{types::Sample, Result};
 
@@ -26,7 +26,7 @@ pub struct MetricManager {
 }
 
 impl MetricManager {
-    pub fn new(storage: TimeMergeStorageRef) -> Self {
+    pub fn new(storage: ColumnarStorageRef) -> Self {
         Self {
             inner: Arc::new(Inner { storage }),
         }
@@ -40,7 +40,7 @@ impl MetricManager {
 }
 
 struct Inner {
-    storage: TimeMergeStorageRef,
+    storage: ColumnarStorageRef,
 }
 
 impl Inner {

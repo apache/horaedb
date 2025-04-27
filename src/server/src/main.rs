@@ -37,13 +37,13 @@ use arrow::{
     datatypes::{DataType, Field, Schema, SchemaRef},
 };
 use clap::Parser;
-use config::{Config, ObjectStorageConfig};
-use horaedb_storage::{
+use columnar_storage::{
     storage::{
-        CloudObjectStorage, CompactRequest, StorageRuntimes, TimeMergeStorageRef, WriteRequest,
+        ColumnarStorageRef, CompactRequest, ObjectBasedStorage, StorageRuntimes, WriteRequest,
     },
     types::RuntimeRef,
 };
+use config::{Config, ObjectStorageConfig};
 use object_store::local::LocalFileSystem;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -80,7 +80,7 @@ async fn compact(data: web::Data<AppState>) -> impl Responder {
 }
 
 struct AppState {
-    storage: TimeMergeStorageRef,
+    storage: ColumnarStorageRef,
     keep_writing: Arc<AtomicBool>,
 }
 
@@ -121,7 +121,7 @@ pub fn main() {
     let _ = rt.block_on(async move {
         let store = Arc::new(LocalFileSystem::new());
         let storage = Arc::new(
-            CloudObjectStorage::try_new(
+            ObjectBasedStorage::try_new(
                 object_store_config.data_dir,
                 segment_duration,
                 store,
@@ -185,7 +185,7 @@ fn build_schema() -> SchemaRef {
 }
 
 fn bench_write(
-    storage: TimeMergeStorageRef,
+    storage: ColumnarStorageRef,
     rt: RuntimeRef,
     workers: usize,
     interval: Duration,

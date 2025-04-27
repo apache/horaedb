@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use horaedb_storage::storage::TimeMergeStorageRef;
+use columnar_storage::storage::TimeMergeStorageRef;
 
 use crate::{types::Sample, Result};
 
