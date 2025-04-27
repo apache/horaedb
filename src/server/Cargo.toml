@@ -29,9 +29,9 @@ description.workspace = true
 actix-web = "4"
 arrow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+columnar_storage = { workspace = true }
 common = { workspace = true }
 futures = { workspace = true }
-columnar_storage = { workspace = true }
 object_store = { workspace = true }
 rand = "0.8"
 serde = { workspace = true }

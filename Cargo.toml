@@ -28,11 +28,12 @@ description = "A high-performance, distributed, cloud native time-series databas
 resolver = "2"
 members = [
     "src/benchmarks",
+    "src/columnar_storage"
+,
     "src/common",
     "src/metric_engine",
     "src/pb_types",
-    "src/server",
-    "src/columnar_storage"
+    "src/server"
 ]
 
 [workspace.dependencies]
