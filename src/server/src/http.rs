@@ -646,7 +646,7 @@ impl Service {
             .and_then(
                 |duration_sec: u64, profiler: Arc<Profiler>, runtime: Arc<Runtime>| async move {
                     let handle = runtime.spawn_blocking(move || {
-                        profiler.dump_heap_pprof(duration_sec).context(ProfileHeap)
+                        profiler.dump_heap_pprof(duration_sec).context(PprofHeap)
                     });
                     let result = handle.await.context(JoinAsyncTask);
                     match result {

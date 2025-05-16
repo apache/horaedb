@@ -67,7 +67,7 @@ def generate_random_string(length):
     return ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(length))
 
 
-def create_test_tables(count=3):
+def create_test_tables(count=5):
     table_names = []
 
     for t in range(count):
