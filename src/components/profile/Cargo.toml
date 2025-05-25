@@ -27,15 +27,12 @@ workspace = true
 [package.authors]
 workspace = true
 
-[dependencies.jemalloc-sys]
-version = "0.3.2"
-features = ["stats", "profiling", "unprefixed_malloc_on_supported_platforms"]
-
 [package.edition]
 workspace = true
 
 [dependencies]
-jemalloc-ctl = "0.3.2"
-jemallocator = "0.3.2"
+jemalloc_pprof = { version = "0.7", features = ["symbolize"] }
 logger = { workspace = true }
 pprof = { workspace = true, features = ["flamegraph"] }
+tikv-jemalloc-ctl = { version = "0.6.0", features = ["profiling"] }
+tikv-jemallocator = { version = "0.6.0", features = ["profiling", "unprefixed_malloc_on_supported_platforms"] }
