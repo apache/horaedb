@@ -31,7 +31,7 @@ jobs:
   run-tsbs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Release Disk Quota
@@ -57,7 +57,7 @@ jobs:
       - name: Update Summary
         run: |
           cat tsbs/result.md >> $GITHUB_STEP_SUMMARY
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: bench-${{ env.NOW }}
           path: |

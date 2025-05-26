@@ -103,6 +103,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
+    #[snafu(display("Fail to do heap pprof, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    PprofHeap {
+        source: profile::Error,
+        backtrace: Backtrace,
+    },
+
     #[snafu(display("Fail to do cpu profiling, err:{}.\nBacktrace:\n{}", source, backtrace))]
     ProfileCPU {
         source: profile::Error,
@@ -251,6 +257,7 @@ impl Service {
             .or(self.update_log_level())
             .or(self.profile_cpu())
             .or(self.profile_heap())
+            .or(self.pprof_heap())
             .or(self.server_config())
             .or(self.shards())
             .or(self.wal_stats())
@@ -627,6 +634,30 @@ impl Service {
             )
     }
 
+    // GET /debug/pprof/heap/{seconds}
+    fn pprof_heap(
+        &self,
+    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+        warp::path!("debug" / "pprof" / "heap" / ..)
+            .and(warp::path::param::<u64>())
+            .and(warp::get())
+            .and(self.with_profiler())
+            .and(self.with_runtime())
+            .and_then(
+                |duration_sec: u64, profiler: Arc<Profiler>, runtime: Arc<Runtime>| async move {
+                    let handle = runtime.spawn_blocking(move || {
+                        profiler.dump_heap_pprof(duration_sec).context(PprofHeap)
+                    });
+                    let result = handle.await.context(JoinAsyncTask);
+                    match result {
+                        Ok(Ok(pprof_data)) => Ok(pprof_data.into_response()),
+                        Ok(Err(e)) => Err(reject::custom(e)),
+                        Err(e) => Err(reject::custom(e)),
+                    }
+                },
+            )
+    }
+
     // GET /debug/config
     fn server_config(
         &self,
@@ -975,6 +1006,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
         | Error::ParseIpAddr { .. }
         | Error::ProfileHeap { .. }
         | Error::ProfileCPU { .. }
+        | Error::PprofHeap { .. }
         | Error::Internal { .. }
         | Error::JoinAsyncTask { .. }
         | Error::AlreadyStarted { .. }

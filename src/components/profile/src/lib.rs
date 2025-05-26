@@ -27,8 +27,8 @@ use std::{
     time::Duration,
 };
 
-use jemalloc_ctl::{Access, AsName};
 use logger::{error, info};
+use tikv_jemalloc_ctl::{self as jemalloc_ctl, Access, AsName};
 
 #[derive(Debug)]
 pub enum Error {
@@ -48,7 +48,7 @@ impl std::error::Error for Error {}
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 const PROF_ACTIVE: &[u8] = b"prof.active\0";
 const PROF_DUMP: &[u8] = b"prof.dump\0";
@@ -182,5 +182,38 @@ impl Profiler {
             msg: format!("Flamegraph output, err:{e}"),
         })?;
         Ok(())
+    }
+
+    pub fn dump_heap_pprof(&self, seconds: u64) -> Result<Vec<u8>> {
+        // concurrent profiling is disabled.
+        let lock_guard = self
+            .heap_prof_lock
+            .try_lock()
+            .map_err(|e| Error::Internal {
+                msg: format!("failed to acquire heap_prof_lock, err:{e}"),
+            })?;
+        info!(
+            "Profiler::dump_heap_pprof start heap profiling {} seconds",
+            seconds
+        );
+
+        let _guard = ProfLockGuard::new(lock_guard)?;
+
+        // wait for seconds for collect the profiling data
+        thread::sleep(Duration::from_secs(seconds));
+
+        if let Some(prof_ctl) = jemalloc_pprof::PROF_CTL.as_ref() {
+            let mut prof_ctl = prof_ctl.try_lock().map_err(|e| Error::Internal {
+                msg: format!("failed to lock JemallocProfCtl, err: {e}"),
+            })?;
+            let pprof = prof_ctl.dump_pprof().map_err(|e| Error::Internal {
+                msg: format!("failed to dump pprof, err: {e}"),
+            })?;
+            Ok(pprof)
+        } else {
+            Err(Error::Internal {
+                msg: "PROF_CTL is not initialized".to_string(),
+            })
+        }
     }
 }
