@@ -36,9 +36,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.21.3
       - working-directory: ./horaemeta
         run: |
           make install-tools
@@ -48,10 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.21.3
+      - uses: actions/checkout@v4
       - working-directory: ./horaemeta
         run: |
           make install-tools
@@ -61,10 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
-        with:
-          go-version: 1.21.3
+      - uses: actions/checkout@v4
       - working-directory: ./integration_tests
         run: |
           sudo apt install -y protobuf-compiler

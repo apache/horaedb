@@ -41,7 +41,7 @@ jobs:
     name: coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Setup Rust toolchain
@@ -65,4 +65,3 @@ jobs:
       - name: Report coverage
         continue-on-error: true
         run: bash <(curl -s https://codecov.io/bash)
-
