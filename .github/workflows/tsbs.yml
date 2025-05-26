@@ -57,7 +57,7 @@ jobs:
       - name: Update Summary
         run: |
           cat tsbs/result.md >> $GITHUB_STEP_SUMMARY
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: bench-${{ env.NOW }}
           path: |

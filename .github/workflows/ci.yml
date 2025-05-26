@@ -140,7 +140,7 @@ jobs:
           RUST_BACKTRACE: "1"
       - name: Upload Logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: CI-${{ github.sha }}
           path: |
@@ -206,7 +206,7 @@ jobs:
           make run-opentsdb
       - name: Upload Logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sdk-test-${{ github.sha }}
           path: |
@@ -236,7 +236,7 @@ jobs:
           make run-recovery
       - name: Upload Logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: recovery-test-${{ github.sha }}
           path: |
@@ -269,7 +269,7 @@ jobs:
           make run-dist-query
       - name: Upload Logs
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dist-query-test-${{ github.sha }}
           path: |
