@@ -15,13 +15,24 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[manifest]
-record_count = 1000
-append_count = 100
-bench_measurement_time = "5s"
-bench_sample_size = 10
+[package]
+name = "remote_write"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description.workspace = true
 
-[remote_write]
-workload_file = "../remote_write/tests/workloads/1709380533560664458.data"
-sequential_scales = [1, 5, 10, 20, 50]
-concurrent_scales = [1, 5, 10, 20, 50]
+[features]
+unsafe-split = []
+
+[dependencies]
+async-trait = { workspace = true }
+bytes = { workspace = true }
+deadpool = { workspace = true }
+once_cell = { workspace = true }
+pb_types = { workspace = true }
+prost = { workspace = true }
+tokio = { workspace = true }

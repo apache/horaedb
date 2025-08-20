@@ -15,12 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::io::Result;
-
-fn main() -> Result<()> {
-    prost_build::compile_protos(
-        &["protos/sst.proto", "protos/remote_write.proto"],
-        &["protos/"],
-    )?;
-    Ok(())
-}
+mod pb_reader;
+pub mod pooled_parser;
+pub mod pooled_types;
+mod repeated_field;

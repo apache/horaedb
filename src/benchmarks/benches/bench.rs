@@ -22,6 +22,7 @@ use std::{cell::RefCell, sync::Once};
 use benchmarks::{
     config::{self, BenchConfig},
     encoding_bench::EncodingBench,
+    remote_write_bench::RemoteWriteBench,
 };
 use criterion::*;
 
@@ -56,10 +57,113 @@ fn bench_manifest_encoding(c: &mut Criterion) {
     group.finish();
 }
 
+fn bench_remote_write(c: &mut Criterion) {
+    let config = init_bench();
+
+    let sequential_scales = config.remote_write.sequential_scales.clone();
+    let concurrent_scales = config.remote_write.concurrent_scales.clone();
+    let bench = RefCell::new(RemoteWriteBench::new(config.remote_write));
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // Sequential parse bench.
+    let mut group = c.benchmark_group("remote_write_sequential");
+
+    for &n in &sequential_scales {
+        group.bench_with_input(
+            BenchmarkId::new("prost", n),
+            &(&bench, n),
+            |b, (bench, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| bench.prost_parser_sequential(*scale).unwrap())
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("pooled", n),
+            &(&bench, &rt, n),
+            |b, (bench, rt, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| rt.block_on(bench.pooled_parser_sequential(*scale)).unwrap())
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("quick_protobuf", n),
+            &(&bench, n),
+            |b, (bench, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| bench.quick_protobuf_parser_sequential(*scale).unwrap())
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("rust_protobuf", n),
+            &(&bench, n),
+            |b, (bench, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| bench.rust_protobuf_parser_sequential(*scale).unwrap())
+            },
+        );
+    }
+    group.finish();
+
+    // Concurrent parse bench.
+    let mut group = c.benchmark_group("remote_write_concurrent");
+
+    for &scale in &concurrent_scales {
+        group.bench_with_input(
+            BenchmarkId::new("prost", scale),
+            &(&bench, &rt, scale),
+            |b, (bench, rt, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| rt.block_on(bench.prost_parser_concurrent(*scale)).unwrap())
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("pooled", scale),
+            &(&bench, &rt, scale),
+            |b, (bench, rt, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| rt.block_on(bench.pooled_parser_concurrent(*scale)).unwrap())
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("quick_protobuf", scale),
+            &(&bench, &rt, scale),
+            |b, (bench, rt, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| {
+                    rt.block_on(bench.quick_protobuf_parser_concurrent(*scale))
+                        .unwrap()
+                })
+            },
+        );
+
+        group.bench_with_input(
+            BenchmarkId::new("rust_protobuf", scale),
+            &(&bench, &rt, scale),
+            |b, (bench, rt, scale)| {
+                let bench = bench.borrow();
+                b.iter(|| {
+                    rt.block_on(bench.rust_protobuf_parser_concurrent(*scale))
+                        .unwrap()
+                })
+            },
+        );
+    }
+    group.finish();
+}
+
 criterion_group!(
     name = benches;
     config = Criterion::default();
-    targets = bench_manifest_encoding,
+    targets = bench_manifest_encoding, bench_remote_write,
 );
 
 criterion_main!(benches);
