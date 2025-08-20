@@ -11,6 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// This file is is modified from
+// https://github.com/prometheus/prometheus/blob/main/prompb/remote.proto
+// and https://github.com/prometheus/prometheus/blob/main/prompb/types.proto
+
 syntax = "proto3";
 package pb_types.remote_write;
 

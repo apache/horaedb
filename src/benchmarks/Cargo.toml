@@ -25,9 +25,6 @@ repository.workspace = true
 homepage.workspace = true
 description.workspace = true
 
-[features]
-unsafe-split = ["remote_write/unsafe-split"]
-
 [[bin]]
 name = "pooled_parser_mem"
 path = "src/bin/pooled_parser_mem.rs"
@@ -47,6 +44,9 @@ path = "src/bin/quick_protobuf_parser_mem.rs"
 [[bin]]
 name = "pool_stats"
 path = "src/bin/pool_stats.rs"
+
+[features]
+unsafe-split = ["remote_write/unsafe-split"]
 
 [dependencies]
 bytes = { workspace = true }

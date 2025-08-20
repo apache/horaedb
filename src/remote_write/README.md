@@ -168,5 +168,3 @@ cargo run --bin pool_stats --release
 ## Acknowledgements
 
 - The two test data files in `src/remote_write/tests/workloads` are taken from [prom-write-request-bench](https://github.com/v0y4g3r/prom-write-request-bench/tree/main/assets).
-
-- The `src/pb_types/protos/remote_write.proto` file is modified from the official [remote.proto](https://github.com/prometheus/prometheus/blob/main/prompb/remote.proto) and [types.proto](https://github.com/prometheus/prometheus/blob/main/prompb/types.proto).
