@@ -241,4 +241,4 @@ The text of each license is also included in licenses/LICENSE-[project].txt
 
 Files horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform.go,
 horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform_test.go are modified from consistent.
-File src/remote_write/src/repeated_field.rs.
+File src/remote_write/src/repeated_field.rs from prom-write-request-bench.

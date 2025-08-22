@@ -308,10 +308,8 @@ impl ProtobufReader {
                     self.read_exemplar(exemplar_ref)?;
                 }
                 _ => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("unexpected field number in timeseries: {}", field_number),
-                    ));
+                    // Skip unknown fields instead of returning an error
+                    self.skip_field(wire_type)?;
                 }
             }
         }
@@ -342,10 +340,7 @@ impl ProtobufReader {
                     label.value = self.read_string()?;
                 }
                 _ => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("unexpected field number in label: {}", field_number),
-                    ));
+                    self.skip_field(wire_type)?;
                 }
             }
         }
@@ -376,10 +371,7 @@ impl ProtobufReader {
                     sample.timestamp = self.read_int64()?;
                 }
                 _ => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("unexpected field number in sample: {}", field_number),
-                    ));
+                    self.skip_field(wire_type)?;
                 }
             }
         }
@@ -415,10 +407,7 @@ impl ProtobufReader {
                     exemplar.timestamp = self.read_int64()?;
                 }
                 _ => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("unexpected field number in exemplar: {}", field_number),
-                    ));
+                    self.skip_field(wire_type)?;
                 }
             }
         }
@@ -472,14 +461,50 @@ impl ProtobufReader {
                     metadata.unit = self.read_string()?;
                 }
                 _ => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidData,
-                        format!("unexpected field number in metadata: {}", field_number),
-                    ));
+                    self.skip_field(wire_type)?;
                 }
             }
         }
         Ok(())
+    }
+
+    /// Skip an unknown field based on its wire type.
+    #[inline(always)]
+    pub fn skip_field(&mut self, wire_type: u8) -> Result<()> {
+        match wire_type {
+            WIRE_TYPE_VARINT => {
+                // For varint, read and discard the value..
+                self.read_varint()?;
+                Ok(())
+            }
+            WIRE_TYPE_64BIT => {
+                // For 64-bit, skip 8 bytes.
+                if self.data.remaining() < 8 {
+                    return Err(Error::new(
+                        ErrorKind::UnexpectedEof,
+                        "not enough bytes to skip 64-bit field",
+                    ));
+                }
+                self.data.advance(8);
+                Ok(())
+            }
+            WIRE_TYPE_LENGTH_DELIMITED => {
+                // For length-delimited, read length then skip that many bytes.
+                let len = self.read_varint()? as usize;
+                if self.data.remaining() < len {
+                    return Err(Error::new(
+                        ErrorKind::UnexpectedEof,
+                        "not enough bytes to skip length-delimited field",
+                    ));
+                }
+                self.data.advance(len);
+                Ok(())
+            }
+            _ => Err(Error::new(
+                ErrorKind::InvalidData,
+                format!("unsupported wire type for skipping: {}", wire_type),
+            )),
+        }
     }
 }
 
@@ -514,10 +539,8 @@ pub fn read_write_request(data: Bytes, request: &mut PooledWriteRequest) -> Resu
                 reader.read_metric_metadata(metadata_ref)?;
             }
             _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidData,
-                    format!("unexpected field number: {}", field_number),
-                ));
+                // Skip unknown fields instead of returning an error
+                reader.skip_field(wire_type)?;
             }
         }
     }

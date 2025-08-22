@@ -16,7 +16,7 @@ Key optimization techniques:
 
 ## Usage
 
-This crate parses the protobuf `string` type as Rust `Bytes` instances instead of `String` instances to avoid allocation, and it **does not** perform UTF-8 validation when parsing. Therefore, it is up to the caller to decide how to make use of the parsed `Bytes` and whether to apply UTF-8 validation.
+This crate parses the protobuf `string` type as Rust `Bytes` instances instead of `String` instances to avoid allocation, and it **does not** perform UTF-8 validation when parsing. Also, it **does not** check the semantics of the parsed data, such as [Labels](https://prometheus.io/docs/specs/prw/remote_write_spec/#labels). Therefore, it is up to the caller to decide how to make use of the parsed `Bytes` and whether to apply extra validation or error handling.
 
 ### Basic Usage
 
