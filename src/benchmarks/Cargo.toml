@@ -74,6 +74,7 @@ protobuf-codegen = "3.7"
 
 [dev-dependencies]
 criterion = { workspace = true }
+num_cpus = "1.16"
 
 [[bench]]
 name = "bench"

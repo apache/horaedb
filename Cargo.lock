@@ -634,6 +634,7 @@ dependencies = [
  "common",
  "criterion",
  "deadpool",
+ "num_cpus",
  "pb_types",
  "prost",
  "protobuf",

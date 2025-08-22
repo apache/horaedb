@@ -23,5 +23,5 @@ bench_sample_size = 10
 
 [remote_write]
 workload_file = "../remote_write/tests/workloads/1709380533560664458.data"
-sequential_scales = [1, 5, 10, 20, 50]
-concurrent_scales = [1, 5, 10, 20, 50]
+sequential_scales = [1, 5, 10, 20, 50, 100]
+concurrent_scales = [1, 5, 10, 20, 50, 100]

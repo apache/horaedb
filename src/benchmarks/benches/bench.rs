@@ -65,6 +65,7 @@ fn bench_remote_write(c: &mut Criterion) {
     let bench = RefCell::new(RemoteWriteBench::new(config.remote_write));
 
     let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(num_cpus::get())
         .enable_all()
         .build()
         .unwrap();
