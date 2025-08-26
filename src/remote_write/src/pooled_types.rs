@@ -44,13 +44,6 @@ impl Clear for PooledLabel {
     }
 }
 
-impl PooledLabel {
-    pub fn clear(&mut self) {
-        self.name.clear();
-        self.value.clear();
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct PooledSample {
     pub value: f64,
@@ -154,14 +147,6 @@ impl Clear for PooledTimeSeries {
     }
 }
 
-impl PooledTimeSeries {
-    pub fn clear(&mut self) {
-        self.labels.clear();
-        self.samples.clear();
-        self.exemplars.clear();
-    }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct PooledWriteRequest {
     pub timeseries: RepeatedField<PooledTimeSeries>,
@@ -170,13 +155,6 @@ pub struct PooledWriteRequest {
 
 impl Clear for PooledWriteRequest {
     fn clear(&mut self) {
-        self.timeseries.clear();
-        self.metadata.clear();
-    }
-}
-
-impl PooledWriteRequest {
-    pub fn clear(&mut self) {
         self.timeseries.clear();
         self.metadata.clear();
     }

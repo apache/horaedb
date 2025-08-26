@@ -128,6 +128,7 @@ use bytes::Bytes;
 use crate::{
     pb_reader::read_write_request,
     pooled_types::{PooledWriteRequest, WriteRequestManager, POOL},
+    repeated_field::Clear,
 };
 
 #[derive(Debug, Clone)]
