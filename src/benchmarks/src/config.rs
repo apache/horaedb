@@ -27,6 +27,7 @@ const BENCH_CONFIG_PATH_KEY: &str = "BENCH_CONFIG_PATH";
 #[derive(Debug, Deserialize)]
 pub struct BenchConfig {
     pub manifest: ManifestConfig,
+    pub remote_write: RemoteWriteConfig,
 }
 
 pub fn config_from_env() -> BenchConfig {
@@ -47,4 +48,11 @@ pub struct ManifestConfig {
     pub append_count: usize,
     pub bench_measurement_time: ReadableDuration,
     pub bench_sample_size: usize,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RemoteWriteConfig {
+    pub workload_file: String,
+    pub sequential_scales: Vec<usize>,
+    pub concurrent_scales: Vec<usize>,
 }

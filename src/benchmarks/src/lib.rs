@@ -19,4 +19,17 @@
 
 pub mod config;
 pub mod encoding_bench;
-mod util;
+pub mod remote_write_bench;
+pub mod util;
+
+#[allow(clippy::all)]
+#[allow(warnings)]
+pub mod quick_protobuf_remote_write {
+    include!(concat!(env!("OUT_DIR"), "/quick_protobuf_remote_write.rs"));
+}
+
+#[allow(clippy::all)]
+#[allow(warnings)]
+pub mod rust_protobuf_remote_write {
+    include!(concat!(env!("OUT_DIR"), "/rust_protobuf_remote_write.rs"));
+}

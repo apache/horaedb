@@ -9,5 +9,6 @@ integration_tests/dist_query/output
 .project
 .tools
 bin
+!src/benchmarks/src/bin
 coverage.txt
 tini

@@ -61,6 +61,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          cargo install pb-rs
       - name: Install check binaries
         run: |
           cargo install --git https://github.com/DevinR528/cargo-sort --rev 55ec890 --locked
@@ -82,6 +83,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install --yes protobuf-compiler
+          cargo install pb-rs
       - uses: Swatinem/rust-cache@v2
       - name: Run Unit Tests
         run: |
