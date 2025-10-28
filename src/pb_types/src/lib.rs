@@ -19,4 +19,9 @@ mod pb_types {
     include!(concat!(env!("OUT_DIR"), "/pb_types.sst.rs"));
 }
 
+mod prost_remote_write {
+    include!(concat!(env!("OUT_DIR"), "/pb_types.remote_write.rs"));
+}
+
 pub use pb_types::*;
+pub use prost_remote_write::*;

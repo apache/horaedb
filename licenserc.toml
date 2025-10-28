@@ -20,4 +20,6 @@ headerPath = "Apache-2.0-ASF.txt"
 excludes = [
     # Forked
     "src/common/src/size_ext.rs",
+    "src/remote_write/src/repeated_field.rs",
+    "src/pb_types/protos/remote_write.proto",
 ]

@@ -237,6 +237,8 @@ The following components are provided under the MIT License. See project link fo
 The text of each license is also included in licenses/LICENSE-[project].txt
 
 * consistent(https://github.com/buraksezer/consistent)
+* prom-write-request-bench(https://github.com/v0y4g3r/prom-write-request-bench)
 
 Files horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform.go,
 horaemeta/server/coordinator/scheduler/nodepicker/hash/consistent_uniform_test.go are modified from consistent.
+File src/remote_write/src/repeated_field.rs from prom-write-request-bench.
