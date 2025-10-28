@@ -61,35 +61,35 @@ async fn parse_with_pooled(data: &Bytes) -> WriteRequest {
         metadata: Vec::new(),
     };
 
-    for pooled_ts in pooled_request.timeseries.iter() {
+    for pooled_ts in &pooled_request.timeseries {
         let mut timeseries = TimeSeries {
             labels: Vec::new(),
             samples: Vec::new(),
             exemplars: Vec::new(),
         };
 
-        for pooled_label in pooled_ts.labels.iter() {
+        for pooled_label in &pooled_ts.labels {
             timeseries.labels.push(Label {
                 name: String::from_utf8_lossy(&pooled_label.name).to_string(),
                 value: String::from_utf8_lossy(&pooled_label.value).to_string(),
             });
         }
 
-        for pooled_sample in pooled_ts.samples.iter() {
+        for pooled_sample in &pooled_ts.samples {
             timeseries.samples.push(Sample {
                 value: pooled_sample.value,
                 timestamp: pooled_sample.timestamp,
             });
         }
 
-        for pooled_exemplar in pooled_ts.exemplars.iter() {
+        for pooled_exemplar in &pooled_ts.exemplars {
             let mut exemplar = Exemplar {
                 labels: Vec::new(),
                 value: pooled_exemplar.value,
                 timestamp: pooled_exemplar.timestamp,
             };
 
-            for pooled_label in pooled_exemplar.labels.iter() {
+            for pooled_label in &pooled_exemplar.labels {
                 exemplar.labels.push(Label {
                     name: String::from_utf8_lossy(&pooled_label.name).to_string(),
                     value: String::from_utf8_lossy(&pooled_label.value).to_string(),

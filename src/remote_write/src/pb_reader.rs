@@ -15,18 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::io::{Error, ErrorKind, Result};
-
+use anyhow::{ensure, Result};
 use bytes::{Buf, Bytes};
 
 use crate::pooled_types::{
-    PooledExemplar, PooledLabel, PooledMetricMetadata, PooledMetricType, PooledSample,
-    PooledTimeSeries, PooledWriteRequest,
+    Exemplar, Label, MetricMetadata, MetricType, Sample, TimeSeries, WriteRequest,
 };
 
-const WIRE_TYPE_VARINT: u8 = 0;
-const WIRE_TYPE_64BIT: u8 = 1;
-const WIRE_TYPE_LENGTH_DELIMITED: u8 = 2;
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum WireType {
+    Varint = 0,
+    SixtyFourBit = 1,
+    LengthDelimited = 2,
+}
 
 const FIELD_NUM_TIMESERIES: u32 = 1;
 const FIELD_NUM_METADATA: u32 = 3;
@@ -46,7 +48,7 @@ const FIELD_NUM_METADATA_HELP: u32 = 4;
 const FIELD_NUM_METADATA_UNIT: u32 = 5;
 
 // Taken from https://github.com/v0y4g3r/prom-write-request-bench/blob/step6/optimize-slice/src/bytes.rs under Apache License 2.0.
-#[allow(dead_code)]
+#[cfg(feature = "unsafe-split")]
 #[inline(always)]
 unsafe fn copy_to_bytes(data: &mut Bytes, len: usize) -> Bytes {
     if len == data.remaining() {
@@ -59,7 +61,7 @@ unsafe fn copy_to_bytes(data: &mut Bytes, len: usize) -> Bytes {
 }
 
 // Taken from https://github.com/v0y4g3r/prom-write-request-bench/blob/step6/optimize-slice/src/bytes.rs under Apache License 2.0.
-#[allow(dead_code)]
+#[cfg(feature = "unsafe-split")]
 #[inline(always)]
 pub unsafe fn split_to_unsafe(buf: &Bytes, end: usize) -> Bytes {
     let len = buf.len();
@@ -100,12 +102,7 @@ impl ProtobufReader {
     /// for better performance.
     #[inline(always)]
     pub fn read_varint(&mut self) -> Result<u64> {
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         // First byte.
         let b = self.data.get_u8();
         if b < 0x80 {
@@ -113,127 +110,73 @@ impl ProtobufReader {
         }
         let mut x = (b & 0x7f) as u64;
         // Second byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 7));
         }
         x |= ((b & 0x7f) as u64) << 7;
         // Third byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 14));
         }
         x |= ((b & 0x7f) as u64) << 14;
         // Fourth byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 21));
         }
         x |= ((b & 0x7f) as u64) << 21;
         // Fifth byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 28));
         }
         x |= ((b & 0x7f) as u64) << 28;
         // Sixth byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 35));
         }
         x |= ((b & 0x7f) as u64) << 35;
         // Seventh byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 42));
         }
         x |= ((b & 0x7f) as u64) << 42;
         // Eighth byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 49));
         }
         x |= ((b & 0x7f) as u64) << 49;
         // Ninth byte.
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
         if b < 0x80 {
             return Ok(x | ((b as u64) << 56));
         }
         x |= ((b & 0x7f) as u64) << 56;
         // Tenth byte (final byte, must terminate).
-        if !self.data.has_remaining() {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for varint",
-            ));
-        }
+        ensure!(self.data.has_remaining(), "not enough bytes for varint");
         let b = self.data.get_u8();
-        if b >= 0x80 {
-            return Err(Error::new(ErrorKind::InvalidData, "varint overflow"));
-        }
-        if b > 1 {
-            return Err(Error::new(ErrorKind::InvalidData, "varint overflow"));
-        }
+        ensure!(b < 0x80, "varint overflow");
+        ensure!(b <= 1, "varint overflow");
         Ok(x | ((b as u64) << 63))
     }
 
     /// Read a double from the buffer.
     #[inline(always)]
     pub fn read_double(&mut self) -> Result<f64> {
-        if self.data.remaining() < 8 {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for double",
-            ));
-        }
+        ensure!(self.data.remaining() >= 8, "not enough bytes for double");
         // In Protobuf, double is encoded as 64-bit.
         let bits = self.data.get_u64_le();
         Ok(f64::from_bits(bits))
@@ -249,12 +192,7 @@ impl ProtobufReader {
     /// Read a string from the buffer.
     pub fn read_string(&mut self) -> Result<Bytes> {
         let len = self.read_varint()? as usize;
-        if self.data.remaining() < len {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for string",
-            ));
-        }
+        ensure!(self.data.remaining() >= len, "not enough bytes for string");
         // In Protobuf, string is encoded as length-delimited UTF-8 bytes.
         #[cfg(feature = "unsafe-split")]
         let bytes = unsafe { copy_to_bytes(&mut self.data, len) };
@@ -268,42 +206,47 @@ impl ProtobufReader {
 
     /// Read a tag from the buffer.
     #[inline(always)]
-    pub fn read_tag(&mut self) -> Result<(u32, u8)> {
+    pub fn read_tag(&mut self) -> Result<(u32, WireType)> {
         // In Protobuf, tag is encoded as varint.
         // tag = (field_number << 3) | wire_type.
         let tag = self.read_varint()?;
         let field_number = tag >> 3;
-        let wire_type = tag & 0x07;
-        Ok((field_number as u32, wire_type as u8))
+        let wt_val = (tag & 0x07) as u8;
+        ensure!(wt_val <= 2, "unsupported wire type: {}", wt_val);
+        let wire_type = match wt_val {
+            0 => WireType::Varint,
+            1 => WireType::SixtyFourBit,
+            2 => WireType::LengthDelimited,
+            _ => unreachable!(),
+        };
+        Ok((field_number as u32, wire_type))
     }
 
     /// Read timeseries from the buffer.
     #[inline(always)]
-    pub fn read_timeseries(&mut self, timeseries: &mut PooledTimeSeries) -> Result<()> {
+    pub fn read_timeseries(&mut self, timeseries: &mut TimeSeries) -> Result<()> {
         let len = self.read_varint()? as usize;
-        if self.data.remaining() < len {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for timeseries",
-            ));
-        }
+        ensure!(
+            self.data.remaining() >= len,
+            "not enough bytes for timeseries"
+        );
         let start_remaining = self.data.remaining();
         let end_remaining = start_remaining - len;
         while self.data.remaining() > end_remaining {
             let (field_number, wire_type) = self.read_tag()?;
             match field_number {
                 FIELD_NUM_LABELS => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "labels")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "labels")?;
                     let label_ref = timeseries.labels.push_default();
                     self.read_label(label_ref)?;
                 }
                 FIELD_NUM_SAMPLES => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "samples")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "samples")?;
                     let sample_ref = timeseries.samples.push_default();
                     self.read_sample(sample_ref)?;
                 }
                 FIELD_NUM_EXEMPLARS => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "exemplars")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "exemplars")?;
                     let exemplar_ref = timeseries.exemplars.push_default();
                     self.read_exemplar(exemplar_ref)?;
                 }
@@ -318,25 +261,20 @@ impl ProtobufReader {
 
     /// Read label from the buffer.
     #[inline(always)]
-    pub fn read_label(&mut self, label: &mut PooledLabel) -> Result<()> {
+    pub fn read_label(&mut self, label: &mut Label) -> Result<()> {
         let len = self.read_varint()? as usize;
-        if self.data.remaining() < len {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for label",
-            ));
-        }
+        ensure!(self.data.remaining() >= len, "not enough bytes for label");
         let start_remaining = self.data.remaining();
         let end_remaining = start_remaining - len;
         while self.data.remaining() > end_remaining {
             let (field_number, wire_type) = self.read_tag()?;
             match field_number {
                 FIELD_NUM_LABEL_NAME => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "label name")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "label name")?;
                     label.name = self.read_string()?;
                 }
                 FIELD_NUM_LABEL_VALUE => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "label value")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "label value")?;
                     label.value = self.read_string()?;
                 }
                 _ => {
@@ -349,25 +287,20 @@ impl ProtobufReader {
 
     /// Read sample from the buffer.
     #[inline(always)]
-    pub fn read_sample(&mut self, sample: &mut PooledSample) -> Result<()> {
+    pub fn read_sample(&mut self, sample: &mut Sample) -> Result<()> {
         let len = self.read_varint()? as usize;
-        if self.data.remaining() < len {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for sample",
-            ));
-        }
+        ensure!(self.data.remaining() >= len, "not enough bytes for sample");
         let start_remaining = self.data.remaining();
         let end_remaining = start_remaining - len;
         while self.data.remaining() > end_remaining {
             let (field_number, wire_type) = self.read_tag()?;
             match field_number {
                 FIELD_NUM_SAMPLE_VALUE => {
-                    validate_wire_type(wire_type, WIRE_TYPE_64BIT, "sample value")?;
+                    validate_wire_type(wire_type, WireType::SixtyFourBit, "sample value")?;
                     sample.value = self.read_double()?;
                 }
                 FIELD_NUM_SAMPLE_TIMESTAMP => {
-                    validate_wire_type(wire_type, WIRE_TYPE_VARINT, "sample timestamp")?;
+                    validate_wire_type(wire_type, WireType::Varint, "sample timestamp")?;
                     sample.timestamp = self.read_int64()?;
                 }
                 _ => {
@@ -380,30 +313,28 @@ impl ProtobufReader {
 
     /// Read exemplar from the buffer.
     #[inline(always)]
-    pub fn read_exemplar(&mut self, exemplar: &mut PooledExemplar) -> Result<()> {
+    pub fn read_exemplar(&mut self, exemplar: &mut Exemplar) -> Result<()> {
         let len = self.read_varint()? as usize;
-        if self.data.remaining() < len {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for exemplar",
-            ));
-        }
+        ensure!(
+            self.data.remaining() >= len,
+            "not enough bytes for exemplar"
+        );
         let start_remaining = self.data.remaining();
         let end_remaining = start_remaining - len;
         while self.data.remaining() > end_remaining {
             let (field_number, wire_type) = self.read_tag()?;
             match field_number {
                 FIELD_NUM_EXEMPLAR_LABELS => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "exemplar labels")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "exemplar labels")?;
                     let label_ref = exemplar.labels.push_default();
                     self.read_label(label_ref)?;
                 }
                 FIELD_NUM_EXEMPLAR_VALUE => {
-                    validate_wire_type(wire_type, WIRE_TYPE_64BIT, "exemplar value")?;
+                    validate_wire_type(wire_type, WireType::SixtyFourBit, "exemplar value")?;
                     exemplar.value = self.read_double()?;
                 }
                 FIELD_NUM_EXEMPLAR_TIMESTAMP => {
-                    validate_wire_type(wire_type, WIRE_TYPE_VARINT, "exemplar timestamp")?;
+                    validate_wire_type(wire_type, WireType::Varint, "exemplar timestamp")?;
                     exemplar.timestamp = self.read_int64()?;
                 }
                 _ => {
@@ -416,48 +347,46 @@ impl ProtobufReader {
 
     /// Read metric metadata from the buffer.
     #[inline(always)]
-    pub fn read_metric_metadata(&mut self, metadata: &mut PooledMetricMetadata) -> Result<()> {
+    pub fn read_metric_metadata(&mut self, metadata: &mut MetricMetadata) -> Result<()> {
         let len = self.read_varint()? as usize;
-        if self.data.remaining() < len {
-            return Err(Error::new(
-                ErrorKind::UnexpectedEof,
-                "not enough bytes for metadata",
-            ));
-        }
+        ensure!(
+            self.data.remaining() >= len,
+            "not enough bytes for metadata"
+        );
         let start_remaining = self.data.remaining();
         let end_remaining = start_remaining - len;
         while self.data.remaining() > end_remaining {
             let (field_number, wire_type) = self.read_tag()?;
             match field_number {
                 FIELD_NUM_METADATA_TYPE => {
-                    validate_wire_type(wire_type, WIRE_TYPE_VARINT, "metadata type")?;
+                    validate_wire_type(wire_type, WireType::Varint, "metadata type")?;
                     let type_value = self.read_varint()? as i32;
                     metadata.metric_type = match type_value {
-                        0 => PooledMetricType::Unknown,
-                        1 => PooledMetricType::Counter,
-                        2 => PooledMetricType::Gauge,
-                        3 => PooledMetricType::Histogram,
-                        4 => PooledMetricType::GaugeHistogram,
-                        5 => PooledMetricType::Summary,
-                        6 => PooledMetricType::Info,
-                        7 => PooledMetricType::StateSet,
-                        _ => PooledMetricType::Unknown,
+                        0 => MetricType::Unknown,
+                        1 => MetricType::Counter,
+                        2 => MetricType::Gauge,
+                        3 => MetricType::Histogram,
+                        4 => MetricType::GaugeHistogram,
+                        5 => MetricType::Summary,
+                        6 => MetricType::Info,
+                        7 => MetricType::StateSet,
+                        _ => MetricType::Unknown,
                     };
                 }
                 FIELD_NUM_METADATA_FAMILY_NAME => {
                     validate_wire_type(
                         wire_type,
-                        WIRE_TYPE_LENGTH_DELIMITED,
+                        WireType::LengthDelimited,
                         "metadata family name",
                     )?;
                     metadata.metric_family_name = self.read_string()?;
                 }
                 FIELD_NUM_METADATA_HELP => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "metadata help")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "metadata help")?;
                     metadata.help = self.read_string()?;
                 }
                 FIELD_NUM_METADATA_UNIT => {
-                    validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "metadata unit")?;
+                    validate_wire_type(wire_type, WireType::LengthDelimited, "metadata unit")?;
                     metadata.unit = self.read_string()?;
                 }
                 _ => {
@@ -470,71 +399,61 @@ impl ProtobufReader {
 
     /// Skip an unknown field based on its wire type.
     #[inline(always)]
-    pub fn skip_field(&mut self, wire_type: u8) -> Result<()> {
+    pub fn skip_field(&mut self, wire_type: WireType) -> Result<()> {
         match wire_type {
-            WIRE_TYPE_VARINT => {
-                // For varint, read and discard the value..
+            WireType::Varint => {
+                // For varint, read and discard the value.
                 self.read_varint()?;
                 Ok(())
             }
-            WIRE_TYPE_64BIT => {
+            WireType::SixtyFourBit => {
                 // For 64-bit, skip 8 bytes.
-                if self.data.remaining() < 8 {
-                    return Err(Error::new(
-                        ErrorKind::UnexpectedEof,
-                        "not enough bytes to skip 64-bit field",
-                    ));
-                }
+                ensure!(
+                    self.data.remaining() >= 8,
+                    "not enough bytes to skip 64-bit field"
+                );
                 self.data.advance(8);
                 Ok(())
             }
-            WIRE_TYPE_LENGTH_DELIMITED => {
+            WireType::LengthDelimited => {
                 // For length-delimited, read length then skip that many bytes.
                 let len = self.read_varint()? as usize;
-                if self.data.remaining() < len {
-                    return Err(Error::new(
-                        ErrorKind::UnexpectedEof,
-                        "not enough bytes to skip length-delimited field",
-                    ));
-                }
+                ensure!(
+                    self.data.remaining() >= len,
+                    "not enough bytes to skip length-delimited field"
+                );
                 self.data.advance(len);
                 Ok(())
             }
-            _ => Err(Error::new(
-                ErrorKind::InvalidData,
-                format!("unsupported wire type for skipping: {}", wire_type),
-            )),
         }
     }
 }
 
 #[inline(always)]
-fn validate_wire_type(actual: u8, expected: u8, field_name: &str) -> Result<()> {
-    if actual != expected {
-        return Err(Error::new(
-            ErrorKind::InvalidData,
-            format!(
-                "expected wire type {} for {}, but found wire type {}",
-                expected, field_name, actual
-            ),
-        ));
-    }
+fn validate_wire_type(actual: WireType, expected: WireType, field_name: &str) -> Result<()> {
+    ensure!(
+        actual == expected,
+        "expected wire type {:?} for {}, but found wire type {:?}",
+        expected,
+        field_name,
+        actual
+    );
     Ok(())
 }
 
-/// Fill a PooledWriteRequest instance with data from the buffer.
-pub fn read_write_request(data: Bytes, request: &mut PooledWriteRequest) -> Result<()> {
+/// Fill a [`WriteRequest`] instance with data from the buffer.
+pub fn read_write_request(data: Bytes, request: &mut WriteRequest) -> Result<()> {
     let mut reader = ProtobufReader::new(data);
     while reader.remaining() > 0 {
         let (field_number, wire_type) = reader.read_tag()?;
         match field_number {
             FIELD_NUM_TIMESERIES => {
-                validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "timeseries")?;
+                validate_wire_type(wire_type, WireType::LengthDelimited, "timeseries")?;
                 let timeseries_ref = request.timeseries.push_default();
                 reader.read_timeseries(timeseries_ref)?;
             }
             FIELD_NUM_METADATA => {
-                validate_wire_type(wire_type, WIRE_TYPE_LENGTH_DELIMITED, "metadata")?;
+                validate_wire_type(wire_type, WireType::LengthDelimited, "metadata")?;
                 let metadata_ref = request.metadata.push_default();
                 reader.read_metric_metadata(metadata_ref)?;
             }
@@ -581,10 +500,12 @@ mod tests {
 
     #[test]
     fn test_parse_write_request() {
-        use pb_types::{Exemplar, Label, MetricMetadata, Sample, TimeSeries, WriteRequest};
+        use pb_types::{
+            Exemplar, Label, MetricMetadata, Sample, TimeSeries, WriteRequest as PbWriteRequest,
+        };
         use prost::Message;
 
-        let write_request = WriteRequest {
+        let write_request = PbWriteRequest {
             timeseries: vec![TimeSeries {
                 labels: vec![Label {
                     name: "metric_name".to_string(),
@@ -613,7 +534,7 @@ mod tests {
 
         let encoded = write_request.encode_to_vec();
         let data = Bytes::from(encoded);
-        let mut pooled_request = PooledWriteRequest::default();
+        let mut pooled_request = crate::pooled_types::WriteRequest::default();
         read_write_request(data, &mut pooled_request).unwrap();
 
         assert_eq!(pooled_request.timeseries.len(), 1);
@@ -636,7 +557,7 @@ mod tests {
         assert_eq!(exemplar_label.value, "abc123");
         assert_eq!(pooled_request.metadata.len(), 1);
         let metadata = &pooled_request.metadata[0];
-        assert_eq!(metadata.metric_type, PooledMetricType::Counter);
+        assert_eq!(metadata.metric_type, MetricType::Counter);
         assert_eq!(metadata.metric_family_name, "test_metric");
         assert_eq!(metadata.help, "Test metric description");
         assert_eq!(metadata.unit, "bytes");

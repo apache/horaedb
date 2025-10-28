@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,13 +16,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-#!/usr/bin/env python3
-
 import subprocess
 import json
 import sys
 import os
-from typing import Dict, List, Any
+from typing import Dict, Any
 import argparse
 
 try:
@@ -40,41 +39,37 @@ class MemoryBenchmark:
         self.mode = mode
         self.use_unsafe = use_unsafe
         self.parsers = [
-            "pooled_parser_mem",
-            "prost_parser_mem",
-            "rust_protobuf_parser_mem",
-            "quick_protobuf_parser_mem",
+            "pooled",
+            "prost",
+            "rust-protobuf",
+            "quick-protobuf",
         ]
 
-    def build_parsers(self) -> bool:
+    def build_binary(self) -> bool:
         features_msg = " with unsafe-split" if self.use_unsafe else ""
-        print(f"Building parser binaries{features_msg}...")
+        print(f"Building binary{features_msg}...")
         try:
-            for parser in self.parsers:
-                print(f"  Building {parser}...")
-                build_cmd = ["cargo", "build", "--release", "--bin", parser]
-                if self.use_unsafe:
-                    build_cmd.extend(["--features", "unsafe-split"])
-                result = subprocess.run(
-                    build_cmd,
-                    cwd=self.project_path,
-                    capture_output=True,
-                    text=True,
-                )
-
-                if result.returncode != 0:
-                    print(f"Failed to build {parser}: {result.stderr}")
-                    return False
-            print("All parsers built successfully.")
+            bin_name = "parser_mem"
+            build_cmd = ["cargo", "build", "--release", "--bin", bin_name]
+            if self.use_unsafe:
+                build_cmd.extend(["--features", "unsafe-split"])
+            result = subprocess.run(
+                build_cmd,
+                cwd=self.project_path,
+                check=False,
+            )
+            if result.returncode != 0:
+                print("Failed to build binary")
+                return False
             return True
         except Exception as e:
-            print(f"Build failed: {e}")
+            print(f"Failed to build binary: {e}")
             return False
 
-    def run_parser(self, parser: str, mode: str, scale: int) -> Dict[str, Any]:
-        binary_path = f"../../target/release/{parser}"
+    def run_parser(self, parser: str, mode: str, scale: int, bin_name: str) -> Dict[str, Any]:
+        binary_path = f"../../target/release/{bin_name}"
 
-        cmd = [binary_path, mode, str(scale)]
+        cmd = [binary_path, mode, str(scale), parser]
 
         try:
             result = subprocess.run(
@@ -86,24 +81,24 @@ class MemoryBenchmark:
             )
 
             if result.returncode != 0:
-                print(f"  Error running {parser}: {result.stderr}")
+                print(f"Error running {parser}: {result.stderr}")
                 return {}
 
             return json.loads(result.stdout.strip())
 
         except subprocess.TimeoutExpired:
-            print(f"  Timeout running {parser} {mode} {scale}")
+            print(f"Timeout running {parser} {mode} {scale}")
             return {}
         except json.JSONDecodeError as e:
-            print(f"  Failed to parse JSON from {parser}: {e}")
-            print(f"  Raw output: {result.stdout}")
+            print(f"Failed to parse JSON from {parser}: {e}")
+            print(f"Raw output: {result.stdout}")
             return {}
         except FileNotFoundError:
-            print(f"  Binary not found: {binary_path}")
-            print(f"  Please run: cargo build --release --bins")
+            print(f"Binary not found: {binary_path}")
+            print(f"Please run: cargo build --release --bins")
             return {}
         except Exception as e:
-            print(f"  Exception running {parser}: {e}")
+            print(f"Exception running {parser}: {e}")
             return {}
 
     def run_benchmarks(self) -> Dict[str, Dict[str, Any]]:
@@ -115,8 +110,9 @@ class MemoryBenchmark:
 
         for i, parser in enumerate(self.parsers, 1):
             print(f"\n[{i}/{total_count}] Testing {parser}...")
-            print(f"  Running {self.mode} mode with scale {self.scale}...")
-            result = self.run_parser(parser, self.mode, self.scale)
+            print(f"Running {self.mode} mode with scale {self.scale}...")
+            result = self.run_parser(
+                parser, self.mode, self.scale, "parser_mem")
 
             if result:
                 result["parser"] = parser
@@ -126,7 +122,8 @@ class MemoryBenchmark:
             else:
                 print(f"Failed")
 
-        print(f"\nCompleted: {successful_count}/{total_count} parsers succeeded")
+        print(
+            f"\nCompleted: {successful_count}/{total_count} parsers succeeded")
 
         if successful_count == total_count:
             print("All parsers succeeded - generating report...")
@@ -224,7 +221,7 @@ def main():
         scale=args.scale, mode=args.mode, use_unsafe=args.unsafe
     )
 
-    if not benchmark.build_parsers():
+    if not benchmark.build_binary():
         sys.exit(1)
 
     print(f"\nRunning memory benchmarks...")

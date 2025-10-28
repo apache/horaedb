@@ -26,20 +26,8 @@ homepage.workspace = true
 description.workspace = true
 
 [[bin]]
-name = "pooled_parser_mem"
-path = "src/bin/pooled_parser_mem.rs"
-
-[[bin]]
-name = "prost_parser_mem"
-path = "src/bin/prost_parser_mem.rs"
-
-[[bin]]
-name = "rust_protobuf_parser_mem"
-path = "src/bin/rust_protobuf_parser_mem.rs"
-
-[[bin]]
-name = "quick_protobuf_parser_mem"
-path = "src/bin/quick_protobuf_parser_mem.rs"
+name = "parser_mem"
+path = "src/bin/parser_mem.rs"
 
 [[bin]]
 name = "pool_stats"

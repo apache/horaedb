@@ -61,7 +61,7 @@ fn main() {
     }
 
     // Fix package namespace conflicts and inner attributes using sed.
-    let _ = Command::new("sed")
+    let output = Command::new("sed")
         .args([
             "-i",
             "-e",
@@ -76,9 +76,15 @@ fn main() {
         ])
         .output()
         .expect("sed command execution failed");
+    if !output.status.success() {
+        eprintln!(
+            "warning: sed patching quick-protobuf output failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     // Fix inner attributes in rust-protobuf generated file.
-    let _ = Command::new("sed")
+    let output = Command::new("sed")
         .args([
             "-i",
             "-e",
@@ -89,6 +95,12 @@ fn main() {
         ])
         .output()
         .expect("sed command execution failed");
+    if !output.status.success() {
+        eprintln!(
+            "warning: sed patching rust-protobuf output failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 
     println!("cargo:rerun-if-changed={}", proto_path);
 }

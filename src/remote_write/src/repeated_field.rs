@@ -34,7 +34,11 @@ use std::{
 
 use bytes::Bytes;
 
-/// anything that can be cleared
+/// Anything that can be cleared.
+///
+/// Clear should reset the value to a **logically** empty state equivalent to a
+/// newly created object. It does not necessarily deallocate or zero underlying
+/// memory, which enables efficient memory reuse.
 pub trait Clear {
     /// Clear this make, make it equivalent to newly created object.
     fn clear(&mut self);

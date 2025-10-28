@@ -23,12 +23,12 @@ use once_cell::sync::Lazy;
 use crate::repeated_field::{Clear, RepeatedField};
 
 #[derive(Debug, Clone)]
-pub struct PooledLabel {
+pub struct Label {
     pub name: Bytes,
     pub value: Bytes,
 }
 
-impl Default for PooledLabel {
+impl Default for Label {
     fn default() -> Self {
         Self {
             name: Bytes::new(),
@@ -37,7 +37,7 @@ impl Default for PooledLabel {
     }
 }
 
-impl Clear for PooledLabel {
+impl Clear for Label {
     fn clear(&mut self) {
         self.name.clear();
         self.value.clear();
@@ -45,12 +45,12 @@ impl Clear for PooledLabel {
 }
 
 #[derive(Debug, Clone)]
-pub struct PooledSample {
+pub struct Sample {
     pub value: f64,
     pub timestamp: i64,
 }
 
-impl Default for PooledSample {
+impl Default for Sample {
     fn default() -> Self {
         Self {
             value: 0.0,
@@ -59,7 +59,7 @@ impl Default for PooledSample {
     }
 }
 
-impl Clear for PooledSample {
+impl Clear for Sample {
     fn clear(&mut self) {
         self.value = 0.0;
         self.timestamp = 0;
@@ -67,13 +67,13 @@ impl Clear for PooledSample {
 }
 
 #[derive(Debug, Clone)]
-pub struct PooledExemplar {
-    pub labels: RepeatedField<PooledLabel>,
+pub struct Exemplar {
+    pub labels: RepeatedField<Label>,
     pub value: f64,
     pub timestamp: i64,
 }
 
-impl Default for PooledExemplar {
+impl Default for Exemplar {
     fn default() -> Self {
         Self {
             labels: RepeatedField::default(),
@@ -83,7 +83,7 @@ impl Default for PooledExemplar {
     }
 }
 
-impl Clear for PooledExemplar {
+impl Clear for Exemplar {
     fn clear(&mut self) {
         self.labels.clear();
         self.value = 0.0;
@@ -92,7 +92,7 @@ impl Clear for PooledExemplar {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum PooledMetricType {
+pub enum MetricType {
     #[default]
     Unknown = 0,
     Counter = 1,
@@ -105,17 +105,17 @@ pub enum PooledMetricType {
 }
 
 #[derive(Debug, Clone)]
-pub struct PooledMetricMetadata {
-    pub metric_type: PooledMetricType,
+pub struct MetricMetadata {
+    pub metric_type: MetricType,
     pub metric_family_name: Bytes,
     pub help: Bytes,
     pub unit: Bytes,
 }
 
-impl Default for PooledMetricMetadata {
+impl Default for MetricMetadata {
     fn default() -> Self {
         Self {
-            metric_type: PooledMetricType::Unknown,
+            metric_type: MetricType::Unknown,
             metric_family_name: Bytes::new(),
             help: Bytes::new(),
             unit: Bytes::new(),
@@ -123,9 +123,9 @@ impl Default for PooledMetricMetadata {
     }
 }
 
-impl Clear for PooledMetricMetadata {
+impl Clear for MetricMetadata {
     fn clear(&mut self) {
-        self.metric_type = PooledMetricType::Unknown;
+        self.metric_type = MetricType::Unknown;
         self.metric_family_name.clear();
         self.help.clear();
         self.unit.clear();
@@ -133,13 +133,13 @@ impl Clear for PooledMetricMetadata {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct PooledTimeSeries {
-    pub labels: RepeatedField<PooledLabel>,
-    pub samples: RepeatedField<PooledSample>,
-    pub exemplars: RepeatedField<PooledExemplar>,
+pub struct TimeSeries {
+    pub labels: RepeatedField<Label>,
+    pub samples: RepeatedField<Sample>,
+    pub exemplars: RepeatedField<Exemplar>,
 }
 
-impl Clear for PooledTimeSeries {
+impl Clear for TimeSeries {
     fn clear(&mut self) {
         self.labels.clear();
         self.samples.clear();
@@ -148,12 +148,12 @@ impl Clear for PooledTimeSeries {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct PooledWriteRequest {
-    pub timeseries: RepeatedField<PooledTimeSeries>,
-    pub metadata: RepeatedField<PooledMetricMetadata>,
+pub struct WriteRequest {
+    pub timeseries: RepeatedField<TimeSeries>,
+    pub metadata: RepeatedField<MetricMetadata>,
 }
 
-impl Clear for PooledWriteRequest {
+impl Clear for WriteRequest {
     fn clear(&mut self) {
         self.timeseries.clear();
         self.metadata.clear();
@@ -166,10 +166,10 @@ pub struct WriteRequestManager;
 #[async_trait]
 impl Manager for WriteRequestManager {
     type Error = ();
-    type Type = PooledWriteRequest;
+    type Type = WriteRequest;
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
-        Ok(PooledWriteRequest::default())
+        Ok(WriteRequest::default())
     }
 
     async fn recycle(

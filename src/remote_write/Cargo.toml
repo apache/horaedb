@@ -29,6 +29,7 @@ description.workspace = true
 unsafe-split = []
 
 [dependencies]
+anyhow = { workspace = true }
 async-trait = { workspace = true }
 bytes = { workspace = true }
 deadpool = { workspace = true }
