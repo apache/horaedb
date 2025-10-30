@@ -30,10 +30,8 @@ unsafe-split = []
 
 [dependencies]
 anyhow = { workspace = true }
-async-trait = { workspace = true }
 bytes = { workspace = true }
-deadpool = { workspace = true }
+object-pool = { workspace = true }
 once_cell = { workspace = true }
 pb_types = { workspace = true }
 prost = { workspace = true }
-tokio = { workspace = true }

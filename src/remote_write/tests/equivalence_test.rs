@@ -21,13 +21,12 @@
 //!
 //! Test with `--features unsafe-split` to enable the unsafe optimization.
 
-use std::{fs, sync::Arc};
+use std::{fs, sync::Arc, thread};
 
 use bytes::Bytes;
 use pb_types::{Exemplar, Label, MetricMetadata, Sample, TimeSeries, WriteRequest};
 use prost::Message;
 use remote_write::pooled_parser::PooledParser;
-use tokio::task::JoinHandle;
 
 const ITERATIONS: usize = 50;
 
@@ -47,13 +46,10 @@ fn parse_with_prost(data: &Bytes) -> WriteRequest {
     WriteRequest::decode(data.clone()).expect("prost decode failed")
 }
 
-async fn parse_with_pooled(data: &Bytes) -> WriteRequest {
+fn parse_with_pooled(data: &Bytes) -> WriteRequest {
     let data_copy = data.clone();
     let parser = PooledParser;
-    let pooled_request = parser
-        .decode_async(data_copy)
-        .await
-        .expect("pooled decode failed");
+    let pooled_request = parser.decode(data_copy).expect("pooled decode failed");
 
     // Convert pooled types to pb_types to compare with prost.
     let mut write_request = WriteRequest {
@@ -118,8 +114,8 @@ async fn parse_with_pooled(data: &Bytes) -> WriteRequest {
     write_request
 }
 
-#[tokio::test]
-async fn test_sequential_correctness() {
+#[test]
+fn test_sequential_correctness() {
     let (data1, data2) = load_test_data();
     let datasets = [&data1, &data2];
 
@@ -128,7 +124,7 @@ async fn test_sequential_correctness() {
         let data = datasets[data_index];
 
         let prost_result = parse_with_prost(data);
-        let pooled_result = parse_with_pooled(data).await;
+        let pooled_result = parse_with_pooled(data);
 
         assert_eq!(
             &prost_result, &pooled_result,
@@ -138,19 +134,19 @@ async fn test_sequential_correctness() {
     }
 }
 
-#[tokio::test]
-async fn test_concurrent_correctness() {
+#[test]
+fn test_concurrent_correctness() {
     let (data1, data2) = load_test_data();
     let data1 = Arc::new(data1);
     let data2 = Arc::new(data2);
 
-    let mut handles: Vec<JoinHandle<()>> = Vec::new();
+    let mut handles = Vec::new();
 
     for iteration in 0..ITERATIONS {
         let data1_clone = Arc::clone(&data1);
         let data2_clone = Arc::clone(&data2);
 
-        let handle = tokio::spawn(async move {
+        let handle = thread::spawn(move || {
             let data_index = iteration % 2;
             let data = if data_index == 0 {
                 &*data1_clone
@@ -159,7 +155,7 @@ async fn test_concurrent_correctness() {
             };
 
             let prost_result = parse_with_prost(data);
-            let pooled_result = parse_with_pooled(data).await;
+            let pooled_result = parse_with_pooled(data);
 
             assert_eq!(
                 &prost_result, &pooled_result,
@@ -172,6 +168,6 @@ async fn test_concurrent_correctness() {
     }
 
     for handle in handles {
-        handle.await.expect("task completion failed");
+        handle.join().expect("thread completion failed");
     }
 }

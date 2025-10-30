@@ -29,18 +29,19 @@ description.workspace = true
 name = "parser_mem"
 path = "src/bin/parser_mem.rs"
 
-[[bin]]
-name = "pool_stats"
-path = "src/bin/pool_stats.rs"
-
 [features]
+default = ["hotpath", "hotpath-alloc-bytes-total"]
+hotpath = []
+hotpath-alloc-bytes-total = ["hotpath", "hotpath/hotpath-alloc-bytes-total"]
 unsafe-split = ["remote_write/unsafe-split"]
 
 [dependencies]
+anyhow = { workspace = true }
 bytes = { workspace = true }
 columnar_storage = { workspace = true }
 common = { workspace = true }
-deadpool = { workspace = true }
+hotpath = { workspace = true }
+num_cpus = { workspace = true }
 pb_types = { workspace = true }
 prost = { workspace = true }
 protobuf = "3.7"
@@ -48,21 +49,18 @@ quick-protobuf = "0.8"
 remote_write = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tikv-jemalloc-ctl = "0.5"
 tokio = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-tikv-jemallocator = "0.5"
 
 [build-dependencies]
 protobuf-codegen = "3.7"
 
 [dev-dependencies]
 criterion = { workspace = true }
-num_cpus = "1.16"
 
 [[bench]]
 name = "bench"

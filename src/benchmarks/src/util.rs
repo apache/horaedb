@@ -30,8 +30,6 @@ use serde::{
     de::{self, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
 };
-use serde_json::json;
-use tikv_jemalloc_ctl::{epoch, stats, thread};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd, Default)]
 pub struct ReadableDuration(pub Duration);
@@ -174,84 +172,6 @@ impl<'de> Deserialize<'de> for ReadableDuration {
     }
 }
 
-// Memory bench utilities.
-#[derive(Debug, Clone)]
-pub struct MemoryStats {
-    pub thread_allocated: u64,
-    pub thread_deallocated: u64,
-    pub allocated: u64,
-    pub active: u64,
-    pub metadata: u64,
-    pub mapped: u64,
-    pub resident: u64,
-    pub retained: u64,
-}
-
-#[derive(Debug, Clone)]
-pub struct MemoryStatsDiff {
-    pub thread_allocated_diff: i64,
-    pub thread_deallocated_diff: i64,
-    pub allocated: i64,
-    pub active: i64,
-    pub metadata: i64,
-    pub mapped: i64,
-    pub resident: i64,
-    pub retained: i64,
-}
-
-impl MemoryStats {
-    pub fn collect() -> Result<Self, String> {
-        epoch::advance().map_err(|e| format!("failed to advance jemalloc epoch: {}", e))?;
-
-        Ok(MemoryStats {
-            thread_allocated: thread::allocatedp::read()
-                .map_err(|e| format!("failed to read thread.allocatedp: {}", e))?
-                .get(),
-            thread_deallocated: thread::deallocatedp::read()
-                .map_err(|e| format!("failed to read thread.deallocatedp: {}", e))?
-                .get(),
-            allocated: stats::allocated::read()
-                .map_err(|e| format!("failed to read allocated: {}", e))?
-                .try_into()
-                .unwrap(),
-            active: stats::active::read()
-                .map_err(|e| format!("failed to read active: {}", e))?
-                .try_into()
-                .unwrap(),
-            metadata: stats::metadata::read()
-                .map_err(|e| format!("failed to read metadata: {}", e))?
-                .try_into()
-                .unwrap(),
-            mapped: stats::mapped::read()
-                .map_err(|e| format!("failed to read mapped: {}", e))?
-                .try_into()
-                .unwrap(),
-            resident: stats::resident::read()
-                .map_err(|e| format!("failed to read resident: {}", e))?
-                .try_into()
-                .unwrap(),
-            retained: stats::retained::read()
-                .map_err(|e| format!("failed to read retained: {}", e))?
-                .try_into()
-                .unwrap(),
-        })
-    }
-
-    pub fn diff(&self, other: &MemoryStats) -> MemoryStatsDiff {
-        MemoryStatsDiff {
-            thread_allocated_diff: other.thread_allocated as i64 - self.thread_allocated as i64,
-            thread_deallocated_diff: other.thread_deallocated as i64
-                - self.thread_deallocated as i64,
-            allocated: other.allocated as i64 - self.allocated as i64,
-            active: other.active as i64 - self.active as i64,
-            metadata: other.metadata as i64 - self.metadata as i64,
-            mapped: other.mapped as i64 - self.mapped as i64,
-            resident: other.resident as i64 - self.resident as i64,
-            retained: other.retained as i64 - self.retained as i64,
-        }
-    }
-}
-
 pub struct MemoryBenchConfig {
     pub test_data: Bytes,
     pub scale: usize,
@@ -274,22 +194,50 @@ impl MemoryBenchConfig {
             mode,
         }
     }
+}
 
-    pub fn output_json(&self, memory_diff: &MemoryStatsDiff) {
-        let result = json!({
-            "mode": self.mode,
-            "scale": self.scale,
-            "memory": {
-                "thread_allocated_diff": memory_diff.thread_allocated_diff,
-                "thread_deallocated_diff": memory_diff.thread_deallocated_diff,
-                "allocated": memory_diff.allocated,
-                "active": memory_diff.active,
-                "metadata": memory_diff.metadata,
-                "mapped": memory_diff.mapped,
-                "resident": memory_diff.resident,
-                "retained": memory_diff.retained
-            }
-        });
-        println!("{}", result);
+/// Run a workload concurrently with up to CPU core count threads.
+pub fn run_concurrent_threads<F>(scale: usize, worker: F) -> Result<(), String>
+where
+    F: Fn(usize) -> Result<(), String> + Send + Sync + 'static,
+{
+    let threads = std::cmp::min(scale, num_cpus::get());
+    if threads == 0 {
+        return Ok(());
+    }
+    let base = scale / threads;
+    let extra = scale % threads;
+    let worker = std::sync::Arc::new(worker);
+    let mut handles = Vec::with_capacity(threads);
+    for i in 0..threads {
+        let n = base + if i < extra { 1 } else { 0 };
+        if n == 0 {
+            continue;
+        }
+        let w = std::sync::Arc::clone(&worker);
+        handles.push(std::thread::spawn(move || (w)(n)));
+    }
+    for h in handles {
+        h.join().map_err(|_| "thread panicked".to_string())??;
+    }
+    Ok(())
+}
+
+/// Convert bytes number to a human-readable string.
+pub fn human_bytes(bytes: u64) -> String {
+    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    if bytes == 0 {
+        return "0 B".to_string();
+    }
+    let mut size = bytes as f64;
+    let mut unit = 0usize;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{} {}", bytes, UNITS[unit])
+    } else {
+        format!("{:.1} {}", size, UNITS[unit])
     }
 }

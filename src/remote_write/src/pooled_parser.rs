@@ -25,10 +25,11 @@
 
 use anyhow::Result;
 use bytes::Bytes;
+use object_pool::ReusableOwned;
 
 use crate::{
     pb_reader::read_write_request,
-    pooled_types::{WriteRequest, WriteRequestManager, POOL},
+    pooled_types::{WriteRequest, POOL},
     repeated_field::Clear,
 };
 
@@ -40,26 +41,13 @@ impl PooledParser {
         Self
     }
 
-    /// Decode a [`WriteRequest`] from the buffer and return it.
-    pub fn decode(&self, buf: Bytes) -> Result<WriteRequest> {
-        // Cannot get a WriteRequest instance from the pool in sync functions.
-        let mut request = WriteRequest::default();
-        read_write_request(buf, &mut request)?;
-        Ok(request)
-    }
-
-    /// Decode a [`WriteRequest`] from the buffer and return a pooled object.
+    /// Decode a [`WriteRequest`] from the buffer.
     ///
     /// This method will reuse a [`WriteRequest`] instance from the object
     /// pool. After the returned object is dropped, it will be returned to the
-    pub async fn decode_async(
-        &self,
-        buf: Bytes,
-    ) -> Result<deadpool::managed::Object<WriteRequestManager>> {
-        let mut pooled_request = POOL
-            .get()
-            .await
-            .map_err(|e| anyhow::anyhow!("failed to get object from pool: {e:?}"))?;
+    /// pool.
+    pub fn decode(&self, buf: Bytes) -> Result<ReusableOwned<WriteRequest>> {
+        let mut pooled_request = POOL.pull_owned(WriteRequest::default);
         pooled_request.clear();
         read_write_request(buf, &mut pooled_request)?;
         Ok(pooled_request)

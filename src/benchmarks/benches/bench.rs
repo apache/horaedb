@@ -64,12 +64,6 @@ fn bench_remote_write(c: &mut Criterion) {
     let concurrent_scales = config.remote_write.concurrent_scales.clone();
     let bench = RefCell::new(RemoteWriteBench::new(config.remote_write));
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(num_cpus::get())
-        .enable_all()
-        .build()
-        .unwrap();
-
     // Sequential parse bench.
     let mut group = c.benchmark_group("remote_write_sequential");
 
@@ -85,10 +79,10 @@ fn bench_remote_write(c: &mut Criterion) {
 
         group.bench_with_input(
             BenchmarkId::new("pooled", n),
-            &(&bench, &rt, n),
-            |b, (bench, rt, scale)| {
+            &(&bench, n),
+            |b, (bench, scale)| {
                 let bench = bench.borrow();
-                b.iter(|| rt.block_on(bench.pooled_parser_sequential(*scale)).unwrap())
+                b.iter(|| bench.pooled_parser_sequential(*scale).unwrap())
             },
         );
 
@@ -118,43 +112,37 @@ fn bench_remote_write(c: &mut Criterion) {
     for &scale in &concurrent_scales {
         group.bench_with_input(
             BenchmarkId::new("prost", scale),
-            &(&bench, &rt, scale),
-            |b, (bench, rt, scale)| {
+            &(&bench, scale),
+            |b, (bench, scale)| {
                 let bench = bench.borrow();
-                b.iter(|| rt.block_on(bench.prost_parser_concurrent(*scale)).unwrap())
+                b.iter(|| bench.prost_parser_concurrent(*scale).unwrap())
             },
         );
 
         group.bench_with_input(
             BenchmarkId::new("pooled", scale),
-            &(&bench, &rt, scale),
-            |b, (bench, rt, scale)| {
+            &(&bench, scale),
+            |b, (bench, scale)| {
                 let bench = bench.borrow();
-                b.iter(|| rt.block_on(bench.pooled_parser_concurrent(*scale)).unwrap())
+                b.iter(|| bench.pooled_parser_concurrent(*scale).unwrap())
             },
         );
 
         group.bench_with_input(
             BenchmarkId::new("quick_protobuf", scale),
-            &(&bench, &rt, scale),
-            |b, (bench, rt, scale)| {
+            &(&bench, scale),
+            |b, (bench, scale)| {
                 let bench = bench.borrow();
-                b.iter(|| {
-                    rt.block_on(bench.quick_protobuf_parser_concurrent(*scale))
-                        .unwrap()
-                })
+                b.iter(|| bench.quick_protobuf_parser_concurrent(*scale).unwrap())
             },
         );
 
         group.bench_with_input(
             BenchmarkId::new("rust_protobuf", scale),
-            &(&bench, &rt, scale),
-            |b, (bench, rt, scale)| {
+            &(&bench, scale),
+            |b, (bench, scale)| {
                 let bench = bench.borrow();
-                b.iter(|| {
-                    rt.block_on(bench.rust_protobuf_parser_concurrent(*scale))
-                        .unwrap()
-                })
+                b.iter(|| bench.rust_protobuf_parser_concurrent(*scale).unwrap())
             },
         );
     }
