@@ -17,7 +17,7 @@
 
 //! remote write parser bench.
 
-use std::{fs, path::PathBuf};
+use std::{fs, path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
 use pb_types::WriteRequest as ProstWriteRequest;
@@ -25,12 +25,12 @@ use prost::Message;
 use protobuf::Message as ProtobufMessage;
 use quick_protobuf::{BytesReader, MessageRead};
 use remote_write::pooled_parser::PooledParser;
-use tokio::task::JoinHandle;
 
 use crate::{
     config::RemoteWriteConfig,
     quick_protobuf_remote_write::WriteRequest as QuickProtobufWriteRequest,
     rust_protobuf_remote_write::WriteRequest as RustProtobufWriteRequest,
+    util::run_concurrent_threads,
 };
 
 pub struct RemoteWriteBench {
@@ -59,14 +59,13 @@ impl RemoteWriteBench {
     }
 
     // Hand-written pooled parser sequential bench.
-    pub async fn pooled_parser_sequential(&self, scale: usize) -> Result<(), String> {
+    pub fn pooled_parser_sequential(&self, scale: usize) -> Result<(), String> {
         let parser = PooledParser;
         for _ in 0..scale {
             let data = Bytes::from(self.raw_data.clone());
             let _ = parser
-                .decode_async(data.clone())
-                .await
-                .map_err(|e| format!("pooled sequential parse failed: {:?}", e))?;
+                .decode(data.clone())
+                .map_err(|e| format!("pooled sequential parse failed: {e:?}"))?;
         }
         Ok(())
     }
@@ -91,85 +90,55 @@ impl RemoteWriteBench {
     }
 
     // prost parser concurrent bench.
-    pub async fn prost_parser_concurrent(&self, scale: usize) -> Result<(), String> {
-        let join_handles: Vec<JoinHandle<Result<(), String>>> = (0..scale)
-            .map(|_| {
-                let raw_data = self.raw_data.clone();
-                tokio::spawn(async move {
-                    let data = Bytes::from(raw_data);
-                    ProstWriteRequest::decode(data)
-                        .map_err(|e| format!("prost concurrent parse failed: {}", e))?;
-                    Ok(())
-                })
-            })
-            .collect();
-
-        for join_handle in join_handles {
-            join_handle.await.unwrap()?;
-        }
-        Ok(())
+    pub fn prost_parser_concurrent(&self, scale: usize) -> Result<(), String> {
+        let raw = Arc::new(self.raw_data.clone());
+        run_concurrent_threads(scale, move |n| {
+            for _ in 0..n {
+                let data = Bytes::from((*raw).clone());
+                ProstWriteRequest::decode(data)
+                    .map_err(|e| format!("prost concurrent parse failed: {}", e))?;
+            }
+            Ok(())
+        })
     }
 
     // Hand-written pooled parser concurrent bench.
-    pub async fn pooled_parser_concurrent(&self, scale: usize) -> Result<(), String> {
-        let parser = PooledParser;
-        let join_handles: Vec<JoinHandle<Result<(), String>>> = (0..scale)
-            .map(|_| {
-                let parser = parser.clone();
-                let raw_data = self.raw_data.clone();
-                tokio::spawn(async move {
-                    let data = Bytes::from(raw_data);
-                    let _ = parser
-                        .decode_async(data.clone())
-                        .await
-                        .map_err(|e| format!("pooled concurrent parse failed: {:?}", e))?;
-                    Ok(())
-                })
-            })
-            .collect();
-
-        for join_handle in join_handles {
-            join_handle.await.unwrap()?;
-        }
-        Ok(())
+    pub fn pooled_parser_concurrent(&self, scale: usize) -> Result<(), String> {
+        let raw = Arc::new(self.raw_data.clone());
+        run_concurrent_threads(scale, move |n| {
+            let parser = PooledParser;
+            for _ in 0..n {
+                let data = Bytes::from((*raw).clone());
+                let _ = parser
+                    .decode(data.clone())
+                    .map_err(|e| format!("pooled concurrent parse failed: {e:?}"))?;
+            }
+            Ok(())
+        })
     }
 
     // quick-protobuf parser concurrent bench.
-    pub async fn quick_protobuf_parser_concurrent(&self, scale: usize) -> Result<(), String> {
-        let join_handles: Vec<tokio::task::JoinHandle<Result<(), String>>> = (0..scale)
-            .map(|_| {
-                let data = self.raw_data.clone();
-                tokio::spawn(async move {
-                    let mut reader = BytesReader::from_bytes(&data);
-                    QuickProtobufWriteRequest::from_reader(&mut reader, &data)
-                        .map_err(|e| format!("quick-protobuf concurrent parse failed: {}", e))?;
-                    Ok(())
-                })
-            })
-            .collect();
-
-        for join_handle in join_handles {
-            join_handle.await.unwrap()?;
-        }
-        Ok(())
+    pub fn quick_protobuf_parser_concurrent(&self, scale: usize) -> Result<(), String> {
+        let raw = Arc::new(self.raw_data.clone());
+        run_concurrent_threads(scale, move |n| {
+            for _ in 0..n {
+                let mut reader: BytesReader = BytesReader::from_bytes(&raw);
+                QuickProtobufWriteRequest::from_reader(&mut reader, &raw)
+                    .map_err(|e| format!("quick-protobuf concurrent parse failed: {}", e))?;
+            }
+            Ok(())
+        })
     }
 
     // rust-protobuf parser concurrent bench.
-    pub async fn rust_protobuf_parser_concurrent(&self, scale: usize) -> Result<(), String> {
-        let join_handles: Vec<tokio::task::JoinHandle<Result<(), String>>> = (0..scale)
-            .map(|_| {
-                let data = self.raw_data.clone();
-                tokio::spawn(async move {
-                    RustProtobufWriteRequest::parse_from_bytes(&data)
-                        .map_err(|e| format!("rust-protobuf concurrent parse failed: {}", e))?;
-                    Ok(())
-                })
-            })
-            .collect();
-
-        for join_handle in join_handles {
-            join_handle.await.unwrap()?;
-        }
-        Ok(())
+    pub fn rust_protobuf_parser_concurrent(&self, scale: usize) -> Result<(), String> {
+        let raw = Arc::new(self.raw_data.clone());
+        run_concurrent_threads(scale, move |n| {
+            for _ in 0..n {
+                RustProtobufWriteRequest::parse_from_bytes(&raw)
+                    .map_err(|e| format!("rust-protobuf concurrent parse failed: {}", e))?;
+            }
+            Ok(())
+        })
     }
 }

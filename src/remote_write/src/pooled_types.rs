@@ -15,9 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use async_trait::async_trait;
+use std::sync::Arc;
+
 use bytes::Bytes;
-use deadpool::managed::{Manager, Metrics, Pool, RecycleResult};
+use object_pool::Pool;
 use once_cell::sync::Lazy;
 
 use crate::repeated_field::{Clear, RepeatedField};
@@ -160,33 +161,8 @@ impl Clear for WriteRequest {
     }
 }
 
-/// A deadpool manager for PooledWriteRequest.
-pub struct WriteRequestManager;
+const POOL_SIZE: usize = 16; // Maximum number of objects in the pool.
 
-#[async_trait]
-impl Manager for WriteRequestManager {
-    type Error = ();
-    type Type = WriteRequest;
-
-    async fn create(&self) -> Result<Self::Type, Self::Error> {
-        Ok(WriteRequest::default())
-    }
-
-    async fn recycle(
-        &self,
-        _obj: &mut Self::Type,
-        _metrics: &Metrics,
-    ) -> RecycleResult<Self::Error> {
-        // We will reset the object after acquiring it.
-        Ok(())
-    }
-}
-
-const POOL_SIZE: usize = 64; // Maximum number of objects in the pool.
-
-pub static POOL: Lazy<Pool<WriteRequestManager>> = Lazy::new(|| {
-    Pool::builder(WriteRequestManager)
-        .max_size(POOL_SIZE)
-        .build()
-        .unwrap()
-});
+/// Global thread-safe object pool for `WriteRequest`.
+pub static POOL: Lazy<Arc<Pool<WriteRequest>>> =
+    Lazy::new(|| Arc::new(Pool::new(POOL_SIZE, WriteRequest::default)));
